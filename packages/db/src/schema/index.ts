@@ -17,3 +17,4 @@ export * from "./project";
 export * from "./workflow";
 export * from "./board";
 export * from "./issue";
+export * from "./settings";

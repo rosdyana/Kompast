@@ -6,4 +6,7 @@ export * from "./issue";
 export * from "./board";
 export * from "./comment";
 export * from "./watcher";
+export * from "./settings";
+export * from "./bootstrap";
+export * from "./crypto";
 export type { Tx } from "./types";

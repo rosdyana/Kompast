@@ -1,8 +1,18 @@
-import { HeadContent, Scripts, Outlet, createRootRoute } from "@tanstack/react-router";
+import { HeadContent, Scripts, Outlet, createRootRoute, redirect } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import themeCss from "@kompast/ui/theme.css?url";
+import { getSetupStatusFn } from "@/lib/server-fns/setup";
 
 export const Route = createRootRoute({
+  // Gates the ENTIRE app, not just /login: until Microsoft Entra ID is
+  // configured, every route bounces to /setup — there is no working sign-in
+  // to fall through to otherwise. /setup and /api/* are excluded to avoid a
+  // redirect loop / to let the auth callback route itself.
+  beforeLoad: async ({ location }) => {
+    if (location.pathname === "/setup" || location.pathname.startsWith("/api/")) return;
+    const status = await getSetupStatusFn();
+    if (!status.isConfigured) throw redirect({ to: "/setup" });
+  },
   head: () => ({
     meta: [
       { charSet: "utf-8" },

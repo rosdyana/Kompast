@@ -26,25 +26,38 @@ Requires Node 22+, pnpm 10+, a Postgres 17 instance, and a Redis instance reacha
 
 ```bash
 pnpm install
-cp infra/.env.example apps/web/.env   # fill in every value, see below
+cp infra/.env.example apps/web/.env   # fill in every value, see below — infra-level only
 pnpm --filter @kompast/db generate    # writes packages/db/drizzle/*.sql
 pnpm --filter @kompast/db migrate     # applies it to DATABASE_URL
 pnpm dev                              # turbo runs apps/web on :3000
 ```
 
-`packages/env` validates `process.env` at import time and throws a field-by-field error if anything is missing — including in dev. There is no reduced "dev mode" schema; use dummy-but-valid values (e.g. a GUID-shaped `MICROSOFT_TENANT_ID`) if you're not wiring real Entra ID / GCS yet.
+`packages/env` validates `process.env` at import time and throws a field-by-field error if anything is missing — including in dev. There is no reduced "dev mode" schema. Note what's genuinely NOT in `.env` anymore: Microsoft Entra ID, AI provider, and mail vendor config all live in the `system_settings` DB table, set through the app itself (`/setup` on first boot, `/settings` after that) — see below.
 
 `pnpm build` / `pnpm typecheck` / `pnpm test` run across the whole workspace via Turborepo.
 
-## Microsoft Entra ID setup
+## First run: /setup
 
-You already have the Azure app registered. Confirm it has:
-- **Redirect URI**: `https://<your-domain>/api/auth/callback/microsoft-entra-id`
-- A client secret, and the tenant's GUID (not `common`/`organizations`/`consumers` — `apps/web/src/lib/auth.ts` uses the `microsoftEntraId` helper, which requires a concrete tenant)
+Every route redirects to `/setup` until Microsoft Entra ID is configured (`apps/web/src/routes/__root.tsx`'s `beforeLoad` checks `system_settings` on every navigation). This is deliberate — a SaaS-style deploy shouldn't need `.env` edits for business config, just infra secrets, then a form:
 
-Put `MICROSOFT_TENANT_ID`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` in `.env`. Group-claim → workspace-role mapping (`entra_group_map` table) has no admin UI yet — assign roles by inviting members directly until that ships.
+1. Deploy with a filled-in `.env` (infra-level only, see `.env.example`) and run migrations.
+2. Open the app in a browser. You land on `/setup`.
+3. Enter the Entra ID app's **Tenant ID** (a concrete GUID — not `common`/`organizations`/`consumers`), **Client ID**, and **Client Secret**. Register this redirect URI on the Azure app first: `https://<your-domain>/api/auth/callback/microsoft-entra-id`.
+4. Submitting writes encrypted credentials to `system_settings` and invalidates the in-memory Better Auth instance (`apps/web/src/lib/auth.ts`'s `getAuth()`/`invalidateAuthCache()`) — the very next request rebuilds it with Microsoft sign-in enabled. **No restart needed.**
+5. `/setup` now permanently redirects to `/login` — it only ever runs once. Re-editing Entra credentials later is a separate, admin-gated path (not built yet; extend `/settings` the same way AI/mail are wired, using `packages/core`'s `completeSetup`, which is safe to call again).
+6. **The first person to complete Microsoft sign-in becomes the owner of a brand-new, auto-created workspace.** Everyone after that is a plain user with no workspace until an existing admin invites them — there's no invite UI yet either, so for now that means inserting a `member` row directly.
 
-**⚠️ Operational gotcha, confirmed by hand:** `microsoftEntraId()` always performs live OIDC discovery against `https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration` to fetch the JWKS needed for ID-token verification, and its options type has no way to skip or override that. If `MICROSOFT_TENANT_ID` is wrong, or Microsoft's discovery endpoint is briefly unreachable, Better Auth's plugin init throws — and because every plugin shares one auth context, **this takes down the entire app, not just Microsoft sign-in**: every route that calls `auth.api.getSession()` (which is every authenticated page) 500s. This was reproduced directly while building P1. If the whole app starts 500ing right after a deploy or a tenant-ID change, check Entra config first, before assuming a code regression. Fixing this in code would mean setting `requireIdTokenVerification: false` on the provider, which trades away ID-token signature verification for availability — a security tradeoff intentionally left alone here rather than made unilaterally; revisit only with an explicit decision.
+Group-claim → workspace-role mapping (`entra_group_map` table) has no admin UI yet.
+
+**⚠️ Operational gotcha, confirmed by hand (twice — before and after moving Entra config into the DB):** `microsoftEntraId()` always performs live OIDC discovery against `https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration` to fetch the JWKS needed for ID-token verification, and its options type has no way to skip or override that. If the tenant is wrong, or Microsoft's discovery endpoint is briefly unreachable, Better Auth's plugin init throws — and because every plugin shares one auth context, **this takes down the entire app, not just Microsoft sign-in**: every route that calls `auth.api.getSession()` (which is every authenticated page) 500s. Since `/setup` only runs once, a wrong tenant entered there currently has no UI path to fix — you'd need to correct `system_settings.microsoft_tenant_id` directly in Postgres (then hit any route once to force `getAuth()` to rebuild — it re-reads settings on every call and only reuses the cache when the read matches what's cached). Fixing the underlying fragility would mean setting `requireIdTokenVerification: false` on the provider, trading away ID-token signature verification for availability — a security tradeoff intentionally left alone here, not made unilaterally.
+
+## Settings: AI + mail (`/settings`, admin-only)
+
+Once at least one workspace exists, its owner/admin can sign in and open `/settings` (linked from the sidebar, hidden for non-admins) to configure:
+- **AI provider** — Anthropic, Azure OpenAI, or an OpenAI-compatible endpoint, plus a per-workspace feature toggle. No AI *features* consume this yet (that's P7) — this is the storage + admin UI landing ahead of it, since the whole point of this pivot is that these are never `.env` vars.
+- **Mail vendor** — Brevo, Resend, or raw SMTP. Same story: `packages/mail` doesn't exist yet (P5), this just gives it somewhere to read config from once it does.
+
+Both are stored in `system_settings` with secrets encrypted via `packages/core/src/crypto.ts` (AES-256-GCM, keyed from `BETTER_AUTH_SECRET`) — never in plaintext, and the settings API never echoes a stored key back to the client, only a `hasApiKey: boolean`. Leaving the API-key field blank when saving keeps whatever's already stored; it does not clear it.
 
 ## GCP storage setup
 

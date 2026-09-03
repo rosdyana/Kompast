@@ -1,5 +1,5 @@
 import { getRequest } from "@tanstack/react-start/server";
-import { auth } from "./auth";
+import { getAuth } from "./auth";
 
 /**
  * Resolves the authenticated user + their active workspace for the current
@@ -12,6 +12,7 @@ import { auth } from "./auth";
  */
 export async function getCurrentSession() {
   const request = getRequest();
+  const auth = await getAuth();
   const result = await auth.api.getSession({ headers: request.headers });
   if (!result) return null;
 

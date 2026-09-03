@@ -1,10 +1,14 @@
 import { z } from "zod";
 
-const boolFromString = z
-  .string()
-  .transform((v) => v === "true" || v === "1")
-  .default(false);
-
+/**
+ * Deliberately minimal: only what's needed to boot the process at all and
+ * reach the point of talking to Postgres. Microsoft Entra ID, AI provider,
+ * and mail vendor config are NOT here — they live in the `system_settings`
+ * DB table, configured through the /setup wizard (Entra ID, gates first
+ * login) and the admin /settings page (AI + mail), so a SaaS deploy only
+ * ever needs infra-level secrets in .env, never per-vendor business config.
+ * See packages/core/src/settings.ts.
+ */
 const schema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   APP_URL: z.url(),
@@ -27,31 +31,19 @@ const schema = z.object({
 
   REDIS_URL: z.url(),
 
+  // Signs sessions AND derives the at-rest encryption key for secrets
+  // stored in system_settings (packages/core/src/crypto.ts) — must exist
+  // before ANY config UI can run, so it's the one secret that can never
+  // move out of .env.
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url(),
 
-  MICROSOFT_TENANT_ID: z.string().min(1),
-  MICROSOFT_CLIENT_ID: z.string().min(1),
-  MICROSOFT_CLIENT_SECRET: z.string().min(1),
-
+  // Still infra-level: the service-account JSON must be mounted into the
+  // container regardless, so there's no real benefit to making bucket/
+  // project UI-configurable the way Entra/AI/mail are.
   GOOGLE_APPLICATION_CREDENTIALS: z.string().min(1),
   GCS_BUCKET: z.string().min(1),
   GCS_PROJECT_ID: z.string().min(1),
-
-  MAIL_DRIVER: z.enum(["brevo", "resend", "smtp"]).default("smtp"),
-  MAIL_FROM: z.email(),
-  BREVO_API_KEY: z.string().optional(),
-  RESEND_API_KEY: z.string().optional(),
-  SMTP_URL: z.url().optional(),
-
-  AI_PROVIDER: z.enum(["anthropic", "azure-openai", "openai-compatible"]).default("anthropic"),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  AZURE_OPENAI_ENDPOINT: z.url().optional(),
-  AZURE_OPENAI_API_KEY: z.string().optional(),
-  AZURE_OPENAI_DEPLOYMENT: z.string().optional(),
-  OPENAI_COMPATIBLE_BASE_URL: z.url().optional(),
-  OPENAI_COMPATIBLE_API_KEY: z.string().optional(),
-  AI_FEATURES_ENABLED: boolFromString,
 
   COLLAB_WS_URL: z.url(),
   COLLAB_INTERNAL_PORT: z.coerce.number().int().positive().default(1234),

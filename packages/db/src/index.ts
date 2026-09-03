@@ -11,6 +11,7 @@ export const db = drizzle(client, { schema });
 export * as schema from "./schema";
 export { withTenant } from "./tenant";
 export type { Json } from "./schema/_shared";
+export { SYSTEM_SETTINGS_ID } from "./schema/settings";
 
 /**
  * Every drizzle-orm operator (eq, and, inArray, ...) callers need,

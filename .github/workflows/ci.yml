@@ -38,14 +38,9 @@ jobs:
       REDIS_URL: redis://localhost:6379
       BETTER_AUTH_SECRET: ci-secret-ci-secret-ci-secret-32-chars
       BETTER_AUTH_URL: http://localhost:3000
-      MICROSOFT_TENANT_ID: "00000000-0000-0000-0000-000000000000"
-      MICROSOFT_CLIENT_ID: ci-client
-      MICROSOFT_CLIENT_SECRET: ci-secret
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/fake-gcs.json
       GCS_BUCKET: ci-bucket
       GCS_PROJECT_ID: ci-project
-      MAIL_DRIVER: smtp
-      MAIL_FROM: ci@example.com
       COLLAB_WS_URL: ws://localhost:1234
       COLLAB_INTERNAL_PORT: "1234"
     steps:
