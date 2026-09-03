@@ -8,6 +8,46 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: kompast
+          POSTGRES_USER: kompast_admin
+          POSTGRES_PASSWORD: ci-admin-pass
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U kompast_admin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: development
+      APP_URL: http://localhost:3000
+      PORT: "3000"
+      DATABASE_ADMIN_URL: postgres://kompast_admin:ci-admin-pass@localhost:5432/kompast
+      DATABASE_URL: postgres://kompast_app:ci-app-pass@localhost:5432/kompast
+      REDIS_URL: redis://localhost:6379
+      BETTER_AUTH_SECRET: ci-secret-ci-secret-ci-secret-32-chars
+      BETTER_AUTH_URL: http://localhost:3000
+      MICROSOFT_TENANT_ID: "00000000-0000-0000-0000-000000000000"
+      MICROSOFT_CLIENT_ID: ci-client
+      MICROSOFT_CLIENT_SECRET: ci-secret
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/fake-gcs.json
+      GCS_BUCKET: ci-bucket
+      GCS_PROJECT_ID: ci-project
+      MAIL_DRIVER: smtp
+      MAIL_FROM: ci@example.com
+      COLLAB_WS_URL: ws://localhost:1234
+      COLLAB_INTERNAL_PORT: "1234"
     steps:
       - uses: actions/checkout@v4
 
@@ -29,5 +69,6 @@ jobs:
 
       - run: pnpm build
 
+      - run: pnpm --filter @kompast/db migrate
+
       - run: pnpm test
-        continue-on-error: true # no tests yet — tracked for P0 hardening

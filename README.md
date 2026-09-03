@@ -82,7 +82,7 @@ docker compose up -d
 - Every service binds to `127.0.0.1` only — Caddy fronts them. See `infra/Caddyfile.example`; the important bit is that `/api/collab/*` must route to the `collab` service **before** the catch-all `reverse_proxy` to `web`, or the Yjs WebSocket upgrade 404s.
 - `migrate` is a one-shot service (`infra/Dockerfile.migrate`) that `web` waits on (`depends_on: service_completed_successfully`) — it runs `packages/db`'s Drizzle migrations directly against `DATABASE_URL`.
 - Images are built and pushed to GHCR by `.github/workflows/release.yml` on every push to `main` (tag `latest`) and on `v*` tags (semver tag). Set `GHCR_OWNER` in `.env` to your GitHub org/user.
-- RLS policies (`packages/db/rls.sql`) are **not** run by drizzle-kit — apply them once, manually, after the first migration: `psql "$DATABASE_URL" -f packages/db/rls.sql`.
+- The `migrate` step runs three things in order, every deploy, idempotently: Drizzle migrations, then `packages/db/src/bootstrap-roles.ts` (creates/repasswords the restricted `kompast_app` role that `DATABASE_URL` points at), then `packages/db/rls.sql`. **This ordering is load-bearing, not cosmetic**: Postgres unconditionally exempts superusers and table owners from row-level security no matter what a policy says, so if the app ever connects using the same role that owns the tables (`DATABASE_ADMIN_URL`'s role), every RLS policy silently does nothing — verified by hand while building this (see git history). `DATABASE_URL` and `DATABASE_ADMIN_URL` must always point at two different roles.
 
 ### Backups
 

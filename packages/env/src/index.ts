@@ -10,7 +10,20 @@ const schema = z.object({
   APP_URL: z.url(),
   PORT: z.coerce.number().int().positive().default(3000),
 
+  // What the running app (web/worker/collab) connects as — a non-superuser
+  // role with no table ownership, so RLS is enforced unconditionally.
+  // Postgres always exempts superusers and table owners from RLS no matter
+  // what the policies say, so pointing this at the same role that runs
+  // migrations makes every RLS policy in rls.sql silently inert. Verified
+  // by hand against the default `postgres` Docker image, whose POSTGRES_USER
+  // is a real superuser (rolsuper=t, rolbypassrls=t).
   DATABASE_URL: z.url(),
+  // Elevated/owner connection, used ONLY by packages/db/src/migrate.ts to
+  // run schema migrations and to bootstrap the restricted app role that
+  // DATABASE_URL points at (packages/db/src/bootstrap-roles.ts parses
+  // DATABASE_URL for that role's username/password). Never used at request
+  // time by web/worker/collab.
+  DATABASE_ADMIN_URL: z.url(),
 
   REDIS_URL: z.url(),
 
