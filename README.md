@@ -44,6 +44,8 @@ You already have the Azure app registered. Confirm it has:
 
 Put `MICROSOFT_TENANT_ID`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` in `.env`. Group-claim → workspace-role mapping (`entra_group_map` table) has no admin UI yet — assign roles by inviting members directly until that ships.
 
+**⚠️ Operational gotcha, confirmed by hand:** `microsoftEntraId()` always performs live OIDC discovery against `https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration` to fetch the JWKS needed for ID-token verification, and its options type has no way to skip or override that. If `MICROSOFT_TENANT_ID` is wrong, or Microsoft's discovery endpoint is briefly unreachable, Better Auth's plugin init throws — and because every plugin shares one auth context, **this takes down the entire app, not just Microsoft sign-in**: every route that calls `auth.api.getSession()` (which is every authenticated page) 500s. This was reproduced directly while building P1. If the whole app starts 500ing right after a deploy or a tenant-ID change, check Entra config first, before assuming a code regression. Fixing this in code would mean setting `requireIdTokenVerification: false` on the provider, which trades away ID-token signature verification for availability — a security tradeoff intentionally left alone here rather than made unilaterally; revisit only with an explicit decision.
+
 ## GCP storage setup
 
 1. Enable the Cloud Storage API on your GCP project.

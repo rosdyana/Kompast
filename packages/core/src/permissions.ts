@@ -1,5 +1,4 @@
-import { and, eq } from "drizzle-orm";
-import { schema, withTenant, db as defaultDb } from "@kompast/db";
+import { and, eq, schema, withTenant, db as defaultDb } from "@kompast/db";
 import type { AnyDb, Tx } from "./types";
 
 export class ForbiddenError extends Error {

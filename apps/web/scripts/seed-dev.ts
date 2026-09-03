@@ -2,9 +2,8 @@ import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins/organization";
-import { db, schema } from "@kompast/db";
+import { db, schema, eq } from "@kompast/db";
 import { withAuthorizedTenant, createProject, createIssue } from "@kompast/core";
-import { eq } from "drizzle-orm";
 import { loadEnv } from "@kompast/env";
 
 const env = loadEnv();

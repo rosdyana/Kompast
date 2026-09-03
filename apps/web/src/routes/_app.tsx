@@ -1,18 +1,35 @@
-import { createFileRoute, Outlet, Link } from "@tanstack/react-router";
+import { createFileRoute, Outlet, Link, redirect, useRouter } from "@tanstack/react-router";
 import { Avatar } from "@kompast/ui/Avatar";
 import { SearchField } from "@kompast/ui/Input";
-import { currentUser, teams } from "@/lib/mock-data";
+import { getWorkspaceShellFn } from "@/lib/server-fns/workspace";
+import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/_app")({
+  loader: async () => {
+    const shell = await getWorkspaceShellFn();
+    if (!shell) throw redirect({ to: "/login" });
+    return shell;
+  },
   component: AppShell,
 });
 
+function initialsOf(name: string) {
+  return name
+    .split(/\s+/)
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
 function AppShell() {
+  const shell = Route.useLoaderData();
+
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
-      <Sidebar />
+      <Sidebar shell={shell} />
       <main className="flex min-w-0 flex-1 flex-col">
-        <Topbar />
+        <Topbar workspaceName={shell.organization?.name ?? "Workspace"} />
         <div className="min-h-0 flex-1 overflow-auto">
           <Outlet />
         </div>
@@ -21,7 +38,16 @@ function AppShell() {
   );
 }
 
-function Sidebar() {
+type Shell = Awaited<ReturnType<typeof getWorkspaceShellFn>>;
+
+function Sidebar({ shell }: { shell: NonNullable<Shell> }) {
+  const router = useRouter();
+
+  async function handleSignOut() {
+    await authClient.signOut();
+    await router.navigate({ to: "/login" });
+  }
+
   return (
     <aside className="flex w-[252px] flex-none flex-col border-r border-border bg-surface-2">
       <button className="flex items-center gap-2.5 border-b border-border px-3 py-3.5 text-left hover:bg-surface-3">
@@ -30,9 +56,9 @@ function Sidebar() {
         </div>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-semibold tracking-tight">
-            Cloud Platform
+            {shell.organization?.name ?? "Workspace"}
           </span>
-          <span className="block text-[11px] text-text-3">Workspace · 148 anggota</span>
+          <span className="block text-[11px] text-text-3">Workspace · {shell.memberCount} anggota</span>
         </span>
         <span className="text-[10px] text-text-3">▾</span>
       </button>
@@ -45,12 +71,6 @@ function Sidebar() {
           >
             <span className="w-[15px] text-center text-xs text-text-3">◇</span>Home
           </Link>
-          <button className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13.5px] hover:bg-surface-3">
-            <span className="w-[15px] text-center text-xs text-text-3">◔</span>Inbox
-            <span className="ml-auto rounded-full bg-accent px-1.5 py-px font-mono text-[10px] font-semibold text-white">
-              4
-            </span>
-          </button>
           <button className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13.5px] text-text-2 hover:bg-surface-3">
             <span className="w-[15px] text-center text-xs text-text-3">⌕</span>Cari
             <span className="ml-auto font-mono text-[10px] text-text-3">⌘K</span>
@@ -58,40 +78,26 @@ function Sidebar() {
         </div>
 
         <div className="flex items-center justify-between px-2 pb-1.5">
-          <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-text-3">
-            Tim
-          </span>
-          <span className="text-[13px] text-text-3">+</span>
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-text-3">Proyek</span>
         </div>
 
-        {teams.map((team) => (
-          <div key={team.id} className="mb-3">
-            <div className="flex items-center gap-2 rounded-[7px] px-2 py-1.5 text-[12.5px] font-semibold text-text-2">
-              <span
-                className="h-3.5 w-3.5 flex-none rounded"
-                style={{ background: team.color }}
-              />
-              {team.name}
-              <span className="ml-auto text-[10px] text-text-3">▾</span>
-            </div>
-            <div className="ml-2.5 mt-0.5 flex flex-col gap-px border-l border-border pl-2.5">
-              {team.items.map((node) => (
-                <Link
-                  key={node.id}
-                  to="/projects/$projectKey"
-                  params={{ projectKey: node.id }}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
-                >
-                  <span className="w-3.5 flex-none text-center text-[11px] text-text-3">
-                    {node.glyph}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{node.name}</span>
-                  <span className="font-mono text-[10px] text-text-3">{node.meta}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        ))}
+        <div className="flex flex-col gap-px">
+          {shell.projects.length === 0 && (
+            <p className="px-2 py-1.5 text-[12px] text-text-3">Belum ada proyek</p>
+          )}
+          {shell.projects.map((project) => (
+            <Link
+              key={project.id}
+              to="/projects/$projectKey"
+              params={{ projectKey: project.key }}
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
+            >
+              <span className="w-3.5 flex-none text-center text-[11px] text-text-3">◫</span>
+              <span className="min-w-0 flex-1 truncate">{project.name}</span>
+              <span className="font-mono text-[10px] text-text-3">{project.key}</span>
+            </Link>
+          ))}
+        </div>
       </div>
 
       <div className="border-t border-border p-2">
@@ -99,33 +105,28 @@ function Sidebar() {
           <span className="w-[15px] text-center text-xs text-text-3">⚙</span>Pengaturan
         </button>
         <div className="flex items-center gap-2.5 px-2 pb-0.5 pt-1.5">
-          <Avatar initials={currentUser.initials} tone="violet" size={24} />
+          <Avatar initials={initialsOf(shell.user.name)} tone="violet" size={24} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-semibold">
-              {currentUser.name}
-            </span>
-            <span className="block text-[10.5px] text-text-3">{currentUser.role}</span>
+            <span className="block truncate text-[12.5px] font-semibold">{shell.user.name}</span>
           </span>
-          <Link
-            to="/login"
-            title="Lihat layar login"
+          <button
+            onClick={handleSignOut}
+            title="Keluar"
             className="rounded-md px-1 py-0.5 text-[11px] text-text-3 hover:bg-surface-3 hover:text-text"
           >
             ⏏
-          </Link>
+          </button>
         </div>
       </div>
     </aside>
   );
 }
 
-function Topbar() {
+function Topbar({ workspaceName }: { workspaceName: string }) {
   return (
     <header className="flex h-[47px] flex-none items-center gap-3.5 border-b border-border bg-surface-2 px-[18px]">
       <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-text-2">
-        <span>Platform</span>
-        <span className="text-text-3">/</span>
-        <span className="truncate font-semibold text-text">Kompast Core</span>
+        <span className="truncate font-semibold text-text">{workspaceName}</span>
       </div>
       <div className="ml-auto flex items-center gap-2">
         <SearchField placeholder="Cari doc, tiket, orang…" className="w-[210px]" />

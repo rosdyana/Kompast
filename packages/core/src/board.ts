@@ -1,5 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
-import { schema } from "@kompast/db";
+import { asc, eq, inArray, schema } from "@kompast/db";
 import type { Tx } from "./types";
 
 /**

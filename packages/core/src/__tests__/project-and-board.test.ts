@@ -1,9 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { db, schema, withTenant } from "@kompast/db";
+import { db, schema, withTenant, eq } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
 import { createProject } from "../project";
 import { createIssue, moveIssue } from "../issue";
 import { getBoard } from "../board";
