@@ -1,6 +1,8 @@
-import { pgTable, text, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { project } from "./project";
 import { workflowStatus } from "./workflow";
+import { user } from "./auth";
+import type { Json } from "./_shared";
 
 export const board = pgTable("board", {
   id: text("id").primaryKey(),
@@ -13,9 +15,9 @@ export const board = pgTable("board", {
     .notNull()
     .default("none"),
   /** { search, labels, assignees, ... } saved as the default quick-filter set. */
-  quickFilters: text("quick_filters"),
-  /** { cycle: '1w'|'2w'|'3w'|'4w'|'custom', customDays, startWeekday, autoCreateNext, carryOverPolicy } */
-  sprintDefaults: text("sprint_defaults"),
+  quickFilters: jsonb("quick_filters").$type<Json>(),
+  /** { cycle: '1w'|'2w'|'3w'|'4w'|'custom', customDays, startWeekday, autoCreateNext, carryOverPolicy } — consumed starting P4. */
+  sprintDefaults: jsonb("sprint_defaults").$type<Json>(),
 });
 
 /**
@@ -64,6 +66,6 @@ export const savedView = pgTable("saved_view", {
     .notNull()
     .default("board"),
   /** { visibleColumns, groupBy, sort, filters, swimlanes } */
-  config: text("config").notNull(),
-  createdBy: text("created_by"),
+  config: jsonb("config").$type<Json>().notNull(),
+  createdBy: text("created_by").references(() => user.id),
 });

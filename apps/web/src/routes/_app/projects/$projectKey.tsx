@@ -15,6 +15,7 @@ import { Button } from "@kompast/ui/Button";
 import { Tabs } from "@kompast/ui/Tabs";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
+import { TableView } from "@/components/board/TableView";
 
 export const Route = createFileRoute("/_app/projects/$projectKey")({
   loader: ({ params }) => getProjectBoardFn({ data: params.projectKey }),
@@ -104,12 +105,12 @@ function ProjectPage() {
         <Tabs items={VIEW_TABS} active={view} onChange={setView} className="mt-4" />
       </div>
 
-      {view === "board" ? (
-        <BoardView data={data} />
-      ) : (
+      {view === "board" && <BoardView data={data} />}
+      {view === "table" && <TableView data={data} />}
+      {view !== "board" && view !== "table" && (
         <div className="p-10 text-center text-sm text-text-3">
           Mode <strong className="text-text-2">{VIEW_TABS.find((t) => t.key === view)?.label}</strong>{" "}
-          belum dibangun — lihat fase di plan (Table &amp; Timeline: P1/P3, Docs: P2, Otomasi: P6).
+          belum dibangun — lihat fase di plan (Timeline: P3+, Docs: P2, Otomasi: P6).
         </div>
       )}
     </div>
