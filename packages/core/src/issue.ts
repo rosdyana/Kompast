@@ -1,4 +1,4 @@
-import { and, eq, max, sql, schema } from "@kompast/db";
+import { and, eq, max, sql, schema, type Json } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { rankBetween } from "./rank";
@@ -12,7 +12,7 @@ export interface CreateIssueInput {
   reporterId: string;
   assigneeId?: string;
   priority?: "lowest" | "low" | "medium" | "high" | "highest";
-  descriptionJson?: unknown;
+  descriptionJson?: Json;
 }
 
 /**

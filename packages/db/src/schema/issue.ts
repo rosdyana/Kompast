@@ -10,7 +10,7 @@ import {
 import { organization, user } from "./auth";
 import { project } from "./project";
 import { issueType, workflowStatus } from "./workflow";
-import { rank } from "./_shared";
+import { rank, type Json } from "./_shared";
 
 export const issue = pgTable(
   "issue",
@@ -34,7 +34,8 @@ export const issue = pgTable(
     epicId: text("epic_id"),
     title: text("title").notNull(),
     /** BlockNote document JSON. */
-    descriptionJson: jsonb("description_json"),
+    /** BlockNote document JSON (P2) — untyped placeholder until that schema exists. */
+    descriptionJson: jsonb("description_json").$type<Json | null>(),
     assigneeId: text("assignee_id").references(() => user.id),
     reporterId: text("reporter_id")
       .notNull()
@@ -50,7 +51,7 @@ export const issue = pgTable(
     rank: rank("rank").notNull(),
     sprintId: text("sprint_id"),
     labels: text("labels").array().notNull().default([]),
-    customFields: jsonb("custom_fields").notNull().default({}),
+    customFields: jsonb("custom_fields").$type<Json>().notNull().default({}),
     /** 'user' | 'automation' | 'mcp' | 'api' | 'import' — see plan §"REST API + MCP" attribution. */
     origin: text("origin").notNull().default("user"),
     originClient: text("origin_client"),
@@ -98,7 +99,7 @@ export const issueComment = pgTable("issue_comment", {
   authorId: text("author_id")
     .notNull()
     .references(() => user.id),
-  bodyJson: jsonb("body_json").notNull(),
+  bodyJson: jsonb("body_json").$type<Json>().notNull(),
   origin: text("origin").notNull().default("user"),
   originClient: text("origin_client"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useRouter, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   DndContext,
@@ -14,7 +14,7 @@ import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
 import { Tabs } from "@kompast/ui/Tabs";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
-import { moveIssueFn } from "@/lib/server-fns/issues";
+import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
 
 export const Route = createFileRoute("/_app/projects/$projectKey")({
   loader: ({ params }) => getProjectBoardFn({ data: params.projectKey }),
@@ -31,7 +31,34 @@ const VIEW_TABS = [
 
 function ProjectPage() {
   const data = Route.useLoaderData();
+  const router = useRouter();
   const [view, setView] = useState("board");
+  const [addingIssue, setAddingIssue] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const defaultType = data.issueTypes.find((t) => !t.isSubtask);
+  const backlogColumn = data.columns.find((c) => c.isBacklog) ?? data.columns[0];
+
+  async function submitNewIssue() {
+    if (!newTitle.trim() || !defaultType || !backlogColumn?.statusIds[0]) return;
+    setCreating(true);
+    try {
+      await createIssueFn({
+        data: {
+          projectId: data.project.id,
+          typeId: defaultType.id,
+          statusId: backlogColumn.statusIds[0],
+          title: newTitle.trim(),
+        },
+      });
+      setNewTitle("");
+      setAddingIssue(false);
+      await router.invalidate();
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
     <div>
@@ -47,9 +74,31 @@ function ProjectPage() {
             </p>
           </div>
           <div className="flex gap-1.5">
-            <Button variant="primary" className="text-[12.5px]">
-              + Tiket baru
-            </Button>
+            {addingIssue ? (
+              <>
+                <input
+                  autoFocus
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") submitNewIssue();
+                    if (e.key === "Escape") setAddingIssue(false);
+                  }}
+                  placeholder="Judul tiket…"
+                  className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+                />
+                <Button variant="primary" className="text-[12.5px]" onClick={submitNewIssue} disabled={creating}>
+                  Simpan
+                </Button>
+                <Button variant="outline" className="text-[12.5px]" onClick={() => setAddingIssue(false)}>
+                  Batal
+                </Button>
+              </>
+            ) : (
+              <Button variant="primary" className="text-[12.5px]" onClick={() => setAddingIssue(true)}>
+                + Tiket baru
+              </Button>
+            )}
           </div>
         </div>
         <Tabs items={VIEW_TABS} active={view} onChange={setView} className="mt-4" />
@@ -226,7 +275,9 @@ function Card({
   const assignee = issue.assigneeId ? usersById.get(issue.assigneeId) : undefined;
 
   return (
-    <button
+    <Link
+      to="/issues/$projectKey/$issueKeySeq"
+      params={{ projectKey, issueKeySeq: String(issue.keySeq) }}
       ref={setNodeRef}
       {...listeners}
       {...attributes}
@@ -272,6 +323,6 @@ function Card({
           </span>
         )}
       </div>
-    </button>
+    </Link>
   );
 }
