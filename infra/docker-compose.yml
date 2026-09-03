@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kompast}
+      POSTGRES_USER: ${POSTGRES_USER:-kompast}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kompast}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-migrate:${IMAGE_TAG:-latest}
+    restart: "no"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    volumes:
+      - ${GCS_CREDENTIALS_HOST_PATH:-./secrets/gcs-service-account.json}:/run/secrets/gcs.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  collab:
+    image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-collab:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:${COLLAB_PORT:-1234}:1234"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-worker:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ${GCS_CREDENTIALS_HOST_PATH:-./secrets/gcs-service-account.json}:/run/secrets/gcs.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

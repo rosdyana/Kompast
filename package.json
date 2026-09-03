@@ -1,0 +1,23 @@
+{
+  "name": "kompast",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.4.1",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:generate": "pnpm --filter @kompast/db generate",
+    "db:migrate": "pnpm --filter @kompast/db migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.10.12",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.10.0"
+  }
+}

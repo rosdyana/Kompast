@@ -1,0 +1,25 @@
+# Example Caddy site block for Kompast on a Debian host.
+# Copy the relevant block into your existing Caddyfile (Caddy on Debian
+# commonly fronts several apps from one Caddyfile) and reload:
+#   sudo caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+
+kompast.example.com {
+	# Yjs/Hocuspocus needs the WebSocket upgrade preserved — this must come
+	# before the catch-all reverse_proxy to web, or the WS handshake 404s.
+	@collab {
+		path /api/collab*
+	}
+	reverse_proxy @collab 127.0.0.1:1234
+
+	reverse_proxy 127.0.0.1:3000
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}

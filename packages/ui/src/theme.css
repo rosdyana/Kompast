@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens extracted verbatim from Kompast.dc.html (the approved
+ * Claude Design mockup). Do not hand-tune these — if the design changes,
+ * re-import via DesignSync and diff this file against the new :root block.
+ */
+:root {
+  --bg: #f6f4ef;
+  --surface: #ffffff;
+  --surface2: #fbf9f5;
+  --surface3: #efece4;
+  --text: #191a1d;
+  --text2: #5b5d63;
+  --text3: #8f9198;
+  --border: #e4e0d8;
+  --border2: #d3cec3;
+  --accent: #c9432a;
+  --accent-soft: #fae9e4;
+  --indigo: #2f3f6b;
+  --indigo-soft: #e7eaf3;
+  --green: #1c7a54;
+  --green-soft: #dff0e8;
+  --amber: #9a6410;
+  --amber-soft: #faedd4;
+  --violet: #584a86;
+  --violet-soft: #ebe7f6;
+  --shadow: 0 1px 2px rgba(25, 26, 29, 0.06), 0 8px 20px -10px rgba(25, 26, 29, 0.16);
+  --grid: rgba(25, 26, 29, 0.05);
+}
+
+[data-theme="dark"] {
+  --bg: #101115;
+  --surface: #191b20;
+  --surface2: #1f2229;
+  --surface3: #282c34;
+  --text: #eceef2;
+  --text2: #a3a8b2;
+  --text3: #70757e;
+  --border: #2a2e36;
+  --border2: #3a3f49;
+  --accent: #ff7a55;
+  --accent-soft: #38201a;
+  --indigo: #a3b4e2;
+  --indigo-soft: #1d2331;
+  --green: #5cc394;
+  --green-soft: #11261d;
+  --amber: #e0aa4d;
+  --amber-soft: #2a2113;
+  --violet: #ab97e2;
+  --violet-soft: #211b33;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
+  --grid: rgba(255, 255, 255, 0.045);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101115;
+    --surface: #191b20;
+    --surface2: #1f2229;
+    --surface3: #282c34;
+    --text: #eceef2;
+    --text2: #a3a8b2;
+    --text3: #70757e;
+    --border: #2a2e36;
+    --border2: #3a3f49;
+    --accent: #ff7a55;
+    --accent-soft: #38201a;
+    --indigo: #a3b4e2;
+    --indigo-soft: #1d2331;
+    --green: #5cc394;
+    --green-soft: #11261d;
+    --amber: #e0aa4d;
+    --amber-soft: #2a2113;
+    --violet: #ab97e2;
+    --violet-soft: #211b33;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
+    --grid: rgba(255, 255, 255, 0.045);
+  }
+}
+
+/* Tailwind v4 CSS-first theme: exposes the tokens above as utilities
+   (bg-bg, text-text2, border-border2, bg-accent, text-accent, shadow-kp, ...). */
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface2);
+  --color-surface-3: var(--surface3);
+  --color-text: var(--text);
+  --color-text-2: var(--text2);
+  --color-text-3: var(--text3);
+  --color-border: var(--border);
+  --color-border-2: var(--border2);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-indigo: var(--indigo);
+  --color-indigo-soft: var(--indigo-soft);
+  --color-green: var(--green);
+  --color-green-soft: var(--green-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --shadow-kp: var(--shadow);
+}
+
+@keyframes kp-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+@keyframes kp-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+@keyframes kp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-wrap: pretty;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 9px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
