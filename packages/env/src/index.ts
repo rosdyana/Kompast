@@ -38,12 +38,18 @@ const schema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url(),
 
-  // Still infra-level: the service-account JSON must be mounted into the
-  // container regardless, so there's no real benefit to making bucket/
-  // project UI-configurable the way Entra/AI/mail are.
-  GOOGLE_APPLICATION_CREDENTIALS: z.string().min(1),
-  GCS_BUCKET: z.string().min(1),
-  GCS_PROJECT_ID: z.string().min(1),
+  // Attachment storage. "local" (default) needs nothing else and writes to
+  // a disk volume via apps/web's own signed-URL-emulating route — meant
+  // for dev/CI, not a real multi-instance deploy. "gcs" is production:
+  // still infra-level config even though it's vendor-shaped, because the
+  // service-account JSON must be mounted into the container regardless, so
+  // there's no real benefit to making it UI-configurable the way Entra/
+  // AI/mail are (see packages/storage).
+  STORAGE_DRIVER: z.enum(["local", "gcs"]).default("local"),
+  STORAGE_LOCAL_DIR: z.string().default("./.data/attachments"),
+  GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
+  GCS_BUCKET: z.string().optional(),
+  GCS_PROJECT_ID: z.string().optional(),
 
   COLLAB_WS_URL: z.url(),
   COLLAB_INTERNAL_PORT: z.coerce.number().int().positive().default(1234),
@@ -62,6 +68,17 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (cached) return cached;
 
   const parsed = schema.safeParse(source);
+  if (parsed.success && parsed.data.STORAGE_DRIVER === "gcs") {
+    const missing = (["GOOGLE_APPLICATION_CREDENTIALS", "GCS_BUCKET", "GCS_PROJECT_ID"] as const).filter(
+      (key) => !parsed.data[key],
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Invalid environment configuration. Refusing to boot.\n` +
+          missing.map((k) => `  - ${k}: required when STORAGE_DRIVER=gcs`).join("\n"),
+      );
+    }
+  }
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)

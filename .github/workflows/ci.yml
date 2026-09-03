@@ -38,9 +38,8 @@ jobs:
       REDIS_URL: redis://localhost:6379
       BETTER_AUTH_SECRET: ci-secret-ci-secret-ci-secret-32-chars
       BETTER_AUTH_URL: http://localhost:3000
-      GOOGLE_APPLICATION_CREDENTIALS: /tmp/fake-gcs.json
-      GCS_BUCKET: ci-bucket
-      GCS_PROJECT_ID: ci-project
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_DIR: /tmp/kompast-ci-attachments
       COLLAB_WS_URL: ws://localhost:1234
       COLLAB_INTERNAL_PORT: "1234"
     steps:

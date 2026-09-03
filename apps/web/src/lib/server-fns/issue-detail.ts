@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
 import { and, asc, desc, eq, inArray, schema } from "@kompast/db";
-import { addComment, listComments, setWatching, withAuthorizedTenant } from "@kompast/core";
+import { addComment, listComments, listAttachments, setWatching, withAuthorizedTenant } from "@kompast/core";
 import { requireAuthContext } from "../session";
 
 export const getIssueDetailFn = createServerFn({ method: "GET" })
@@ -22,7 +22,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         .where(and(eq(schema.issue.projectId, project.id), eq(schema.issue.keySeq, data.issueKeySeq)));
       if (!issue) throw new Error(`Issue ${data.projectKey}-${data.issueKeySeq} not found`);
 
-      const [type, status, comments, history] = await Promise.all([
+      const [type, status, comments, history, attachments] = await Promise.all([
         tx.select().from(schema.issueType).where(eq(schema.issueType.id, issue.typeId)).then((r) => r[0]),
         tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.id, issue.statusId)).then((r) => r[0]),
         listComments(tx, issue.id),
@@ -32,6 +32,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
           .where(eq(schema.issueHistory.issueId, issue.id))
           .orderBy(desc(schema.issueHistory.createdAt))
           .limit(30),
+        listAttachments(tx, issue.id),
       ]);
 
       const userIds = [
@@ -54,7 +55,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
       ]);
 
-      return { project, issue, type, status, comments, users, isWatching, history, statuses, allTypes };
+      return { project, issue, type, status, comments, users, isWatching, history, statuses, allTypes, attachments };
     });
   });
 

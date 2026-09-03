@@ -1,5 +1,5 @@
 {
-  "name": "@kompast/core",
+  "name": "@kompast/storage",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,16 +13,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kompast/db": "workspace:*",
     "@kompast/env": "workspace:*",
-    "drizzle-orm": "^0.45.2",
-    "nanoid": "^5.0.9",
-    "fractional-indexing": "^4.0.0",
-    "@kompast/storage": "workspace:*"
+    "@google-cloud/storage": "^8.0.1"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
     "vitest": "^3.0.0",
-    "postgres": "^3.4.9"
+    "@types/node": "^22.10.0"
   }
 }

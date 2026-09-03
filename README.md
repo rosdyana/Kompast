@@ -59,6 +59,14 @@ Once at least one workspace exists, its owner/admin can sign in and open `/setti
 
 Both are stored in `system_settings` with secrets encrypted via `packages/core/src/crypto.ts` (AES-256-GCM, keyed from `BETTER_AUTH_SECRET`) — never in plaintext, and the settings API never echoes a stored key back to the client, only a `hasApiKey: boolean`. Leaving the API-key field blank when saving keeps whatever's already stored; it does not clear it.
 
+## Attachments / storage
+
+`packages/storage` has two drivers behind one interface (`getUploadUrl`/`getDownloadUrl`/`delete`), chosen by `STORAGE_DRIVER`:
+- **`local`** (default, dev/CI only) — the browser PUTs/GETs through `apps/web`'s own `/api/storage/{upload,download}/*` routes, gated by an HMAC-signed, short-lived token (`packages/storage/src/local.ts`) rather than real cloud signed URLs. Files land on one container's local disk (`STORAGE_LOCAL_DIR`) — this does not survive a redeploy and does not work if you ever run more than one `web` instance.
+- **`gcs`** (production) — real V4 signed URLs; the browser uploads straight to Google Cloud Storage, never through the Node process. Set `STORAGE_DRIVER=gcs` and the GCS variables below.
+
+In both cases, the Node process never touches file bytes — it only ever issues a signed URL after checking the requester's permission via `withAuthorizedTenant`, in `packages/core/src/attachment.ts`.
+
 ## GCP storage setup
 
 1. Enable the Cloud Storage API on your GCP project.

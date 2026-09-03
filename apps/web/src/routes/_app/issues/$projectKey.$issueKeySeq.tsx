@@ -1,9 +1,10 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
 import { getIssueDetailFn, addCommentFn, toggleWatchFn } from "@/lib/server-fns/issue-detail";
+import { requestAttachmentUploadFn, deleteAttachmentFn } from "@/lib/server-fns/attachments";
 
 export const Route = createFileRoute("/_app/issues/$projectKey/$issueKeySeq")({
   loader: ({ params }) =>
@@ -26,6 +27,8 @@ function IssueDetailPage() {
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [watching, setWatching] = useState(data.isWatching);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const usersById = new Map(data.users.map((u) => [u.id, u]));
 
@@ -45,6 +48,31 @@ function IssueDetailPage() {
     const next = !watching;
     setWatching(next);
     await toggleWatchFn({ data: { issueId: data.issue.id, watching: next } });
+  }
+
+  async function uploadFile(file: File) {
+    setUploading(true);
+    try {
+      const { uploadUrl, headers } = await requestAttachmentUploadFn({
+        data: {
+          issueId: data.issue.id,
+          fileName: file.name,
+          contentType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        },
+      });
+      const res = await fetch(uploadUrl, { method: "PUT", headers, body: file });
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+      await router.invalidate();
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function removeAttachment(attachmentId: string) {
+    await deleteAttachmentFn({ data: { attachmentId, issueId: data.issue.id } });
+    await router.invalidate();
   }
 
   return (
@@ -98,6 +126,50 @@ function IssueDetailPage() {
           </Button>
         </div>
       </div>
+
+      <section className="mb-8">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-[13px] font-semibold">Lampiran</h2>
+          <Button variant="outline" className="text-[12px]" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            {uploading ? "Mengunggah…" : "+ Lampirkan file"}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) uploadFile(file);
+            }}
+          />
+        </div>
+        {data.attachments.length === 0 ? (
+          <p className="text-sm text-text-3">Belum ada lampiran.</p>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {data.attachments.map((a) => (
+              <div key={a.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2">
+                <span className="text-[13px]">▤</span>
+                <a
+                  href={a.downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="min-w-0 flex-1 truncate text-[13px] text-accent hover:underline"
+                >
+                  {a.fileName}
+                </a>
+                <span className="font-mono text-[10.5px] text-text-3">{(a.sizeBytes / 1024).toFixed(0)} KB</span>
+                <button
+                  onClick={() => removeAttachment(a.id)}
+                  className="rounded px-1 py-0.5 text-[11px] text-text-3 hover:bg-accent-soft hover:text-accent"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="mb-8">
         <h2 className="mb-3 text-[13px] font-semibold">Komentar</h2>

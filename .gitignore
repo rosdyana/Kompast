@@ -12,4 +12,7 @@ dist/
 *.log
 coverage/
 /apps/web/src/routeTree.gen.ts
-drizzle/meta/
+
+# Local-disk storage driver's dev/CI attachment files (see packages/storage) —
+# never real data, and STORAGE_DRIVER=gcs is what production actually uses.
+.data/
