@@ -7,7 +7,8 @@
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "start": "node .output/server/index.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:dev": "tsx scripts/seed-dev.ts"
   },
   "dependencies": {
     "@kompast/env": "workspace:*",
@@ -19,7 +20,9 @@
     "better-auth": "^1.7.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "@better-auth/api-key": "^1.7.2"
+    "@better-auth/api-key": "^1.7.2",
+    "@kompast/core": "workspace:*",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",
@@ -29,6 +32,7 @@
     "typescript": "^5.9.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "nitro": "^3.0.260610-beta"
+    "nitro": "^3.0.260610-beta",
+    "tsx": "^4.23.13"
   }
 }

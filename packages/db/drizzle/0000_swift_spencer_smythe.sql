@@ -65,10 +65,11 @@ CREATE TABLE "invitation" (
 	"id" text PRIMARY KEY NOT NULL,
 	"organization_id" text NOT NULL,
 	"email" text NOT NULL,
-	"role" text DEFAULT 'member' NOT NULL,
+	"role" text,
 	"team_id" text,
 	"status" text DEFAULT 'pending' NOT NULL,
 	"expires_at" timestamp NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
 	"inviter_id" text NOT NULL
 );
 --> statement-breakpoint
@@ -107,14 +108,18 @@ CREATE TABLE "team" (
 	"id" text PRIMARY KEY NOT NULL,
 	"organization_id" text NOT NULL,
 	"name" text NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"member_count" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp
 );
 --> statement-breakpoint
 CREATE TABLE "team_member" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"user_id" text NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"membership_key" text,
+	"created_at" timestamp DEFAULT now(),
+	CONSTRAINT "team_member_membership_key_unique" UNIQUE("membership_key")
 );
 --> statement-breakpoint
 CREATE TABLE "user" (
@@ -201,7 +206,7 @@ CREATE TABLE "board_column" (
 	"color" text NOT NULL,
 	"order" integer DEFAULT 0 NOT NULL,
 	"wip_limit" integer,
-	"is_backlog" text
+	"is_backlog" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "board_column_status" (

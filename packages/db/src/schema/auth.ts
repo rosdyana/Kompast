@@ -93,7 +93,10 @@ export const team = pgTable("team", {
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  /** Denormalized, maintained by the plugin itself on join/leave — never write to this directly. */
+  memberCount: integer("member_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at"),
 });
 
 export const teamMember = pgTable("team_member", {
@@ -104,7 +107,9 @@ export const teamMember = pgTable("team_member", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  /** Plugin-managed uniqueness key preventing duplicate (team, user) rows — not app-facing. */
+  membershipKey: text("membership_key").unique(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const invitation = pgTable("invitation", {
@@ -113,10 +118,11 @@ export const invitation = pgTable("invitation", {
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
   email: text("email").notNull(),
-  role: text("role").notNull().default("member"),
+  role: text("role"),
   teamId: text("team_id").references(() => team.id, { onDelete: "set null" }),
   status: text("status").notNull().default("pending"),
   expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
   inviterId: text("inviter_id")
     .notNull()
     .references(() => user.id),

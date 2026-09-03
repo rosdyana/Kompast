@@ -1,4 +1,4 @@
-import { pgTable, text, integer, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { project } from "./project";
 import { workflowStatus } from "./workflow";
 
@@ -33,7 +33,7 @@ export const boardColumn = pgTable("board_column", {
   order: integer("order").notNull().default(0),
   wipLimit: integer("wip_limit"),
   /** The one column new issues land in and that isn't user-deletable. */
-  isBacklog: text("is_backlog"),
+  isBacklog: boolean("is_backlog").notNull().default(false),
 });
 
 export const boardColumnStatus = pgTable(
