@@ -4,6 +4,7 @@ export * from "./permissions";
 export * from "./project";
 export * from "./issue";
 export * from "./board";
+export * from "./sprint";
 export * from "./comment";
 export * from "./watcher";
 export * from "./attachment";

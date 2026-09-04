@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { schema, eq, adminDb as admin } from "@kompast/db";
-import { createProject, withAuthorizedTenant } from "@kompast/core";
+import { createProject, createSprint, withAuthorizedTenant } from "@kompast/core";
 import { id } from "@kompast/core/ids";
 import { getAuth } from "../../../lib/auth";
 import { Route as McpRoute } from "../mcp";
@@ -29,6 +29,7 @@ describe("/api/mcp", () => {
   let token: string;
   let readOnlyToken: string;
   let projectKey: string;
+  let boardId: string;
 
   async function cleanup() {
     await admin.delete(schema.link).where(eq(schema.link.organizationId, orgId));
@@ -47,13 +48,14 @@ describe("/api/mcp", () => {
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
 
     projectKey = Array.from({ length: 5 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
-    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+    const project = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
       createProject(tx, { organizationId: orgId, key: projectKey, name: "MCP Test", actorUserId: userId }),
     );
+    boardId = project.boardId;
 
     const auth = await getAuth();
     const created = await auth.api.createApiKey({
-      body: { userId, permissions: { issues: ["read", "write"], pages: ["read", "write"] }, metadata: { organizationId: orgId } },
+      body: { userId, permissions: { issues: ["read", "write"], pages: ["read", "write"], sprints: ["write"] }, metadata: { organizationId: orgId } },
     });
     token = created.key;
 
@@ -178,5 +180,35 @@ describe("/api/mcp", () => {
     });
     const body = await res.json();
     expect(body.result.messages[0].content.text).toContain("Assigned to me");
+  });
+
+  it("lists, starts, and completes a sprint via list_sprints/get_sprint/start_sprint/complete_sprint", async () => {
+    const { sprintId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createSprint(tx, { organizationId: orgId, boardId, name: "MCP Sprint" }),
+    );
+
+    const list = JSON.parse((await callTool(token, "list_sprints", { projectKey })).body.result.content[0].text);
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(sprintId);
+
+    const started = await callTool(token, "start_sprint", { sprintId });
+    expect(JSON.parse(started.body.result.content[0].text).ok).toBe(true);
+
+    const got = JSON.parse((await callTool(token, "get_sprint", { sprintId })).body.result.content[0].text);
+    expect(got.state).toBe("active");
+
+    const completed = await callTool(token, "complete_sprint", { sprintId });
+    expect(completed.status).toBe(200);
+    expect(JSON.parse(completed.body.result.content[0].text).velocity).toBe(0);
+  });
+
+  it("returns a tool-level error when starting a sprint without sprints:write", async () => {
+    const { sprintId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createSprint(tx, { organizationId: orgId, boardId, name: "MCP Sprint 2" }),
+    );
+    const res = await callTool(readOnlyToken, "start_sprint", { sprintId });
+    expect(res.status).toBe(200);
+    expect(res.body.result.isError).toBe(true);
+    expect(res.body.result.content[0].text).toContain("sprints:write");
   });
 });

@@ -81,6 +81,22 @@ export async function resolvePage(
   return page;
 }
 
+/** Every project has exactly one board (see packages/core/src/project.ts's seeding) — REST/MCP address sprints by projectKey, not raw boardId. */
+export async function resolveBoardForProject(tx: Tx, projectId: string) {
+  const [board] = await tx.select().from(schema.board).where(eq(schema.board.projectId, projectId));
+  if (!board) throw new ApiError(404, "Not Found", "Project has no board");
+  return board;
+}
+
+export async function resolveSprint(tx: Tx, organizationId: string, sprintId: string) {
+  const [sprint] = await tx
+    .select()
+    .from(schema.sprint)
+    .where(and(eq(schema.sprint.id, sprintId), eq(schema.sprint.organizationId, organizationId)));
+  if (!sprint) throw new ApiError(404, "Not Found", `Sprint ${sprintId} not found`);
+  return sprint;
+}
+
 export async function resolveUserByEmail(tx: Tx, organizationId: string, email: string) {
   const [row] = await tx
     .select({ id: schema.user.id })

@@ -18,6 +18,10 @@ import {
   withAuthorizedTenant,
   withIdempotency,
   ForbiddenError,
+  listSprints,
+  getSprintReport,
+  startSprint,
+  completeSprint,
 } from "@kompast/core";
 import type { ApiAuthContext } from "@/lib/api-auth";
 import { ApiError } from "@/lib/api-auth";
@@ -28,6 +32,8 @@ import {
   resolveStatus,
   resolveUserByEmail,
   resolvePage,
+  resolveBoardForProject,
+  resolveSprint,
 } from "@/lib/api-resolvers";
 import { createServerSchema } from "@/lib/blocknote-schema";
 
@@ -466,6 +472,62 @@ export function buildMcpServer(ctx: ApiAuthContext) {
           const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
           await linkEntities(tx, { organizationId: ctx.organizationId, fromType: "page", fromId: args.pageId, toType: "issue", toId: issue.id, createdBy: ctx.userId });
           return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_sprints",
+    { description: "List sprints for a project's board.", inputSchema: { projectKey: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
+          const board = await resolveBoardForProject(tx, project.id);
+          const sprints = await listSprints(tx, board.id);
+          return sprints.map((s) => ({ id: s.id, name: s.name, state: s.state, cycle: s.cycle }));
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "get_sprint",
+    { description: "Get a sprint's state and live scope/completion report.", inputSchema: { sprintId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const sprint = await resolveSprint(tx, ctx.organizationId, args.sprintId);
+          const report = await getSprintReport(tx, sprint.id);
+          return { id: sprint.id, name: sprint.name, state: sprint.state, cycle: sprint.cycle, report };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "start_sprint",
+    { description: "Start a sprint (fails if the board already has one active).", inputSchema: { sprintId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "sprints:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const sprint = await resolveSprint(tx, ctx.organizationId, args.sprintId);
+          await startSprint(tx, { sprintId: sprint.id, actorId: ctx.userId });
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "complete_sprint",
+    {
+      description: "Complete a sprint. Not-done issues carry to carryToSprintId if given, else back to the backlog.",
+      inputSchema: { sprintId: z.string().min(1), carryToSprintId: z.string().optional() },
+    },
+    (args) =>
+      tool(ctx, "sprints:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const sprint = await resolveSprint(tx, ctx.organizationId, args.sprintId);
+          if (args.carryToSprintId) await resolveSprint(tx, ctx.organizationId, args.carryToSprintId);
+          return completeSprint(tx, { sprintId: sprint.id, actorId: ctx.userId, carryToSprintId: args.carryToSprintId });
         }),
       )(),
   );

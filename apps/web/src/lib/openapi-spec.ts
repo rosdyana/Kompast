@@ -87,7 +87,7 @@ export function buildOpenApiSpec(serverUrl: string) {
           scheme: "bearer",
           bearerFormat: "kmp_… personal access token",
           description:
-            "Generate a token at /tokens. Scopes: issues:read, issues:write, pages:read, pages:write, admin. " +
+            "Generate a token at /tokens. Scopes: issues:read, issues:write, pages:read, pages:write, sprints:write, admin. " +
             "A token can never exceed the granting user's own workspace permissions.",
         },
       },
@@ -268,6 +268,92 @@ export function buildOpenApiSpec(serverUrl: string) {
         },
         delete: {
           summary: "Unlink a page from an issue",
+          parameters: [{ name: "issueKey", in: "query", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "OK" }, "400": problemJson, "401": problemJson },
+        },
+      },
+      "/api/v1/sprints": {
+        get: {
+          summary: "List sprints for a project's board",
+          parameters: [{ name: "projectKey", in: "query", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "OK" }, "400": problemJson, "401": problemJson },
+        },
+        post: {
+          summary: "Create a sprint",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["projectKey", "name"],
+                  properties: {
+                    projectKey: { type: "string" },
+                    name: { type: "string" },
+                    goal: { type: "string" },
+                    cycle: { type: "string", enum: ["1w", "2w", "3w", "4w", "custom"] },
+                    startAt: { type: "string", format: "date-time" },
+                    endAt: { type: "string", format: "date-time" },
+                    capacityPoints: { type: "number" },
+                  },
+                },
+              },
+            },
+          },
+          responses: { "201": { description: "Created" }, "401": problemJson, "403": problemJson },
+        },
+      },
+      "/api/v1/sprints/{sprintId}": {
+        parameters: [{ name: "sprintId", in: "path", required: true, schema: { type: "string" } }],
+        get: { summary: "Get a sprint and its live scope/completion report", responses: { "200": { description: "OK" }, "401": problemJson, "404": problemJson } },
+      },
+      "/api/v1/sprints/{sprintId}/start": {
+        parameters: [{ name: "sprintId", in: "path", required: true, schema: { type: "string" } }],
+        post: {
+          summary: "Start a sprint (fails if the board already has one active)",
+          responses: { "200": { description: "OK" }, "401": problemJson, "403": problemJson, "404": problemJson },
+        },
+      },
+      "/api/v1/sprints/{sprintId}/complete": {
+        parameters: [{ name: "sprintId", in: "path", required: true, schema: { type: "string" } }],
+        post: {
+          summary: "Complete a sprint",
+          description: "Not-done issues carry to carryToSprintId if given, else back to the backlog.",
+          requestBody: { content: { "application/json": { schema: { type: "object", properties: { carryToSprintId: { type: "string" } } } } } },
+          responses: {
+            "200": {
+              description: "OK",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      completedIssueCount: { type: "integer" },
+                      completedPoints: { type: "integer" },
+                      carriedIssueCount: { type: "integer" },
+                      carriedPoints: { type: "integer" },
+                      velocity: { type: "integer" },
+                    },
+                  },
+                },
+              },
+            },
+            "401": problemJson,
+            "403": problemJson,
+            "404": problemJson,
+          },
+        },
+      },
+      "/api/v1/sprints/{sprintId}/issues": {
+        parameters: [{ name: "sprintId", in: "path", required: true, schema: { type: "string" } }],
+        get: { summary: "List issues currently on a sprint", responses: { "200": { description: "OK" }, "401": problemJson, "404": problemJson } },
+        post: {
+          summary: "Add an issue to a sprint",
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["issueKey"], properties: { issueKey: { type: "string" } } } } } },
+          responses: { "201": { description: "Created" }, "401": problemJson, "403": problemJson, "404": problemJson },
+        },
+        delete: {
+          summary: "Remove an issue from a sprint (back to the backlog)",
           parameters: [{ name: "issueKey", in: "query", required: true, schema: { type: "string" } }],
           responses: { "200": { description: "OK" }, "400": problemJson, "401": problemJson },
         },

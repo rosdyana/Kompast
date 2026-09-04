@@ -46,6 +46,12 @@ alter table ydoc_state enable row level security;
 alter table ydoc_state force row level security;
 alter table idempotency_key enable row level security;
 alter table idempotency_key force row level security;
+alter table sprint enable row level security;
+alter table sprint force row level security;
+alter table sprint_issue enable row level security;
+alter table sprint_issue force row level security;
+alter table sprint_snapshot enable row level security;
+alter table sprint_snapshot force row level security;
 
 -- apps/collab (Yjs persistence) and the public /s/:token guest route both
 -- connect via the admin connection instead of kompast_app, and so bypass
@@ -194,3 +200,25 @@ create policy tenant_isolation_ydoc_state on ydoc_state
 drop policy if exists tenant_isolation_idempotency_key on idempotency_key;
 create policy tenant_isolation_idempotency_key on idempotency_key
   using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_sprint on sprint;
+create policy tenant_isolation_sprint on sprint
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_sprint_issue on sprint_issue;
+create policy tenant_isolation_sprint_issue on sprint_issue
+  using (
+    sprint_id in (
+      select id from sprint
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+drop policy if exists tenant_isolation_sprint_snapshot on sprint_snapshot;
+create policy tenant_isolation_sprint_snapshot on sprint_snapshot
+  using (
+    sprint_id in (
+      select id from sprint
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );

@@ -11,7 +11,7 @@ import { requireAuthContext } from "../session";
  * corresponding surface exists; an unusable scope in the UI is worse than
  * no scope at all.
  */
-export const TOKEN_SCOPES = ["issues:read", "issues:write", "pages:read", "pages:write", "admin"] as const;
+export const TOKEN_SCOPES = ["issues:read", "issues:write", "pages:read", "pages:write", "sprints:write", "admin"] as const;
 
 function scopesToPermissions(scopes: string[]): Record<string, string[]> {
   const perms: Record<string, string[]> = {};

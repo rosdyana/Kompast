@@ -62,6 +62,7 @@ export const issue = pgTable(
     uniqueIndex("issue_project_key_uq").on(t.projectId, t.keySeq),
     index("issue_status_idx").on(t.statusId),
     index("issue_assignee_idx").on(t.assigneeId),
+    index("issue_sprint_idx").on(t.sprintId),
     index("issue_custom_fields_gin").using("gin", t.customFields),
   ],
 );
