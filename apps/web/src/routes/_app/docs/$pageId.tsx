@@ -9,10 +9,12 @@ import {
   archivePageFn,
   toggleFavoritePageFn,
   addPageCommentFn,
+  linkPageToIssueFn,
   unlinkPageFromIssueFn,
   createShareLinkFn,
   revokeShareLinkFn,
 } from "@/lib/server-fns/pages";
+import { getIssueDetailFn } from "@/lib/server-fns/issue-detail";
 import { DocEditor } from "@/components/docs/Editor";
 
 export const Route = createFileRoute("/_app/docs/$pageId")({
@@ -38,6 +40,9 @@ function DocPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [addingChild, setAddingChild] = useState(false);
   const [favorited, setFavorited] = useState(data.isFavorited);
+  const [issueKeyInput, setIssueKeyInput] = useState("");
+  const [linkingIssue, setLinkingIssue] = useState(false);
+  const [linkIssueError, setLinkIssueError] = useState("");
   const usersById = new Map(data.users.map((u) => [u.id, u]));
 
   async function saveTitle() {
@@ -86,6 +91,26 @@ function DocPage() {
   async function unlinkIssue(issueId: string) {
     await unlinkPageFromIssueFn({ data: { pageId: data.page.id, issueId } });
     await router.invalidate();
+  }
+
+  async function linkIssue() {
+    const match = /^([a-zA-Z]+)-(\d+)$/.exec(issueKeyInput.trim());
+    if (!match) {
+      setLinkIssueError("Format harus seperti KPT-12");
+      return;
+    }
+    setLinkingIssue(true);
+    setLinkIssueError("");
+    try {
+      const issueData = await getIssueDetailFn({ data: { projectKey: match[1]!, issueKeySeq: Number(match[2]) } });
+      await linkPageToIssueFn({ data: { pageId: data.page.id, issueId: issueData.issue.id } });
+      setIssueKeyInput("");
+      await router.invalidate();
+    } catch {
+      setLinkIssueError("Tiket tidak ditemukan.");
+    } finally {
+      setLinkingIssue(false);
+    }
   }
 
   const projectsById = new Map(data.linkedProjects.map((p) => [p.id, p]));
@@ -186,32 +211,47 @@ function DocPage() {
         </div>
       )}
 
-      {data.linkedIssues.length > 0 && (
+      {data.canEdit && (
         <section className="mb-8">
           <h2 className="mb-3 text-[13px] font-semibold">Tiket tertaut</h2>
-          <div className="flex flex-col gap-1.5">
-            {data.linkedIssues.map((issue) => {
-              const project = projectsById.get(issue.projectId);
-              return (
-                <div key={issue.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px]">
-                  {project ? (
-                    <Link
-                      to="/issues/$projectKey/$issueKeySeq"
-                      params={{ projectKey: project.key, issueKeySeq: String(issue.keySeq) }}
-                      className="font-mono text-text-3 hover:text-accent"
-                    >
-                      {project.key}-{issue.keySeq}
-                    </Link>
-                  ) : (
-                    <span className="font-mono text-text-3">#{issue.keySeq}</span>
-                  )}
-                  <span className="min-w-0 flex-1 truncate">{issue.title}</span>
-                  <button onClick={() => unlinkIssue(issue.id)} className="text-text-3 hover:text-accent">
-                    ✕
-                  </button>
-                </div>
-              );
-            })}
+          {data.linkedIssues.length > 0 && (
+            <div className="mb-2 flex flex-col gap-1.5">
+              {data.linkedIssues.map((issue) => {
+                const project = projectsById.get(issue.projectId);
+                return (
+                  <div key={issue.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px]">
+                    {project ? (
+                      <Link
+                        to="/issues/$projectKey/$issueKeySeq"
+                        params={{ projectKey: project.key, issueKeySeq: String(issue.keySeq) }}
+                        className="font-mono text-text-3 hover:text-accent"
+                      >
+                        {project.key}-{issue.keySeq}
+                      </Link>
+                    ) : (
+                      <span className="font-mono text-text-3">#{issue.keySeq}</span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate">{issue.title}</span>
+                    <button onClick={() => unlinkIssue(issue.id)} className="text-text-3 hover:text-accent">
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              value={issueKeyInput}
+              onChange={(e) => setIssueKeyInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && linkIssue()}
+              placeholder="KPT-12"
+              className="w-[140px] rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] outline-none focus:border-border-2"
+            />
+            <Button variant="outline" className="text-[12px]" onClick={linkIssue} disabled={linkingIssue || !issueKeyInput.trim()}>
+              Tautkan tiket
+            </Button>
+            {linkIssueError && <span className="self-center text-[11.5px] text-accent">{linkIssueError}</span>}
           </div>
         </section>
       )}

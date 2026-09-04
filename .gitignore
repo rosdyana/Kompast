@@ -4,6 +4,7 @@ dist/
 .output/
 .vinxi/
 .vite/
+.tanstack/
 *.tsbuildinfo
 .env
 .env.*

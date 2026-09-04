@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createPage } from "../page";
-import { createShareLink, listShareLinks, revokeShareLink, resolveShareLink, checkSharePassword } from "../share-link";
+import { createShareLink, listShareLinks, revokeShareLink, resolveShareLink, checkSharePassword, getSharedPageContent } from "../share-link";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -80,6 +80,27 @@ describe("share links", () => {
     expect(resolved).not.toBeNull();
     expect(checkSharePassword(resolved!.shareLink, "wrong")).toBe(false);
     expect(checkSharePassword(resolved!.shareLink, "correct-horse")).toBe(true);
+  });
+
+  it("getSharedPageContent returns the page's stored Yjs bytes for a valid token", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Shared", actorUserId: userId }));
+    await admin.insert(schema.ydocState).values({ pageId: page.id, state: Buffer.from("fake-yjs-bytes") });
+    const { token } = await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId }));
+
+    const content = await getSharedPageContent(token);
+    expect(content?.page.id).toBe(page.id);
+    expect(content?.ydocState?.toString()).toBe("fake-yjs-bytes");
+  });
+
+  it("getSharedPageContent returns null for an invalid token or wrong password", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Shared", actorUserId: userId }));
+    const { token } = await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId, password: "right" }));
+
+    expect(await getSharedPageContent("not-a-real-token")).toBeNull();
+    expect(await getSharedPageContent(token, "wrong")).toBeNull();
+    expect(await getSharedPageContent(token, "right")).not.toBeNull();
   });
 
   it("listShareLinks never exposes tokenHash or passwordHash", async () => {

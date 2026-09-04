@@ -88,3 +88,19 @@ export function checkSharePassword(shareLink: { passwordHash: string | null }, c
   if (!shareLink.passwordHash) return true;
   return verifyPassword(candidate, shareLink.passwordHash);
 }
+
+/**
+ * Resolves a token AND checks its password in one call, then hands back
+ * the raw Yjs bytes for the guest route to render — still entirely off the
+ * admin connection, never withAuthorizedTenant. BlockNote-specific
+ * conversion (bytes -> HTML) happens in apps/web, which is the only
+ * package allowed to depend on @blocknote/*.
+ */
+export async function getSharedPageContent(token: string, password?: string) {
+  const resolved = await resolveShareLink(token);
+  if (!resolved) return null;
+  if (!checkSharePassword(resolved.shareLink, password ?? "")) return null;
+
+  const [row] = await adminDb.select().from(schema.ydocState).where(eq(schema.ydocState.pageId, resolved.page.id));
+  return { page: resolved.page, shareLink: resolved.shareLink, ydocState: row?.state ?? null };
+}
