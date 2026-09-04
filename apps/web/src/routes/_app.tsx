@@ -144,6 +144,12 @@ function Sidebar({ shell }: { shell: Shell }) {
             <span className="w-[15px] text-center text-xs text-text-3">⚙</span>Pengaturan
           </Link>
         )}
+        <Link
+          to="/tokens"
+          className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13px] hover:bg-surface-3 [&.active]:bg-surface-3"
+        >
+          <span className="w-[15px] text-center text-xs text-text-3">🔑</span>API Token
+        </Link>
         <div className="flex items-center gap-2.5 px-2 pb-0.5 pt-1.5">
           <Avatar initials={initialsOf(shell.user.name)} tone="violet" size={24} />
           <span className="min-w-0 flex-1">
