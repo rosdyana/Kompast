@@ -3,6 +3,7 @@ import * as z from "zod";
 import * as Y from "yjs";
 import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { resolveShareLink, getSharedPageContent, shareLinkRequiresPassword } from "@kompast/core";
+import { createServerSchema, redactEmbedsForGuests } from "../blocknote-schema";
 
 /**
  * Public, unauthenticated surface — no requireAuthContext, no
@@ -34,9 +35,9 @@ export const getSharedPageContentFn = createServerFn({ method: "POST" })
     if (content.ydocState) {
       const ydoc = new Y.Doc();
       Y.applyUpdate(ydoc, content.ydocState);
-      const editor = ServerBlockNoteEditor.create();
+      const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
       const blocks = editor.yDocToBlocks(ydoc, "document-store");
-      html = await editor.blocksToFullHTML(blocks);
+      html = await editor.blocksToFullHTML(redactEmbedsForGuests(blocks) as any);
     }
 
     return { ok: true as const, title: content.page.title, icon: content.page.icon, html };

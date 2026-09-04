@@ -52,6 +52,64 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
     });
   });
 
+/** The picker list for inserting a kompastView embed — one board per project (P1 always creates exactly one). */
+export const listEmbeddableBoardsFn = createServerFn({ method: "GET" }).handler(async () => {
+  const ctx = await requireAuthContext();
+  return withAuthorizedTenant(ctx, (tx) =>
+    tx
+      .select({ boardId: schema.board.id, projectKey: schema.project.key, projectName: schema.project.name })
+      .from(schema.board)
+      .innerJoin(schema.project, eq(schema.project.id, schema.board.projectId))
+      .where(eq(schema.project.organizationId, ctx.organizationId)),
+  );
+});
+
+/**
+ * Backs the kompastView doc embed (apps/web/src/components/docs/KompastViewBlock.tsx).
+ * Re-derives the reader's own access from ctx (their real session, not
+ * anything trusted from the block's stored props) exactly like
+ * getProjectBoardFn — an embed must never grant more than the viewer could
+ * already see by navigating to the board directly (see plan §"Board <->
+ * Table <-> Doc embed").
+ */
+export const getBoardEmbedDataFn = createServerFn({ method: "GET" })
+  .validator((boardId: string) => boardId)
+  .handler(async ({ data: boardId }) => {
+    const ctx = await requireAuthContext();
+
+    return withAuthorizedTenant(ctx, async (tx) => {
+      const [board] = await tx.select().from(schema.board).where(eq(schema.board.id, boardId));
+      if (!board) throw new Error(`Board ${boardId} not found`);
+
+      const [project] = await tx
+        .select()
+        .from(schema.project)
+        .where(and(eq(schema.project.id, board.projectId), eq(schema.project.organizationId, ctx.organizationId)));
+      if (!project) throw new Error(`Board ${boardId} not found`);
+
+      const [issueTypes, boardData, tableView] = await Promise.all([
+        tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
+        getBoard(tx, board.id),
+        getOrCreateDefaultTableView(tx, board.id, ctx.userId),
+      ]);
+
+      const assigneeIds = [
+        ...new Set(
+          boardData.columns.flatMap((c) => c.issues.map((i) => i.assigneeId).filter((id): id is string => !!id)),
+        ),
+      ];
+      const users =
+        assigneeIds.length > 0
+          ? await tx
+              .select({ id: schema.user.id, name: schema.user.name })
+              .from(schema.user)
+              .where(inArray(schema.user.id, assigneeIds))
+          : [];
+
+      return { project, board, issueTypes, users, tableView, ...boardData };
+    });
+  });
+
 const updateTableViewSchema = z.object({
   viewId: z.string(),
   groupBy: z.enum(["column", "assignee", "none"]),
