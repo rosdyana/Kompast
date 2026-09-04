@@ -3,13 +3,15 @@ import "@blocknote/shadcn/style.css";
 import { useEffect, useMemo } from "react";
 import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
-import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
+import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
 import { withCollaboration } from "@blocknote/core/yjs";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { VersionHistory } from "./VersionHistory";
 import { kompastViewBlockSpec } from "./KompastViewBlock";
+import { mentionInlineSpec } from "./MentionInlineContent";
+import { listPageTreeFn, linkPageMentionFn } from "@/lib/server-fns/pages";
 
 const CURSOR_COLORS = ["#f97066", "#f79009", "#f5d90a", "#66c61c", "#15b8a6", "#2e90fa", "#875bf7", "#ee46bc"];
 
@@ -23,6 +25,7 @@ function colorForUser(userId: string) {
 // mixed-shape BlockSpecs records rejects this merge even though it's exactly BlockNote's own documented pattern.
 const schema = BlockNoteSchema.create({
   blockSpecs: { ...defaultBlockSpecs, kompastView: kompastViewBlockSpec() as any },
+  inlineContentSpecs: { ...defaultInlineContentSpecs, mention: mentionInlineSpec as any },
 });
 
 export function DocEditor({
@@ -89,6 +92,28 @@ export function DocEditor({
               query,
             )
           }
+        />
+        <SuggestionMenuController
+          triggerCharacter="@"
+          getItems={async (query) => {
+            const { pages } = await listPageTreeFn();
+            const lower = query.toLowerCase();
+            return pages
+              .filter((p) => p.id !== pageId && (p.title || "Tanpa judul").toLowerCase().includes(lower))
+              .slice(0, 8)
+              .map((p) => ({
+                title: p.title || "Tanpa judul",
+                subtext: undefined,
+                icon: <span>{p.icon || "▤"}</span>,
+                onItemClick: () => {
+                  editor.insertInlineContent([
+                    { type: "mention", props: { pageId: p.id, title: p.title || "Tanpa judul", icon: p.icon ?? "" } },
+                    " ",
+                  ] as any);
+                  linkPageMentionFn({ data: { fromPageId: pageId, toPageId: p.id } });
+                },
+              }));
+          }}
         />
       </BlockNoteView>
     </div>

@@ -62,3 +62,42 @@ describe("kompastView block schema", () => {
     expect(redacted[0].children[0].type).toBe("paragraph");
   });
 });
+
+describe("mention inline content schema", () => {
+  it("round-trips an inline @mention through a real Yjs encode/decode without losing its props", async () => {
+    const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+    const blocks = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "See ", styles: {} },
+          { type: "mention", props: { pageId: "page_abc", title: "Design doc", icon: "📄" } },
+          { type: "text", text: " for details", styles: {} },
+        ],
+      },
+    ];
+
+    const ydoc = editor.blocksToYDoc(blocks as any, "document-store");
+    const state = Y.encodeStateAsUpdate(ydoc);
+
+    const restored = new Y.Doc();
+    Y.applyUpdate(restored, state);
+
+    const decoded: any[] = editor.yDocToBlocks(restored, "document-store");
+    const mention = decoded[0]?.content.find((c: any) => c.type === "mention");
+    expect(mention?.props).toMatchObject({ pageId: "page_abc", title: "Design doc", icon: "📄" });
+  });
+
+  it("exports a mention's denormalized title as plain text, unaffected by guest redaction", async () => {
+    const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+    const blocks = [
+      { type: "paragraph", content: [{ type: "mention", props: { pageId: "page_abc", title: "Design doc", icon: "📄" } }] },
+    ];
+
+    const ydoc = editor.blocksToYDoc(blocks as any, "document-store");
+    const decoded = editor.yDocToBlocks(ydoc, "document-store");
+    const html = await editor.blocksToFullHTML(redactEmbedsForGuests(decoded) as any);
+
+    expect(html).toContain("Design doc");
+  });
+});

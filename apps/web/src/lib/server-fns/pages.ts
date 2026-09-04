@@ -232,6 +232,27 @@ export const unlinkPageFromIssueFn = createServerFn({ method: "POST" })
     return { ok: true } as const;
   });
 
+const linkMentionSchema = z.object({ fromPageId: z.string(), toPageId: z.string() });
+
+/** Called once, at the moment a mention is inserted into the editor — see Editor.tsx and KompastViewBlock's sibling, MentionInlineContent.tsx. */
+export const linkPageMentionFn = createServerFn({ method: "POST" })
+  .validator(linkMentionSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) =>
+      linkEntities(tx, {
+        organizationId: ctx.organizationId,
+        fromType: "page",
+        fromId: data.fromPageId,
+        toType: "page",
+        toId: data.toPageId,
+        kind: "mention",
+        createdBy: ctx.userId,
+      }),
+    );
+    return { ok: true } as const;
+  });
+
 const createShareLinkSchema = z.object({
   pageId: z.string(),
   scope: z.enum(["view", "comment"]).optional(),
