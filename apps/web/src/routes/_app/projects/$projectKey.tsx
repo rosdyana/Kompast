@@ -139,9 +139,20 @@ function initialsOf(name: string) {
 function BoardView({ data }: { data: BoardData }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [search, setSearch] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const usersById = new Map(data.users.map((u) => [u.id, u]));
   const issueTypesById = new Map(data.issueTypes.map((t) => [t.id, t]));
+
+  const needle = search.trim().toLowerCase();
+  const columns = needle
+    ? data.columns.map((col) => ({
+        ...col,
+        issues: col.issues.filter(
+          (i) => i.title.toLowerCase().includes(needle) || `${data.project.key}-${i.keySeq}`.toLowerCase().includes(needle),
+        ),
+      }))
+    : data.columns;
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -189,6 +200,8 @@ function BoardView({ data }: { data: BoardData }) {
           <div className="flex w-[190px] items-center gap-1.5 rounded-[7px] border border-border bg-surface px-2.5 py-1.5">
             <span className="text-[11px] text-text-3">⌕</span>
             <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari di board"
               className="min-w-0 flex-1 border-none bg-transparent text-[12.5px] outline-none placeholder:text-text-3"
             />
@@ -205,7 +218,7 @@ function BoardView({ data }: { data: BoardData }) {
             backgroundSize: "22px 22px",
           }}
         >
-          {data.columns.map((col) => (
+          {columns.map((col) => (
             <Column
               key={col.id}
               column={col}

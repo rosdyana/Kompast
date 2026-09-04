@@ -8,6 +8,7 @@ export * from "./comment";
 export * from "./watcher";
 export * from "./attachment";
 export * from "./saved-view";
+export * from "./search";
 export * from "./settings";
 export * from "./bootstrap";
 export * from "./crypto";

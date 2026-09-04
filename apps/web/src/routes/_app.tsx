@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, Link, redirect, useRouter } from "@tanstack/react-router";
 import { Avatar } from "@kompast/ui/Avatar";
-import { SearchField } from "@kompast/ui/Input";
 import { getWorkspaceShellFn } from "@/lib/server-fns/workspace";
+import { GlobalSearch } from "@/components/GlobalSearch";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/_app")({
@@ -134,7 +134,7 @@ function Topbar({ workspaceName }: { workspaceName: string }) {
         <span className="truncate font-semibold text-text">{workspaceName}</span>
       </div>
       <div className="ml-auto flex items-center gap-2">
-        <SearchField placeholder="Cari doc, tiket, orang…" className="w-[210px]" />
+        <GlobalSearch />
         <button className="grid h-[29px] w-[29px] place-items-center rounded-[7px] border border-border bg-surface text-xs hover:bg-surface-3">
           ☀
         </button>
