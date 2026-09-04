@@ -10,11 +10,25 @@ FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @kompast/web... run --if-present build
+# jsdom (a dependency of @blocknote/server-util, used for server-side
+# markdown/HTML conversion in the pages REST + MCP routes) cannot be
+# bundled into Nitro's otherwise-self-contained SSR output: one of its
+# internal CJS modules loads its own bundled default stylesheet via
+# `readFileSync(path.resolve(__dirname, ...))`, which breaks once
+# relocated into a bundled chunk (see apps/web/vite.config.ts's
+# `rollupConfig.external` for the full story — confirmed by a real
+# `docker build`+`docker run`, not just `pnpm build`). It's declared as
+# a direct dependency in apps/web/package.json so pnpm's strict
+# isolation doesn't hide it as a phantom transitive dependency, and
+# `pnpm deploy` here produces a real (non-symlinked-into-the-monorepo),
+# production-only node_modules that resolves it correctly at runtime.
+RUN pnpm --filter @kompast/web deploy --prod --legacy /app/deploy/web
 
 FROM base AS runtime
 ENV NODE_ENV=production
 RUN addgroup -S kompast && adduser -S kompast -G kompast
-COPY --from=build /app/apps/web/.output ./apps/web/.output
+COPY --from=build /app/deploy/web/node_modules ./node_modules
+COPY --from=build /app/deploy/web/.output ./apps/web/.output
 USER kompast
 EXPOSE 3000
 CMD ["node", "apps/web/.output/server/index.mjs"]
