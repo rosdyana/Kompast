@@ -15,4 +15,4 @@ COPY --from=build /app/apps/worker/dist ./apps/worker/dist
 COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
 COPY --from=build /app/node_modules ./node_modules
 USER kompast
-CMD ["node", "apps/worker/dist/index.js"]
+CMD ["node", "apps/worker/dist/index.cjs"]

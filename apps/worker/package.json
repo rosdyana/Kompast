@@ -6,11 +6,16 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
-    "start": "node dist/index.js",
+    "start": "node dist/index.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kompast/env": "workspace:*"
+    "@kompast/env": "workspace:*",
+    "@kompast/core": "workspace:*",
+    "@kompast/db": "workspace:*",
+    "@kompast/mail": "workspace:*",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.2"
   },
   "devDependencies": {
     "tsup": "^8.3.0",
