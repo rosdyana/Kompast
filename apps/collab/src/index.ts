@@ -1,13 +1,10 @@
 import { loadEnv } from "@kompast/env";
+import { createCollabServer } from "./server";
 
-/**
- * Placeholder Hocuspocus process — wired up in P2 (Docs core) alongside
- * BlockNote collaboration. Kept as a real, runnable service now so
- * docker-compose and CI build against a stable shape from P0 onward
- * instead of being retrofitted later. See plan §Architecture.
- */
 const env = loadEnv();
 
-console.log(`[collab] placeholder listening on :${env.COLLAB_INTERNAL_PORT} (Hocuspocus lands in P2)`);
+createCollabServer(env.COLLAB_INTERNAL_PORT).listen();
+
+console.log(`[collab] Hocuspocus listening on :${env.COLLAB_INTERNAL_PORT}`);
 
 process.on("SIGTERM", () => process.exit(0));
