@@ -86,6 +86,8 @@ export interface UpdateIssueInput {
   assigneeId?: string | null;
   storyPoints?: number | null;
   dueDate?: Date | null;
+  startDate?: Date | null;
+  epicId?: string | null;
   labels?: string[];
   descriptionJson?: Json;
   actorId: string;
@@ -93,7 +95,7 @@ export interface UpdateIssueInput {
   originClient?: string;
 }
 
-const UPDATE_ISSUE_HISTORY_FIELDS = ["title", "priority", "assigneeId", "storyPoints", "dueDate"] as const;
+const UPDATE_ISSUE_HISTORY_FIELDS = ["title", "priority", "assigneeId", "storyPoints", "dueDate", "startDate", "epicId"] as const;
 
 /**
  * Partial field update — every changed field (except labels/description,
@@ -111,6 +113,8 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
   if (patch.assigneeId !== undefined) updateValues.assigneeId = patch.assigneeId;
   if (patch.storyPoints !== undefined) updateValues.storyPoints = patch.storyPoints;
   if (patch.dueDate !== undefined) updateValues.dueDate = patch.dueDate;
+  if (patch.startDate !== undefined) updateValues.startDate = patch.startDate;
+  if (patch.epicId !== undefined) updateValues.epicId = patch.epicId;
   if (patch.labels !== undefined) updateValues.labels = patch.labels;
   if (patch.descriptionJson !== undefined) updateValues.descriptionJson = patch.descriptionJson;
 

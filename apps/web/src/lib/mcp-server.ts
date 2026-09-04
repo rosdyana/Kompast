@@ -22,6 +22,7 @@ import {
   getSprintReport,
   startSprint,
   completeSprint,
+  getEpicRoadmap,
 } from "@kompast/core";
 import type { ApiAuthContext } from "@/lib/api-auth";
 import { ApiError } from "@/lib/api-auth";
@@ -171,6 +172,26 @@ export function buildMcpServer(ctx: ApiAuthContext) {
   );
 
   server.registerTool(
+    "get_roadmap",
+    { description: "List epics for a project with their date range and child-issue completion.", inputSchema: { projectKey: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
+          const epics = await getEpicRoadmap(tx, project.id);
+          return epics.map((e) => ({
+            key: `${project.key}-${e.keySeq}`,
+            title: e.title,
+            startDate: e.startDate,
+            dueDate: e.dueDate,
+            childCount: e.childCount,
+            doneCount: e.doneCount,
+          }));
+        }),
+      )(),
+  );
+
+  server.registerTool(
     "list_issues",
     {
       description: "List issues in a project, oldest key first.",
@@ -268,6 +289,8 @@ export function buildMcpServer(ctx: ApiAuthContext) {
         priority: z.enum(["lowest", "low", "medium", "high", "highest"]).optional(),
         storyPoints: z.number().nullable().optional(),
         dueDate: z.string().nullable().optional(),
+        startDate: z.string().nullable().optional(),
+        epicKey: z.string().nullable().optional(),
         labels: z.array(z.string()).optional(),
         description: z.string().optional(),
       },
@@ -276,11 +299,14 @@ export function buildMcpServer(ctx: ApiAuthContext) {
       tool(ctx, "issues:write", () =>
         withAuthorizedTenant(ctx, async (tx) => {
           const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          const epicId = args.epicKey === undefined ? undefined : args.epicKey === null ? null : (await resolveIssue(tx, ctx.organizationId, args.epicKey)).issue.id;
           await updateIssue(tx, issue.id, {
             title: args.title,
             priority: args.priority,
             storyPoints: args.storyPoints,
             dueDate: args.dueDate === undefined ? undefined : args.dueDate === null ? null : new Date(args.dueDate),
+            startDate: args.startDate === undefined ? undefined : args.startDate === null ? null : new Date(args.startDate),
+            epicId,
             labels: args.labels,
             descriptionJson: args.description !== undefined ? { text: args.description } : undefined,
             actorId: ctx.userId,

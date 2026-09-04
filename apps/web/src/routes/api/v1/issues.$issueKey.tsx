@@ -11,6 +11,8 @@ const updateIssueSchema = z.object({
   assigneeEmail: z.email().nullable().optional(),
   storyPoints: z.number().nullable().optional(),
   dueDate: z.iso.datetime().nullable().optional(),
+  startDate: z.iso.datetime().nullable().optional(),
+  epicKey: z.string().nullable().optional(),
   labels: z.array(z.string()).optional(),
   description: z.string().optional(),
 });
@@ -34,6 +36,8 @@ export const Route = createFileRoute("/api/v1/issues/$issueKey")({
               reporterId: issue.reporterId,
               storyPoints: issue.storyPoints,
               dueDate: issue.dueDate,
+              startDate: issue.startDate,
+              epicId: issue.epicId,
               labels: issue.labels,
               createdAt: issue.createdAt,
               updatedAt: issue.updatedAt,
@@ -56,12 +60,21 @@ export const Route = createFileRoute("/api/v1/issues/$issueKey")({
                   ? null
                   : await resolveUserByEmail(tx, ctx.organizationId, body.assigneeEmail);
 
+            const epicId =
+              body.epicKey === undefined
+                ? undefined
+                : body.epicKey === null
+                  ? null
+                  : (await resolveIssue(tx, ctx.organizationId, body.epicKey)).issue.id;
+
             await updateIssue(tx, issue.id, {
               title: body.title,
               priority: body.priority,
               assigneeId,
               storyPoints: body.storyPoints,
               dueDate: body.dueDate === undefined ? undefined : body.dueDate === null ? null : new Date(body.dueDate),
+              startDate: body.startDate === undefined ? undefined : body.startDate === null ? null : new Date(body.startDate),
+              epicId,
               labels: body.labels,
               descriptionJson: body.description !== undefined ? { text: body.description } : undefined,
               actorId: ctx.userId,

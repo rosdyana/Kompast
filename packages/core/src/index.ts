@@ -6,6 +6,7 @@ export * from "./issue";
 export * from "./board";
 export * from "./sprint";
 export * from "./sprint-report";
+export * from "./roadmap";
 export * from "./comment";
 export * from "./watcher";
 export * from "./attachment";

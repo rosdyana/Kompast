@@ -167,6 +167,8 @@ export function buildOpenApiSpec(serverUrl: string) {
                     assigneeEmail: { type: "string", format: "email", nullable: true },
                     storyPoints: { type: "number", nullable: true },
                     dueDate: { type: "string", format: "date-time", nullable: true },
+                    startDate: { type: "string", format: "date-time", nullable: true },
+                    epicKey: { type: "string", nullable: true, description: "Key of an Epic-type issue in the same project, or null to unlink." },
                     labels: { type: "array", items: { type: "string" } },
                     description: { type: "string" },
                   },
@@ -398,6 +400,42 @@ export function buildOpenApiSpec(serverUrl: string) {
               content: {
                 "application/json": {
                   schema: { type: "object", properties: { data: { type: "array", items: { type: "object", properties: { sprintId: { type: "string" }, sprintName: { type: "string" }, completedPoints: { type: "integer" } } } } } },
+                },
+              },
+            },
+            "400": problemJson,
+            "401": problemJson,
+          },
+        },
+      },
+      "/api/v1/roadmap": {
+        get: {
+          summary: "Epics in a project with their date range and child-issue completion",
+          parameters: [{ name: "projectKey", in: "query", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "OK",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      data: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            key: { type: "string" },
+                            title: { type: "string" },
+                            startDate: { type: "string", format: "date-time", nullable: true },
+                            dueDate: { type: "string", format: "date-time", nullable: true },
+                            childCount: { type: "integer" },
+                            doneCount: { type: "integer" },
+                          },
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },

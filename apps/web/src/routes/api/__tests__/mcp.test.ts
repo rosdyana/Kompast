@@ -211,4 +211,15 @@ describe("/api/mcp", () => {
     expect(res.body.result.isError).toBe(true);
     expect(res.body.result.content[0].text).toContain("sprints:write");
   });
+
+  it("links an issue to an epic via update_issue's epicKey and get_roadmap reflects it", async () => {
+    const epic = JSON.parse((await callTool(token, "create_issue", { projectKey, title: "Epic via MCP", type: "Epic" })).body.result.content[0].text);
+    const story = JSON.parse((await callTool(token, "create_issue", { projectKey, title: "Story via MCP", type: "Story" })).body.result.content[0].text);
+
+    const updated = await callTool(token, "update_issue", { issueKey: story.key, epicKey: epic.key });
+    expect(JSON.parse(updated.body.result.content[0].text).ok).toBe(true);
+
+    const roadmap = JSON.parse((await callTool(token, "get_roadmap", { projectKey })).body.result.content[0].text);
+    expect(roadmap).toEqual([{ key: epic.key, title: "Epic via MCP", startDate: null, dueDate: null, childCount: 1, doneCount: 0 }]);
+  });
 });
