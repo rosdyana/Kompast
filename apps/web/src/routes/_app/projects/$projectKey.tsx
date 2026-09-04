@@ -16,6 +16,16 @@ import { Tabs } from "@kompast/ui/Tabs";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
 import { listProjectPagesFn, createPageFn } from "@/lib/server-fns/pages";
+import {
+  listSprintsFn,
+  listBacklogFn,
+  getSprintDetailFn,
+  createSprintFn,
+  startSprintFn,
+  completeSprintFn,
+  addIssueToSprintFn,
+  removeIssueFromSprintFn,
+} from "@/lib/server-fns/sprints";
 import { TableView } from "@/components/board/TableView";
 import { DocsTree } from "@/components/docs/DocsTree";
 
@@ -26,6 +36,7 @@ export const Route = createFileRoute("/_app/projects/$projectKey")({
 
 const VIEW_TABS = [
   { key: "board", label: "Board", icon: "◫" },
+  { key: "sprint", label: "Sprint", icon: "⚑" },
   { key: "table", label: "Tabel", icon: "▤" },
   { key: "timeline", label: "Timeline", icon: "▬" },
   { key: "docs", label: "Docs", icon: "▤" },
@@ -108,9 +119,10 @@ function ProjectPage() {
       </div>
 
       {view === "board" && <BoardView data={data} />}
+      {view === "sprint" && <SprintTab projectId={data.project.id} boardId={data.board.id} />}
       {view === "table" && <TableView data={data} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
-      {view !== "board" && view !== "table" && view !== "docs" && (
+      {view !== "board" && view !== "sprint" && view !== "table" && view !== "docs" && (
         <div className="p-10 text-center text-sm text-text-3">
           Mode <strong className="text-text-2">{VIEW_TABS.find((t) => t.key === view)?.label}</strong>{" "}
           belum dibangun — lihat fase di plan (Timeline: P3+, Otomasi: P6).
@@ -177,6 +189,207 @@ function ProjectDocsTab({ projectId }: { projectId: string }) {
           <DocsTree pages={pages} />
         </div>
       )}
+    </div>
+  );
+}
+
+type SprintSummary = Awaited<ReturnType<typeof listSprintsFn>>[number];
+type BacklogIssue = Awaited<ReturnType<typeof listBacklogFn>>[number];
+type SprintDetail = Awaited<ReturnType<typeof getSprintDetailFn>>;
+
+const SPRINT_STATE_LABEL: Record<string, string> = { future: "Belum mulai", active: "Berjalan", closed: "Selesai" };
+
+function SprintTab({ projectId, boardId }: { projectId: string; boardId: string }) {
+  const [sprints, setSprints] = useState<SprintSummary[] | null>(null);
+  const [backlog, setBacklog] = useState<BacklogIssue[] | null>(null);
+  const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SprintDetail | null>(null);
+  const [newSprintName, setNewSprintName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function refreshSprints() {
+    const list = await listSprintsFn({ data: boardId });
+    setSprints(list);
+    return list;
+  }
+
+  useEffect(() => {
+    refreshSprints().then((list) => {
+      const active = list.find((s) => s.state === "active");
+      setSelectedSprintId((current) => current ?? active?.id ?? list[0]?.id ?? null);
+    });
+    listBacklogFn({ data: projectId }).then(setBacklog);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, boardId]);
+
+  useEffect(() => {
+    if (!selectedSprintId) {
+      setDetail(null);
+      return;
+    }
+    getSprintDetailFn({ data: selectedSprintId }).then(setDetail);
+  }, [selectedSprintId]);
+
+  async function refreshAll() {
+    await Promise.all([refreshSprints(), listBacklogFn({ data: projectId }).then(setBacklog)]);
+    if (selectedSprintId) setDetail(await getSprintDetailFn({ data: selectedSprintId }));
+  }
+
+  async function createSprint() {
+    if (!newSprintName.trim()) return;
+    setCreating(true);
+    try {
+      const { sprintId } = await createSprintFn({ data: { boardId, name: newSprintName.trim(), cycle: "2w" } });
+      setNewSprintName("");
+      await refreshSprints();
+      setSelectedSprintId(sprintId);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleStart() {
+    if (!selectedSprintId) return;
+    setBusy(true);
+    try {
+      await startSprintFn({ data: selectedSprintId });
+      await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleComplete() {
+    if (!selectedSprintId) return;
+    setBusy(true);
+    try {
+      await completeSprintFn({ data: { sprintId: selectedSprintId } });
+      await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addToSprint(issueId: string) {
+    if (!selectedSprintId) return;
+    setBusy(true);
+    try {
+      await addIssueToSprintFn({ data: { sprintId: selectedSprintId, issueId } });
+      await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeFromSprint(issueId: string) {
+    setBusy(true);
+    try {
+      await removeIssueFromSprintFn({ data: issueId });
+      await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sprints === null || backlog === null) {
+    return <p className="p-6 text-sm text-text-3">Memuat…</p>;
+  }
+
+  const sprint = detail?.sprint;
+
+  return (
+    <div className="grid grid-cols-2 gap-4 p-6">
+      <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-3">
+        <select
+          value={selectedSprintId ?? ""}
+          onChange={(e) => setSelectedSprintId(e.target.value || null)}
+          className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+        >
+          <option value="" disabled>
+            Pilih sprint…
+          </option>
+          {sprints.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} · {SPRINT_STATE_LABEL[s.state]}
+            </option>
+          ))}
+        </select>
+        <input
+          value={newSprintName}
+          onChange={(e) => setNewSprintName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && createSprint()}
+          placeholder="Nama sprint baru…"
+          className="flex-1 rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+        />
+        <Button variant="outline" className="text-[12.5px]" onClick={createSprint} disabled={creating}>
+          + Sprint
+        </Button>
+
+        {sprint && (
+          <div className="ml-auto flex items-center gap-2">
+            {sprint.state === "future" && (
+              <Button variant="primary" className="text-[12.5px]" onClick={handleStart} disabled={busy}>
+                Mulai sprint
+              </Button>
+            )}
+            {sprint.state === "active" && (
+              <Button variant="primary" className="text-[12.5px]" onClick={handleComplete} disabled={busy}>
+                Selesaikan sprint
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {sprint && detail && (
+        <div className="col-span-2 flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-[12px] text-text-2">
+          <span>
+            Scope: <strong>{detail.report.scopeIssueCount}</strong> tiket / <strong>{detail.report.scopePoints}</strong> poin
+          </span>
+          <span>
+            Selesai: <strong>{detail.report.completedIssueCount}</strong> tiket / <strong>{detail.report.completedPoints}</strong> poin
+          </span>
+          <span>
+            Sisa: <strong>{detail.report.remainingPoints}</strong> poin
+          </span>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-border bg-surface p-3">
+        <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Backlog</p>
+        <div className="flex flex-col gap-1.5">
+          {backlog.length === 0 && <p className="text-[12.5px] text-text-3">Backlog kosong.</p>}
+          {backlog.map((issue) => (
+            <div key={issue.id} className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5">
+              <span className="truncate text-[12.5px]">{issue.title}</span>
+              <Button
+                variant="outline"
+                className="text-[11px]"
+                disabled={!selectedSprintId || sprint?.state === "closed" || busy}
+                onClick={() => addToSprint(issue.id)}
+              >
+                + Sprint
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-3">
+        <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Isi sprint</p>
+        <div className="flex flex-col gap-1.5">
+          {(!detail || detail.issues.length === 0) && <p className="text-[12.5px] text-text-3">Belum ada tiket di sprint ini.</p>}
+          {detail?.issues.map((issue) => (
+            <div key={issue.id} className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5">
+              <span className="truncate text-[12.5px]">{issue.title}</span>
+              <Button variant="outline" className="text-[11px]" disabled={busy} onClick={() => removeFromSprint(issue.id)}>
+                Keluarkan
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
