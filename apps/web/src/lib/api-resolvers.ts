@@ -1,5 +1,5 @@
 import { and, asc, eq, schema } from "@kompast/db";
-import type { Tx } from "@kompast/core";
+import { canAccessPage, getPage, type Tx, type PageRole } from "@kompast/core";
 import { ApiError } from "./api-auth";
 
 /**
@@ -63,6 +63,22 @@ export async function resolveStatus(tx: Tx, projectId: string, name?: string) {
   const fallback = statuses.find((s) => s.category === "todo") ?? statuses[0];
   if (!fallback) throw new ApiError(500, "Internal Server Error", "Project has no workflow statuses");
   return fallback;
+}
+
+/** REST/MCP respects page_permission the same as the UI — a caller's own membership isn't enough if the page is restricted. */
+export async function resolvePage(
+  tx: Tx,
+  ctx: { userId: string; organizationId: string },
+  pageId: string,
+  minRole: PageRole = "view",
+) {
+  const page = await getPage(tx, pageId).catch(() => null);
+  if (!page) throw new ApiError(404, "Not Found", `Page ${pageId} not found`);
+
+  const allowed = await canAccessPage(tx, pageId, ctx, minRole);
+  if (!allowed) throw new ApiError(404, "Not Found", `Page ${pageId} not found`);
+
+  return page;
 }
 
 export async function resolveUserByEmail(tx: Tx, organizationId: string, email: string) {
