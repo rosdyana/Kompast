@@ -28,8 +28,6 @@ alter table audit_log enable row level security;
 alter table audit_log force row level security;
 alter table entra_group_map enable row level security;
 alter table entra_group_map force row level security;
-alter table apikey enable row level security;
-alter table apikey force row level security;
 alter table page enable row level security;
 alter table page force row level security;
 alter table link enable row level security;
@@ -79,14 +77,27 @@ drop policy if exists tenant_isolation_entra_group_map on entra_group_map;
 create policy tenant_isolation_entra_group_map on entra_group_map
   using (organization_id = current_setting('app.current_workspace', true));
 
--- The apikey table (owned by @better-auth/api-key) has no organization_id
--- column — a token belongs to one user, and its workspace scope lives in
--- the jsonb `metadata` column. Default-deny to the owning user; a
--- workspace-admin "view all org tokens" screen needs its own service-role
--- query path (P3), not a blanket RLS bypass.
+-- The apikey table (owned by @better-auth/api-key) deliberately has NO
+-- RLS — confirmed by hand (P3): Better Auth's own plugin endpoints
+-- (createApiKey/listApiKeys/deleteApiKey/verifyApiKey) write through the
+-- drizzle adapter directly, never through withTenant(), so there is no
+-- app.current_user GUC set when they run — an RLS policy checking it
+-- rejects the plugin's OWN inserts with "new row violates row-level
+-- security policy". A previous version of this file had exactly that
+-- policy; it silently made every api-key create/list/delete call fail.
+-- Security here comes from the plugin's own logic instead, same as
+-- system_settings (see packages/db/src/schema/settings.ts): list/update
+-- /delete are scoped to the calling session's own user internally, and
+-- verifyApiKey looks up by the raw key value, which nothing can spoof
+-- without possessing the token. Workspace binding (which org a token
+-- acts in) lives in the jsonb `metadata` column and is checked explicitly
+-- in apps/web/src/lib/api-auth.ts, not by a GUC-based policy. A future
+-- workspace-admin "view/revoke org-wide" screen queries this table
+-- through adminDb with an explicit metadata->>'organizationId' filter,
+-- gated by requireSystemAdmin in application code — never a blanket RLS
+-- bypass and never the restricted kompast_app role.
+alter table apikey disable row level security;
 drop policy if exists tenant_isolation_apikey on apikey;
-create policy tenant_isolation_apikey on apikey
-  using (reference_id = current_setting('app.current_user', true));
 
 -- Tables scoped only indirectly (via issue_id -> issue.organization_id)
 -- join through issue, so they inherit isolation from the issue policy

@@ -131,6 +131,11 @@ function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>
       // schema needs to exist before any token can be minted.
       apiKey({
         references: "user",
+        // Workspace binding (which org a token can act in) lives in this
+        // column, not the plugin's own `organizationId` field — that field
+        // only applies when references: "organization", and every token
+        // here is issued to a user. See apps/web/src/lib/api-auth.ts.
+        enableMetadata: true,
         permissions: {
           defaultPermissions: {},
         },
