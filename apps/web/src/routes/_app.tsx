@@ -1,14 +1,19 @@
 import { createFileRoute, Outlet, Link, redirect, useRouter } from "@tanstack/react-router";
 import { Avatar } from "@kompast/ui/Avatar";
+import { Button } from "@kompast/ui/Button";
+import { useState } from "react";
 import { getWorkspaceShellFn } from "@/lib/server-fns/workspace";
+import { listPageTreeFn, createPageFn } from "@/lib/server-fns/pages";
 import { GlobalSearch } from "@/components/GlobalSearch";
+import { DocsTree } from "@/components/docs/DocsTree";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/_app")({
   loader: async () => {
     const shell = await getWorkspaceShellFn();
     if (!shell) throw redirect({ to: "/login" });
-    return shell;
+    const pageTree = await listPageTreeFn();
+    return { ...shell, pages: pageTree.pages };
   },
   component: AppShell,
 });
@@ -38,14 +43,27 @@ function AppShell() {
   );
 }
 
-type Shell = Awaited<ReturnType<typeof getWorkspaceShellFn>>;
+type Shell = NonNullable<Awaited<ReturnType<typeof getWorkspaceShellFn>>> & {
+  pages: Awaited<ReturnType<typeof listPageTreeFn>>["pages"];
+};
 
-function Sidebar({ shell }: { shell: NonNullable<Shell> }) {
+function Sidebar({ shell }: { shell: Shell }) {
   const router = useRouter();
+  const [creatingPage, setCreatingPage] = useState(false);
 
   async function handleSignOut() {
     await authClient.signOut();
     await router.navigate({ to: "/login" });
+  }
+
+  async function newPage() {
+    setCreatingPage(true);
+    try {
+      const page = await createPageFn({ data: {} });
+      await router.navigate({ to: "/docs/$pageId", params: { pageId: page.id } });
+    } finally {
+      setCreatingPage(false);
+    }
   }
 
   return (
@@ -81,7 +99,7 @@ function Sidebar({ shell }: { shell: NonNullable<Shell> }) {
           <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-text-3">Proyek</span>
         </div>
 
-        <div className="flex flex-col gap-px">
+        <div className="mb-4 flex flex-col gap-px">
           {shell.projects.length === 0 && (
             <p className="px-2 py-1.5 text-[12px] text-text-3">Belum ada proyek</p>
           )}
@@ -98,6 +116,14 @@ function Sidebar({ shell }: { shell: NonNullable<Shell> }) {
             </Link>
           ))}
         </div>
+
+        <div className="flex items-center justify-between px-2 pb-1.5">
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-text-3">Docs</span>
+          <Button variant="outline" className="h-[19px] px-1.5 text-[10.5px]" onClick={newPage} disabled={creatingPage}>
+            +
+          </Button>
+        </div>
+        <DocsTree pages={shell.pages} />
       </div>
 
       <div className="border-t border-border p-2">
