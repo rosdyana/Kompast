@@ -1,7 +1,15 @@
 import { Server } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { adminDb, eq, schema } from "@kompast/db";
-import { verifyCollabToken, id, type CollabTokenPayload } from "@kompast/core";
+// Deliberately NOT `from "@kompast/core"` (the package's barrel): that
+// pulls in every service module through one ESM `export *` chain, including
+// attachment.ts -> @kompast/storage -> @google-cloud/storage ->
+// google-auth-library, which does a truly dynamic `require("child_process")`
+// esbuild can't bundle (see tsup.config.ts). collab never touches
+// attachments at all, so these two dedicated subpaths (package.json
+// `exports`) pull in only what it actually uses.
+import { verifyCollabToken, type CollabTokenPayload } from "@kompast/core/collab-token";
+import { id } from "@kompast/core/ids";
 
 /**
  * documentName -> last time a page_version snapshot was written, so
