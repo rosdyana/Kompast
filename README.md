@@ -77,6 +77,22 @@ Real-time collaborative pages, workspace-level or filed under a project (the "Do
 
 **Gotcha, hit and fixed by hand:** `@blocknote/react`/`@blocknote/core`/`@blocknote/shadcn`/`@blocknote/server-util`/`@hocuspocus/*` all peer-depend on `yjs`/`y-protocols`/`y-prosemirror`, and pnpm resolved *three different instances* of `@blocknote/core` across the workspace based on differing `y-protocols` versions pulled in transitively. TypeScript correctly flagged this ("separate declarations of a private property"); the root package.json pins `y-protocols` via `pnpm.overrides` to collapse most of it, but a couple of call sites in `apps/web/src/components/docs/Editor.tsx` still need a narrow, commented `as any` where TS can't see through the dual-instance history. Not a runtime bug — verified by the real Yjs encode/decode round-trip tests in `apps/web/src/lib/__tests__/blocknote-schema.test.ts` and `apps/collab/src/__tests__/server.test.ts`.
 
+## REST API + MCP (P3)
+
+Every mutation lives exactly once in `packages/core`, behind the same permission check and `withAuthorizedTenant` transaction, regardless of whether it's called from the UI, `/api/v1`, or `/mcp` — that's the whole point of the architecture, so REST and MCP can't drift apart in what they allow.
+
+- **Personal access tokens** — generate one at `/tokens` (Better Auth's `apiKey` plugin, `kmp_…` prefix, scoped to `issues:read/write`, `pages:read/write`, `admin`, optional expiry, revocable). A token can never exceed the granting user's own workspace permissions.
+- **REST** — `/api/v1/issues`, `/api/v1/pages`, `/api/v1/search`, all `Authorization: Bearer kmp_…`, RFC 9457 `problem+json` errors, `Idempotency-Key` header on creates. `pages` PATCH is deliberately metadata-only (title/icon) — overwriting a page's Yjs document from outside its collab session would race with anyone live-editing it; content is only settable on create. See `/api/docs` (Scalar, generated from `apps/web/src/lib/openapi-spec.ts`) for the full endpoint list.
+- **MCP** — `/mcp`, Streamable HTTP, stateless (a fresh server is built per request, scoped to that request's authenticated token — no session, so it needs no session affinity behind a reverse proxy). PAT-only auth, same bearer token as REST:
+  ```bash
+  claude mcp add --transport http kompast https://<domain>/mcp \
+    --header "Authorization: Bearer kmp_…"
+  ```
+  Tools mirror the REST surface 1:1 (`create_issue`, `transition_issue`, `comment_page`, `link_page_to_issue`, etc. — see `apps/web/src/lib/mcp-server.ts`), plus `kompast://issue/{key}` / `kompast://page/{id}` resources and `bug-report` / `pr-to-issue` / `standup-digest` prompts. A missing token scope comes back as a tool-level error, not an HTTP 403 — one `/mcp` POST is one JSON-RPC call, so there's no earlier point to reject a specific tool's scope requirement.
+- **Attribution** — every REST/MCP write sets `origin`/`originClient` on the issue/page/comment (`"api"`/`"mcp"` + the request's `User-Agent`), so the activity feed reads "via Claude Code", not silently as the user's own UI action.
+
+**Gotcha, hit and fixed by hand:** `@blocknote/server-util` (used to render page content as Markdown for REST/MCP) depends on `jsdom`, which cannot be bundled into Nitro's otherwise-self-contained SSR output — one of its internal CJS modules reads its own default stylesheet via a `__dirname`-relative path, and every request 500'd once that got relocated into a bundled chunk. Found via a real `docker build` + `docker run`, not just `pnpm build` (dev server and `vitest` never touch the built Nitro output, so this class of bug is invisible to either). Fixed by declaring `jsdom` as a direct `apps/web` dependency (pnpm's isolation otherwise hides it as a phantom transitive dep), marking it external in `vite.config.ts`'s `nitro.rollupConfig`, and having `infra/Dockerfile.web` run `pnpm deploy --prod --legacy` so the runtime image gets a real, non-symlinked `node_modules` for it instead of only the bundled `.output`.
+
 ## Attachments / storage
 
 `packages/storage` has two drivers behind one interface (`getUploadUrl`/`getDownloadUrl`/`delete`), chosen by `STORAGE_DRIVER`:
