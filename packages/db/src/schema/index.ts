@@ -1,6 +1,6 @@
 /**
- * Schema scope: P0 (identity/tenancy) + P1 (kanban core) + P2 (docs core),
- * per the phased plan at
+ * Schema scope: P0 (identity/tenancy) + P1 (kanban core) + P2 (docs core)
+ * + P3 (REST API/MCP), per the phased plan at
  * ~/.claude/plans/use-the-claude-design-mcp-snuggly-shore.md.
  *
  * Deliberately NOT here yet (added when their phase starts, not before —
@@ -18,3 +18,4 @@ export * from "./board";
 export * from "./issue";
 export * from "./settings";
 export * from "./page";
+export * from "./api";

@@ -46,6 +46,8 @@ alter table share_link enable row level security;
 alter table share_link force row level security;
 alter table ydoc_state enable row level security;
 alter table ydoc_state force row level security;
+alter table idempotency_key enable row level security;
+alter table idempotency_key force row level security;
 
 -- apps/collab (Yjs persistence) and the public /s/:token guest route both
 -- connect via the admin connection instead of kompast_app, and so bypass
@@ -177,3 +179,7 @@ create policy tenant_isolation_ydoc_state on ydoc_state
       where organization_id = current_setting('app.current_workspace', true)
     )
   );
+
+drop policy if exists tenant_isolation_idempotency_key on idempotency_key;
+create policy tenant_isolation_idempotency_key on idempotency_key
+  using (organization_id = current_setting('app.current_workspace', true));
