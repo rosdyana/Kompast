@@ -8,6 +8,8 @@ import { Route as SprintItemRoute } from "../sprints.$sprintId";
 import { Route as StartRoute } from "../sprints.$sprintId.start";
 import { Route as CompleteRoute } from "../sprints.$sprintId.complete";
 import { Route as SprintIssuesRoute } from "../sprints.$sprintId.issues";
+import { Route as SprintReportRoute } from "../sprints.$sprintId.report";
+import { Route as VelocityRoute } from "../velocity";
 import { Route as IssuesRoute } from "../issues";
 import { Route as TransitionRoute } from "../issues.$issueKey.transition";
 
@@ -17,6 +19,8 @@ const sprintItemHandlers = SprintItemRoute.options.server!.handlers as { GET: Ha
 const startHandlers = StartRoute.options.server!.handlers as { POST: Handler };
 const completeHandlers = CompleteRoute.options.server!.handlers as { POST: Handler };
 const sprintIssuesHandlers = SprintIssuesRoute.options.server!.handlers as { GET: Handler; POST: Handler; DELETE: Handler };
+const sprintReportHandlers = SprintReportRoute.options.server!.handlers as { GET: Handler };
+const velocityHandlers = VelocityRoute.options.server!.handlers as { GET: Handler };
 const issuesHandlers = IssuesRoute.options.server!.handlers as { GET: Handler; POST: Handler };
 const transitionHandlers = TransitionRoute.options.server!.handlers as { POST: Handler };
 
@@ -110,5 +114,22 @@ describe("/api/v1/sprints", () => {
     const readOnly = await auth.api.createApiKey({ body: { userId, permissions: { issues: ["read"] }, metadata: { organizationId: orgId } } });
     const res = await sprintsHandlers.POST({ request: req("http://x/api/v1/sprints", { method: "POST", token: readOnly.key, body: { projectKey, name: "Nope" } }), params: {} });
     expect(res.status).toBe(401);
+  });
+
+  it("reports burndown/CFD for a started sprint and velocity for a completed one", async () => {
+    const sprintId = (await (await sprintsHandlers.POST({ request: req("http://x/api/v1/sprints", { method: "POST", token, body: { projectKey, name: "Report Sprint", cycle: "1w" } }), params: {} })).json()).id;
+    const issue = await (await issuesHandlers.POST({ request: req("http://x/api/v1/issues", { method: "POST", token, body: { projectKey, title: "Reported issue" } }), params: {} })).json();
+    await sprintIssuesHandlers.POST({ request: req(`http://x/api/v1/sprints/${sprintId}/issues`, { method: "POST", token, body: { issueKey: issue.key } }), params: { sprintId } });
+    await startHandlers.POST({ request: req(`http://x/api/v1/sprints/${sprintId}/start`, { method: "POST", token }), params: { sprintId } });
+
+    const report = await (await sprintReportHandlers.GET({ request: req(`http://x/api/v1/sprints/${sprintId}/report`, { token }), params: { sprintId } })).json();
+    expect(report.burndown.length).toBeGreaterThan(0);
+    expect(report.burndown.at(-1).scopePoints).toBe(0);
+    expect(report.cumulativeFlow.at(-1).todo).toBe(1);
+
+    await completeHandlers.POST({ request: req(`http://x/api/v1/sprints/${sprintId}/complete`, { method: "POST", token, body: {} }), params: { sprintId } });
+
+    const velocity = await (await velocityHandlers.GET({ request: req(`http://x/api/v1/velocity?projectKey=${projectKey}`, { token }), params: {} })).json();
+    expect(velocity.data).toEqual([{ sprintId, sprintName: "Report Sprint", completedPoints: 0 }]);
   });
 });

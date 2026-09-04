@@ -358,6 +358,54 @@ export function buildOpenApiSpec(serverUrl: string) {
           responses: { "200": { description: "OK" }, "400": problemJson, "401": problemJson },
         },
       },
+      "/api/v1/sprints/{sprintId}/report": {
+        parameters: [{ name: "sprintId", in: "path", required: true, schema: { type: "string" } }],
+        get: {
+          summary: "Burndown + cumulative flow for a sprint",
+          description:
+            "Reconstructed day-by-day from issue_history — there's no nightly snapshot cron, so status-as-of-day falls back to an " +
+            "issue's current status when it has no recorded status change before that day.",
+          responses: {
+            "200": {
+              description: "OK",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      burndown: { type: "array", items: { type: "object", properties: { date: { type: "string" }, scopePoints: { type: "integer" }, remainingPoints: { type: "integer" } } } },
+                      cumulativeFlow: {
+                        type: "array",
+                        items: { type: "object", properties: { date: { type: "string" }, todo: { type: "integer" }, inProgress: { type: "integer" }, done: { type: "integer" } } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            "401": problemJson,
+            "404": problemJson,
+          },
+        },
+      },
+      "/api/v1/velocity": {
+        get: {
+          summary: "Completed points from a project's last several closed sprints",
+          parameters: [{ name: "projectKey", in: "query", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "OK",
+              content: {
+                "application/json": {
+                  schema: { type: "object", properties: { data: { type: "array", items: { type: "object", properties: { sprintId: { type: "string" }, sprintName: { type: "string" }, completedPoints: { type: "integer" } } } } } },
+                },
+              },
+            },
+            "400": problemJson,
+            "401": problemJson,
+          },
+        },
+      },
       "/api/v1/search": {
         get: {
           summary: "Unified search across issues and workspace members",
