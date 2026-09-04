@@ -6,6 +6,7 @@ import { HocuspocusProvider } from "@hocuspocus/provider";
 import { useCreateBlockNote } from "@blocknote/react";
 import { withCollaboration } from "@blocknote/core/yjs";
 import { BlockNoteView } from "@blocknote/shadcn";
+import { VersionHistory } from "./VersionHistory";
 
 const CURSOR_COLORS = ["#f97066", "#f79009", "#f5d90a", "#66c61c", "#15b8a6", "#2e90fa", "#875bf7", "#ee46bc"];
 
@@ -49,6 +50,13 @@ export function DocEditor({
   );
 
   return (
-    <BlockNoteView editor={editor} editable={canEdit} theme="light" className="min-h-[60vh] px-2 py-4" />
+    <div>
+      {canEdit && (
+        <div className="mb-2 flex justify-end">
+          <VersionHistory pageId={pageId} editor={editor} />
+        </div>
+      )}
+      <BlockNoteView editor={editor} editable={canEdit} theme="light" className="min-h-[60vh] px-2 py-4" />
+    </div>
   );
 }

@@ -119,9 +119,18 @@ function Sidebar({ shell }: { shell: Shell }) {
 
         <div className="flex items-center justify-between px-2 pb-1.5">
           <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-text-3">Docs</span>
-          <Button variant="outline" className="h-[19px] px-1.5 text-[10.5px]" onClick={newPage} disabled={creatingPage}>
-            +
-          </Button>
+          <div className="flex items-center gap-1">
+            <Link
+              to="/docs/trash"
+              title="Sampah"
+              className="grid h-[19px] w-[19px] place-items-center rounded-md text-[10.5px] text-text-3 hover:bg-surface-3 hover:text-text"
+            >
+              🗑
+            </Link>
+            <Button variant="outline" className="h-[19px] px-1.5 text-[10.5px]" onClick={newPage} disabled={creatingPage}>
+              +
+            </Button>
+          </div>
         </div>
         <DocsTree pages={shell.pages} />
       </div>
@@ -163,9 +172,6 @@ function Topbar({ workspaceName }: { workspaceName: string }) {
         <GlobalSearch />
         <button className="grid h-[29px] w-[29px] place-items-center rounded-[7px] border border-border bg-surface text-xs hover:bg-surface-3">
           ☀
-        </button>
-        <button className="rounded-[7px] bg-text px-3 py-1.5 text-[12.5px] font-semibold text-bg hover:opacity-[.88]">
-          Bagikan
         </button>
       </div>
     </header>

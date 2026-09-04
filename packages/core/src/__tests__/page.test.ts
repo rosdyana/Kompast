@@ -11,6 +11,9 @@ import {
   restorePage,
   duplicatePage,
   updatePageMeta,
+  listArchivedPages,
+  listTemplatePages,
+  permanentlyDeletePage,
 } from "../page";
 import { canAccessPage, setPagePermission, filterAccessiblePages } from "../page-permission";
 import { withAuthorizedTenant } from "../permissions";
@@ -131,6 +134,67 @@ describe("pages", () => {
       canAccessPage(tx, page.id, { userId: otherId, organizationId: orgId }),
     );
     expect(otherAccess).toBe(false);
+  });
+
+  it("archiving a page cascades to its descendants", async () => {
+    const ctx = { userId: ownerId, organizationId: orgId };
+    const parent = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Parent", actorUserId: ownerId }));
+    const child = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Child", parentPageId: parent.id, actorUserId: ownerId }));
+    const grandchild = await withAuthorizedTenant(ctx, (tx) =>
+      createPage(tx, { organizationId: orgId, title: "Grandchild", parentPageId: child.id, actorUserId: ownerId }),
+    );
+
+    await withAuthorizedTenant(ctx, (tx) => archivePage(tx, parent.id));
+
+    const tree = await withAuthorizedTenant(ctx, (tx) => listPageTree(tx, orgId));
+    expect(tree.map((p) => p.id)).not.toContain(parent.id);
+    expect(tree.map((p) => p.id)).not.toContain(child.id);
+    expect(tree.map((p) => p.id)).not.toContain(grandchild.id);
+
+    const archived = await withAuthorizedTenant(ctx, (tx) => listArchivedPages(tx, orgId));
+    expect(archived.map((p) => p.id).sort()).toEqual([child.id, grandchild.id, parent.id].sort());
+  });
+
+  it("restoring a page whose parent is still archived re-parents it to the root", async () => {
+    const ctx = { userId: ownerId, organizationId: orgId };
+    const parent = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Parent", actorUserId: ownerId }));
+    const child = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Child", parentPageId: parent.id, actorUserId: ownerId }));
+
+    await withAuthorizedTenant(ctx, (tx) => archivePage(tx, parent.id));
+    await withAuthorizedTenant(ctx, (tx) => restorePage(tx, child.id));
+
+    const tree = await withAuthorizedTenant(ctx, (tx) => listPageTree(tx, orgId));
+    const restoredChild = tree.find((p) => p.id === child.id);
+    expect(restoredChild?.parentPageId).toBeNull();
+  });
+
+  it("permanentlyDeletePage removes the row and re-parents children to the root", async () => {
+    const ctx = { userId: ownerId, organizationId: orgId };
+    const parent = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Parent", actorUserId: ownerId }));
+    const child = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Child", parentPageId: parent.id, actorUserId: ownerId }));
+
+    await withAuthorizedTenant(ctx, (tx) => permanentlyDeletePage(tx, parent.id));
+
+    const [deletedRow] = await admin.select().from(schema.page).where(eq(schema.page.id, parent.id));
+    expect(deletedRow).toBeUndefined();
+
+    const [childRow] = await admin.select().from(schema.page).where(eq(schema.page.id, child.id));
+    expect(childRow?.parentPageId).toBeNull();
+  });
+
+  it("listTemplatePages returns only non-archived template pages", async () => {
+    const ctx = { userId: ownerId, organizationId: orgId };
+    await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Regular", actorUserId: ownerId }));
+    const template = await withAuthorizedTenant(ctx, (tx) =>
+      createPage(tx, { organizationId: orgId, title: "Template", type: "template", actorUserId: ownerId }),
+    );
+    const archivedTemplate = await withAuthorizedTenant(ctx, (tx) =>
+      createPage(tx, { organizationId: orgId, title: "Archived Template", type: "template", actorUserId: ownerId }),
+    );
+    await withAuthorizedTenant(ctx, (tx) => archivePage(tx, archivedTemplate.id));
+
+    const templates = await withAuthorizedTenant(ctx, (tx) => listTemplatePages(tx, orgId));
+    expect(templates.map((t) => t.id)).toEqual([template.id]);
   });
 
   it("filterAccessiblePages drops only the restricted pages the caller cannot see", async () => {

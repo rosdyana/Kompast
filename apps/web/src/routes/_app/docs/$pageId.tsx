@@ -13,6 +13,7 @@ import {
   unlinkPageFromIssueFn,
   createShareLinkFn,
   revokeShareLinkFn,
+  setPageTemplateFn,
 } from "@/lib/server-fns/pages";
 import { getIssueDetailFn } from "@/lib/server-fns/issue-detail";
 import { DocEditor } from "@/components/docs/Editor";
@@ -40,6 +41,7 @@ function DocPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [addingChild, setAddingChild] = useState(false);
   const [favorited, setFavorited] = useState(data.isFavorited);
+  const [isTemplate, setIsTemplate] = useState(data.page.type === "template");
   const [issueKeyInput, setIssueKeyInput] = useState("");
   const [linkingIssue, setLinkingIssue] = useState(false);
   const [linkIssueError, setLinkIssueError] = useState("");
@@ -69,6 +71,12 @@ function DocPage() {
   async function archive() {
     await archivePageFn({ data: data.page.id });
     await router.navigate({ to: "/docs" });
+  }
+
+  async function toggleTemplate() {
+    const next = !isTemplate;
+    setIsTemplate(next);
+    await setPageTemplateFn({ data: { pageId: data.page.id, isTemplate: next } });
   }
 
   async function submitComment() {
@@ -126,6 +134,11 @@ function DocPage() {
           <Button variant="outline" className="text-[12px]" onClick={() => setShareOpen((s) => !s)}>
             🔗 Bagikan
           </Button>
+          {data.canEdit && (
+            <Button variant={isTemplate ? "primary" : "outline"} className="text-[12px]" onClick={toggleTemplate}>
+              {isTemplate ? "Template" : "Jadikan template"}
+            </Button>
+          )}
           {data.canEdit && (
             <Button variant="outline" className="text-[12px]" onClick={archive}>
               Arsipkan

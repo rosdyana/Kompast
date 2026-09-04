@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, schema } from "@kompast/db";
+import { and, desc, eq, inArray, isNull, isNotNull, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { rankBetween } from "./rank";
@@ -73,10 +73,40 @@ export async function listPageTree(tx: Tx, organizationId: string, projectId?: s
     .orderBy(schema.page.rank);
 }
 
+/** Pages the caller's organization has archived (soft-deleted) — the trash view. */
+export async function listArchivedPages(tx: Tx, organizationId: string) {
+  return tx
+    .select()
+    .from(schema.page)
+    .where(and(eq(schema.page.organizationId, organizationId), isNotNull(schema.page.archivedAt)))
+    .orderBy(desc(schema.page.archivedAt));
+}
+
+/** Templates are just pages with type='template' — this is the picker list for "new from template". */
+export async function listTemplatePages(tx: Tx, organizationId: string) {
+  return tx
+    .select()
+    .from(schema.page)
+    .where(and(eq(schema.page.organizationId, organizationId), eq(schema.page.type, "template"), isNull(schema.page.archivedAt)))
+    .orderBy(schema.page.title);
+}
+
+/**
+ * Hard delete — irreversible, unlike archivePage. Cascades to ydoc_state,
+ * page_version, page_comment, page_permission, page_favorite (FK ON DELETE
+ * CASCADE) but NOT to child pages, which are re-parented to the trash
+ * root instead of being silently deleted with their parent.
+ */
+export async function permanentlyDeletePage(tx: Tx, pageId: string) {
+  await tx.update(schema.page).set({ parentPageId: null }).where(eq(schema.page.parentPageId, pageId));
+  await tx.delete(schema.page).where(eq(schema.page.id, pageId));
+}
+
 export interface UpdatePageMetaInput {
   title?: string;
   icon?: string | null;
   cover?: string | null;
+  type?: "doc" | "template";
 }
 
 export async function updatePageMeta(tx: Tx, pageId: string, patch: UpdatePageMetaInput) {
@@ -102,12 +132,39 @@ export async function movePage(
     .where(eq(schema.page.id, page.id));
 }
 
-export async function archivePage(tx: Tx, pageId: string) {
-  await tx.update(schema.page).set({ archivedAt: new Date() }).where(eq(schema.page.id, pageId));
+async function collectDescendantIds(tx: Tx, pageId: string): Promise<string[]> {
+  const children = await tx.select({ id: schema.page.id }).from(schema.page).where(eq(schema.page.parentPageId, pageId));
+  const nested = await Promise.all(children.map((c) => collectDescendantIds(tx, c.id)));
+  return [...children.map((c) => c.id), ...nested.flat()];
 }
 
+/**
+ * Cascades to descendants: archiving a page takes its whole subtree with
+ * it, the same way deleting a folder does in most file managers — a lone
+ * child left behind, not archived, with its parentPageId now pointing at
+ * an archived (hidden) page, would silently vanish from the tree (see
+ * restorePage's docstring for the same failure mode in reverse).
+ */
+export async function archivePage(tx: Tx, pageId: string) {
+  const descendantIds = await collectDescendantIds(tx, pageId);
+  await tx.update(schema.page).set({ archivedAt: new Date() }).where(inArray(schema.page.id, [pageId, ...descendantIds]));
+}
+
+/**
+ * Restoring re-parents to the workspace root if the original parent is
+ * gone or still archived — otherwise a restored page would sit under a
+ * still-archived parent and never actually appear in the tree (listPageTree
+ * filters out archived pages, so nothing renders the branch that would
+ * contain it).
+ */
 export async function restorePage(tx: Tx, pageId: string) {
-  await tx.update(schema.page).set({ archivedAt: null }).where(eq(schema.page.id, pageId));
+  const page = await getPage(tx, pageId);
+  let parentPageId = page.parentPageId;
+  if (parentPageId) {
+    const [parent] = await tx.select().from(schema.page).where(eq(schema.page.id, parentPageId));
+    if (!parent || parent.archivedAt) parentPageId = null;
+  }
+  await tx.update(schema.page).set({ archivedAt: null, parentPageId }).where(eq(schema.page.id, pageId));
 }
 
 /**

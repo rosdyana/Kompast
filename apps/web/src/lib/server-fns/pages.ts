@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
 import { loadEnv } from "@kompast/env";
 import { inArray, schema } from "@kompast/db";
+import * as Y from "yjs";
+import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import {
   createPage,
   getPage,
@@ -11,6 +13,9 @@ import {
   archivePage,
   restorePage,
   duplicatePage,
+  listArchivedPages,
+  permanentlyDeletePage,
+  listTemplatePages,
   canAccessPage,
   filterAccessiblePages,
   addPageComment,
@@ -26,6 +31,8 @@ import {
   createShareLink,
   listShareLinks,
   revokeShareLink,
+  listPageVersions,
+  getPageVersionSnapshot,
   withAuthorizedTenant,
   ForbiddenError,
 } from "@kompast/core";
@@ -246,4 +253,85 @@ export const revokeShareLinkFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, (tx) => revokeShareLink(tx, shareLinkId));
     return { ok: true } as const;
+  });
+
+export const listTrashFn = createServerFn({ method: "GET" }).handler(async () => {
+  const ctx = await requireAuthContext();
+  return withAuthorizedTenant(ctx, (tx) => listArchivedPages(tx, ctx.organizationId));
+});
+
+export const permanentlyDeletePageFn = createServerFn({ method: "POST" })
+  .validator((pageId: string) => pageId)
+  .handler(async ({ data: pageId }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => permanentlyDeletePage(tx, pageId));
+    return { ok: true } as const;
+  });
+
+export const listTemplatePagesFn = createServerFn({ method: "GET" }).handler(async () => {
+  const ctx = await requireAuthContext();
+  return withAuthorizedTenant(ctx, (tx) => listTemplatePages(tx, ctx.organizationId));
+});
+
+const setTemplateSchema = z.object({ pageId: z.string(), isTemplate: z.boolean() });
+
+export const setPageTemplateFn = createServerFn({ method: "POST" })
+  .validator(setTemplateSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => updatePageMeta(tx, data.pageId, { type: data.isTemplate ? "template" : "doc" }));
+    return { ok: true } as const;
+  });
+
+const newFromTemplateSchema = z.object({ templatePageId: z.string(), parentPageId: z.string().nullable().optional() });
+
+export const createPageFromTemplateFn = createServerFn({ method: "POST" })
+  .validator(newFromTemplateSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, (tx) =>
+      duplicatePage(tx, data.templatePageId, { actorUserId: ctx.userId, parentPageId: data.parentPageId, titleSuffix: "" }),
+    );
+  });
+
+export const listPageVersionsFn = createServerFn({ method: "GET" })
+  .validator((pageId: string) => pageId)
+  .handler(async ({ data: pageId }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      const [versions, allowed] = await Promise.all([listPageVersions(tx, pageId), canAccessPage(tx, pageId, ctx, "view")]);
+      if (!allowed) throw new ForbiddenError(`No access to page ${pageId}`);
+
+      const authorIds = [...new Set(versions.map((v) => v.authorId).filter((v): v is string => !!v))];
+      const users = authorIds.length > 0 ? await tx.select().from(schema.user).where(inArray(schema.user.id, authorIds)) : [];
+      return { versions, users };
+    });
+  });
+
+const getVersionBlocksSchema = z.object({ pageId: z.string(), versionId: z.string() });
+
+/**
+ * Decodes a historical Yjs snapshot into BlockNote JSON so the client can
+ * apply it to the LIVE editor via editor.replaceBlocks(...) — restoring by
+ * overwriting ydoc_state directly would race with any client currently
+ * connected to the page (their local Y.Doc would just resync its own state
+ * back over the restore on the next save). Going through the live editor
+ * makes a restore an ordinary collaborative edit like any other, which is
+ * the only way it's guaranteed to converge correctly for all viewers.
+ */
+export const getPageVersionBlocksFn = createServerFn({ method: "POST" })
+  .validator(getVersionBlocksSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    const snapshot = await withAuthorizedTenant(ctx, async (tx) => {
+      const allowed = await canAccessPage(tx, data.pageId, ctx, "edit");
+      if (!allowed) throw new ForbiddenError(`No edit access to page ${data.pageId}`);
+      return getPageVersionSnapshot(tx, data.pageId, data.versionId);
+    });
+    if (!snapshot) throw new Error("Version not found");
+
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, snapshot);
+    const editor = ServerBlockNoteEditor.create();
+    return editor.yDocToBlocks(ydoc, "document-store");
   });

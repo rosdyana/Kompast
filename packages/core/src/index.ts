@@ -10,6 +10,7 @@ export * from "./attachment";
 export * from "./saved-view";
 export * from "./search";
 export * from "./page";
+export * from "./page-version";
 export * from "./page-permission";
 export * from "./page-comment";
 export * from "./page-favorite";
