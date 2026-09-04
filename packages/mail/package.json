@@ -1,0 +1,28 @@
+{
+  "name": "@kompast/mail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@react-email/components": "^0.0.31",
+    "@react-email/render": "^1.0.3",
+    "nodemailer": "^6.9.16",
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.10.0",
+    "@types/nodemailer": "^6.4.16",
+    "@types/react": "^19.0.0"
+  }
+}
