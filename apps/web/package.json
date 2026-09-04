@@ -11,30 +11,35 @@
     "seed:dev": "tsx scripts/seed-dev.ts"
   },
   "dependencies": {
-    "@kompast/env": "workspace:*",
+    "@better-auth/api-key": "^1.7.2",
+    "@blocknote/core": "0.54.0",
+    "@blocknote/react": "0.54.0",
+    "@blocknote/shadcn": "0.54.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@hocuspocus/provider": "4.6.0",
+    "@kompast/core": "workspace:*",
     "@kompast/db": "workspace:*",
+    "@kompast/env": "workspace:*",
+    "@kompast/storage": "workspace:*",
     "@kompast/ui": "workspace:*",
-    "@tanstack/react-start": "^1.168.49",
-    "@tanstack/react-router": "^1.170.32",
     "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-start": "^1.168.49",
     "better-auth": "^1.7.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "@better-auth/api-key": "^1.7.2",
-    "@kompast/core": "workspace:*",
-    "zod": "^4.5.4",
-    "@dnd-kit/core": "^6.3.1",
-    "@kompast/storage": "workspace:*"
+    "yjs": "13.6.32",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^6.1.1",
     "@tailwindcss/vite": "^4.3.3",
-    "tailwindcss": "^4.3.3",
-    "vite": "^8.2.2",
-    "typescript": "^5.9.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "nitro": "^3.0.260610-beta",
-    "tsx": "^4.23.13"
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2"
   }
 }

@@ -11,6 +11,13 @@ export const rank = customType<{ data: string }>({
   },
 });
 
+/** Raw binary — Yjs document state and version snapshots (P2 docs). */
+export const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
 /**
  * A genuinely JSON-safe value — unlike `Record<string, unknown>`, this
  * can't hide a function or class instance in a nested field, which matters

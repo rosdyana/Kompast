@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { loadEnv } from "@kompast/env";
 
 /**
@@ -29,4 +29,19 @@ export function decryptSecret(stored: string): string {
   const decipher = createDecipheriv("aes-256-gcm", getKey(), Buffer.from(ivB64, "base64"));
   decipher.setAuthTag(Buffer.from(authTagB64, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(dataB64, "base64")), decipher.final()]).toString("utf8");
+}
+
+/** Share-link passwords (see packages/core/share-link.ts) — scrypt, not bcrypt, to avoid a native dependency. */
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16);
+  const derived = scryptSync(password, salt, 64);
+  return `${salt.toString("base64")}.${derived.toString("base64")}`;
+}
+
+export function verifyPassword(password: string, stored: string): boolean {
+  const [saltB64, hashB64] = stored.split(".");
+  if (!saltB64 || !hashB64) return false;
+  const derived = scryptSync(password, Buffer.from(saltB64, "base64"), 64);
+  const expected = Buffer.from(hashB64, "base64");
+  return derived.length === expected.length && timingSafeEqual(derived, expected);
 }

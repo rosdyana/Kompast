@@ -30,6 +30,36 @@ alter table entra_group_map enable row level security;
 alter table entra_group_map force row level security;
 alter table apikey enable row level security;
 alter table apikey force row level security;
+alter table page enable row level security;
+alter table page force row level security;
+alter table link enable row level security;
+alter table link force row level security;
+alter table page_version enable row level security;
+alter table page_version force row level security;
+alter table page_permission enable row level security;
+alter table page_permission force row level security;
+alter table page_comment enable row level security;
+alter table page_comment force row level security;
+alter table page_favorite enable row level security;
+alter table page_favorite force row level security;
+alter table share_link enable row level security;
+alter table share_link force row level security;
+alter table ydoc_state enable row level security;
+alter table ydoc_state force row level security;
+
+-- apps/collab (Yjs persistence) and the public /s/:token guest route both
+-- connect via the admin connection instead of kompast_app, and so bypass
+-- every policy below regardless (table ownership, same exemption RLS
+-- itself warns about elsewhere in this file). That is deliberate, not an
+-- oversight: neither has a workspace-scoped session to set
+-- app.current_workspace from — collab authenticates a WS connection by a
+-- signed per-page token (packages/core/collab-token.ts) and a guest has no
+-- session at all (see plan §Auth, "Guests are not sessions") — so there is
+-- no GUC these policies could check in either case. The policies here
+-- exist for defense in depth against the kompast_app role specifically:
+-- if app code ever queries ydoc_state or share_link directly instead of
+-- going through collab/share-link.ts, it fails closed instead of leaking
+-- cross-tenant rows.
 
 drop policy if exists tenant_isolation_project on project;
 create policy tenant_isolation_project on project
@@ -82,6 +112,68 @@ create policy tenant_isolation_issue_history on issue_history
   using (
     issue_id in (
       select id from issue
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+drop policy if exists tenant_isolation_page on page;
+create policy tenant_isolation_page on page
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_link on link;
+create policy tenant_isolation_link on link
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_page_version on page_version;
+create policy tenant_isolation_page_version on page_version
+  using (
+    page_id in (
+      select id from page
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+drop policy if exists tenant_isolation_page_permission on page_permission;
+create policy tenant_isolation_page_permission on page_permission
+  using (
+    page_id in (
+      select id from page
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+drop policy if exists tenant_isolation_page_comment on page_comment;
+create policy tenant_isolation_page_comment on page_comment
+  using (
+    page_id in (
+      select id from page
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+drop policy if exists tenant_isolation_page_favorite on page_favorite;
+create policy tenant_isolation_page_favorite on page_favorite
+  using (
+    page_id in (
+      select id from page
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+drop policy if exists tenant_isolation_share_link on share_link;
+create policy tenant_isolation_share_link on share_link
+  using (
+    page_id in (
+      select id from page
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+drop policy if exists tenant_isolation_ydoc_state on ydoc_state;
+create policy tenant_isolation_ydoc_state on ydoc_state
+  using (
+    page_id in (
+      select id from page
       where organization_id = current_setting('app.current_workspace', true)
     )
   );

@@ -10,12 +10,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kompast/env": "workspace:*"
+    "@hocuspocus/server": "4.6.0",
+    "@kompast/env": "workspace:*",
+    "yjs": "13.6.32"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "tsup": "^8.3.0",
     "tsx": "^4.23.13",
-    "typescript": "^5.9.3",
-    "@types/node": "^22.10.0"
+    "typescript": "^5.9.3"
   }
 }
