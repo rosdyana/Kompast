@@ -15,19 +15,29 @@ describe("updateIssue + createIssue attribution", () => {
 
   const orgId = "test-updateissue-org";
   const userId = "test-updateissue-user";
+  const otherUserId = "test-updateissue-other-user";
 
   async function cleanup() {
+    await admin.delete(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    await admin.delete(schema.emailOutbox).where(eq(schema.emailOutbox.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
+    await admin.delete(schema.user).where(eq(schema.user.id, otherUserId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
   }
 
   beforeEach(async () => {
     await cleanup();
     await admin.insert(schema.organization).values({ id: orgId, name: "Update Issue Org", slug: orgId });
-    await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
-    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.user).values([
+      { id: userId, name: "User", email: `${userId}@example.com` },
+      { id: otherUserId, name: "Other User", email: `${otherUserId}@example.com` },
+    ]);
+    await admin.insert(schema.member).values([
+      { id: id("mem"), organizationId: orgId, userId, role: "member" },
+      { id: id("mem"), organizationId: orgId, userId: otherUserId, role: "member" },
+    ]);
   });
 
   afterAll(async () => {
@@ -114,5 +124,28 @@ describe("updateIssue + createIssue attribution", () => {
 
     const [updated] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(updated?.labels).toEqual(["c"]);
+  });
+
+  it("assigning an issue to someone else notifies them, but assigning to yourself does not", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx);
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { assigneeId: otherUserId, actorId: userId }));
+    let notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({ userId: otherUserId, eventType: "issue.assigned" });
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { assigneeId: userId, actorId: userId }));
+    notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications).toHaveLength(1); // unchanged — no self-notification for the second assignment
+  });
+
+  it("createIssue with an initial assignee (not the reporter) notifies them", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx, { assigneeId: otherUserId });
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({ userId: otherUserId, eventType: "issue.assigned", entityId: issueId });
   });
 });

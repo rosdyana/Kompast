@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { db, schema, eq } from "@kompast/db";
+import { schema, eq } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -17,27 +17,37 @@ describe("comments + watchers", () => {
 
   const orgId = "test-cw-org";
   const userId = "test-cw-user";
+  const assigneeId = "test-cw-assignee";
+
+  async function cleanup() {
+    await admin.delete(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    await admin.delete(schema.emailOutbox).where(eq(schema.emailOutbox.organizationId, orgId));
+    await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
+    await admin.delete(schema.user).where(eq(schema.user.id, userId));
+    await admin.delete(schema.user).where(eq(schema.user.id, assigneeId));
+    await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
+  }
 
   beforeEach(async () => {
-    await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
-    await admin.delete(schema.member).where(eq(schema.member.userId, userId));
-    await admin.delete(schema.user).where(eq(schema.user.id, userId));
-    await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
-
+    await cleanup();
     await admin.insert(schema.organization).values({ id: orgId, name: "Test CW Org", slug: orgId });
-    await admin.insert(schema.user).values({ id: userId, name: "Test User", email: `${userId}@example.com` });
-    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.user).values([
+      { id: userId, name: "Test User", email: `${userId}@example.com` },
+      { id: assigneeId, name: "Assignee", email: `${assigneeId}@example.com` },
+    ]);
+    await admin.insert(schema.member).values([
+      { id: id("mem"), organizationId: orgId, userId, role: "member" },
+      { id: id("mem"), organizationId: orgId, userId: assigneeId, role: "member" },
+    ]);
   });
 
   afterAll(async () => {
-    await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
-    await admin.delete(schema.member).where(eq(schema.member.userId, userId));
-    await admin.delete(schema.user).where(eq(schema.user.id, userId));
-    await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
+    await cleanup();
     await adminClient.end();
   });
 
-  async function seedIssue() {
+  async function seedIssue(overrides: Partial<Parameters<typeof createIssue>[1]> = {}) {
     return withAuthorizedTenant({ userId, organizationId: orgId }, async (tx) => {
       const { projectId, issueTypes, statuses } = await createProject(tx, {
         organizationId: orgId,
@@ -52,6 +62,7 @@ describe("comments + watchers", () => {
         statusId: statuses[0]!.id,
         title: "Test issue",
         reporterId: userId,
+        ...overrides,
       });
       return issueId;
     });
@@ -90,5 +101,28 @@ describe("comments + watchers", () => {
     );
     watchers = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listWatchers(tx, issueId));
     expect(watchers).toHaveLength(0);
+  });
+
+  it("addComment notifies the issue's assignee, but not the commenter about their own comment", async () => {
+    const issueId = await seedIssue({ assigneeId }); // create-time assignment already queues one notification
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => addComment(tx, { issueId, authorId: userId, bodyJson: { text: "hello" } }));
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    const commentNotifications = notifications.filter((n) => n.eventType === "issue.commented");
+    expect(commentNotifications).toHaveLength(1);
+    expect(commentNotifications[0]).toMatchObject({ userId: assigneeId, entityId: issueId });
+
+    // The reporter (userId) is also the commenter here, so they must not be notified about their own comment.
+    expect(notifications.some((n) => n.userId === userId && n.eventType === "issue.commented")).toBe(false);
+  });
+
+  it("addComment does not notify anyone when the commenter is the only participant", async () => {
+    const issueId = await seedIssue(); // reporter === userId, no assignee
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => addComment(tx, { issueId, authorId: userId, bodyJson: { text: "solo" } }));
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications.filter((n) => n.eventType === "issue.commented")).toHaveLength(0);
   });
 });

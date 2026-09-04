@@ -166,6 +166,23 @@ export async function getMailSettings(db: AnyDb): Promise<MailSettingsView> {
   };
 }
 
+/**
+ * Decrypted mail credentials for actually sending mail (packages/mail's
+ * driver factory) — distinct from getMailSettings()'s masked view, which
+ * exists only to render the admin settings UI without ever echoing a
+ * stored secret back to the client. Null if mail isn't configured yet.
+ */
+export async function getMailCredentials(db: AnyDb) {
+  const row = await getRow(db);
+  if (!row?.mailDriver || !row.mailFrom) return null;
+  return {
+    driver: row.mailDriver,
+    from: row.mailFrom,
+    apiKey: row.mailApiKeyEncrypted ? decryptSecret(row.mailApiKeyEncrypted) : null,
+    smtpUrl: row.mailSmtpUrlEncrypted ? decryptSecret(row.mailSmtpUrlEncrypted) : null,
+  };
+}
+
 export interface UpdateMailSettingsInput {
   driver: "brevo" | "resend" | "smtp";
   from: string;

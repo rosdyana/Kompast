@@ -1,7 +1,9 @@
 import { and, eq, max, sql, schema, type Json } from "@kompast/db";
+import { loadEnv } from "@kompast/env";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { rankBetween } from "./rank";
+import { notify } from "./notification";
 
 export interface CreateIssueInput {
   organizationId: string;
@@ -77,6 +79,10 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
     toValue: input.title,
   });
 
+  if (input.assigneeId && input.assigneeId !== input.reporterId) {
+    await notifyAssignment(tx, issueId, { organizationId: input.organizationId, projectId: input.projectId, keySeq: nextSeq, title: input.title }, input.assigneeId);
+  }
+
   return { issueId, keySeq: nextSeq };
 }
 
@@ -133,6 +139,35 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
     }),
   );
   if (historyRows.length > 0) await tx.insert(schema.issueHistory).values(historyRows);
+
+  const assigneeChanged = patch.assigneeId !== undefined && patch.assigneeId !== current.assigneeId;
+  if (assigneeChanged && patch.assigneeId && patch.assigneeId !== patch.actorId) {
+    await notifyAssignment(tx, issueId, { ...current, title: patch.title ?? current.title }, patch.assigneeId);
+  }
+}
+
+/** Never notifies the person who did the assigning about their own action (checked by the caller). */
+async function notifyAssignment(
+  tx: Tx,
+  issueId: string,
+  issue: { organizationId: string; projectId: string; keySeq: number; title: string },
+  assigneeId: string,
+) {
+  const [project] = await tx.select({ key: schema.project.key }).from(schema.project).where(eq(schema.project.id, issue.projectId));
+  const [user] = await tx.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, assigneeId));
+  if (!project || !user) return;
+
+  const issueKey = `${project.key}-${issue.keySeq}`;
+  await notify(tx, {
+    organizationId: issue.organizationId,
+    userId: assigneeId,
+    eventType: "issue.assigned",
+    entityType: "issue",
+    entityId: issueId,
+    title: `Anda ditugaskan ke ${issueKey}`,
+    body: issue.title,
+    email: { to: user.email, actionUrl: `${loadEnv().APP_URL}/issues/${project.key}/${issue.keySeq}`, actionLabel: "Lihat tiket" },
+  });
 }
 
 export interface MoveIssueInput {

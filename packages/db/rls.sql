@@ -52,6 +52,12 @@ alter table sprint_issue enable row level security;
 alter table sprint_issue force row level security;
 alter table sprint_snapshot enable row level security;
 alter table sprint_snapshot force row level security;
+alter table notification enable row level security;
+alter table notification force row level security;
+alter table notification_pref enable row level security;
+alter table notification_pref force row level security;
+alter table email_outbox enable row level security;
+alter table email_outbox force row level security;
 
 -- apps/collab (Yjs persistence) and the public /s/:token guest route both
 -- connect via the admin connection instead of kompast_app, and so bypass
@@ -66,6 +72,14 @@ alter table sprint_snapshot force row level security;
 -- if app code ever queries ydoc_state or share_link directly instead of
 -- going through collab/share-link.ts, it fails closed instead of leaking
 -- cross-tenant rows.
+--
+-- apps/worker is a third such exception, for email_outbox specifically:
+-- claiming pending rows to send (packages/core/src/email.ts's
+-- claimPendingEmails) is a system-wide scan across every workspace's
+-- queued mail in one process, not one workspace's request — there is no
+-- single app.current_workspace to set for that query, so it also connects
+-- via the admin connection. The policy above still guards email_outbox
+-- against the kompast_app role for the same defense-in-depth reason.
 
 drop policy if exists tenant_isolation_project on project;
 create policy tenant_isolation_project on project
@@ -222,3 +236,15 @@ create policy tenant_isolation_sprint_snapshot on sprint_snapshot
       where organization_id = current_setting('app.current_workspace', true)
     )
   );
+
+drop policy if exists tenant_isolation_notification on notification;
+create policy tenant_isolation_notification on notification
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_notification_pref on notification_pref;
+create policy tenant_isolation_notification_pref on notification_pref
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_email_outbox on email_outbox;
+create policy tenant_isolation_email_outbox on email_outbox
+  using (organization_id = current_setting('app.current_workspace', true));
