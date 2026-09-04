@@ -5,6 +5,7 @@ import { useState } from "react";
 import { getWorkspaceShellFn } from "@/lib/server-fns/workspace";
 import { listPageTreeFn, createPageFn } from "@/lib/server-fns/pages";
 import { GlobalSearch } from "@/components/GlobalSearch";
+import { NotificationBell } from "@/components/NotificationBell";
 import { DocsTree } from "@/components/docs/DocsTree";
 import { authClient } from "@/lib/auth-client";
 
@@ -184,6 +185,7 @@ function Topbar({ workspaceName }: { workspaceName: string }) {
       </div>
       <div className="ml-auto flex items-center gap-2">
         <GlobalSearch />
+        <NotificationBell />
         <button className="grid h-[29px] w-[29px] place-items-center rounded-[7px] border border-border bg-surface text-xs hover:bg-surface-3">
           ☀
         </button>
