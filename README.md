@@ -2,18 +2,19 @@
 
 Self-hosted Notion × JIRA for an internal BU: collaborative docs, kanban boards with configurable sprints, automation, and an AI assist layer — one Postgres-backed workspace, not two disconnected tools.
 
-Full architecture, data model, and the phased build plan live in the design doc this repo was scaffolded from (`~/.claude/plans/use-the-claude-design-mcp-snuggly-shore.md` on the machine that generated it). This README covers only what's needed to run what exists today (P0: foundation + auth + a kanban board prototype on mock data) and how to deploy it.
+Full architecture, data model, and the phased build plan live in the design doc this repo was scaffolded from (`~/.claude/plans/use-the-claude-design-mcp-snuggly-shore.md` on the machine that generated it). This README covers only what's needed to run what exists today — **P0 (foundation/auth), P1 (kanban core), and P2 (docs core) are complete**; P3 onward (REST API/MCP, sprints, notifications, automation, AI, importers) are not built yet — and how to deploy it.
 
 ## Stack
 
-TanStack Start (React, SSR, Nitro `node-server`) · Better Auth (Microsoft Entra ID via `genericOAuth`/`microsoftEntraId`, `organization` = workspace, `apiKey` for PATs) · Drizzle + Postgres 17 · Redis · Google Cloud Storage · Tailwind v4 · pnpm workspaces + Turborepo.
+TanStack Start (React, SSR, Nitro `node-server`) · Better Auth (Microsoft Entra ID via `genericOAuth`/`microsoftEntraId`, `organization` = workspace, `apiKey` for PATs) · Drizzle + Postgres 17 · Redis · Google Cloud Storage · Tailwind v4 · BlockNote + Hocuspocus (Yjs) for real-time docs · pnpm workspaces + Turborepo.
 
 ## Repo layout
 
 ```
-apps/web      TanStack Start — UI, REST API (P3+), MCP server (P3+)
-apps/collab   Hocuspocus (Yjs) — placeholder until P2
-apps/worker   BullMQ background jobs — placeholder until P1/P5/P6
+apps/web      TanStack Start — UI, docs editor, guest share routes, REST API (P3+), MCP server (P3+)
+apps/collab   Real Hocuspocus (Yjs) server — per-page signed-token auth, Postgres persistence, periodic version snapshots
+apps/worker   BullMQ background jobs — placeholder; first real jobs land in P5 (email) and P6 (automation)
+packages/core Domain service layer — every mutation lives here once, behind one permission check
 packages/db   Drizzle schema, migrations, RLS policies, tenant isolation
 packages/ui   Design tokens + primitives, generated from the Claude Design mockup
 packages/env  Zod-validated environment — refuses to boot on a missing var
@@ -29,8 +30,10 @@ pnpm install
 cp infra/.env.example apps/web/.env   # fill in every value, see below — infra-level only
 pnpm --filter @kompast/db generate    # writes packages/db/drizzle/*.sql
 pnpm --filter @kompast/db migrate     # applies it to DATABASE_URL
-pnpm dev                              # turbo runs apps/web on :3000
+pnpm dev                              # turbo runs apps/web (:3000) and apps/collab (COLLAB_INTERNAL_PORT) together
 ```
+
+Docs' real-time editing needs `apps/collab` actually running — `pnpm dev` starts both, but if you're running `apps/web` on its own (e.g. `pnpm --filter @kompast/web dev`), the editor will hang trying to sync until you also start `apps/collab`.
 
 `packages/env` validates `process.env` at import time and throws a field-by-field error if anything is missing — including in dev. There is no reduced "dev mode" schema. Note what's genuinely NOT in `.env` anymore: Microsoft Entra ID, AI provider, and mail vendor config all live in the `system_settings` DB table, set through the app itself (`/setup` on first boot, `/settings` after that) — see below.
 
@@ -58,6 +61,21 @@ Once at least one workspace exists, its owner/admin can sign in and open `/setti
 - **Mail vendor** — Brevo, Resend, or raw SMTP. Same story: `packages/mail` doesn't exist yet (P5), this just gives it somewhere to read config from once it does.
 
 Both are stored in `system_settings` with secrets encrypted via `packages/core/src/crypto.ts` (AES-256-GCM, keyed from `BETTER_AUTH_SECRET`) — never in plaintext, and the settings API never echoes a stored key back to the client, only a `hasApiKey: boolean`. Leaving the API-key field blank when saving keeps whatever's already stored; it does not clear it.
+
+## Docs (P2)
+
+Real-time collaborative pages, workspace-level or filed under a project (the "Docs" tab on any project page). `/docs` in the sidebar for the workspace-level tree.
+
+- **Editor** — BlockNote (`apps/web/src/components/docs/Editor.tsx`), synced live via `apps/collab`'s Hocuspocus server. `apps/collab` authenticates each WebSocket connection with a short-lived HMAC-signed token minted per page-load (`packages/core/src/collab-token.ts`) after a normal page-access check — it has no workspace session of its own, so this is the only way it can verify "this user may edit this page" at all.
+- **Permissions** — a page with no explicit grants is open to any org member (same default P1 already gives boards/projects). Adding a `page_permission` row for specific users/teams makes it restricted to just those subjects.
+- **Version history** — `apps/collab` snapshots into `page_version` roughly every 5 minutes while a page is being edited (in-memory interval, per-process — revisit if the collab tier is ever more than one instance). Restoring a version decodes it server-side to BlockNote blocks and applies them through the *live* editor (`editor.replaceBlocks`), never by overwriting stored Yjs state directly — the latter would race with anyone else currently connected.
+- **kompastView embed** — `/tabel` in the editor inserts a live, read-only rendering of a board's table view, permission-checked against the *current reader's own session* on every load, never trusted from the block's stored props.
+- **@mentions** — `@` in the editor links to another page; the mention's title/icon are captured at insert time (won't retroactively update if the target is renamed) and feed the backlinks panel via the same `link` table used for explicit doc↔issue links.
+- **Templates** — mark any page as a template from its own toolbar; `/docs` lists them with a "Gunakan" action that duplicates the template's content into a new page.
+- **Trash** — archiving cascades to a page's descendants; `/docs/trash` lists everything archived, with restore or permanent (irreversible) delete.
+- **Guest share links** — `/s/:token`, no session, no workspace context at all. The token is the entire credential, verified in `packages/core/src/share-link.ts` against the admin DB connection (the one deliberate exception to every other query going through `withAuthorizedTenant`). Content is rendered server-side from the stored Yjs bytes via `@blocknote/server-util`, and a `kompastView` embed is always replaced with a placeholder before that export — BlockNote attaches every block's props as raw `data-*` HTML attributes regardless of its own render function, so the only reliable way to keep an embed's board/view IDs out of guest-facing HTML is to never hand that block to the exporter at all.
+
+**Gotcha, hit and fixed by hand:** `@blocknote/react`/`@blocknote/core`/`@blocknote/shadcn`/`@blocknote/server-util`/`@hocuspocus/*` all peer-depend on `yjs`/`y-protocols`/`y-prosemirror`, and pnpm resolved *three different instances* of `@blocknote/core` across the workspace based on differing `y-protocols` versions pulled in transitively. TypeScript correctly flagged this ("separate declarations of a private property"); the root package.json pins `y-protocols` via `pnpm.overrides` to collapse most of it, but a couple of call sites in `apps/web/src/components/docs/Editor.tsx` still need a narrow, commented `as any` where TS can't see through the dual-instance history. Not a runtime bug — verified by the real Yjs encode/decode round-trip tests in `apps/web/src/lib/__tests__/blocknote-schema.test.ts` and `apps/collab/src/__tests__/server.test.ts`.
 
 ## Attachments / storage
 
