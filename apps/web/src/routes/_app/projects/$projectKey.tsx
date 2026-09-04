@@ -26,6 +26,7 @@ import {
   addIssueToSprintFn,
   removeIssueFromSprintFn,
 } from "@/lib/server-fns/sprints";
+import { getRoadmapFn } from "@/lib/server-fns/roadmap";
 import { TableView } from "@/components/board/TableView";
 import { DocsTree } from "@/components/docs/DocsTree";
 
@@ -38,7 +39,7 @@ const VIEW_TABS = [
   { key: "board", label: "Board", icon: "◫" },
   { key: "sprint", label: "Sprint", icon: "⚑" },
   { key: "table", label: "Tabel", icon: "▤" },
-  { key: "timeline", label: "Timeline", icon: "▬" },
+  { key: "roadmap", label: "Roadmap", icon: "▬" },
   { key: "docs", label: "Docs", icon: "▤" },
   { key: "automation", label: "Otomasi", icon: "⚡" },
 ];
@@ -121,8 +122,9 @@ function ProjectPage() {
       {view === "board" && <BoardView data={data} />}
       {view === "sprint" && <SprintTab projectId={data.project.id} boardId={data.board.id} />}
       {view === "table" && <TableView data={data} />}
+      {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
-      {view !== "board" && view !== "sprint" && view !== "table" && view !== "docs" && (
+      {view !== "board" && view !== "sprint" && view !== "table" && view !== "roadmap" && view !== "docs" && (
         <div className="p-10 text-center text-sm text-text-3">
           Mode <strong className="text-text-2">{VIEW_TABS.find((t) => t.key === view)?.label}</strong>{" "}
           belum dibangun — lihat fase di plan (Timeline: P3+, Otomasi: P6).
@@ -390,6 +392,56 @@ function SprintTab({ projectId, boardId }: { projectId: string; boardId: string 
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+type RoadmapEpic = Awaited<ReturnType<typeof getRoadmapFn>>[number];
+
+function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: string }) {
+  const [epics, setEpics] = useState<RoadmapEpic[] | null>(null);
+
+  useEffect(() => {
+    getRoadmapFn({ data: projectId }).then(setEpics);
+  }, [projectId]);
+
+  if (epics === null) return <p className="p-6 text-sm text-text-3">Memuat…</p>;
+
+  if (epics.length === 0) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-text-3">
+          Belum ada epic. Buat tiket bertipe "Epic" lalu tautkan tiket lain ke epic tersebut untuk melihat roadmap.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5 p-6">
+      {epics.map((epic) => {
+        const pct = epic.childCount === 0 ? 0 : Math.round((epic.doneCount / epic.childCount) * 100);
+        return (
+          <div key={epic.id} className="rounded-xl border border-border bg-surface p-3.5">
+            <div className="mb-1.5 flex items-center gap-2">
+              <span className="font-mono text-[10.5px] text-text-3">
+                {projectKey}-{epic.keySeq}
+              </span>
+              <span className="text-[13px] font-semibold tracking-tight">{epic.title}</span>
+              <span className="ml-auto text-[11.5px] text-text-3">
+                {epic.startDate ? new Date(epic.startDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" }) : "?"} –{" "}
+                {epic.dueDate ? new Date(epic.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" }) : "?"}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-surface-3">
+              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--violet)" }} />
+            </div>
+            <p className="mt-1 text-[11px] text-text-3">
+              {epic.doneCount}/{epic.childCount} tiket selesai ({pct}%)
+            </p>
+          </div>
+        );
+      })}
     </div>
   );
 }
