@@ -13,6 +13,11 @@ export interface CreateIssueInput {
   assigneeId?: string;
   priority?: "lowest" | "low" | "medium" | "high" | "highest";
   descriptionJson?: Json;
+  labels?: string[];
+  storyPoints?: number;
+  dueDate?: Date;
+  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  originClient?: string;
 }
 
 /**
@@ -54,18 +59,76 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
     reporterId: input.reporterId,
     assigneeId: input.assigneeId,
     priority: input.priority ?? "medium",
+    labels: input.labels ?? [],
+    storyPoints: input.storyPoints,
+    dueDate: input.dueDate,
     rank: rankBetween(lastCard?.rank ?? null, null),
+    origin: input.origin ?? "user",
+    originClient: input.originClient,
   });
 
   await tx.insert(schema.issueHistory).values({
     id: id("hist"),
     issueId,
     actorId: input.reporterId,
+    origin: input.origin ?? "user",
+    originClient: input.originClient,
     field: "created",
     toValue: input.title,
   });
 
   return { issueId, keySeq: nextSeq };
+}
+
+export interface UpdateIssueInput {
+  title?: string;
+  priority?: "lowest" | "low" | "medium" | "high" | "highest";
+  assigneeId?: string | null;
+  storyPoints?: number | null;
+  dueDate?: Date | null;
+  labels?: string[];
+  descriptionJson?: Json;
+  actorId: string;
+  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  originClient?: string;
+}
+
+const UPDATE_ISSUE_HISTORY_FIELDS = ["title", "priority", "assigneeId", "storyPoints", "dueDate"] as const;
+
+/**
+ * Partial field update — every changed field (except labels/description,
+ * which are set-valued/large and not meaningfully diffable into a single
+ * from/to string) gets its own issue_history row, same as moveIssue's
+ * status changes, so activity feed and future reports see it.
+ */
+export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInput) {
+  const [current] = await tx.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+  if (!current) throw new Error(`Issue ${issueId} not found`);
+
+  const updateValues: Partial<typeof schema.issue.$inferInsert> = { updatedAt: new Date() };
+  if (patch.title !== undefined) updateValues.title = patch.title;
+  if (patch.priority !== undefined) updateValues.priority = patch.priority;
+  if (patch.assigneeId !== undefined) updateValues.assigneeId = patch.assigneeId;
+  if (patch.storyPoints !== undefined) updateValues.storyPoints = patch.storyPoints;
+  if (patch.dueDate !== undefined) updateValues.dueDate = patch.dueDate;
+  if (patch.labels !== undefined) updateValues.labels = patch.labels;
+  if (patch.descriptionJson !== undefined) updateValues.descriptionJson = patch.descriptionJson;
+
+  await tx.update(schema.issue).set(updateValues).where(eq(schema.issue.id, issueId));
+
+  const historyRows = UPDATE_ISSUE_HISTORY_FIELDS.filter((field) => patch[field] !== undefined && patch[field] !== current[field]).map(
+    (field) => ({
+      id: id("hist"),
+      issueId,
+      actorId: patch.actorId,
+      origin: patch.origin ?? "user",
+      originClient: patch.originClient,
+      field,
+      fromValue: current[field] == null ? null : String(current[field]),
+      toValue: patch[field] == null ? null : String(patch[field]),
+    }),
+  );
+  if (historyRows.length > 0) await tx.insert(schema.issueHistory).values(historyRows);
 }
 
 export interface MoveIssueInput {
