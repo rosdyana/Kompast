@@ -1,5 +1,5 @@
-import { createFileRoute, useRouter, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, useRouter, useNavigate, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import {
   DndContext,
   useDraggable,
@@ -15,7 +15,9 @@ import { Button } from "@kompast/ui/Button";
 import { Tabs } from "@kompast/ui/Tabs";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
+import { listProjectPagesFn, createPageFn } from "@/lib/server-fns/pages";
 import { TableView } from "@/components/board/TableView";
+import { DocsTree } from "@/components/docs/DocsTree";
 
 export const Route = createFileRoute("/_app/projects/$projectKey")({
   loader: ({ params }) => getProjectBoardFn({ data: params.projectKey }),
@@ -107,10 +109,11 @@ function ProjectPage() {
 
       {view === "board" && <BoardView data={data} />}
       {view === "table" && <TableView data={data} />}
-      {view !== "board" && view !== "table" && (
+      {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
+      {view !== "board" && view !== "table" && view !== "docs" && (
         <div className="p-10 text-center text-sm text-text-3">
           Mode <strong className="text-text-2">{VIEW_TABS.find((t) => t.key === view)?.label}</strong>{" "}
-          belum dibangun — lihat fase di plan (Timeline: P3+, Docs: P2, Otomasi: P6).
+          belum dibangun — lihat fase di plan (Timeline: P3+, Otomasi: P6).
         </div>
       )}
     </div>
@@ -134,6 +137,48 @@ function initialsOf(name: string) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+}
+
+function ProjectDocsTab({ projectId }: { projectId: string }) {
+  const navigate = useNavigate();
+  const [pages, setPages] = useState<Awaited<ReturnType<typeof listProjectPagesFn>> | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    listProjectPagesFn({ data: projectId }).then(setPages);
+  }, [projectId]);
+
+  async function newPage() {
+    setCreating(true);
+    try {
+      const page = await createPageFn({ data: { projectId } });
+      await navigate({ to: "/docs/$pageId", params: { pageId: page.id } });
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div className="px-6 py-5">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-[12.5px] text-text-3">Halaman docs yang ditautkan ke proyek ini.</p>
+        <Button variant="primary" className="text-[12.5px]" onClick={newPage} disabled={creating}>
+          + Halaman baru
+        </Button>
+      </div>
+      {pages === null ? (
+        <p className="text-sm text-text-3">Memuat…</p>
+      ) : pages.length === 0 ? (
+        <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-text-3">
+          Belum ada halaman docs untuk proyek ini.
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border bg-surface p-2">
+          <DocsTree pages={pages} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function BoardView({ data }: { data: BoardData }) {

@@ -51,9 +51,21 @@ export const listPageTreeFn = createServerFn({ method: "GET" }).handler(async ()
   });
 });
 
+/** The project's own "Docs" tab — same tree, scoped to pages filed under this project instead of workspace-level ones. */
+export const listProjectPagesFn = createServerFn({ method: "GET" })
+  .validator((projectId: string) => projectId)
+  .handler(async ({ data: projectId }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      const pages = await listPageTree(tx, ctx.organizationId, projectId);
+      return filterAccessiblePages(tx, pages, ctx);
+    });
+  });
+
 const createPageSchema = z.object({
   title: z.string().optional(),
   parentPageId: z.string().nullable().optional(),
+  projectId: z.string().nullable().optional(),
   type: z.enum(["doc", "template"]).optional(),
 });
 
@@ -66,6 +78,7 @@ export const createPageFn = createServerFn({ method: "POST" })
         organizationId: ctx.organizationId,
         title: data.title,
         parentPageId: data.parentPageId,
+        projectId: data.projectId,
         type: data.type,
         actorUserId: ctx.userId,
       }),
