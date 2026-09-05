@@ -257,4 +257,17 @@ describe("updateIssue + createIssue attribution", () => {
     const events = await admin.select().from(schema.automationEvent).where(eq(schema.automationEvent.organizationId, orgId));
     expect(events).toHaveLength(0);
   });
+
+  it("updateIssue sets descriptionJson, and a later update with null clears it back out", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx);
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { descriptionJson: { text: "A draft description" }, actorId: userId }));
+    let [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issue?.descriptionJson).toEqual({ text: "A draft description" });
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { descriptionJson: null, actorId: userId }));
+    [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issue?.descriptionJson).toBeNull();
+  });
 });

@@ -3,8 +3,9 @@ import { useRef, useState } from "react";
 import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
-import { getIssueDetailFn, addCommentFn, toggleWatchFn } from "@/lib/server-fns/issue-detail";
+import { getIssueDetailFn, addCommentFn, toggleWatchFn, updateIssueDescriptionFn } from "@/lib/server-fns/issue-detail";
 import { requestAttachmentUploadFn, deleteAttachmentFn } from "@/lib/server-fns/attachments";
+import { streamAiCompletion } from "@/lib/ai-stream-client";
 
 export const Route = createFileRoute("/_app/issues/$projectKey/$issueKeySeq")({
   loader: ({ params }) =>
@@ -29,6 +30,12 @@ function IssueDetailPage() {
   const [watching, setWatching] = useState(data.isWatching);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const initialDescription = (data.issue.descriptionJson as { text?: string } | null)?.text ?? "";
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState(initialDescription);
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [aiDraftBusy, setAiDraftBusy] = useState(false);
 
   const usersById = new Map(data.users.map((u) => [u.id, u]));
 
@@ -73,6 +80,31 @@ function IssueDetailPage() {
   async function removeAttachment(attachmentId: string) {
     await deleteAttachmentFn({ data: { attachmentId, issueId: data.issue.id } });
     await router.invalidate();
+  }
+
+  async function saveDescription() {
+    setSavingDescription(true);
+    try {
+      await updateIssueDescriptionFn({ data: { issueId: data.issue.id, description: descriptionDraft } });
+      setEditingDescription(false);
+      await router.invalidate();
+    } finally {
+      setSavingDescription(false);
+    }
+  }
+
+  async function generateAiDescriptionDraft() {
+    setAiDraftBusy(true);
+    setDescriptionDraft("");
+    try {
+      await streamAiCompletion({ feature: "issue-description", title: data.issue.title }, (delta) => {
+        setDescriptionDraft((prev) => prev + delta);
+      });
+    } catch (err) {
+      setDescriptionDraft(err instanceof Error ? `(AI gagal: ${err.message})` : "(AI gagal)");
+    } finally {
+      setAiDraftBusy(false);
+    }
   }
 
   return (
@@ -126,6 +158,50 @@ function IssueDetailPage() {
           </Button>
         </div>
       </div>
+
+      <section className="mb-8">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-[13px] font-semibold">Deskripsi</h2>
+          {!editingDescription && (
+            <Button
+              variant="outline"
+              className="text-[12px]"
+              onClick={() => {
+                setDescriptionDraft(initialDescription);
+                setEditingDescription(true);
+              }}
+            >
+              {initialDescription ? "Edit" : "+ Tambah deskripsi"}
+            </Button>
+          )}
+        </div>
+        {editingDescription ? (
+          <div className="flex flex-col gap-2">
+            <textarea
+              value={descriptionDraft}
+              onChange={(e) => setDescriptionDraft(e.target.value)}
+              rows={6}
+              placeholder="Tulis deskripsi (Markdown didukung)…"
+              className="w-full rounded-lg border border-border bg-surface p-2.5 text-[13px] outline-none focus:border-border-2"
+            />
+            <div className="flex items-center gap-2">
+              <Button variant="primary" className="text-[12px]" onClick={saveDescription} disabled={savingDescription}>
+                {savingDescription ? "Menyimpan…" : "Simpan"}
+              </Button>
+              <Button variant="outline" className="text-[12px]" onClick={() => setEditingDescription(false)} disabled={savingDescription}>
+                Batal
+              </Button>
+              <Button variant="outline" className="text-[12px]" onClick={generateAiDescriptionDraft} disabled={aiDraftBusy}>
+                {aiDraftBusy ? "AI menulis…" : "✨ Buat draft dengan AI"}
+              </Button>
+            </div>
+          </div>
+        ) : initialDescription ? (
+          <p className="whitespace-pre-wrap text-[13px] leading-snug text-text-2">{initialDescription}</p>
+        ) : (
+          <p className="text-sm text-text-3">Belum ada deskripsi.</p>
+        )}
+      </section>
 
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">

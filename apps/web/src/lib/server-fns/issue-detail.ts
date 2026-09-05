@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
 import { and, asc, desc, eq, inArray, schema } from "@kompast/db";
-import { addComment, listComments, listAttachments, setWatching, withAuthorizedTenant } from "@kompast/core";
+import { addComment, listComments, listAttachments, setWatching, updateIssue, withAuthorizedTenant } from "@kompast/core";
 import { requireAuthContext } from "../session";
 
 export const getIssueDetailFn = createServerFn({ method: "GET" })
@@ -68,6 +68,25 @@ export const addCommentFn = createServerFn({ method: "POST" })
     return withAuthorizedTenant(ctx, (tx) =>
       addComment(tx, { issueId: data.issueId, authorId: ctx.userId, bodyJson: { text: data.text } }),
     );
+  });
+
+const updateDescriptionSchema = z.object({ issueId: z.string(), description: z.string() });
+
+/**
+ * The issue detail page had no description display/edit UI at all before
+ * this (a pre-existing P1/P2 gap — description was only ever settable via
+ * REST/MCP create) — this is the minimal write path for it, using the
+ * same {text: string} descriptionJson shape REST/MCP already use (see
+ * apps/web/src/routes/api/v1/issues.tsx), not a full BlockNote document.
+ */
+export const updateIssueDescriptionFn = createServerFn({ method: "POST" })
+  .validator(updateDescriptionSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) =>
+      updateIssue(tx, data.issueId, { descriptionJson: data.description.trim() ? { text: data.description } : null, actorId: ctx.userId }),
+    );
+    return { ok: true } as const;
   });
 
 const toggleWatchSchema = z.object({ issueId: z.string(), watching: z.boolean() });
