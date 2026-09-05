@@ -137,6 +137,23 @@ create policy tenant_isolation_entra_group_map on entra_group_map
 alter table apikey disable row level security;
 drop policy if exists tenant_isolation_apikey on apikey;
 
+-- invitation is the same shape of exception as apikey directly above: the
+-- organization plugin's own invitation endpoints (createInvitation/
+-- acceptInvitation/rejectInvitation/cancelInvitation/listInvitations, all
+-- wired through auth.api.* in apps/web/src/lib/server-fns/{members,
+-- invitations}.ts) write through the drizzle adapter directly, never
+-- through withAuthorizedTenant() — there is no app.current_workspace GUC
+-- set when they run, so a policy checking it would reject the plugin's
+-- OWN inserts (createInvitation's INSERT would violate its own
+-- organization_id = current_setting(...) check). Security here is the
+-- plugin's own session-based logic instead (acceptInvitation checks the
+-- accepting session's email against invitation.email; listInvitations/
+-- cancelInvitation are additionally gated by requireSystemAdmin in
+-- apps/web before this app ever calls them) — same treatment as
+-- system_settings and apikey, never a blanket RLS bypass elsewhere.
+alter table invitation disable row level security;
+drop policy if exists tenant_isolation_invitation on invitation;
+
 -- Tables scoped only indirectly (via issue_id -> issue.organization_id)
 -- join through issue, so they inherit isolation from the issue policy
 -- above as long as every read/write goes through withTenant()'s tx.
