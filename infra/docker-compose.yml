@@ -31,6 +31,7 @@ services:
 
   migrate:
     image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-migrate:${IMAGE_TAG:-latest}
+    platform: linux/amd64 # release.yml only publishes linux/amd64 — pin it so arm64 hosts (e.g. Apple Silicon) don't try to pull a nonexistent native manifest
     restart: "no"
     env_file: .env
     depends_on:
@@ -39,6 +40,7 @@ services:
 
   web:
     image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-web:${IMAGE_TAG:-latest}
+    platform: linux/amd64
     restart: unless-stopped
     env_file: .env
     ports:
@@ -55,6 +57,7 @@ services:
 
   collab:
     image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-collab:${IMAGE_TAG:-latest}
+    platform: linux/amd64
     restart: unless-stopped
     env_file: .env
     ports:
@@ -67,6 +70,7 @@ services:
 
   worker:
     image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-worker:${IMAGE_TAG:-latest}
+    platform: linux/amd64
     restart: unless-stopped
     env_file: .env
     volumes:
@@ -76,6 +80,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

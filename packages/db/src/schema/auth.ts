@@ -45,6 +45,14 @@ export const account = pgTable("account", {
     .references(() => user.id, { onDelete: "cascade" }),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
+  /**
+   * Better Auth 1.7's account identity is scoped by (issuer, accountId), not
+   * just providerId — see
+   * https://better-auth.com/docs/guides/1-7-upgrade-guide#account-identity-is-scoped-by-issuer.
+   * Populated by Better Auth itself on every account creation (OAuth or
+   * credential); never written to directly here.
+   */
+  issuer: text("issuer").notNull(),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   idToken: text("id_token"),

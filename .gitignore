@@ -17,3 +17,7 @@ coverage/
 # Local-disk storage driver's dev/CI attachment files (see packages/storage) —
 # never real data, and STORAGE_DRIVER=gcs is what production actually uses.
 .data/
+
+# GCS service-account key mounted into web/worker by infra/docker-compose.yml —
+# real one is a secret; local-only stub is still not something to track.
+/infra/secrets/
