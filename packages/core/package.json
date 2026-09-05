@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@kompast/ai": "workspace:*",
     "@kompast/db": "workspace:*",
     "@kompast/env": "workspace:*",
     "drizzle-orm": "^0.45.2",

@@ -27,4 +27,5 @@ export * from "./share-link";
 export * from "./settings";
 export * from "./bootstrap";
 export * from "./crypto";
+export * from "./ai";
 export type { Tx } from "./types";

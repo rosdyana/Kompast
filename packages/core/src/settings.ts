@@ -91,6 +91,7 @@ export async function requireSystemAdmin(db: AnyDb, ctx: { userId: string; organ
 export interface AiSettingsView {
   provider: "anthropic" | "azure-openai" | "openai-compatible" | null;
   hasApiKey: boolean;
+  model: string | null;
   azureEndpoint: string | null;
   azureDeployment: string | null;
   openAiCompatibleBaseUrl: string | null;
@@ -102,6 +103,7 @@ export async function getAiSettings(db: AnyDb): Promise<AiSettingsView> {
   return {
     provider: (row?.aiProvider as AiSettingsView["provider"]) ?? null,
     hasApiKey: Boolean(row?.aiApiKeyEncrypted),
+    model: row?.aiModel ?? null,
     azureEndpoint: row?.aiAzureEndpoint ?? null,
     azureDeployment: row?.aiAzureDeployment ?? null,
     openAiCompatibleBaseUrl: row?.aiOpenAiCompatibleBaseUrl ?? null,
@@ -113,6 +115,7 @@ export interface UpdateAiSettingsInput {
   provider: "anthropic" | "azure-openai" | "openai-compatible";
   /** Omit to keep the existing stored key (e.g. editing other fields without re-entering a secret). */
   apiKey?: string;
+  model?: string;
   azureEndpoint?: string;
   azureDeployment?: string;
   openAiCompatibleBaseUrl?: string;
@@ -127,6 +130,7 @@ export async function updateAiSettings(db: AnyDb, input: UpdateAiSettingsInput) 
       id: SYSTEM_SETTINGS_ID,
       aiProvider: input.provider,
       aiApiKeyEncrypted: input.apiKey ? encryptSecret(input.apiKey) : null,
+      aiModel: input.model,
       aiAzureEndpoint: input.azureEndpoint,
       aiAzureDeployment: input.azureDeployment,
       aiOpenAiCompatibleBaseUrl: input.openAiCompatibleBaseUrl,
@@ -139,6 +143,7 @@ export async function updateAiSettings(db: AnyDb, input: UpdateAiSettingsInput) 
       set: {
         aiProvider: input.provider,
         ...(input.apiKey ? { aiApiKeyEncrypted: encryptSecret(input.apiKey) } : {}),
+        aiModel: input.model,
         aiAzureEndpoint: input.azureEndpoint,
         aiAzureDeployment: input.azureDeployment,
         aiOpenAiCompatibleBaseUrl: input.openAiCompatibleBaseUrl,
@@ -147,6 +152,27 @@ export async function updateAiSettings(db: AnyDb, input: UpdateAiSettingsInput) 
         updatedAt: new Date(),
       },
     });
+}
+
+/**
+ * Decrypted AI credentials for actually calling a provider
+ * (packages/ai's createAiClient) — distinct from getAiSettings()'s masked
+ * view, which exists only to render the admin settings UI without ever
+ * echoing a stored secret back to the client. Null if AI isn't configured
+ * or featuresEnabled is false — callers should treat either as "AI is
+ * off", not attempt a call and handle the resulting provider error.
+ */
+export async function getAiCredentials(db: AnyDb) {
+  const row = await getRow(db);
+  if (!row?.aiProvider || !row.aiApiKeyEncrypted || !row.aiFeaturesEnabled) return null;
+  return {
+    provider: row.aiProvider as "anthropic" | "azure-openai" | "openai-compatible",
+    apiKey: decryptSecret(row.aiApiKeyEncrypted),
+    model: row.aiModel ?? null,
+    azureEndpoint: row.aiAzureEndpoint ?? null,
+    azureDeployment: row.aiAzureDeployment ?? null,
+    openAiCompatibleBaseUrl: row.aiOpenAiCompatibleBaseUrl ?? null,
+  };
 }
 
 export interface MailSettingsView {
