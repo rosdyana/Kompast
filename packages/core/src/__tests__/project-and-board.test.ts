@@ -3,7 +3,7 @@ import { db, schema, withTenant, eq } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { createProject } from "../project";
+import { createProject, createWorkflowStatus, createIssueType } from "../project";
 import { createIssue, moveIssue } from "../issue";
 import { getBoard } from "../board";
 import { requireMembership, requireProjectAccess, withAuthorizedTenant, ForbiddenError } from "../permissions";
@@ -212,5 +212,38 @@ describe("project + board service layer", () => {
         .then((rows) => rows.filter((h) => h.field === "status")),
     );
     expect(statusChangesAfter).toHaveLength(1);
+  });
+
+  it("createWorkflowStatus adds a status past the default seed, with a matching board column so it's visible", async () => {
+    const { projectId, boardId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createProject(tx, { organizationId: orgId, key: "extst", name: "Extra Status Test", actorUserId: userId }),
+    );
+
+    const { statusId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createWorkflowStatus(tx, { projectId, boardId, name: "In QA", category: "in_progress" }),
+    );
+
+    const [status] = await admin.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.id, statusId));
+    expect(status).toMatchObject({ name: "In QA", category: "in_progress" });
+    // Must land after the 5 default statuses' orders (0-4), not collide with them.
+    expect(status!.order).toBeGreaterThanOrEqual(5);
+
+    const board = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => getBoard(tx, boardId));
+    const matchingColumn = board.columns.find((c) => c.statusIds.includes(statusId));
+    expect(matchingColumn).toBeTruthy();
+    expect(matchingColumn?.name).toBe("In QA");
+  });
+
+  it("createIssueType adds an issue type past the default seed", async () => {
+    const { projectId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createProject(tx, { organizationId: orgId, key: "extty", name: "Extra Type Test", actorUserId: userId }),
+    );
+
+    const { typeId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createIssueType(tx, { projectId, name: "Improvement", hierarchyLevel: 1 }),
+    );
+
+    const [type] = await admin.select().from(schema.issueType).where(eq(schema.issueType.id, typeId));
+    expect(type).toMatchObject({ name: "Improvement", hierarchyLevel: 1, isSubtask: false });
   });
 });

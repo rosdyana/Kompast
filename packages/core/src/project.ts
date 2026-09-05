@@ -1,4 +1,4 @@
-import { schema } from "@kompast/db";
+import { eq, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 
@@ -99,4 +99,79 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
   }
 
   return { projectId, boardId, issueTypes: issueTypeRows, statuses: statusRows };
+}
+
+export interface CreateWorkflowStatusInput {
+  projectId: string;
+  /** The board a matching column is created on, so the new status is immediately visible on some board rather than only queryable. One column per status, never grouped — grouping multiple statuses into one column is a manual UI action, not something a caller here decides on the status's behalf. */
+  boardId: string;
+  name: string;
+  category: "todo" | "in_progress" | "done";
+  color?: string;
+}
+
+/**
+ * Adds a single status to an already-existing project — createProject's
+ * DEFAULT_STATUSES only covers a project's initial seed. Needed by the
+ * importer (packages/import) when a source status (e.g. a JIRA workflow
+ * step) doesn't match anything the target project already has.
+ */
+export async function createWorkflowStatus(tx: Tx, input: CreateWorkflowStatusInput) {
+  const [row] = await tx
+    .select({ nextOrder: sql<number>`coalesce(max(${schema.workflowStatus.order}), -1) + 1` })
+    .from(schema.workflowStatus)
+    .where(eq(schema.workflowStatus.projectId, input.projectId));
+  const nextOrder = row!.nextOrder;
+
+  const statusId = id("status");
+  await tx.insert(schema.workflowStatus).values({
+    id: statusId,
+    projectId: input.projectId,
+    name: input.name,
+    category: input.category,
+    color: input.color ?? "var(--text3)",
+    order: nextOrder,
+  });
+
+  const [colRow] = await tx
+    .select({ nextColumnOrder: sql<number>`coalesce(max(${schema.boardColumn.order}), -1) + 1` })
+    .from(schema.boardColumn)
+    .where(eq(schema.boardColumn.boardId, input.boardId));
+  const nextColumnOrder = colRow!.nextColumnOrder;
+
+  const columnId = id("col");
+  await tx.insert(schema.boardColumn).values({
+    id: columnId,
+    boardId: input.boardId,
+    name: input.name,
+    color: input.color ?? "var(--text3)",
+    order: nextColumnOrder,
+  });
+  await tx.insert(schema.boardColumnStatus).values({ id: id("colstatus"), boardColumnId: columnId, workflowStatusId: statusId });
+
+  return { statusId };
+}
+
+export interface CreateIssueTypeInput {
+  projectId: string;
+  name: string;
+  icon?: string;
+  color?: string;
+  hierarchyLevel?: number;
+  isSubtask?: boolean;
+}
+
+/** Same idea as createWorkflowStatus, for issue types — needed when a source issue type (e.g. JIRA's "Improvement") doesn't match anything the target project already has. */
+export async function createIssueType(tx: Tx, input: CreateIssueTypeInput) {
+  const typeId = id("itype");
+  await tx.insert(schema.issueType).values({
+    id: typeId,
+    projectId: input.projectId,
+    name: input.name,
+    icon: input.icon ?? "▪",
+    color: input.color ?? "var(--text3)",
+    hierarchyLevel: input.hierarchyLevel ?? 1,
+    isSubtask: input.isSubtask ?? false,
+  });
+  return { typeId };
 }
