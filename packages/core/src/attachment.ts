@@ -42,6 +42,40 @@ export async function requestAttachmentUpload(tx: Tx, input: RequestAttachmentUp
   return { attachmentId, uploadUrl, headers };
 }
 
+export interface AttachIssueFileInput {
+  issueId: string;
+  uploaderId: string;
+  fileName: string;
+  contentType: string;
+  data: Buffer;
+}
+
+/**
+ * Server-side counterpart to requestAttachmentUpload — for a caller that
+ * already has the file bytes in hand (the importer, streaming a JIRA/
+ * Notion attachment straight from the source API) and has no browser to
+ * hand a signed URL to. Writes directly via StorageDriver.putObject
+ * instead of issuing an upload URL.
+ */
+export async function attachIssueFile(tx: Tx, input: AttachIssueFileInput) {
+  const attachmentId = id("attach");
+  const key = `issue-attachments/${input.issueId}/${attachmentId}-${sanitizeFileName(input.fileName)}`;
+  const driver = getStorageDriver();
+  await driver.putObject(key, input.data, { contentType: input.contentType });
+
+  await tx.insert(schema.issueAttachment).values({
+    id: attachmentId,
+    issueId: input.issueId,
+    uploaderId: input.uploaderId,
+    storageKey: key,
+    fileName: input.fileName,
+    contentType: input.contentType,
+    sizeBytes: input.data.byteLength,
+  });
+
+  return { attachmentId };
+}
+
 export async function listAttachments(tx: Tx, issueId: string) {
   const rows = await tx.select().from(schema.issueAttachment).where(eq(schema.issueAttachment.issueId, issueId));
   const driver = getStorageDriver();

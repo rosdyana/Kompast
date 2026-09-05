@@ -8,7 +8,8 @@ import { existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createProject } from "../project";
 import { createIssue } from "../issue";
-import { requestAttachmentUpload, listAttachments, deleteAttachment } from "../attachment";
+import { requestAttachmentUpload, listAttachments, deleteAttachment, attachIssueFile } from "../attachment";
+import { readFileSync } from "node:fs";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -151,5 +152,21 @@ describe("attachments", () => {
         deleteAttachment(tx, { attachmentId, issueId: otherIssueId }),
       ),
     ).rejects.toThrow(/not found/);
+  });
+
+  it("attachIssueFile (the importer's server-side path) writes real bytes directly, with no browser round-trip", async () => {
+    const issueId = await seedIssue();
+    const bytes = Buffer.from("real JIRA attachment bytes, fetched server-side");
+
+    const { attachmentId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      attachIssueFile(tx, { issueId, uploaderId: userId, fileName: "from-jira.png", contentType: "image/png", data: bytes }),
+    );
+
+    const [row] = await admin.select().from(schema.issueAttachment).where(eq(schema.issueAttachment.id, attachmentId));
+    expect(row?.fileName).toBe("from-jira.png");
+    expect(row?.sizeBytes).toBe(bytes.byteLength);
+
+    const path = resolveLocalPath(row!.storageKey);
+    expect(readFileSync(path)).toEqual(bytes);
   });
 });
