@@ -24,6 +24,8 @@ alter table issue_attachment enable row level security;
 alter table issue_attachment force row level security;
 alter table worklog enable row level security;
 alter table worklog force row level security;
+alter table issue_link enable row level security;
+alter table issue_link force row level security;
 alter table issue_history enable row level security;
 alter table issue_history force row level security;
 alter table audit_log enable row level security;
@@ -151,6 +153,15 @@ drop policy if exists tenant_isolation_worklog on worklog;
 create policy tenant_isolation_worklog on worklog
   using (
     issue_id in (
+      select id from issue
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+drop policy if exists tenant_isolation_issue_link on issue_link;
+create policy tenant_isolation_issue_link on issue_link
+  using (
+    from_issue_id in (
       select id from issue
       where organization_id = current_setting('app.current_workspace', true)
     )

@@ -14,6 +14,7 @@ export * from "./comment";
 export * from "./watcher";
 export * from "./attachment";
 export * from "./worklog";
+export * from "./issue-link";
 export * from "./saved-view";
 export * from "./search";
 export * from "./page";
