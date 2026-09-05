@@ -24,6 +24,8 @@ export const systemSettings = pgTable("system_settings", {
 
   aiProvider: text("ai_provider", { enum: ["anthropic", "azure-openai", "openai-compatible"] }),
   aiApiKeyEncrypted: text("ai_api_key_encrypted"),
+  /** Ignored for azure-openai (aiAzureDeployment selects the model). Optional for anthropic (a default is used if unset). Required at call time for openai-compatible — arbitrary endpoints have no safe default model name. */
+  aiModel: text("ai_model"),
   aiAzureEndpoint: text("ai_azure_endpoint"),
   aiAzureDeployment: text("ai_azure_deployment"),
   aiOpenAiCompatibleBaseUrl: text("ai_openai_compatible_base_url"),

@@ -64,6 +64,8 @@ alter table automation_run enable row level security;
 alter table automation_run force row level security;
 alter table automation_event enable row level security;
 alter table automation_event force row level security;
+alter table ai_usage enable row level security;
+alter table ai_usage force row level security;
 
 -- apps/collab (Yjs persistence) and the public /s/:token guest route both
 -- connect via the admin connection instead of kompast_app, and so bypass
@@ -267,4 +269,8 @@ create policy tenant_isolation_automation_run on automation_run
 
 drop policy if exists tenant_isolation_automation_event on automation_event;
 create policy tenant_isolation_automation_event on automation_event
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_ai_usage on ai_usage;
+create policy tenant_isolation_ai_usage on ai_usage
   using (organization_id = current_setting('app.current_workspace', true));

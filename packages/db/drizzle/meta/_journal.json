@@ -64,6 +64,13 @@
       "when": 1788566101959,
       "tag": "0008_dark_albert_cleary",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788568052472,
+      "tag": "0009_fluffy_black_bolt",
+      "breakpoints": true
     }
   ]
 }
