@@ -17,6 +17,7 @@ import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
 import { listProjectPagesFn, createPageFn } from "@/lib/server-fns/pages";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
+import { listImportRunsFn, startJiraImportFn } from "@/lib/server-fns/imports";
 import {
   listSprintsFn,
   listBacklogFn,
@@ -44,6 +45,7 @@ const VIEW_TABS = [
   { key: "roadmap", label: "Roadmap", icon: "▬" },
   { key: "docs", label: "Docs", icon: "▤" },
   { key: "automation", label: "Otomasi", icon: "⚡" },
+  { key: "import", label: "Impor", icon: "⇩" },
 ];
 
 function ProjectPage() {
@@ -127,7 +129,8 @@ function ProjectPage() {
       {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
       {view === "automation" && <AutomationTab projectId={data.project.id} data={data} />}
-      {view !== "board" && view !== "sprint" && view !== "table" && view !== "roadmap" && view !== "docs" && view !== "automation" && (
+      {view === "import" && <ImportTab projectId={data.project.id} boardId={data.board.id} />}
+      {view !== "board" && view !== "sprint" && view !== "table" && view !== "roadmap" && view !== "docs" && view !== "automation" && view !== "import" && (
         <div className="p-10 text-center text-sm text-text-3">
           Mode <strong className="text-text-2">{VIEW_TABS.find((t) => t.key === view)?.label}</strong> belum dibangun.
         </div>
@@ -691,6 +694,132 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+type ImportRun = Awaited<ReturnType<typeof listImportRunsFn>>[number];
+
+const IMPORT_RUN_STATUS_LABEL: Record<string, string> = {
+  pending: "Menunggu",
+  running: "Berjalan",
+  completed: "Selesai",
+  failed: "Gagal",
+};
+
+/**
+ * Runs synchronously against a real JIRA instance from this one request —
+ * see startJiraImportFn's own doc comment for why. The API token is only
+ * ever held in this component's state for the duration of one submit
+ * (cleared right after) and never persisted — createImportRun's `config`
+ * deliberately excludes it (see packages/db/src/schema/import.ts).
+ */
+function ImportTab({ projectId, boardId }: { projectId: string; boardId: string }) {
+  const [runs, setRuns] = useState<ImportRun[] | null>(null);
+  const [jiraBaseUrl, setJiraBaseUrl] = useState("");
+  const [jiraEmail, setJiraEmail] = useState("");
+  const [jiraApiToken, setJiraApiToken] = useState("");
+  const [jql, setJql] = useState("");
+  const [dryRun, setDryRun] = useState(true);
+  const [fetchAttachments, setFetchAttachments] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [lastResult, setLastResult] = useState<Awaited<ReturnType<typeof startJiraImportFn>> | null>(null);
+
+  async function refresh() {
+    setRuns(await listImportRunsFn({ data: projectId }));
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  async function runImport() {
+    if (!jiraBaseUrl.trim() || !jiraEmail.trim() || !jiraApiToken.trim() || !jql.trim()) return;
+    setRunning(true);
+    setLastResult(null);
+    try {
+      const result = await startJiraImportFn({
+        data: { projectId, boardId, jiraBaseUrl: jiraBaseUrl.trim(), jiraEmail: jiraEmail.trim(), jiraApiToken, jql: jql.trim(), dryRun, fetchAttachments },
+      });
+      setLastResult(result);
+      setJiraApiToken("");
+      await refresh();
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  if (runs === null) return <p className="p-6 text-sm text-text-3">Memuat…</p>;
+
+  return (
+    <div className="grid grid-cols-2 gap-4 p-6">
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <p className="mb-3 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Impor dari JIRA</p>
+        <div className="flex flex-col gap-2.5">
+          <label className="block">
+            <span className="mb-1 block text-[12px] text-text-2">Base URL JIRA</span>
+            <input
+              value={jiraBaseUrl}
+              onChange={(e) => setJiraBaseUrl(e.target.value)}
+              placeholder="https://situs-anda.atlassian.net"
+              className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[12px] text-text-2">Email</span>
+            <input value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[12px] text-text-2">API token</span>
+            <input type="password" value={jiraApiToken} onChange={(e) => setJiraApiToken(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[12px] text-text-2">JQL</span>
+            <input value={jql} onChange={(e) => setJql(e.target.value)} placeholder='project = "DEMO"' className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none" />
+          </label>
+          <label className="flex items-center gap-1.5 text-[12px] text-text-2">
+            <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+            Dry-run (jangan tulis apa pun, hanya tampilkan pemetaan status/tipe)
+          </label>
+          <label className="flex items-center gap-1.5 text-[12px] text-text-2">
+            <input type="checkbox" checked={fetchAttachments} onChange={(e) => setFetchAttachments(e.target.checked)} />
+            Unduh lampiran
+          </label>
+          <Button variant="primary" className="text-[12.5px]" onClick={runImport} disabled={running}>
+            {running ? "Mengimpor…" : "Jalankan impor"}
+          </Button>
+          {lastResult?.error && <p className="text-[12px] text-red-500">{lastResult.error}</p>}
+          {lastResult?.report && (
+            <div className="rounded-lg border border-border bg-surface-2 p-2.5 text-[12px] text-text-2">
+              <p>
+                Dibuat: <strong>{lastResult.report.counts.issuesCreated}</strong> · Dilewati: <strong>{lastResult.report.counts.issuesSkipped}</strong> · Status baru:{" "}
+                <strong>{lastResult.report.counts.statusesCreated}</strong> · Tipe baru: <strong>{lastResult.report.counts.typesCreated}</strong>
+              </p>
+              {lastResult.report.errors.length > 0 && <p className="mt-1 text-red-500">{lastResult.report.errors.length} tiket gagal — lihat riwayat di bawah.</p>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <p className="mb-3 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Riwayat impor</p>
+        <div className="flex flex-col gap-2">
+          {runs.length === 0 && <p className="text-[12.5px] text-text-3">Belum ada impor.</p>}
+          {runs.map((run) => (
+            <div key={run.id} className="rounded-lg border border-border px-2.5 py-2 text-[12px]">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">
+                  {run.source.toUpperCase()} · {IMPORT_RUN_STATUS_LABEL[run.status] ?? run.status}
+                </span>
+                <span className="text-text-3">{run.dryRun ? "dry-run" : "nyata"}</span>
+              </div>
+              {run.counts != null && <p className="mt-1 text-text-2">{JSON.stringify(run.counts)}</p>}
+              {Array.isArray(run.errors) && run.errors.length > 0 && <p className="mt-1 text-red-500">{run.errors.length} error</p>}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
