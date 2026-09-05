@@ -6,7 +6,7 @@ import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { apiKey } from "@better-auth/api-key";
 import { loadEnv } from "@kompast/env";
 import { db, schema, eq } from "@kompast/db";
-import { getMicrosoftAuthConfig, isOnlyUser } from "@kompast/core";
+import { getMicrosoftAuthConfig, isOnlyUser, enqueueEmail, withAuthorizedTenant } from "@kompast/core";
 
 const env = loadEnv();
 
@@ -33,6 +33,39 @@ const env = loadEnv();
  * provider) rather than crashing the whole auth context.
  */
 let cached: { auth: ReturnType<typeof buildAuth>; configured: boolean } | null = null;
+
+/**
+ * Extracted as a standalone, exported function (rather than inline in
+ * buildAuth's plugin config) specifically so it's directly unit-testable —
+ * calling it through the real organization plugin would require a genuine
+ * signed session cookie for the inviter (createInvitation's own endpoint
+ * requires one), which this Entra-ID-only app has no test-time way to
+ * fabricate. This function itself only ever touches Postgres
+ * (enqueueEmail), so testing it directly is testing the real code path.
+ */
+export async function sendInvitationEmail(data: {
+  id: string;
+  role: string;
+  email: string;
+  organization: { id: string; name: string };
+  inviter: { userId: string; user: { name: string } };
+}) {
+  await withAuthorizedTenant({ userId: data.inviter.userId, organizationId: data.organization.id }, (tx) =>
+    enqueueEmail(tx, {
+      organizationId: data.organization.id,
+      to: data.email,
+      subject: `Undangan bergabung ke ${data.organization.name} di Kompast`,
+      templateKey: "notification",
+      templateProps: {
+        title: `Anda diundang bergabung ke ${data.organization.name}`,
+        body: `${data.inviter.user.name} mengundang Anda sebagai ${data.role}.`,
+        actionUrl: `${env.APP_URL}/invite/${data.id}`,
+        actionLabel: "Terima undangan",
+      },
+      dedupeKey: `invitation:${data.id}`,
+    }),
+  );
+}
 
 export async function getAuth() {
   const microsoft = await getMicrosoftAuthConfig(db);
@@ -111,6 +144,12 @@ function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>
     plugins: [
       organization({
         teams: { enabled: true },
+        // Better Auth never builds the accept-invitation URL itself — the
+        // plugin's own docs say so explicitly ("Better Auth doesn't
+        // generate invitation URLs"). See sendInvitationEmail's own doc
+        // comment (above) for why the logic itself lives in a standalone
+        // function rather than inline here.
+        sendInvitationEmail,
       }),
       ...(microsoft
         ? [
