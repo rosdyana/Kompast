@@ -1,6 +1,10 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    # pgvector's own image, not vanilla postgres — Ask Kompast's embedding
+    # table (P7 stage 2) needs the pgvector extension available to install
+    # (packages/db/src/migrate.ts runs CREATE EXTENSION IF NOT EXISTS
+    # vector before migrations). Same postgres:17 base, drop-in compatible.
+    image: pgvector/pgvector:pg17
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-kompast}

@@ -15,6 +15,14 @@ async function main() {
   // 1. Schema migrations, as the owning/admin role.
   const adminClient = postgres(env.DATABASE_ADMIN_URL, { max: 1 });
   const db = drizzle(adminClient);
+
+  // Must run before any migration that creates a vector(...) column (the
+  // embedding table, P7 stage 2) — the type doesn't exist until this
+  // extension is installed. Requires the pgvector extension to actually be
+  // present in the Postgres image (pgvector/pgvector:pgXX, not vanilla
+  // postgres:XX-alpine) — see infra/docker-compose.yml.
+  await adminClient.unsafe("CREATE EXTENSION IF NOT EXISTS vector;");
+
   await migrate(db, { migrationsFolder: join(__dirname, "..", "drizzle") });
   console.log("Migrations applied.");
 
