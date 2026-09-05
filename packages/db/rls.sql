@@ -68,6 +68,10 @@ alter table automation_event enable row level security;
 alter table automation_event force row level security;
 alter table ai_usage enable row level security;
 alter table ai_usage force row level security;
+alter table import_run enable row level security;
+alter table import_run force row level security;
+alter table external_ref enable row level security;
+alter table external_ref force row level security;
 
 -- apps/collab (Yjs persistence) and the public /s/:token guest route both
 -- connect via the admin connection instead of kompast_app, and so bypass
@@ -284,4 +288,12 @@ create policy tenant_isolation_automation_event on automation_event
 
 drop policy if exists tenant_isolation_ai_usage on ai_usage;
 create policy tenant_isolation_ai_usage on ai_usage
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_import_run on import_run;
+create policy tenant_isolation_import_run on import_run
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_external_ref on external_ref;
+create policy tenant_isolation_external_ref on external_ref
   using (organization_id = current_setting('app.current_workspace', true));

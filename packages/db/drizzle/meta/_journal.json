@@ -71,6 +71,13 @@
       "when": 1788568052472,
       "tag": "0009_fluffy_black_bolt",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788571025953,
+      "tag": "0010_sleepy_nicolaos",
+      "breakpoints": true
     }
   ]
 }
