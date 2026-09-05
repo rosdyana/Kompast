@@ -1,4 +1,4 @@
-export { useTranslation, I18nextProvider, Trans } from "react-i18next";
+export { useTranslation, I18nextProvider } from "./react";
 export { createI18nInstance } from "./instance";
 export {
   SUPPORTED_LOCALES,

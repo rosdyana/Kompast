@@ -1,11 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { db, schema, eq } from "@kompast/db";
+import { db, schema, eq, and } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
 import { requireTeamAdmin, withAuthorizedTenant, ForbiddenError } from "../permissions";
-import { listTeamsForWorkspace, setTeamMemberRole } from "../team";
+import { addTeamMember, listOrgMembersNotInTeam, listTeamMembers, listTeamsForWorkspace, removeTeamMember, setTeamMemberRole } from "../team";
 import { id } from "../ids";
 
 describe("team service layer", () => {
@@ -15,6 +15,8 @@ describe("team service layer", () => {
   const orgId = "test-team-org";
   const superAdminId = "test-team-super-admin";
   const teamAdminId = "test-team-admin-user";
+  const plainMemberId = "test-team-plain-member";
+  const outsiderId = "test-team-outsider";
   const teamId = "test-team-a";
   const otherTeamId = "test-team-b";
 
@@ -26,6 +28,8 @@ describe("team service layer", () => {
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, superAdminId));
     await admin.delete(schema.user).where(eq(schema.user.id, teamAdminId));
+    await admin.delete(schema.user).where(eq(schema.user.id, plainMemberId));
+    await admin.delete(schema.user).where(eq(schema.user.id, outsiderId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
   }
 
@@ -35,10 +39,13 @@ describe("team service layer", () => {
     await admin.insert(schema.user).values([
       { id: superAdminId, name: "Super Admin", email: `${superAdminId}@example.com` },
       { id: teamAdminId, name: "Team Admin", email: `${teamAdminId}@example.com` },
+      { id: plainMemberId, name: "Plain Member", email: `${plainMemberId}@example.com` },
+      { id: outsiderId, name: "Outsider", email: `${outsiderId}@example.com` },
     ]);
     await admin.insert(schema.member).values([
       { id: id("mem"), organizationId: orgId, userId: superAdminId, role: "owner", isSuperAdmin: true },
       { id: id("mem"), organizationId: orgId, userId: teamAdminId, role: "member" },
+      { id: id("mem"), organizationId: orgId, userId: plainMemberId, role: "member" },
     ]);
     await admin.insert(schema.team).values([
       { id: teamId, organizationId: orgId, name: "Team A", memberCount: 1 },
@@ -105,5 +112,96 @@ describe("team service layer", () => {
       return createProject(tx, { organizationId: orgId, teamId: otherTeamId, key: "SUP", name: "Super Admin Project", actorUserId: superAdminId });
     });
     expect(result.projectId).toBeTruthy();
+  });
+
+  describe("addTeamMember / removeTeamMember", () => {
+    it("adds a workspace member to a team and increments memberCount", async () => {
+      await withAuthorizedTenant({ userId: superAdminId, organizationId: orgId }, (tx) =>
+        addTeamMember(tx, { teamId, userId: plainMemberId, organizationId: orgId }),
+      );
+
+      const [row] = await admin
+        .select()
+        .from(schema.teamMember)
+        .where(and(eq(schema.teamMember.teamId, teamId), eq(schema.teamMember.userId, plainMemberId)));
+      expect(row).toBeTruthy();
+      expect(row?.role).toBe("member"); // default
+
+      const [team] = await admin.select().from(schema.team).where(eq(schema.team.id, teamId));
+      expect(team?.memberCount).toBe(2); // was seeded at 1 (teamAdminId)
+    });
+
+    it("rejects adding a user who isn't a workspace member at all", async () => {
+      await expect(
+        withAuthorizedTenant({ userId: superAdminId, organizationId: orgId }, (tx) =>
+          addTeamMember(tx, { teamId, userId: outsiderId, organizationId: orgId }),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("no-ops (doesn't double-increment memberCount) when adding an existing team member again", async () => {
+      await withAuthorizedTenant({ userId: superAdminId, organizationId: orgId }, (tx) =>
+        addTeamMember(tx, { teamId, userId: teamAdminId, organizationId: orgId }),
+      );
+      const [team] = await admin.select().from(schema.team).where(eq(schema.team.id, teamId));
+      expect(team?.memberCount).toBe(1); // unchanged — teamAdminId was already seeded as a member
+    });
+
+    it("removes a member and decrements memberCount, never going negative", async () => {
+      await withAuthorizedTenant({ userId: superAdminId, organizationId: orgId }, (tx) => removeTeamMember(tx, { teamId, userId: teamAdminId }));
+      const [row] = await admin.select().from(schema.teamMember).where(eq(schema.teamMember.userId, teamAdminId));
+      expect(row).toBeUndefined();
+      const [team] = await admin.select().from(schema.team).where(eq(schema.team.id, teamId));
+      expect(team?.memberCount).toBe(0);
+
+      // removing again (already gone) must not underflow below 0
+      await withAuthorizedTenant({ userId: superAdminId, organizationId: orgId }, (tx) => removeTeamMember(tx, { teamId, userId: teamAdminId }));
+      const [teamAfter] = await admin.select().from(schema.team).where(eq(schema.team.id, teamId));
+      expect(teamAfter?.memberCount).toBe(0);
+    });
+
+    it("listTeamMembers / listOrgMembersNotInTeam report the roster and eligible candidates", async () => {
+      const members = await listTeamMembers(db, teamId);
+      expect(members.map((m) => m.userId)).toEqual([teamAdminId]);
+
+      const candidates = await withAuthorizedTenant({ userId: superAdminId, organizationId: orgId }, (tx) =>
+        listOrgMembersNotInTeam(tx, { organizationId: orgId }, teamId),
+      );
+      expect(candidates.map((c) => c.userId).sort()).toEqual([plainMemberId, superAdminId].sort());
+    });
+  });
+
+  describe("team-scoped membership management (the user's explicit ask)", () => {
+    it("a team's own admin (with a plain workspace role) can manage THEIR team's membership", async () => {
+      await setTeamMemberRole(db, { teamId, userId: teamAdminId, role: "admin" });
+
+      // teamAdminId's own workspace member.role is plain "member" (never promoted) —
+      // this is exactly the case that broke against Better Auth's own
+      // addTeamMember/removeTeamMember before this rework.
+      await withAuthorizedTenant({ userId: teamAdminId, organizationId: orgId }, async (tx) => {
+        await requireTeamAdmin(tx, { userId: teamAdminId, organizationId: orgId, teamId });
+        await addTeamMember(tx, { teamId, userId: plainMemberId, organizationId: orgId });
+      });
+      const [row] = await admin
+        .select()
+        .from(schema.teamMember)
+        .where(and(eq(schema.teamMember.teamId, teamId), eq(schema.teamMember.userId, plainMemberId)));
+      expect(row).toBeTruthy();
+
+      const [callerMember] = await admin
+        .select()
+        .from(schema.member)
+        .where(and(eq(schema.member.organizationId, orgId), eq(schema.member.userId, teamAdminId)));
+      expect(callerMember?.role).toBe("member"); // unchanged — no workspace-role bleed
+    });
+
+    it("a team admin cannot manage a DIFFERENT team's membership", async () => {
+      await setTeamMemberRole(db, { teamId, userId: teamAdminId, role: "admin" });
+      await expect(
+        withAuthorizedTenant({ userId: teamAdminId, organizationId: orgId }, (tx) =>
+          requireTeamAdmin(tx, { userId: teamAdminId, organizationId: orgId, teamId: otherTeamId }),
+        ),
+      ).rejects.toThrow(ForbiddenError);
+    });
   });
 });

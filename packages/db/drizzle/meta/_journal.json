@@ -99,6 +99,13 @@
       "when": 1788620463444,
       "tag": "0013_warm_quentin_quire",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788624816019,
+      "tag": "0014_legal_anthem",
+      "breakpoints": true
     }
   ]
 }

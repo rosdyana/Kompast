@@ -3,7 +3,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins/organization";
 import { db, schema, eq, and } from "@kompast/db";
-import { withAuthorizedTenant, createProject, createIssue, setTeamMemberRole } from "@kompast/core";
+import { withAuthorizedTenant, createProject, createIssue, addTeamMember, setTeamMemberRole } from "@kompast/core";
 import { loadEnv } from "@kompast/env";
 
 const env = loadEnv();
@@ -90,14 +90,15 @@ async function main() {
   let [team] = await db.select().from(schema.team).where(eq(schema.team.organizationId, organizationId));
   if (!team) {
     const created = await seedAuth.api.createTeam({ body: { name: "Cloud Platform Team", organizationId } });
-    // auth.api.addTeamMember is requireHeaders:true (needs a real session
-    // cookie) — this script has no HTTP request to take one from, unlike
-    // production code (apps/web/src/lib/server-fns/teams.ts always runs
-    // inside a real request). Insert the join row directly and bump the
-    // plugin's own denormalized memberCount to match what addTeamMember
-    // would have done.
-    await db.insert(schema.teamMember).values({ id: `team_member_${randomUUID()}`, teamId: created.id, userId: user.id });
-    await db.update(schema.team).set({ memberCount: 1 }).where(eq(schema.team.id, created.id));
+    // packages/core/src/team.ts's addTeamMember, not auth.api.addTeamMember —
+    // that plugin endpoint is requireHeaders:true (needs a real session
+    // cookie this script has no HTTP request to take one from) and, as of
+    // this codebase's team-management rework, is no longer called by
+    // anything: team_member rows are created/destroyed exclusively through
+    // this function everywhere, not just here.
+    await withAuthorizedTenant({ userId: user.id, organizationId }, (tx) =>
+      addTeamMember(tx, { teamId: created.id, userId: user.id, organizationId }),
+    );
     await setTeamMemberRole(db, { teamId: created.id, userId: user.id, role: "admin" });
     [team] = await db.select().from(schema.team).where(eq(schema.team.id, created.id));
     console.log(`team created: ${team!.name} (${team!.id})`);

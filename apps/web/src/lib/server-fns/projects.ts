@@ -3,8 +3,11 @@ import * as z from "zod";
 import { and, db, eq, inArray, schema } from "@kompast/db";
 import {
   createProject,
+  ForbiddenError,
   getBoard,
   getOrCreateDefaultTableView,
+  listIssuePropertyDefinitions,
+  requireProjectAdmin,
   requireTeamAdmin,
   updateSavedViewConfig,
   withAuthorizedTenant,
@@ -66,10 +69,18 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
       const [board] = await tx.select().from(schema.board).where(eq(schema.board.projectId, project.id));
       if (!board) throw new Error(`Project ${projectKey} has no board`);
 
-      const [issueTypes, boardData, tableView] = await Promise.all([
+      const canManageProject = await requireProjectAdmin(tx, { ...ctx, projectId: project.id })
+        .then(() => true)
+        .catch((err) => {
+          if (err instanceof ForbiddenError) return false;
+          throw err;
+        });
+
+      const [issueTypes, boardData, tableView, propertyDefinitions] = await Promise.all([
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
         getBoard(tx, board.id),
         getOrCreateDefaultTableView(tx, board.id, ctx.userId),
+        listIssuePropertyDefinitions(tx, project.id),
       ]);
 
       const assigneeIds = [
@@ -85,7 +96,7 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
               .where(inArray(schema.user.id, assigneeIds))
           : [];
 
-      return { project, board, issueTypes, users, tableView, ...boardData };
+      return { project, board, issueTypes, users, tableView, canManageProject, propertyDefinitions, ...boardData };
     });
   });
 

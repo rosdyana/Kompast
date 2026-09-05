@@ -3,7 +3,15 @@ import { useRef, useState } from "react";
 import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
-import { getIssueDetailFn, addCommentFn, toggleWatchFn, updateIssueDescriptionFn } from "@/lib/server-fns/issue-detail";
+import {
+  getIssueDetailFn,
+  addCommentFn,
+  toggleWatchFn,
+  updateIssueDescriptionFn,
+  updateIssueAssigneeFn,
+  updateIssuePriorityFn,
+  updateIssueCustomFieldFn,
+} from "@/lib/server-fns/issue-detail";
 import { requestAttachmentUploadFn, deleteAttachmentFn } from "@/lib/server-fns/attachments";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 
@@ -55,6 +63,21 @@ function IssueDetailPage() {
     const next = !watching;
     setWatching(next);
     await toggleWatchFn({ data: { issueId: data.issue.id, watching: next } });
+  }
+
+  async function setAssignee(assigneeId: string) {
+    await updateIssueAssigneeFn({ data: { issueId: data.issue.id, assigneeId: assigneeId || null } });
+    await router.invalidate();
+  }
+
+  async function setPriority(priority: string) {
+    await updateIssuePriorityFn({ data: { issueId: data.issue.id, priority: priority as typeof data.issue.priority } });
+    await router.invalidate();
+  }
+
+  async function setCustomField(key: string, value: string | number | boolean | string[] | null) {
+    await updateIssueCustomFieldFn({ data: { issueId: data.issue.id, key, value } });
+    await router.invalidate();
   }
 
   async function uploadFile(file: File) {
@@ -129,14 +152,18 @@ function IssueDetailPage() {
       <div className="mb-8 flex flex-wrap gap-4 rounded-xl border border-border bg-surface p-4 text-[12.5px]">
         <div>
           <p className="mb-1 text-text-3">Assignee</p>
-          {data.issue.assigneeId && usersById.get(data.issue.assigneeId) ? (
-            <div className="flex items-center gap-1.5">
-              <Avatar initials={initialsOf(usersById.get(data.issue.assigneeId)!.name)} size={18} />
-              {usersById.get(data.issue.assigneeId)!.name}
-            </div>
-          ) : (
-            <span className="text-text-3">Belum ditugaskan</span>
-          )}
+          <select
+            value={data.issue.assigneeId ?? ""}
+            onChange={(e) => setAssignee(e.target.value)}
+            className="rounded-md border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+          >
+            <option value="">Belum ditugaskan</option>
+            {data.orgMembers.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <p className="mb-1 text-text-3">Reporter</p>
@@ -144,7 +171,17 @@ function IssueDetailPage() {
         </div>
         <div>
           <p className="mb-1 text-text-3">Priority</p>
-          {data.issue.priority}
+          <select
+            value={data.issue.priority}
+            onChange={(e) => setPriority(e.target.value)}
+            className="rounded-md border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+          >
+            {["lowest", "low", "medium", "high", "highest"].map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
         </div>
         {data.issue.storyPoints != null && (
           <div>
@@ -158,6 +195,14 @@ function IssueDetailPage() {
           </Button>
         </div>
       </div>
+
+      {data.propertyDefinitions.length > 0 && (
+        <CustomPropertiesSection
+          definitions={data.propertyDefinitions}
+          customFields={(data.issue.customFields ?? {}) as Record<string, unknown>}
+          onChange={setCustomField}
+        />
+      )}
 
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">
@@ -295,6 +340,134 @@ function IssueDetailPage() {
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+type PropertyDefinition = Awaited<ReturnType<typeof getIssueDetailFn>>["propertyDefinitions"][number];
+
+function CustomPropertiesSection({
+  definitions,
+  customFields,
+  onChange,
+}: {
+  definitions: PropertyDefinition[];
+  customFields: Record<string, unknown>;
+  onChange: (key: string, value: string | number | boolean | string[] | null) => void;
+}) {
+  return (
+    <section className="mb-8">
+      <h2 className="mb-3 text-[13px] font-semibold">Properti kustom</h2>
+      <div className="flex flex-wrap gap-4 rounded-xl border border-border bg-surface p-4 text-[12.5px]">
+        {definitions.map((def) => (
+          <CustomPropertyField key={def.id} def={def} value={customFields[def.key]} onChange={(v) => onChange(def.key, v)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CustomPropertyField({
+  def,
+  value,
+  onChange,
+}: {
+  def: PropertyDefinition;
+  value: unknown;
+  onChange: (value: string | number | boolean | string[] | null) => void;
+}) {
+  const options = (def.options as { value: string; label: string }[] | null) ?? [];
+
+  if (def.type === "checkbox") {
+    return (
+      <label className="flex items-center gap-1.5">
+        <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
+        {def.name}
+      </label>
+    );
+  }
+
+  if (def.type === "select") {
+    return (
+      <div>
+        <p className="mb-1 text-text-3">{def.name}</p>
+        <select
+          value={(value as string) ?? ""}
+          onChange={(e) => onChange(e.target.value || null)}
+          className="rounded-md border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+        >
+          <option value="">—</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  if (def.type === "multiSelect") {
+    const selected = Array.isArray(value) ? (value as string[]) : [];
+    return (
+      <div>
+        <p className="mb-1 text-text-3">{def.name}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((o) => {
+            const isOn = selected.includes(o.value);
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => onChange(isOn ? selected.filter((v) => v !== o.value) : [...selected, o.value])}
+                className={`rounded-full border px-2 py-0.5 text-[11px] ${isOn ? "border-indigo bg-indigo-soft text-indigo" : "border-border-2 text-text-2"}`}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (def.type === "number") {
+    return (
+      <div>
+        <p className="mb-1 text-text-3">{def.name}</p>
+        <input
+          type="number"
+          defaultValue={typeof value === "number" ? value : ""}
+          onBlur={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+          className="w-[100px] rounded-md border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+        />
+      </div>
+    );
+  }
+
+  if (def.type === "date") {
+    return (
+      <div>
+        <p className="mb-1 text-text-3">{def.name}</p>
+        <input
+          type="date"
+          defaultValue={typeof value === "string" ? value : ""}
+          onBlur={(e) => onChange(e.target.value || null)}
+          className="rounded-md border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+        />
+      </div>
+    );
+  }
+
+  // text, textarea, url, person — all a plain text input for this pass
+  return (
+    <div>
+      <p className="mb-1 text-text-3">{def.name}</p>
+      <input
+        defaultValue={typeof value === "string" ? value : ""}
+        onBlur={(e) => onChange(e.target.value || null)}
+        className="min-w-[140px] rounded-md border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+      />
     </div>
   );
 }

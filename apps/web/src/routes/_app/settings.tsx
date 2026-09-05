@@ -1,13 +1,26 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
+import { Tabs } from "@kompast/ui/Tabs";
 import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn } from "@/lib/server-fns/settings";
+import { listMembersFn } from "@/lib/server-fns/members";
+import { listTeamsFn } from "@/lib/server-fns/teams";
+import { MembersTab } from "@/components/settings/MembersTab";
+import { TeamsTab } from "@/components/settings/TeamsTab";
+import { RolesTab } from "@/components/settings/RolesTab";
+
+const TAB_KEYS = ["members", "teams", "roles", "integrations"] as const;
+type TabKey = (typeof TAB_KEYS)[number];
 
 export const Route = createFileRoute("/_app/settings")({
+  validateSearch: (search: Record<string, unknown>): { tab?: TabKey } => ({
+    tab: TAB_KEYS.includes(search.tab as TabKey) ? (search.tab as TabKey) : undefined,
+  }),
   loader: async () => {
     try {
-      return await getIntegrationSettingsFn();
+      const [integrations, members, teams] = await Promise.all([getIntegrationSettingsFn(), listMembersFn(), listTeamsFn()]);
+      return { integrations, members, teams };
     } catch {
       // Not an owner/admin — the sidebar already hides this link for
       // non-admins, but someone can still type the URL directly.
@@ -19,12 +32,37 @@ export const Route = createFileRoute("/_app/settings")({
 
 function SettingsPage() {
   const data = Route.useLoaderData();
+  const { tab } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const active: TabKey = tab ?? "members";
+
+  const items = [
+    { key: "members", label: "Anggota" },
+    { key: "teams", label: "Tim" },
+    { key: "roles", label: "Peran & Izin" },
+    { key: "integrations", label: "Integrasi" },
+  ];
 
   return (
-    <div className="mx-auto max-w-[640px] px-8 pb-16 pt-9">
+    <div className="mx-auto max-w-[760px] px-8 pb-16 pt-9">
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">Pengaturan workspace</h1>
-      <p className="mb-8 text-sm text-text-2">Konfigurasi vendor AI dan email untuk seluruh deployment ini.</p>
+      <Tabs items={items} active={active} onChange={(key) => navigate({ search: { tab: key as TabKey } })} className="mb-6 border-b border-border" />
 
+      {active === "members" && <MembersTab data={data.members} />}
+      {active === "teams" && data.integrations.isSuperAdmin && <TeamsTab teams={data.teams} members={data.members.members} />}
+      {active === "teams" && !data.integrations.isSuperAdmin && (
+        <p className="text-sm text-text-3">Hanya super admin yang bisa mengelola daftar tim workspace di sini.</p>
+      )}
+      {active === "roles" && <RolesTab />}
+      {active === "integrations" && <IntegrationsTab data={data.integrations} />}
+    </div>
+  );
+}
+
+function IntegrationsTab({ data }: { data: Awaited<ReturnType<typeof getIntegrationSettingsFn>> }) {
+  return (
+    <div>
+      <p className="mb-8 text-sm text-text-2">Konfigurasi vendor AI dan email untuk seluruh deployment ini.</p>
       <EntraSection initial={data.entra} />
       <div className="mt-8">
         <AiSection initial={data.ai} />
@@ -227,7 +265,7 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
             {saving ? "Menyimpan…" : "Simpan"}
           </Button>
           {saved && <span className="text-[12px] text-green">Tersimpan.</span>}
-          {error && <span className="text-[12px] text-red-500">{error}</span>}
+          {error && <span className="text-[12px] text-danger">{error}</span>}
         </div>
       </Card>
     </section>

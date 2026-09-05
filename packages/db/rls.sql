@@ -82,6 +82,8 @@ alter table ai_thread enable row level security;
 alter table ai_thread force row level security;
 alter table ai_message enable row level security;
 alter table ai_message force row level security;
+alter table issue_property_definition enable row level security;
+alter table issue_property_definition force row level security;
 
 -- apps/collab (Yjs persistence) and the public /s/:token guest route both
 -- connect via the admin connection instead of kompast_app, and so bypass
@@ -198,6 +200,21 @@ create policy tenant_isolation_issue_attachment on issue_attachment
   using (
     issue_id in (
       select id from issue
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+-- issue_property_definition joins through project instead of issue (it's a
+-- project-level field-schema definition, not an issue row) — otherwise the
+-- same indirect-isolation shape as the issue_comment/worklog/issue_link/
+-- issue_attachment policies above. Unlike board/board_column/workflow_status
+-- (which predate this and have no RLS at all — a known, pre-existing gap),
+-- this is a brand-new table, so it gets real RLS from day one.
+drop policy if exists tenant_isolation_issue_property_definition on issue_property_definition;
+create policy tenant_isolation_issue_property_definition on issue_property_definition
+  using (
+    project_id in (
+      select id from project
       where organization_id = current_setting('app.current_workspace', true)
     )
   );

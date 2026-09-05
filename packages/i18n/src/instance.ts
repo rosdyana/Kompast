@@ -1,5 +1,4 @@
 import i18next, { type i18n as I18nInstance } from "i18next";
-import { initReactI18next } from "react-i18next";
 import { resources } from "./resources";
 import { SUPPORTED_LOCALES, DEFAULT_LOCALE, NAMESPACES, type SupportedLocale } from "./config";
 
@@ -16,7 +15,10 @@ import { SUPPORTED_LOCALES, DEFAULT_LOCALE, NAMESPACES, type SupportedLocale } f
  */
 export function createI18nInstance(locale: SupportedLocale): I18nInstance {
   const instance = i18next.createInstance();
-  instance.use(initReactI18next).init({
+  // No .use(initReactI18next) — this app has its own minimal React binding
+  // (./react.tsx) instead of react-i18next's, so there's no react-specific
+  // plugin to register here; this instance is plain, framework-agnostic i18next.
+  instance.init({
     lng: locale,
     fallbackLng: DEFAULT_LOCALE,
     supportedLngs: SUPPORTED_LOCALES as unknown as string[],
@@ -24,7 +26,6 @@ export function createI18nInstance(locale: SupportedLocale): I18nInstance {
     defaultNS: "common",
     resources,
     interpolation: { escapeValue: false }, // React already escapes output
-    react: { useSuspense: false },
   });
   return instance;
 }

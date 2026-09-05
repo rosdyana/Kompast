@@ -129,6 +129,58 @@ export async function requireTeamAdmin(
 }
 
 /**
+ * Whether ctx.userId can manage ctx.projectId's settings (kanban columns,
+ * custom ticket properties): the workspace super admin, the admin of the
+ * project's owning team, or a project_member row with role "lead" for
+ * this specific project.
+ *
+ * MUST be called with an already-open Tx (from inside
+ * withAuthorizedTenant's callback), unlike requireTeamAdmin/
+ * requireSuperAdmin above, which read team/team_member/member — none of
+ * which have RLS (see packages/db/rls.sql). This function reads `project`,
+ * which IS RLS-force-enabled, so a query against plain `db` before opening
+ * a tx would deterministically see zero rows and reject every caller, not
+ * just unauthorized ones. Don't "fix" this to match requireTeamAdmin's
+ * calling convention — the two are asymmetric on purpose.
+ */
+export async function requireProjectAdmin(
+  db: AnyDb,
+  ctx: AuthContext & { projectId: string },
+): Promise<void> {
+  const [project] = await db
+    .select({ id: schema.project.id, teamId: schema.project.teamId })
+    .from(schema.project)
+    .where(and(eq(schema.project.id, ctx.projectId), eq(schema.project.organizationId, ctx.organizationId)))
+    .limit(1);
+  if (!project) throw new ForbiddenError(`Project ${ctx.projectId} not found in organization ${ctx.organizationId}`);
+
+  const [member] = await db
+    .select({ isSuperAdmin: schema.member.isSuperAdmin })
+    .from(schema.member)
+    .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)))
+    .limit(1);
+  if (member?.isSuperAdmin) return;
+
+  if (project.teamId) {
+    const [teamMember] = await db
+      .select({ role: schema.teamMember.role })
+      .from(schema.teamMember)
+      .where(and(eq(schema.teamMember.teamId, project.teamId), eq(schema.teamMember.userId, ctx.userId)))
+      .limit(1);
+    if (teamMember?.role === "admin") return;
+  }
+
+  const [projectMember] = await db
+    .select({ role: schema.projectMember.role })
+    .from(schema.projectMember)
+    .where(and(eq(schema.projectMember.projectId, ctx.projectId), eq(schema.projectMember.userId, ctx.userId)))
+    .limit(1);
+  if (projectMember?.role === "lead") return;
+
+  throw new ForbiddenError(`User ${ctx.userId} cannot manage project ${ctx.projectId}`);
+}
+
+/**
  * Atomic super-admin handoff: unsets the current holder, sets the new one,
  * inside one tx (member_org_super_admin_uq is checked per-statement, not
  * deferred — hence two sequential UPDATEs, never one that could momentarily
@@ -138,14 +190,17 @@ export async function requireTeamAdmin(
  * requireProjectAccess).
  *
  * Also promotes the new holder's member.role to "admin" if it's currently
- * plain "member" — NOT optional bookkeeping. Better Auth's org+teams
- * plugin's addTeamMember endpoint (apps/web/src/lib/server-fns/teams.ts)
- * hard-requires the caller's own member.role to grant "member:update" per
- * its default access-control statement (owner/admin: yes, member: no), with
- * no trusted-server bypass. Without this invariant, a super admin who was a
- * plain member before the transfer would pass OUR OWN requireSuperAdmin
- * gate but still get rejected by Better Auth's own plugin the moment they
- * tried to add someone to a team.
+ * plain "member" — NOT optional bookkeeping. `createTeamFn`
+ * (apps/web/src/lib/server-fns/teams.ts) still calls Better Auth's real
+ * `auth.api.createTeam` with a real session's headers (team-membership
+ * mutations were moved off the plugin entirely — see packages/core/src/
+ * team.ts's addTeamMember/removeTeamMember — but team *creation* itself
+ * still goes through the plugin), which hard-requires the caller's own
+ * member.role to grant "team:create" per its default access-control
+ * statement (owner/admin: yes, member: no). Without this invariant, a
+ * super admin who was a plain member before the transfer would pass OUR
+ * OWN requireSuperAdmin gate but still get rejected by Better Auth's own
+ * plugin the moment they tried to create a team.
  */
 export async function transferSuperAdmin(
   tx: Tx,

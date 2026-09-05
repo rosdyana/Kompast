@@ -93,7 +93,11 @@ function TeamNode({
 }) {
   const { t } = useTranslation("nav");
   const [expanded, setExpanded] = useState(true);
+  const isUnassigned = team.id === "__unassigned";
   const canCreateProject = isSuperAdmin || team.myRole === "admin";
+  // Same condition as canCreateProject today — named independently so the
+  // two can diverge later if a more granular role split is ever needed.
+  const canManageTeam = (isSuperAdmin || team.myRole === "admin") && !isUnassigned;
 
   return (
     <div>
@@ -105,10 +109,20 @@ function TeamNode({
           {expanded ? "▾" : "▸"}
         </button>
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{team.name}</span>
+        {canManageTeam && (
+          <Link
+            to="/teams/$teamId"
+            params={{ teamId: team.id }}
+            title={t("manageTeam")}
+            className="grid h-4 w-4 flex-none place-items-center text-[11px] text-text-3 hover:text-text"
+          >
+            ⚙
+          </Link>
+        )}
         {canCreateProject && (
           <Link
             to="/projects/new"
-            search={{ teamId: team.id === "__unassigned" ? undefined : team.id }}
+            search={{ teamId: isUnassigned ? undefined : team.id }}
             title={t("newProject")}
             className="grid h-4 w-4 flex-none place-items-center text-[11px] text-text-3 hover:text-text"
           >
@@ -270,16 +284,6 @@ function SidebarBody({
       </div>
 
       <div className="border-t border-border p-2">
-        {shell.isAdmin && (
-          <Link
-            to="/members"
-            title={t("members")}
-            className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13px] hover:bg-surface-3 [&.active]:bg-surface-3"
-          >
-            <span className="w-[15px] text-center text-xs text-text-3">◔</span>
-            {t("members")}
-          </Link>
-        )}
         {shell.isAdmin && (
           <Link
             to="/settings"

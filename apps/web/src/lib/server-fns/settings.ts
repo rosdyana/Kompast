@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { db } from "@kompast/db";
+import { and, db, eq, schema } from "@kompast/db";
 import {
   getAiSettings,
   updateAiSettings,
@@ -18,8 +18,18 @@ import { invalidateAuthCache } from "../auth";
 export const getIntegrationSettingsFn = createServerFn({ method: "GET" }).handler(async () => {
   const ctx = await requireAuthContext();
   await requireSystemAdmin(db, ctx);
-  const [ai, mail, entra, embedding] = await Promise.all([getAiSettings(db), getMailSettings(db), getMicrosoftAuthSettingsView(db), getEmbeddingSettings(db)]);
-  return { ai, mail, entra, embedding };
+  const [ai, mail, entra, embedding, member] = await Promise.all([
+    getAiSettings(db),
+    getMailSettings(db),
+    getMicrosoftAuthSettingsView(db),
+    getEmbeddingSettings(db),
+    db
+      .select({ isSuperAdmin: schema.member.isSuperAdmin })
+      .from(schema.member)
+      .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)))
+      .then((rows) => rows[0]),
+  ]);
+  return { ai, mail, entra, embedding, isSuperAdmin: member?.isSuperAdmin ?? false };
 });
 
 const updateMicrosoftAuthSchema = z.object({

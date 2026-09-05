@@ -129,7 +129,16 @@ export const team = pgTable("team", {
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  /** Denormalized, maintained by the plugin itself on join/leave — never write to this directly. */
+  /**
+   * Denormalized member count. Was originally plugin-managed (Better Auth's
+   * org+teams plugin bumps this on join/leave) but team_member rows are now
+   * created/destroyed exclusively via packages/core/src/team.ts's
+   * addTeamMember/removeTeamMember (not the plugin's own
+   * auth.api.addTeamMember/removeTeamMember — see that file's doc comment
+   * for why), which re-implements this same increment/decrement itself.
+   * Those two functions are the only sanctioned writers — never write to
+   * this directly anywhere else.
+   */
   memberCount: integer("member_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at"),

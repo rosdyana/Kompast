@@ -31,6 +31,7 @@ import {
 import { getRoadmapFn } from "@/lib/server-fns/roadmap";
 import { listAutomationRulesFn, listAutomationRunsFn, createAutomationRuleFn, setAutomationRuleEnabledFn, deleteAutomationRuleFn } from "@/lib/server-fns/automation";
 import { TableView } from "@/components/board/TableView";
+import { ProjectSettingsTab } from "@/components/board/ProjectSettingsTab";
 import { DocsTree } from "@/components/docs/DocsTree";
 
 export const Route = createFileRoute("/_app/projects/$projectKey")({
@@ -52,6 +53,7 @@ function ProjectPage() {
   const data = Route.useLoaderData();
   const router = useRouter();
   const [view, setView] = useState("board");
+  const viewTabs = data.canManageProject ? [...VIEW_TABS, { key: "settings", label: "Pengaturan", icon: "⚙" }] : VIEW_TABS;
   const [addingIssue, setAddingIssue] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
@@ -120,7 +122,7 @@ function ProjectPage() {
             )}
           </div>
         </div>
-        <Tabs items={VIEW_TABS} active={view} onChange={setView} className="mt-4" />
+        <Tabs items={viewTabs} active={view} onChange={setView} className="mt-4" />
       </div>
 
       {view === "board" && <BoardView data={data} />}
@@ -130,9 +132,10 @@ function ProjectPage() {
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
       {view === "automation" && <AutomationTab projectId={data.project.id} data={data} />}
       {view === "import" && <ImportTab projectId={data.project.id} boardId={data.board.id} />}
-      {view !== "board" && view !== "sprint" && view !== "table" && view !== "roadmap" && view !== "docs" && view !== "automation" && view !== "import" && (
+      {view === "settings" && data.canManageProject && <ProjectSettingsTab data={data} />}
+      {![...VIEW_TABS.map((t) => t.key), "settings"].includes(view) && (
         <div className="p-10 text-center text-sm text-text-3">
-          Mode <strong className="text-text-2">{VIEW_TABS.find((t) => t.key === view)?.label}</strong> belum dibangun.
+          Mode <strong className="text-text-2">{viewTabs.find((t) => t.key === view)?.label}</strong> belum dibangun.
         </div>
       )}
     </div>
@@ -961,6 +964,7 @@ function BoardView({ data }: { data: BoardData }) {
               projectKey={data.project.key}
               issueTypesById={issueTypesById}
               usersById={usersById}
+              visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
             />
           ))}
         </div>
@@ -974,11 +978,13 @@ function Column({
   projectKey,
   issueTypesById,
   usersById,
+  visibleProperties,
 }: {
   column: BoardData["columns"][number];
   projectKey: string;
   issueTypesById: Map<string, BoardData["issueTypes"][number]>;
   usersById: Map<string, BoardData["users"][number]>;
+  visibleProperties: BoardData["propertyDefinitions"];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
@@ -1002,11 +1008,29 @@ function Column({
         style={isOver ? { background: "var(--surface-3)" } : undefined}
       >
         {column.issues.map((issue) => (
-          <Card key={issue.id} issue={issue} projectKey={projectKey} issueTypesById={issueTypesById} usersById={usersById} />
+          <Card
+            key={issue.id}
+            issue={issue}
+            projectKey={projectKey}
+            issueTypesById={issueTypesById}
+            usersById={usersById}
+            visibleProperties={visibleProperties}
+          />
         ))}
       </div>
     </div>
   );
+}
+
+function formatPropertyValue(type: string, value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (type === "checkbox") return value ? "✓" : null;
+  if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : null;
+  if (type === "date") {
+    const d = new Date(value as string);
+    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  }
+  return String(value);
 }
 
 function Card({
@@ -1014,15 +1038,21 @@ function Card({
   projectKey,
   issueTypesById,
   usersById,
+  visibleProperties,
 }: {
   issue: BoardData["columns"][number]["issues"][number];
   projectKey: string;
   issueTypesById: Map<string, BoardData["issueTypes"][number]>;
   usersById: Map<string, BoardData["users"][number]>;
+  visibleProperties: BoardData["propertyDefinitions"];
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: issue.id });
   const type = issueTypesById.get(issue.typeId);
   const assignee = issue.assigneeId ? usersById.get(issue.assigneeId) : undefined;
+  const customFields = (issue.customFields ?? {}) as Record<string, unknown>;
+  const propertyChips = visibleProperties
+    .map((p) => ({ def: p, text: formatPropertyValue(p.type, customFields[p.key]) }))
+    .filter((c): c is { def: (typeof visibleProperties)[number]; text: string } => c.text !== null);
 
   return (
     <Link
@@ -1056,6 +1086,19 @@ function Card({
           {issue.labels.map((label) => (
             <span key={label} className="rounded bg-surface-3 px-1.5 py-0.5 text-[10.5px] font-medium text-text-2">
               {label}
+            </span>
+          ))}
+        </div>
+      )}
+      {propertyChips.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {propertyChips.map(({ def, text }) => (
+            <span
+              key={def.id}
+              title={def.name}
+              className="rounded bg-indigo-soft px-1.5 py-0.5 text-[10.5px] font-medium text-indigo"
+            >
+              {def.name}: {text}
             </span>
           ))}
         </div>

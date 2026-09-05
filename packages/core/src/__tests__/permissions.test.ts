@@ -3,7 +3,8 @@ import { db, schema, withTenant, eq } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { requireSuperAdmin, requireTeamAdmin, transferSuperAdmin, withAuthorizedTenant, ForbiddenError } from "../permissions";
+import { createProject } from "../project";
+import { requireProjectAdmin, requireSuperAdmin, requireTeamAdmin, transferSuperAdmin, withAuthorizedTenant, ForbiddenError } from "../permissions";
 import { id } from "../ids";
 
 /**
@@ -25,6 +26,7 @@ describe("super admin / team admin permissions", () => {
   const otherTeamId = "test-perm-other-team";
 
   async function cleanup() {
+    await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
     await admin.delete(schema.teamMember).where(eq(schema.teamMember.teamId, teamId));
     await admin.delete(schema.teamMember).where(eq(schema.teamMember.teamId, otherTeamId));
     await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
@@ -133,6 +135,45 @@ describe("super admin / team admin permissions", () => {
       await expect(
         withAuthorizedTenant({ userId: teamAdminId, organizationId: orgId }, (tx) =>
           transferSuperAdmin(tx, { userId: teamAdminId, organizationId: orgId }, plainMemberId),
+        ),
+      ).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe("requireProjectAdmin", () => {
+    it("passes for the super admin, the project's owning team's admin, or a project 'lead' — rejects everyone else", async () => {
+      const { projectId } = await withAuthorizedTenant({ userId: teamAdminId, organizationId: orgId }, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId, key: "PADM", name: "Project Admin Test", actorUserId: teamAdminId }),
+      );
+
+      // super admin: always passes
+      await expect(
+        withAuthorizedTenant({ userId: superAdminId, organizationId: orgId }, (tx) => requireProjectAdmin(tx, { userId: superAdminId, organizationId: orgId, projectId })),
+      ).resolves.toBeUndefined();
+
+      // the project's owning team's admin: passes
+      await expect(
+        withAuthorizedTenant({ userId: teamAdminId, organizationId: orgId }, (tx) => requireProjectAdmin(tx, { userId: teamAdminId, organizationId: orgId, projectId })),
+      ).resolves.toBeUndefined();
+
+      // a plain team member with no project_member "lead" row: rejected
+      await expect(
+        withAuthorizedTenant({ userId: plainMemberId, organizationId: orgId }, (tx) => requireProjectAdmin(tx, { userId: plainMemberId, organizationId: orgId, projectId })),
+      ).rejects.toThrow(ForbiddenError);
+
+      // give plainMemberId a project_member "lead" row directly — now passes without any team role
+      await admin.insert(schema.projectMember).values({ id: id("pmem"), projectId, userId: plainMemberId, role: "lead" });
+      await expect(
+        withAuthorizedTenant({ userId: plainMemberId, organizationId: orgId }, (tx) => requireProjectAdmin(tx, { userId: plainMemberId, organizationId: orgId, projectId })),
+      ).resolves.toBeUndefined();
+
+      await admin.delete(schema.projectMember).where(eq(schema.projectMember.projectId, projectId));
+    });
+
+    it("rejects a projectId that doesn't exist in the caller's organization", async () => {
+      await expect(
+        withAuthorizedTenant({ userId: superAdminId, organizationId: orgId }, (tx) =>
+          requireProjectAdmin(tx, { userId: superAdminId, organizationId: orgId, projectId: "not-a-real-project" }),
         ),
       ).rejects.toThrow(ForbiddenError);
     });
