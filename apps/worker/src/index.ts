@@ -11,6 +11,10 @@ import {
   evaluateAutomationEvent,
   markAutomationEventProcessed,
   markAutomationEventFailed,
+  claimPendingReindexTasks,
+  processReindexTask,
+  markReindexTaskProcessed,
+  markReindexTaskFailed,
   withAuthorizedTenant,
 } from "@kompast/core";
 import { createMailer, NotificationEmail } from "@kompast/mail";
@@ -20,6 +24,7 @@ const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 
 const MAIL_QUEUE = "mail";
 const AUTOMATION_QUEUE = "automation";
+const REINDEX_QUEUE = "reindex";
 
 interface NotificationTemplateProps {
   title: string;
@@ -102,18 +107,47 @@ async function processAutomationBatch() {
   }
 }
 
+/**
+ * Same withAuthorizedTenant + findAnyMember shape as processAutomationBatch
+ * above — processReindexTask writes into the (RLS-protected) embedding
+ * table, so it needs a real tenant-scoped tx, not the bare admin
+ * connection claimPendingReindexTasks itself uses.
+ */
+async function processReindexBatch() {
+  const claimed = await claimPendingReindexTasks(adminDb, 10);
+  for (const task of claimed) {
+    try {
+      const memberUserId = await findAnyMember(task.organizationId);
+      if (!memberUserId) {
+        await markReindexTaskFailed(adminDb, task.id, "No member found for organization");
+        continue;
+      }
+      await withAuthorizedTenant({ userId: memberUserId, organizationId: task.organizationId }, (tx) => processReindexTask(tx, task));
+      await markReindexTaskProcessed(adminDb, task.id);
+    } catch (err) {
+      console.error(`[worker] reindex task ${task.id} failed:`, err);
+      await markReindexTaskFailed(adminDb, task.id, err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
 const mailQueue = new Queue(MAIL_QUEUE, { connection });
 const automationQueue = new Queue(AUTOMATION_QUEUE, { connection });
+const reindexQueue = new Queue(REINDEX_QUEUE, { connection });
 const mailWorker = new Worker(MAIL_QUEUE, () => processOutboxBatch(), { connection });
 const automationWorker = new Worker(AUTOMATION_QUEUE, () => processAutomationBatch(), { connection });
+const reindexWorker = new Worker(REINDEX_QUEUE, () => processReindexBatch(), { connection });
 mailWorker.on("failed", (job, err) => console.error(`[worker] mail job ${job?.id} failed:`, err));
 automationWorker.on("failed", (job, err) => console.error(`[worker] automation job ${job?.id} failed:`, err));
+reindexWorker.on("failed", (job, err) => console.error(`[worker] reindex job ${job?.id} failed:`, err));
 
 process.on("SIGTERM", async () => {
   await mailWorker.close();
   await automationWorker.close();
+  await reindexWorker.close();
   await mailQueue.close();
   await automationQueue.close();
+  await reindexQueue.close();
   process.exit(0);
 });
 
@@ -124,6 +158,7 @@ async function main() {
   // restart.
   await mailQueue.add("process-outbox", {}, { repeat: { every: 15_000 } });
   await automationQueue.add("process-events", {}, { repeat: { every: 5_000 } });
+  await reindexQueue.add("process-reindex", {}, { repeat: { every: 10_000 } });
   console.log(`[worker] started, connected to redis at ${env.REDIS_URL}`);
 }
 
