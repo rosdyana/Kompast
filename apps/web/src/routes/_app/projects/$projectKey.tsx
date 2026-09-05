@@ -518,12 +518,13 @@ const TRIGGER_LABEL: Record<TriggerType, string> = {
   "issue.assigned": "Ditugaskan",
   "issue.commented": "Ada komentar baru",
 };
-const ACTION_TYPES = ["add_label", "comment", "transition", "assign"] as const;
+const ACTION_TYPES = ["add_label", "comment", "transition", "assign", "create_subtask"] as const;
 const ACTION_LABEL: Record<(typeof ACTION_TYPES)[number], string> = {
   add_label: "Tambah label",
   comment: "Tambah komentar",
   transition: "Pindahkan status",
   assign: "Tugaskan ke",
+  create_subtask: "Buat subtask",
 };
 
 /**
@@ -531,9 +532,10 @@ const ACTION_LABEL: Record<(typeof ACTION_TYPES)[number], string> = {
  * underlying REST API/engine supports full arrays of both — see
  * packages/core/src/automation.ts — this form just doesn't expose it yet).
  * The "transition" action picks a board column's first mapped status,
- * and "assign" only offers users who already appear as an assignee
- * somewhere on this board (getProjectBoardFn doesn't return the full
- * workspace member list) — both documented v1 limitations.
+ * "assign" only offers users who already appear as an assignee somewhere
+ * on this board (getProjectBoardFn doesn't return the full workspace
+ * member list), and "create_subtask"'s title is a fixed string, not
+ * templated from the triggering issue — all documented v1 limitations.
  */
 function AutomationTab({ projectId, data }: { projectId: string; data: BoardData }) {
   const [rules, setRules] = useState<AutomationRule[] | null>(null);
@@ -546,6 +548,8 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
   const [actionText, setActionText] = useState("");
   const [actionStatusId, setActionStatusId] = useState(data.columns[0]?.statusIds[0] ?? "");
   const [actionAssigneeId, setActionAssigneeId] = useState("");
+  const [actionSubtaskTypeId, setActionSubtaskTypeId] = useState(data.issueTypes.find((t) => t.isSubtask)?.id ?? data.issueTypes[0]?.id ?? "");
+  const [actionSubtaskTitle, setActionSubtaskTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -567,7 +571,9 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
           ? { type: "comment" as const, text: actionText }
           : actionType === "transition"
             ? { type: "transition" as const, toStatusId: actionStatusId }
-            : { type: "assign" as const, assigneeId: actionAssigneeId || null };
+            : actionType === "assign"
+              ? { type: "assign" as const, assigneeId: actionAssigneeId || null }
+              : { type: "create_subtask" as const, typeId: actionSubtaskTypeId, title: actionSubtaskTitle };
 
     setCreating(true);
     try {
@@ -575,6 +581,7 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
       setName("");
       setActionLabel("");
       setActionText("");
+      setActionSubtaskTitle("");
       await refresh();
     } finally {
       setCreating(false);
@@ -668,6 +675,23 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
                 </option>
               ))}
             </select>
+          )}
+          {actionType === "create_subtask" && (
+            <>
+              <select value={actionSubtaskTypeId} onChange={(e) => setActionSubtaskTypeId(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+                {data.issueTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={actionSubtaskTitle}
+                onChange={(e) => setActionSubtaskTitle(e.target.value)}
+                placeholder="judul subtask (tetap, tidak berbasis judul tiket induk)"
+                className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]"
+              />
+            </>
           )}
           <Button variant="primary" className="text-[12.5px]" onClick={createRule} disabled={creating}>
             + Aturan

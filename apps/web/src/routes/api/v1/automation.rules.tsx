@@ -24,6 +24,7 @@ const actionSchema = z.union([
   z.object({ type: z.literal("notify"), userId: z.string(), title: z.string(), body: z.string().optional() }),
   z.object({ type: z.literal("add_to_sprint"), sprintId: z.string() }),
   z.object({ type: z.literal("link_issue"), issueId: z.string() }),
+  z.object({ type: z.literal("create_subtask"), typeId: z.string(), title: z.string().min(1) }),
 ]);
 
 const createRuleSchema = z.object({

@@ -1,7 +1,7 @@
-import { and, desc, eq, gte, inArray, sql, schema, type Json } from "@kompast/db";
+import { and, asc, desc, eq, gte, inArray, sql, schema, type Json } from "@kompast/db";
 import type { Tx, AnyDb } from "./types";
 import { id } from "./ids";
-import { updateIssue, moveIssue } from "./issue";
+import { createIssue, updateIssue, moveIssue } from "./issue";
 import { addComment } from "./comment";
 import { notify } from "./notification";
 import { addIssueToSprint } from "./sprint";
@@ -28,7 +28,8 @@ export type RuleAction =
   | { type: "comment"; text: string }
   | { type: "notify"; userId: string; title: string; body?: string }
   | { type: "add_to_sprint"; sprintId: string }
-  | { type: "link_issue"; issueId: string };
+  | { type: "link_issue"; issueId: string }
+  | { type: "create_subtask"; typeId: string; title: string };
 
 function matchCondition(payload: Record<string, Json>, condition: RuleCondition): boolean {
   const actual: Json = payload[condition.field] ?? null;
@@ -152,10 +153,39 @@ async function executeActions(tx: Tx, rule: AutomationRuleRow, event: Automation
       await addIssueToSprint(tx, action.sprintId, issueId);
     } else if (action.type === "link_issue") {
       await linkEntities(tx, { organizationId: event.organizationId, fromType: "issue", fromId: issueId, toType: "issue", toId: action.issueId, createdBy: actorId });
+    } else if (action.type === "create_subtask") {
+      const statusId = await resolveDefaultStatusId(tx, event.projectId);
+      await createIssue(tx, {
+        organizationId: event.organizationId,
+        projectId: event.projectId,
+        typeId: action.typeId,
+        statusId,
+        title: action.title,
+        reporterId: actorId,
+        parentId: issueId,
+        origin,
+        originClient,
+        automationContext,
+      });
     }
     log.push(action as unknown as Json);
   }
   return log;
+}
+
+/**
+ * create_subtask has no title-templating capability (a fixed title only,
+ * no "based on parent issue" substitution) — a documented simplification,
+ * not a placeholder. Status defaults the same way apps/web's
+ * resolveStatus() does (first "todo"-category status by order, else the
+ * project's first status by order) since a rule action has no natural
+ * "which status" input of its own the way a human creating an issue does.
+ */
+async function resolveDefaultStatusId(tx: Tx, projectId: string): Promise<string> {
+  const statuses = await tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, projectId)).orderBy(asc(schema.workflowStatus.order));
+  const status = statuses.find((s) => s.category === "todo") ?? statuses[0];
+  if (!status) throw new Error(`Project ${projectId} has no workflow statuses`);
+  return status.id;
 }
 
 /**

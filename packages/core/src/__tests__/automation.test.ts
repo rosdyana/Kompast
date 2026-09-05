@@ -275,4 +275,27 @@ describe("automation engine", () => {
     const updatedEvent = await latestEventFor(newIssueId, "issue.updated");
     expect((updatedEvent.payload as { changedFields: string[] }).changedFields).toEqual(["priority"]);
   });
+
+  it("create_subtask action creates a real subtask issue, parented to the triggering issue, in the project's default (todo-category) status", async () => {
+    const { projectId, issueId, statuses, issueTypes } = await seedProjectAndIssue();
+    const subtaskType = issueTypes.find((t) => t.isSubtask)!;
+    await withAuthorizedTenant(ctx, (tx) =>
+      createAutomationRule(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Spin off a QA subtask on transition",
+        trigger: { type: "issue.transitioned" },
+        actions: [{ type: "create_subtask", typeId: subtaskType.id, title: "QA verification" }],
+        createdBy: userId,
+      }),
+    );
+
+    await withAuthorizedTenant(ctx, (tx) => moveIssue(tx, { issueId, toStatusId: statuses[2]!.id, actorId: userId }));
+    const event = await latestEventFor(issueId, "issue.transitioned");
+    await withAuthorizedTenant(ctx, (tx) => evaluateAutomationEvent(tx, event));
+
+    const todoStatus = statuses.find((s) => s.category === "todo")!;
+    const [subtask] = await admin.select().from(schema.issue).where(and(eq(schema.issue.parentId, issueId), eq(schema.issue.typeId, subtaskType.id)));
+    expect(subtask).toMatchObject({ title: "QA verification", statusId: todoStatus.id, origin: "automation" });
+  });
 });
