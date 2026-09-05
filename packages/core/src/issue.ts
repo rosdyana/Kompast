@@ -19,6 +19,12 @@ export interface CreateIssueInput {
   labels?: string[];
   storyPoints?: number;
   dueDate?: Date;
+  /** Subtask's parent issue id — see issueType.hierarchyLevel/isSubtask for what makes a type valid here. Not validated against hierarchy here; callers (UI/REST/MCP/import) are expected to only offer valid parents. */
+  parentId?: string;
+  estimateSeconds?: number;
+  customFields?: Json;
+  /** Backdates the issue row AND its "created" history row — for the importer, where an issue's real creation time must be preserved for burndown/cycle-time to stay honest. Omit for a real-time create (defaults to now). */
+  createdAt?: Date;
   origin?: "user" | "automation" | "mcp" | "api" | "import";
   originClient?: string;
   automationContext?: AutomationContext;
@@ -66,9 +72,13 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
     labels: input.labels ?? [],
     storyPoints: input.storyPoints,
     dueDate: input.dueDate,
+    parentId: input.parentId,
+    estimateSeconds: input.estimateSeconds,
+    customFields: input.customFields ?? {},
     rank: rankBetween(lastCard?.rank ?? null, null),
     origin: input.origin ?? "user",
     originClient: input.originClient,
+    ...(input.createdAt ? { createdAt: input.createdAt, updatedAt: input.createdAt } : {}),
   });
 
   await tx.insert(schema.issueHistory).values({
@@ -79,6 +89,7 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
     originClient: input.originClient,
     field: "created",
     toValue: input.title,
+    ...(input.createdAt ? { createdAt: input.createdAt } : {}),
   });
 
   if (input.assigneeId && input.assigneeId !== input.reporterId) {
@@ -113,15 +124,31 @@ export interface UpdateIssueInput {
   dueDate?: Date | null;
   startDate?: Date | null;
   epicId?: string | null;
+  parentId?: string | null;
+  estimateSeconds?: number | null;
+  /** Column is NOT NULL (default 0) — unlike estimateSeconds, this can be set but never cleared to null. */
+  spentSeconds?: number;
   labels?: string[];
   descriptionJson?: Json;
+  customFields?: Json;
   actorId: string;
   origin?: "user" | "automation" | "mcp" | "api" | "import";
   originClient?: string;
   automationContext?: AutomationContext;
 }
 
-const UPDATE_ISSUE_HISTORY_FIELDS = ["title", "priority", "assigneeId", "storyPoints", "dueDate", "startDate", "epicId"] as const;
+const UPDATE_ISSUE_HISTORY_FIELDS = [
+  "title",
+  "priority",
+  "assigneeId",
+  "storyPoints",
+  "dueDate",
+  "startDate",
+  "epicId",
+  "parentId",
+  "estimateSeconds",
+  "spentSeconds",
+] as const;
 
 /**
  * Partial field update — every changed field (except labels/description,
@@ -141,8 +168,12 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
   if (patch.dueDate !== undefined) updateValues.dueDate = patch.dueDate;
   if (patch.startDate !== undefined) updateValues.startDate = patch.startDate;
   if (patch.epicId !== undefined) updateValues.epicId = patch.epicId;
+  if (patch.parentId !== undefined) updateValues.parentId = patch.parentId;
+  if (patch.estimateSeconds !== undefined) updateValues.estimateSeconds = patch.estimateSeconds;
+  if (patch.spentSeconds !== undefined) updateValues.spentSeconds = patch.spentSeconds;
   if (patch.labels !== undefined) updateValues.labels = patch.labels;
   if (patch.descriptionJson !== undefined) updateValues.descriptionJson = patch.descriptionJson;
+  if (patch.customFields !== undefined) updateValues.customFields = patch.customFields;
 
   await tx.update(schema.issue).set(updateValues).where(eq(schema.issue.id, issueId));
 

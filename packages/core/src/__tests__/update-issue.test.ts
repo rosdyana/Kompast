@@ -148,4 +148,67 @@ describe("updateIssue + createIssue attribution", () => {
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toMatchObject({ userId: otherUserId, eventType: "issue.assigned", entityId: issueId });
   });
+
+  it("createIssue accepts parentId, estimateSeconds, customFields, and a backdated createdAt (for importers)", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, key: "upd2", name: "Update Test 2", actorUserId: userId }),
+    );
+    const { issueId: parentId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Parent issue", reporterId: userId }),
+    );
+    const backdated = new Date("2020-01-15T00:00:00.000Z");
+
+    const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, {
+        organizationId: orgId,
+        projectId,
+        typeId: issueTypes[0]!.id,
+        statusId: statuses[0]!.id,
+        title: "Child issue",
+        reporterId: userId,
+        parentId,
+        estimateSeconds: 3600,
+        customFields: { jiraOriginalKey: "PROJ-42" },
+        createdAt: backdated,
+      }),
+    );
+
+    const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issue?.parentId).toBe(parentId);
+    expect(issue?.estimateSeconds).toBe(3600);
+    expect(issue?.customFields).toEqual({ jiraOriginalKey: "PROJ-42" });
+    expect(issue?.createdAt).toEqual(backdated);
+
+    const [history] = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history?.createdAt).toEqual(backdated);
+  });
+
+  it("updateIssue sets parentId, estimateSeconds, spentSeconds, and customFields, with the diffable ones getting history rows", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, key: "upd3", name: "Update Test 3", actorUserId: userId }),
+    );
+    const { issueId: parentId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Some parent", reporterId: userId }),
+    );
+    const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Some issue", reporterId: userId }),
+    );
+
+    await withAuthorizedTenant(ctx, (tx) =>
+      updateIssue(tx, issueId, { parentId, estimateSeconds: 7200, spentSeconds: 1800, customFields: { foo: "bar" }, actorId: userId }),
+    );
+
+    const [updated] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(updated?.parentId).toBe(parentId);
+    expect(updated?.estimateSeconds).toBe(7200);
+    expect(updated?.spentSeconds).toBe(1800);
+    expect(updated?.customFields).toEqual({ foo: "bar" });
+
+    const history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    const nonCreation = history.filter((h) => h.field !== "created");
+    // customFields is jsonb/set-valued like labels — no diffable history row, unlike the three scalar fields.
+    expect(nonCreation.map((h) => h.field).sort()).toEqual(["estimateSeconds", "parentId", "spentSeconds"]);
+  });
 });
