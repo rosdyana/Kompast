@@ -12,6 +12,26 @@ export interface ApiAuthContext {
 }
 
 /**
+ * Session-cookie auth for a file-route handler that needs a raw streaming
+ * Response (SSE) rather than createServerFn's JSON return — see
+ * apps/web/src/routes/api/ai/stream.tsx. Deliberately takes `request`
+ * directly instead of going through session.ts's getCurrentSession()
+ * (which calls TanStack Start's getRequest(), relying on AsyncLocalStorage
+ * populated for server-function calls specifically); every REST route in
+ * this same directory already reads auth off the handler's own `request`
+ * parameter, so this mirrors that proven-safe pattern instead of
+ * depending on ALS context inside a plain file-route handler.
+ */
+export async function requireSessionAuth(request: Request): Promise<{ userId: string; organizationId: string }> {
+  const auth = await getAuth();
+  const result = await auth.api.getSession({ headers: request.headers });
+  if (!result) throw new ApiError(401, "Unauthorized", "No active session");
+  const organizationId = result.session.activeOrganizationId;
+  if (!organizationId) throw new ApiError(400, "Bad Request", "Session has no active workspace");
+  return { userId: result.user.id, organizationId };
+}
+
+/**
  * RFC 9457 problem+json — every REST and MCP-auth error responds with
  * this shape, not a bare string or an ad hoc JSON object.
  */
