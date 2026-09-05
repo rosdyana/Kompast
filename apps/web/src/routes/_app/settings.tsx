@@ -2,7 +2,7 @@ import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
-import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn } from "@/lib/server-fns/settings";
+import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn } from "@/lib/server-fns/settings";
 
 export const Route = createFileRoute("/_app/settings")({
   loader: async () => {
@@ -30,9 +30,136 @@ function SettingsPage() {
         <AiSection initial={data.ai} />
       </div>
       <div className="mt-8">
+        <EmbeddingSection initial={data.embedding} />
+      </div>
+      <div className="mt-8">
         <MailSection initial={data.mail} />
       </div>
     </div>
+  );
+}
+
+function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["embedding"] }) {
+  const router = useRouter();
+  const [provider, setProvider] = useState(initial.provider ?? "azure-openai");
+  const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState(initial.model ?? "");
+  const [azureEndpoint, setAzureEndpoint] = useState(initial.azureEndpoint ?? "");
+  const [azureDeployment, setAzureDeployment] = useState(initial.azureDeployment ?? "");
+  const [baseUrl, setBaseUrl] = useState(initial.openAiCompatibleBaseUrl ?? "");
+  const [enabled, setEnabled] = useState(initial.featuresEnabled);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await updateEmbeddingSettingsFn({
+        data: {
+          provider,
+          apiKey: apiKey || undefined,
+          model: model || undefined,
+          azureEndpoint: azureEndpoint || undefined,
+          azureDeployment: azureDeployment || undefined,
+          openAiCompatibleBaseUrl: baseUrl || undefined,
+          featuresEnabled: enabled,
+        },
+      });
+      setApiKey("");
+      setSaved(true);
+      await router.invalidate();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="mb-3 text-[13px] font-semibold">Embedding (Ask Kompast)</h2>
+      <p className="mb-3 text-[12px] text-text-2">
+        Provider terpisah dari AI di atas — Anthropic tidak memiliki API embeddings publik, jadi Ask Kompast butuh Azure OpenAI atau endpoint kompatibel-OpenAI, apa pun provider AI yang dipilih di atas.
+      </p>
+      <Card className="flex flex-col gap-4 p-4">
+        <label className="flex items-center gap-2 text-[13px]">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          Aktifkan Ask Kompast
+        </label>
+
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">Provider</span>
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as typeof provider)}
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+          >
+            <option value="azure-openai">Azure OpenAI</option>
+            <option value="openai-compatible">OpenAI-compatible</option>
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">
+            API key {initial.hasApiKey && <span className="text-text-3">(tersimpan — kosongkan untuk tidak mengubah)</span>}
+          </span>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={initial.hasApiKey ? "••••••••" : "sk-…"}
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+          />
+        </label>
+
+        {provider === "azure-openai" ? (
+          <>
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Azure endpoint</span>
+              <input
+                value={azureEndpoint}
+                onChange={(e) => setAzureEndpoint(e.target.value)}
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Azure deployment (embeddings)</span>
+              <input
+                value={azureDeployment}
+                onChange={(e) => setAzureDeployment(e.target.value)}
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Base URL</span>
+              <input
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Model</span>
+              <input
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="text-embedding-3-small"
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              />
+            </label>
+          </>
+        )}
+
+        <div className="flex items-center gap-2.5">
+          <Button variant="primary" onClick={save} disabled={saving}>
+            {saving ? "Menyimpan…" : "Simpan"}
+          </Button>
+          {saved && <span className="text-[12px] text-green">Tersimpan.</span>}
+        </div>
+      </Card>
+    </section>
   );
 }
 

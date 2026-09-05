@@ -1,15 +1,25 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
 import { db } from "@kompast/db";
-import { getAiSettings, updateAiSettings, getMailSettings, updateMailSettings, getMicrosoftAuthSettingsView, completeSetup, requireSystemAdmin } from "@kompast/core";
+import {
+  getAiSettings,
+  updateAiSettings,
+  getMailSettings,
+  updateMailSettings,
+  getMicrosoftAuthSettingsView,
+  completeSetup,
+  getEmbeddingSettings,
+  updateEmbeddingSettings,
+  requireSystemAdmin,
+} from "@kompast/core";
 import { requireAuthContext } from "../session";
 import { invalidateAuthCache } from "../auth";
 
 export const getIntegrationSettingsFn = createServerFn({ method: "GET" }).handler(async () => {
   const ctx = await requireAuthContext();
   await requireSystemAdmin(db, ctx);
-  const [ai, mail, entra] = await Promise.all([getAiSettings(db), getMailSettings(db), getMicrosoftAuthSettingsView(db)]);
-  return { ai, mail, entra };
+  const [ai, mail, entra, embedding] = await Promise.all([getAiSettings(db), getMailSettings(db), getMicrosoftAuthSettingsView(db), getEmbeddingSettings(db)]);
+  return { ai, mail, entra, embedding };
 });
 
 const updateMicrosoftAuthSchema = z.object({
@@ -52,6 +62,26 @@ export const updateAiSettingsFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     await requireSystemAdmin(db, ctx);
     await updateAiSettings(db, { ...data, updatedBy: ctx.userId });
+    return { ok: true } as const;
+  });
+
+const updateEmbeddingSchema = z.object({
+  provider: z.enum(["azure-openai", "openai-compatible"]),
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
+  azureEndpoint: z.string().optional(),
+  azureDeployment: z.string().optional(),
+  openAiCompatibleBaseUrl: z.string().optional(),
+  featuresEnabled: z.boolean(),
+});
+
+/** No "anthropic" option here at all — see packages/db/src/schema/settings.ts's comment on why the embedding provider is a fully separate choice from the chat provider. */
+export const updateEmbeddingSettingsFn = createServerFn({ method: "POST" })
+  .validator(updateEmbeddingSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireSystemAdmin(db, ctx);
+    await updateEmbeddingSettings(db, { ...data, updatedBy: ctx.userId });
     return { ok: true } as const;
   });
 

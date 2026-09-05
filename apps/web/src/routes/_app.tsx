@@ -94,6 +94,12 @@ function Sidebar({ shell }: { shell: Shell }) {
             <span className="w-[15px] text-center text-xs text-text-3">⌕</span>Cari
             <span className="ml-auto font-mono text-[10px] text-text-3">⌘K</span>
           </button>
+          <Link
+            to="/ask"
+            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13.5px] hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
+          >
+            <span className="w-[15px] text-center text-xs text-text-3">✨</span>Tanya Kompast
+          </Link>
         </div>
 
         <div className="flex items-center justify-between px-2 pb-1.5">
