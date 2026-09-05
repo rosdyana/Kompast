@@ -193,6 +193,86 @@ export async function getAiCredentials(db: AnyDb) {
   };
 }
 
+export interface EmbeddingSettingsView {
+  provider: "azure-openai" | "openai-compatible" | null;
+  hasApiKey: boolean;
+  model: string | null;
+  azureEndpoint: string | null;
+  azureDeployment: string | null;
+  openAiCompatibleBaseUrl: string | null;
+  featuresEnabled: boolean;
+}
+
+/** Masked view for /settings — same shape/reasoning as getAiSettings(), a fully independent config (see packages/db/src/schema/settings.ts's own comment on why this isn't just reusing aiProvider). */
+export async function getEmbeddingSettings(db: AnyDb): Promise<EmbeddingSettingsView> {
+  const row = await getRow(db);
+  return {
+    provider: (row?.embeddingProvider as EmbeddingSettingsView["provider"]) ?? null,
+    hasApiKey: Boolean(row?.embeddingApiKeyEncrypted),
+    model: row?.embeddingModel ?? null,
+    azureEndpoint: row?.embeddingAzureEndpoint ?? null,
+    azureDeployment: row?.embeddingAzureDeployment ?? null,
+    openAiCompatibleBaseUrl: row?.embeddingOpenAiCompatibleBaseUrl ?? null,
+    featuresEnabled: row?.embeddingFeaturesEnabled ?? false,
+  };
+}
+
+export interface UpdateEmbeddingSettingsInput {
+  provider: "azure-openai" | "openai-compatible";
+  apiKey?: string;
+  model?: string;
+  azureEndpoint?: string;
+  azureDeployment?: string;
+  openAiCompatibleBaseUrl?: string;
+  featuresEnabled: boolean;
+  updatedBy: string;
+}
+
+export async function updateEmbeddingSettings(db: AnyDb, input: UpdateEmbeddingSettingsInput) {
+  await db
+    .insert(schema.systemSettings)
+    .values({
+      id: SYSTEM_SETTINGS_ID,
+      embeddingProvider: input.provider,
+      embeddingApiKeyEncrypted: input.apiKey ? encryptSecret(input.apiKey) : null,
+      embeddingModel: input.model,
+      embeddingAzureEndpoint: input.azureEndpoint,
+      embeddingAzureDeployment: input.azureDeployment,
+      embeddingOpenAiCompatibleBaseUrl: input.openAiCompatibleBaseUrl,
+      embeddingFeaturesEnabled: input.featuresEnabled,
+      updatedBy: input.updatedBy,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: schema.systemSettings.id,
+      set: {
+        embeddingProvider: input.provider,
+        ...(input.apiKey ? { embeddingApiKeyEncrypted: encryptSecret(input.apiKey) } : {}),
+        embeddingModel: input.model,
+        embeddingAzureEndpoint: input.azureEndpoint,
+        embeddingAzureDeployment: input.azureDeployment,
+        embeddingOpenAiCompatibleBaseUrl: input.openAiCompatibleBaseUrl,
+        embeddingFeaturesEnabled: input.featuresEnabled,
+        updatedBy: input.updatedBy,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+/** Decrypted embedding credentials — see getAiCredentials()'s identical reasoning. Null if not configured or disabled. */
+export async function getEmbeddingCredentials(db: AnyDb) {
+  const row = await getRow(db);
+  if (!row?.embeddingProvider || !row.embeddingApiKeyEncrypted || !row.embeddingFeaturesEnabled) return null;
+  return {
+    provider: row.embeddingProvider as "azure-openai" | "openai-compatible",
+    apiKey: decryptSecret(row.embeddingApiKeyEncrypted),
+    model: row.embeddingModel ?? null,
+    azureEndpoint: row.embeddingAzureEndpoint ?? null,
+    azureDeployment: row.embeddingAzureDeployment ?? null,
+    openAiCompatibleBaseUrl: row.embeddingOpenAiCompatibleBaseUrl ?? null,
+  };
+}
+
 export interface MailSettingsView {
   driver: "brevo" | "resend" | "smtp" | null;
   from: string | null;

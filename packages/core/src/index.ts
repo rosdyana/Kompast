@@ -31,4 +31,5 @@ export * from "./bootstrap";
 export * from "./crypto";
 export * from "./ai";
 export * from "./import";
+export * from "./rag";
 export type { Tx } from "./types";

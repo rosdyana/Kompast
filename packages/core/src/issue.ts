@@ -5,6 +5,7 @@ import { id } from "./ids";
 import { rankBetween } from "./rank";
 import { notify } from "./notification";
 import { emitAutomationEvent, type AutomationContext } from "./automation-events";
+import { enqueueReindex } from "./rag";
 
 export interface CreateIssueInput {
   organizationId: string;
@@ -91,6 +92,11 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
     toValue: input.title,
     ...(input.createdAt ? { createdAt: input.createdAt } : {}),
   });
+
+  // Enqueued regardless of origin — an imported issue should be just as
+  // findable through Ask Kompast as a live-created one, unlike
+  // notifications/automation (which imports deliberately never fire).
+  await enqueueReindex(tx, { organizationId: input.organizationId, entityType: "issue", entityId: issueId });
 
   // Historical bulk-loaded data (origin "import") never notifies or fires
   // automation — importing 5,000 old JIRA issues should not send 5,000
@@ -181,6 +187,13 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
   if (patch.customFields !== undefined) updateValues.customFields = patch.customFields;
 
   await tx.update(schema.issue).set(updateValues).where(eq(schema.issue.id, issueId));
+
+  // Reindexed regardless of origin (see createIssue's identical
+  // reasoning) — only when a field that actually feeds the indexed text
+  // changed, not on every unrelated field update.
+  if (patch.title !== undefined || patch.descriptionJson !== undefined) {
+    await enqueueReindex(tx, { organizationId: current.organizationId, entityType: "issue", entityId: issueId });
+  }
 
   const historyRows = UPDATE_ISSUE_HISTORY_FIELDS.filter((field) => patch[field] !== undefined && patch[field] !== current[field]).map(
     (field) => ({

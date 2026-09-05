@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { db, schema, eq, adminDb } from "@kompast/db";
+import { db, schema, eq, asc, sql, adminDb } from "@kompast/db";
 import { encryptSecret, decryptSecret } from "../crypto";
 import {
   getSetupStatus,
@@ -10,6 +10,7 @@ import {
   updateAiSettings,
   getMailSettings,
   updateMailSettings,
+  updateEmbeddingSettings,
   requireSystemAdmin,
 } from "../settings";
 import { isOnlyUser } from "../bootstrap";
@@ -19,7 +20,18 @@ import { id } from "../ids";
 import { createProject } from "../project";
 import { createSprint, addIssueToSprint } from "../sprint";
 import { createIssue } from "../issue";
+import { addComment } from "../comment";
 import { AiNotConfiguredError, runAiCompletion, runDocTextAction, generateIssueDescription, generateSprintSummary } from "../ai";
+import {
+  chunkText,
+  indexEntity,
+  claimPendingReindexTasks,
+  markReindexTaskProcessed,
+  processReindexTask,
+  searchEmbeddings,
+  askKompast,
+  EmbeddingNotConfiguredError,
+} from "../rag";
 
 function fakeAnthropicSseResponse(): Response {
   const frames = [
@@ -36,6 +48,35 @@ function fakeAnthropicSseResponse(): Response {
     },
   });
   return new Response(body, { status: 200 });
+}
+
+const EMBEDDING_DIMENSIONS = 1536;
+
+/** Deterministic, not random — identical text always produces an identical vector, and distinct text (almost always) lands in a distinct dimension, which is exactly what a controlled ordering test needs (no real semantic model behind a mocked provider). */
+function fakeEmbed(text: string): number[] {
+  const vec = new Array(EMBEDDING_DIMENSIONS).fill(0);
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  vec[Math.abs(hash) % EMBEDDING_DIMENSIONS] = 1;
+  return vec;
+}
+
+function fakeEmbeddingsResponse(texts: string[]): Response {
+  return new Response(JSON.stringify({ data: texts.map((t, index) => ({ embedding: fakeEmbed(t), index })) }), { status: 200 });
+}
+
+/** Dispatches by URL so one stub can serve both the chat (Anthropic) and embeddings (Azure OpenAI) endpoints askKompast calls in the same request. */
+function stubAiAndEmbeddingFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string | URL, init?: RequestInit) => {
+      if (url.toString().includes("/embeddings")) {
+        const body = JSON.parse(init!.body as string) as { input: string[] };
+        return fakeEmbeddingsResponse(body.input);
+      }
+      return fakeAnthropicSseResponse();
+    }),
+  );
 }
 
 describe("crypto", () => {
@@ -345,5 +386,204 @@ describe("packages/core/ai", () => {
       expect(facts.indexOf("Finished task")).toBeLessThan(facts.indexOf("Not completed"));
       expect(facts.indexOf("Unfinished task")).toBeGreaterThan(facts.indexOf("Not completed"));
     });
+  });
+});
+
+describe("chunkText", () => {
+  it("returns nothing for blank text", () => {
+    expect(chunkText("   \n\n  ")).toEqual([]);
+  });
+
+  it("keeps a single short paragraph as one chunk", () => {
+    expect(chunkText("hello world")).toEqual(["hello world"]);
+  });
+
+  it("merges paragraphs that comfortably fit under the max chunk size", () => {
+    expect(chunkText("first paragraph\n\nsecond paragraph")).toEqual(["first paragraph\n\nsecond paragraph"]);
+  });
+
+  it("splits once the running chunk would exceed the max size, rather than merging indefinitely", () => {
+    const p1 = "a".repeat(600);
+    const p2 = "b".repeat(600);
+    expect(chunkText(`${p1}\n\n${p2}`)).toEqual([p1, p2]);
+  });
+});
+
+/**
+ * Same co-location reasoning as "packages/core/ai" above — system_settings
+ * is a true singleton and this describe block also writes to it
+ * (updateEmbeddingSettings), so it has to serialize against every other
+ * describe block in this file that does the same, not live in its own
+ * vitest-parallelized file.
+ */
+describe("packages/core/rag", () => {
+  const orgId = "test-rag-org";
+  const userId = "test-rag-user";
+  const ctx = { userId, organizationId: orgId };
+
+  async function cleanup() {
+    await db.delete(schema.systemSettings);
+    await db.delete(schema.aiMessage).where(sql`thread_id in (select id from ai_thread where organization_id = ${orgId})`);
+    await db.delete(schema.aiThread).where(eq(schema.aiThread.organizationId, orgId));
+    await db.delete(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.organizationId, orgId));
+    await db.delete(schema.embedding).where(eq(schema.embedding.organizationId, orgId));
+    await db.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await db.delete(schema.member).where(eq(schema.member.organizationId, orgId));
+    await db.delete(schema.organization).where(eq(schema.organization.id, orgId));
+    await db.delete(schema.user).where(eq(schema.user.id, userId));
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    await db.insert(schema.organization).values({ id: orgId, name: "RAG Test Org", slug: orgId });
+    await db.insert(schema.user).values({ id: userId, name: "RAG User", email: `${userId}@example.com` });
+    await db.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  async function seedProject() {
+    return withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, key: "rag", name: "RAG Test", actorUserId: userId }));
+  }
+
+  /**
+   * A plain, unclaimed read by entityId — NOT claimPendingReindexTasks,
+   * which claims system-wide across every test file's own createIssue/
+   * addComment calls (a real, shared queue) and would otherwise race
+   * whichever task this specific test cares about. Safe here because
+   * entityId is unique per test (fresh id() per created issue/comment).
+   */
+  async function fetchPendingReindexTask(entityId: string) {
+    const [row] = await adminDb.select().from(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.entityId, entityId));
+    return row ?? null;
+  }
+
+  it("indexEntity stores one row per chunk and silently does nothing when embeddings aren't configured", async () => {
+    await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "fake-1", text: "hello world" }));
+    const rows = await adminDb.select().from(schema.embedding).where(eq(schema.embedding.entityId, "fake-1"));
+    expect(rows).toHaveLength(0);
+  });
+
+  describe("with embeddings + chat configured (fetch mocked — no real network call)", () => {
+    beforeEach(async () => {
+      await updateEmbeddingSettings(db, { provider: "azure-openai", apiKey: "fake-embed-key", azureEndpoint: "https://embed.openai.azure.com", azureDeployment: "embed-dep", featuresEnabled: true, updatedBy: userId });
+      // askKompast's generation step needs the (separate) chat provider configured too.
+      await updateAiSettings(db, { provider: "anthropic", apiKey: "fake-chat-key", featuresEnabled: true, updatedBy: userId });
+      stubAiAndEmbeddingFetch();
+    });
+
+    it("indexEntity stores real vectors, one row per chunk, and replaces old chunks wholesale on a later call", async () => {
+      await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "fake-1", text: "hello world" }));
+      let rows = await adminDb.select().from(schema.embedding).where(eq(schema.embedding.entityId, "fake-1"));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.content).toBe("hello world");
+      expect(rows[0]!.vector).toHaveLength(EMBEDDING_DIMENSIONS);
+
+      await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "fake-1", text: "completely different text" }));
+      rows = await adminDb.select().from(schema.embedding).where(eq(schema.embedding.entityId, "fake-1"));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.content).toBe("completely different text");
+    });
+
+    it("createIssue auto-enqueues a reindex task, and processReindexTask indexes the real issue's current title+description", async () => {
+      const { projectId, issueTypes, statuses } = await seedProject();
+      const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+        createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Fix the login bug", descriptionJson: { text: "Users can't sign in with SSO." }, reporterId: userId }),
+      );
+
+      const task = await fetchPendingReindexTask(issueId);
+      expect(task).toMatchObject({ organizationId: orgId, entityType: "issue", entityId: issueId, action: "index", status: "pending" });
+
+      await withAuthorizedTenant(ctx, (tx) => processReindexTask(tx, task!));
+      await markReindexTaskProcessed(adminDb, task!.id);
+
+      const rows = await adminDb.select().from(schema.embedding).where(eq(schema.embedding.entityId, issueId));
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.some((r) => r.content.includes("Fix the login bug"))).toBe(true);
+      expect(rows.some((r) => r.content.includes("SSO"))).toBe(true);
+
+      const [taskRow] = await adminDb.select().from(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.id, task!.id));
+      expect(taskRow?.status).toBe("processed");
+    });
+
+    it("addComment auto-enqueues a reindex task for the new comment", async () => {
+      const { projectId, issueTypes, statuses } = await seedProject();
+      const { issueId } = await withAuthorizedTenant(ctx, (tx) => createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "An issue", reporterId: userId }));
+
+      const { commentId } = await withAuthorizedTenant(ctx, (tx) => addComment(tx, { issueId, authorId: userId, bodyJson: { text: "a very specific comment body" } }));
+
+      const task = await fetchPendingReindexTask(commentId);
+      expect(task).toMatchObject({ entityType: "comment", entityId: commentId });
+    });
+
+    it("claimPendingReindexTasks claims a real pending task and marks it processing", async () => {
+      const { projectId, issueTypes, statuses } = await seedProject();
+      const { issueId } = await withAuthorizedTenant(ctx, (tx) => createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Claim test issue", reporterId: userId }));
+
+      // Higher limit + filter by our own known entityId, not position [0] —
+      // this is a system-wide claim (every test file's createIssue/addComment
+      // calls enqueue onto the SAME queue), same reasoning as
+      // claimPendingAutomationEvents' own test in automation.test.ts.
+      const claimed = await claimPendingReindexTasks(adminDb, 50);
+      const ours = claimed.filter((t) => t.entityId === issueId);
+      expect(ours).toHaveLength(1);
+      expect(ours[0]!.status).toBe("processing");
+    });
+
+    it("searchEmbeddings ranks the chunk whose text exactly matches the query ahead of an unrelated one", async () => {
+      await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "issue-relevant", text: "database migration rollback procedure" }));
+      await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "issue-unrelated", text: "office coffee machine is broken" }));
+
+      const queryVector = fakeEmbed("database migration rollback procedure");
+      const results = await withAuthorizedTenant(ctx, (tx) => searchEmbeddings(tx, { organizationId: orgId, queryVector, limit: 5 }));
+
+      expect(results[0]!.entityId).toBe("issue-relevant");
+      expect(results[0]!.distance).toBeLessThan(results.find((r) => r.entityId === "issue-unrelated")!.distance);
+    });
+
+    it("askKompast retrieves relevant context, answers, and persists both the question and the answer with citations", async () => {
+      const { projectId, issueTypes, statuses } = await seedProject();
+      const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+        createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Unique searchable issue title", reporterId: userId }),
+      );
+      const task = await fetchPendingReindexTask(issueId);
+      await withAuthorizedTenant(ctx, (tx) => processReindexTask(tx, task!));
+
+      const deltas: string[] = [];
+      const result = await withAuthorizedTenant(ctx, (tx) => askKompast(tx, { organizationId: orgId, userId, question: "Unique searchable issue title", onDelta: (d) => deltas.push(d) }));
+
+      expect(result.answer).toBe("Hello");
+      expect(deltas.join("")).toBe("Hello");
+      expect(result.citations.some((c) => c.entityId === issueId)).toBe(true);
+
+      const messages = await adminDb.select().from(schema.aiMessage).where(eq(schema.aiMessage.threadId, result.threadId)).orderBy(asc(schema.aiMessage.createdAt));
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toMatchObject({ role: "user", content: "Unique searchable issue title" });
+      expect(messages[1]).toMatchObject({ role: "assistant", content: "Hello" });
+
+      const [thread] = await adminDb.select().from(schema.aiThread).where(eq(schema.aiThread.id, result.threadId));
+      expect(thread?.title).toBe("Unique searchable issue title");
+    });
+
+    it("askKompast continuing an existing thread includes the prior exchange in the next prompt", async () => {
+      const first = await withAuthorizedTenant(ctx, (tx) => askKompast(tx, { organizationId: orgId, userId, question: "first question" }));
+
+      const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+      fetchMock.mockClear();
+
+      await withAuthorizedTenant(ctx, (tx) => askKompast(tx, { organizationId: orgId, userId, threadId: first.threadId, question: "second question" }));
+
+      const chatCall = fetchMock.mock.calls.find((c: unknown[]) => !String(c[0]).includes("/embeddings"))!;
+      const sentBody = JSON.parse(chatCall[1].body);
+      expect(JSON.stringify(sentBody.messages)).toContain("first question");
+      expect(JSON.stringify(sentBody.messages)).toContain("Hello"); // the prior assistant answer
+    });
+  });
+
+  it("askKompast throws EmbeddingNotConfiguredError when embeddings aren't set up", async () => {
+    await expect(withAuthorizedTenant(ctx, (tx) => askKompast(tx, { organizationId: orgId, userId, question: "anything" }))).rejects.toThrow(EmbeddingNotConfiguredError);
   });
 });

@@ -4,6 +4,7 @@ import type { Tx } from "./types";
 import { id } from "./ids";
 import { notify } from "./notification";
 import { emitAutomationEvent, type AutomationContext } from "./automation-events";
+import { enqueueReindex } from "./rag";
 
 export interface AddCommentInput {
   issueId: string;
@@ -81,6 +82,12 @@ export async function addComment(tx: Tx, input: AddCommentInput) {
     originClient: input.originClient,
     ...(input.createdAt ? { createdAt: input.createdAt, updatedAt: input.createdAt } : {}),
   });
+
+  // Enqueued regardless of origin — see createIssue's identical reasoning.
+  // A standalone lookup (not notifyCommentParticipants' own select below,
+  // which import comments skip entirely) since this must run either way.
+  const [issueOrg] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, input.issueId));
+  if (issueOrg) await enqueueReindex(tx, { organizationId: issueOrg.organizationId, entityType: "comment", entityId: commentId });
 
   // Historical bulk-loaded data (origin "import") never notifies or fires
   // automation — see createIssue's identical gate for why.
