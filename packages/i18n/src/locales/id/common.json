@@ -1,5 +1,8 @@
 {
   "search": "Cari",
   "settings": "Pengaturan",
-  "logOut": "Keluar"
+  "logOut": "Keluar",
+  "notFoundTitle": "Halaman tidak ditemukan",
+  "notFoundSubtext": "Halaman yang Anda cari tidak ada atau mungkin telah dipindahkan.",
+  "notFoundGoHome": "Kembali ke beranda"
 }

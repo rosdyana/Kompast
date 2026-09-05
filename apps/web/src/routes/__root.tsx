@@ -1,8 +1,8 @@
-import { HeadContent, Scripts, Outlet, createRootRoute, redirect } from "@tanstack/react-router";
+import { HeadContent, Scripts, Outlet, createRootRoute, redirect, Link } from "@tanstack/react-router";
 import { useMemo, type ReactNode } from "react";
 import themeCss from "@kompast/ui/theme.css?url";
 import { ThemeProvider, type Theme } from "@kompast/ui/theme";
-import { I18nextProvider, createI18nInstance, type SupportedLocale } from "@kompast/i18n";
+import { I18nextProvider, createI18nInstance, useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { getSetupStatusFn } from "@/lib/server-fns/setup";
 import { getThemeFn } from "@/lib/server-fns/theme";
 import { getRequestLocaleFn } from "@/lib/server-fns/locale";
@@ -38,7 +38,21 @@ export const Route = createRootRoute({
     ],
   }),
   component: RootComponent,
+  notFoundComponent: NotFoundComponent,
 });
+
+function NotFoundComponent() {
+  const { t } = useTranslation("common");
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-bg px-6 text-center">
+      <h1 className="text-xl font-semibold text-text">{t("notFoundTitle")}</h1>
+      <p className="max-w-[380px] text-sm text-text-2">{t("notFoundSubtext")}</p>
+      <Link to="/" className="mt-3 text-sm font-medium text-accent hover:underline">
+        {t("notFoundGoHome")}
+      </Link>
+    </div>
+  );
+}
 
 function RootComponent() {
   const { theme, locale } = Route.useLoaderData();
