@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@kompast/ui/Button";
+import { useTranslation } from "@kompast/i18n";
 import { listThreadsFn, listMessagesFn } from "@/lib/server-fns/ask";
 import { streamAskKompast, type AskCitation } from "@/lib/ask-stream-client";
 
@@ -15,6 +16,7 @@ type Message = Awaited<ReturnType<typeof listMessagesFn>>[number];
 type DisplayMessage = Pick<Message, "role" | "content"> & { id: string; citations?: AskCitation[] };
 
 function AskPage() {
+  const { t } = useTranslation("ask");
   const initialThreads = Route.useLoaderData();
   const [threads, setThreads] = useState(initialThreads);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -54,7 +56,7 @@ function AskPage() {
       if (!selectedThreadId) setSelectedThreadId(result.threadId);
       await refreshThreads();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ask Kompast gagal");
+      setError(err instanceof Error ? err.message : t("askFailed"));
     } finally {
       setBusy(false);
     }
@@ -71,19 +73,19 @@ function AskPage() {
             setMessages([]);
           }}
         >
-          + Percakapan baru
+          {t("newConversationButton")}
         </Button>
         <div className="flex flex-col gap-1">
-          {threads.map((t) => (
+          {threads.map((th) => (
             <button
-              key={t.id}
-              onClick={() => setSelectedThreadId(t.id)}
-              className={`truncate rounded-lg px-2.5 py-1.5 text-left text-[12.5px] hover:bg-surface-2 ${selectedThreadId === t.id ? "bg-surface-2 font-medium" : "text-text-2"}`}
+              key={th.id}
+              onClick={() => setSelectedThreadId(th.id)}
+              className={`truncate rounded-lg px-2.5 py-1.5 text-left text-[12.5px] hover:bg-surface-2 ${selectedThreadId === th.id ? "bg-surface-2 font-medium" : "text-text-2"}`}
             >
-              {t.title || "Percakapan baru"}
+              {th.title || t("untitledThread")}
             </button>
           ))}
-          {threads.length === 0 && <p className="px-2.5 text-[12px] text-text-3">Belum ada percakapan.</p>}
+          {threads.length === 0 && <p className="px-2.5 text-[12px] text-text-3">{t("noConversationsYet")}</p>}
         </div>
       </div>
 
@@ -91,8 +93,8 @@ function AskPage() {
         <div className="flex-1 overflow-y-auto px-8 py-6">
           {messages.length === 0 && (
             <div className="mx-auto max-w-[560px] pt-16 text-center">
-              <h1 className="mb-2 text-xl font-semibold tracking-tight">Tanya Kompast</h1>
-              <p className="text-sm text-text-2">Tanyakan sesuatu tentang tiket dan komentar di workspace ini.</p>
+              <h1 className="mb-2 text-xl font-semibold tracking-tight">{t("askHeading")}</h1>
+              <p className="text-sm text-text-2">{t("askSubtitle")}</p>
             </div>
           )}
           <div className="mx-auto flex max-w-[720px] flex-col gap-4">
@@ -122,11 +124,11 @@ function AskPage() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && ask()}
-              placeholder="Tanyakan sesuatu…"
+              placeholder={t("inputPlaceholder")}
               className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2.5 text-[13.5px] outline-none focus:border-border-2"
             />
             <Button variant="primary" onClick={ask} disabled={busy || !question.trim()}>
-              {busy ? "Mengirim…" : "Kirim"}
+              {busy ? t("sendingEllipsis") : t("send")}
             </Button>
           </div>
         </div>

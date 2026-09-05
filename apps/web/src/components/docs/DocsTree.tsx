@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
+import { useTranslation } from "@kompast/i18n";
 
 export interface DocsTreePage {
   id: string;
@@ -9,6 +10,7 @@ export interface DocsTreePage {
 }
 
 function TreeNode({ page, byParent, depth }: { page: DocsTreePage; byParent: Map<string | null, DocsTreePage[]>; depth: number }) {
+  const { t } = useTranslation("docs");
   const params = useParams({ strict: false });
   const children = byParent.get(page.id) ?? [];
   const isActive = params.pageId === page.id;
@@ -33,7 +35,7 @@ function TreeNode({ page, byParent, depth }: { page: DocsTreePage; byParent: Map
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] hover:bg-surface-3 [&.active]:bg-surface-3 [&.active]:font-semibold"
         >
           <span className="flex-none">{page.icon || "▤"}</span>
-          <span className="min-w-0 flex-1 truncate">{page.title || "Tanpa judul"}</span>
+          <span className="min-w-0 flex-1 truncate">{page.title || t("untitled")}</span>
         </Link>
       </div>
       {expanded && children.map((child) => <TreeNode key={child.id} page={child} byParent={byParent} depth={depth + 1} />)}
@@ -42,6 +44,7 @@ function TreeNode({ page, byParent, depth }: { page: DocsTreePage; byParent: Map
 }
 
 export function DocsTree({ pages }: { pages: DocsTreePage[] }) {
+  const { t } = useTranslation("docs");
   const byParent = new Map<string | null, DocsTreePage[]>();
   for (const page of pages) {
     const list = byParent.get(page.parentPageId) ?? [];
@@ -50,7 +53,7 @@ export function DocsTree({ pages }: { pages: DocsTreePage[] }) {
   }
 
   const roots = byParent.get(null) ?? [];
-  if (roots.length === 0) return <p className="px-2 py-1.5 text-[12px] text-text-3">Belum ada halaman</p>;
+  if (roots.length === 0) return <p className="px-2 py-1.5 text-[12px] text-text-3">{t("docsTree.noPagesYet")}</p>;
 
   return (
     <div className="flex flex-col gap-px">

@@ -1,0 +1,66 @@
+{
+  "untitled": "Untitled",
+  "loadingEllipsis": "Loading…",
+  "restore": "Restore",
+  "send": "Send",
+  "docsBrand": "Docs",
+  "docsTree": { "noPagesYet": "No pages yet" },
+  "editor": {
+    "aiWritingPlaceholder": "AI is writing…",
+    "aiFailedPrefix": "AI failed: {{message}}",
+    "unknownError": "unknown error",
+    "kanbanTableSlashItem": "Kanban board",
+    "aiContinue": "AI: Continue writing",
+    "aiImprove": "AI: Improve writing",
+    "aiShorten": "AI: Shorten",
+    "aiExpand": "AI: Expand",
+    "aiSummarize": "AI: Summarize",
+    "aiTranslateToEnglish": "AI: Translate to English",
+    "aiTranslateToIndonesian": "AI: Translate to Indonesian"
+  },
+  "versionHistory": {
+    "historyButton": "🕐 History",
+    "noHistoryYet": "No history yet. New versions are saved automatically every few minutes while a page is edited.",
+    "unknownAuthor": "Unknown"
+  },
+  "pageDetail": {
+    "favoriteOn": "★ Favorite",
+    "favoriteOff": "☆ Favorite",
+    "share": "🔗 Share",
+    "templateBadge": "Template",
+    "makeTemplate": "Make template",
+    "archive": "Archive",
+    "shareLinkHeading": "Share link",
+    "newLink": "+ Create link",
+    "noShareLinksYet": "No share links yet. This page can only be viewed by workspace members.",
+    "viewOnly": "View only",
+    "canComment": "Can comment",
+    "withPassword": "· password protected",
+    "revoked": "· revoked",
+    "revokeLink": "Revoke",
+    "subPagesHeading": "Sub-pages",
+    "addSubPage": "+ Sub-page",
+    "linkedIssuesHeading": "Linked issues",
+    "linkIssueButton": "Link issue",
+    "linkIssueFormatError": "Format must look like KPT-12",
+    "linkIssueNotFound": "Issue not found.",
+    "mentionedInHeading": "Mentioned in",
+    "commentsHeading": "Comments",
+    "noCommentsYet": "No comments yet.",
+    "commentPlaceholder": "Write a comment…"
+  },
+  "index": {
+    "newPageButton": "+ New page",
+    "templatesHeading": "Templates",
+    "useTemplate": "Use",
+    "usingTemplateEllipsis": "Creating…",
+    "emptyStateText": "No pages yet. Docs is a collaborative space for notes, specs, and team documentation — like Notion, and can be linked directly to kanban issues."
+  },
+  "trash": {
+    "trashHeading": "Trash",
+    "trashEmpty": "Trash is empty.",
+    "archivedOn": "Archived {{date}}",
+    "deletePermanently": "Delete permanently",
+    "deleteConfirm": "Permanently delete \"{{title}}\"? This action cannot be undone."
+  }
+}

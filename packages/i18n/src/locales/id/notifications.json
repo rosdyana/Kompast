@@ -1,0 +1,16 @@
+{
+  "bellTitle": "Notifikasi",
+  "markAllRead": "Tandai semua dibaca",
+  "noNotifications": "Tidak ada notifikasi.",
+  "settingsLink": "Pengaturan notifikasi",
+  "pageTitle": "Pengaturan Notifikasi",
+  "pageSubtitle": "Pilih bagaimana Anda ingin diberi tahu untuk setiap jenis aktivitas.",
+  "inApp": "Dalam aplikasi",
+  "email": "Email",
+  "digest": "Digest:",
+  "digest_instant": "Langsung",
+  "digest_hourly": "Per jam",
+  "digest_daily": "Harian",
+  "digest_off": "Nonaktif",
+  "digestNote": "Catatan: batching per jam/hari belum berjalan — email untuk preferensi ini belum dikirim sampai fitur itu dibangun."
+}

@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useLoaderData, useRouter } from "@tanstack/r
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
+import { useTranslation } from "@kompast/i18n";
 import { createProjectFn } from "@/lib/server-fns/projects";
 
 export const Route = createFileRoute("/_app/projects/new")({
@@ -12,11 +13,12 @@ export const Route = createFileRoute("/_app/projects/new")({
 });
 
 function NewProjectPage() {
+  const { t } = useTranslation("projects");
   const shell = useLoaderData({ from: "/_app" });
   const { teamId: preselectedTeamId } = Route.useSearch();
   const router = useRouter();
 
-  const eligibleTeams = shell.teams.filter((t) => shell.isSuperAdmin || t.myRole === "admin");
+  const eligibleTeams = shell.teams.filter((tm) => shell.isSuperAdmin || tm.myRole === "admin");
 
   const [teamId, setTeamId] = useState(preselectedTeamId ?? eligibleTeams[0]?.id ?? "");
   const [key, setKey] = useState("");
@@ -40,7 +42,7 @@ function NewProjectPage() {
       await router.invalidate();
       await router.navigate({ to: "/projects/$projectKey", params: { projectKey: key.trim().toUpperCase() } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal membuat proyek");
+      setError(err instanceof Error ? err.message : t("createFailed"));
     } finally {
       setCreating(false);
     }
@@ -48,8 +50,8 @@ function NewProjectPage() {
 
   return (
     <div className="mx-auto max-w-[520px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">Proyek baru</h1>
-      <p className="mb-8 text-sm text-text-2">Setiap proyek termasuk dalam sebuah tim, dan mendapat board kanban default.</p>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
+      <p className="mb-8 text-sm text-text-2">{t("pageSubtitle")}</p>
 
       <Card className="flex flex-col gap-3 p-4">
         <select
@@ -57,16 +59,16 @@ function NewProjectPage() {
           onChange={(e) => setTeamId(e.target.value)}
           className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-2 text-[13px] outline-none"
         >
-          {eligibleTeams.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
+          {eligibleTeams.map((tm) => (
+            <option key={tm.id} value={tm.id}>
+              {tm.name}
             </option>
           ))}
         </select>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Nama proyek, mis. Kompast Core"
+          placeholder={t("namePlaceholder")}
           autoFocus
           className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
         />
@@ -74,13 +76,13 @@ function NewProjectPage() {
           value={key}
           onChange={(e) => setKey(e.target.value.toUpperCase())}
           onKeyDown={(e) => e.key === "Enter" && create()}
-          placeholder="Kode proyek, mis. KPT"
+          placeholder={t("keyPlaceholder")}
           maxLength={10}
           className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 font-mono text-[13px] outline-none"
         />
         {error && <p className="text-[12px] text-danger">{error}</p>}
         <Button variant="primary" onClick={create} disabled={creating || !key.trim() || !name.trim()} className="self-start">
-          {creating ? "Membuat…" : "Buat proyek"}
+          {creating ? t("creatingEllipsis") : t("createProject")}
         </Button>
       </Card>
     </div>

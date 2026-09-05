@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import { useRouter, Link } from "@tanstack/react-router";
 import { Avatar } from "@kompast/ui/Avatar";
 import type { TableViewConfig } from "@kompast/core";
+import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { updateTableViewFn } from "@/lib/server-fns/projects";
 
@@ -9,6 +10,7 @@ type BoardData = Awaited<ReturnType<typeof getProjectBoardFn>>;
 type FlatIssue = BoardData["columns"][number]["issues"][number] & { columnName: string; columnColor: string };
 
 const PRIORITY_ORDER: Record<string, number> = { highest: 0, high: 1, medium: 2, low: 3, lowest: 4 };
+const INTL_LOCALE: Record<SupportedLocale, string> = { en: "en-US", id: "id-ID", "zh-Hant": "zh-Hant-TW" };
 
 function initialsOf(name: string) {
   return name
@@ -33,10 +35,12 @@ function sortIssues(issues: FlatIssue[], sortBy: TableViewConfig["sortBy"], sort
 }
 
 export function TableView({ data }: { data: BoardData }) {
+  const { t, i18n } = useTranslation("board");
+  const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const router = useRouter();
   const config = data.tableView.config as unknown as TableViewConfig;
   const usersById = new Map(data.users.map((u) => [u.id, u]));
-  const issueTypesById = new Map(data.issueTypes.map((t) => [t.id, t]));
+  const issueTypesById = new Map(data.issueTypes.map((tp) => [tp.id, tp]));
 
   const flat: FlatIssue[] = data.columns.flatMap((col) =>
     col.issues.map((issue) => ({ ...issue, columnName: col.name, columnColor: col.color })),
@@ -52,7 +56,7 @@ export function TableView({ data }: { data: BoardData }) {
             .filter((g) => g.issues.length > 0)
         : Object.entries(
             sorted.reduce<Record<string, FlatIssue[]>>((acc, issue) => {
-              const key = issue.assigneeId ? (usersById.get(issue.assigneeId)?.name ?? "Unknown") : "Belum ditugaskan";
+              const key = issue.assigneeId ? (usersById.get(issue.assigneeId)?.name ?? "Unknown") : t("tableView.unassignedGroupLabel");
               (acc[key] ??= []).push(issue);
               return acc;
             }, {}),
@@ -68,29 +72,29 @@ export function TableView({ data }: { data: BoardData }) {
     <div className="px-6 py-4">
       <div className="mb-4 flex items-center gap-3 text-[12.5px]">
         <label className="flex items-center gap-1.5 text-text-2">
-          Grup:
+          {t("tableView.groupLabel")}
           <select
             value={config.groupBy}
             onChange={(e) => updateConfig({ groupBy: e.target.value as typeof config.groupBy })}
             className="rounded-md border border-border bg-surface px-1.5 py-1 text-[12px]"
           >
-            <option value="column">Status</option>
-            <option value="assignee">Assignee</option>
-            <option value="none">Tidak ada</option>
+            <option value="column">{t("tableView.groupByColumn")}</option>
+            <option value="assignee">{t("tableView.groupByAssignee")}</option>
+            <option value="none">{t("tableView.groupByNone")}</option>
           </select>
         </label>
         <label className="flex items-center gap-1.5 text-text-2">
-          Urutkan:
+          {t("tableView.sortLabel")}
           <select
             value={config.sortBy}
             onChange={(e) => updateConfig({ sortBy: e.target.value as typeof config.sortBy })}
             className="rounded-md border border-border bg-surface px-1.5 py-1 text-[12px]"
           >
-            <option value="rank">Urutan board</option>
-            <option value="priority">Prioritas</option>
-            <option value="dueDate">Jatuh tempo</option>
-            <option value="points">Poin</option>
-            <option value="key">Key</option>
+            <option value="rank">{t("tableView.sortByRank")}</option>
+            <option value="priority">{t("tableView.sortByPriority")}</option>
+            <option value="dueDate">{t("tableView.sortByDueDate")}</option>
+            <option value="points">{t("tableView.sortByPoints")}</option>
+            <option value="key">{t("tableView.sortByKey")}</option>
           </select>
           <button
             onClick={() => updateConfig({ sortDir: config.sortDir === "asc" ? "desc" : "asc" })}
@@ -105,14 +109,14 @@ export function TableView({ data }: { data: BoardData }) {
         <table className="w-full border-collapse text-[12.5px]">
           <thead>
             <tr className="border-b border-border bg-surface-2 text-left text-text-3">
-              <th className="px-3 py-2 font-medium">Key</th>
-              <th className="px-3 py-2 font-medium">Tipe</th>
-              <th className="px-3 py-2 font-medium">Judul</th>
-              <th className="px-3 py-2 font-medium">Status</th>
-              <th className="px-3 py-2 font-medium">Assignee</th>
-              <th className="px-3 py-2 font-medium">Prioritas</th>
-              <th className="px-3 py-2 font-medium">Poin</th>
-              <th className="px-3 py-2 font-medium">Jatuh tempo</th>
+              <th className="px-3 py-2 font-medium">{t("tableView.colKey")}</th>
+              <th className="px-3 py-2 font-medium">{t("tableView.colType")}</th>
+              <th className="px-3 py-2 font-medium">{t("tableView.colTitle")}</th>
+              <th className="px-3 py-2 font-medium">{t("tableView.colStatus")}</th>
+              <th className="px-3 py-2 font-medium">{t("tableView.colAssignee")}</th>
+              <th className="px-3 py-2 font-medium">{t("tableView.colPriority")}</th>
+              <th className="px-3 py-2 font-medium">{t("tableView.colPoints")}</th>
+              <th className="px-3 py-2 font-medium">{t("tableView.colDueDate")}</th>
             </tr>
           </thead>
           <tbody>
@@ -160,7 +164,7 @@ export function TableView({ data }: { data: BoardData }) {
                       <td className="px-3 py-2 capitalize text-text-2">{issue.priority}</td>
                       <td className="px-3 py-2 font-mono text-text-2">{issue.storyPoints ?? "—"}</td>
                       <td className="px-3 py-2 font-mono text-text-2">
-                        {issue.dueDate ? new Date(issue.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" }) : "—"}
+                        {issue.dueDate ? new Date(issue.dueDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" }) : "—"}
                       </td>
                     </tr>
                   );
@@ -170,7 +174,7 @@ export function TableView({ data }: { data: BoardData }) {
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-3 py-8 text-center text-text-3">
-                  Tidak ada tiket.
+                  {t("tableView.noIssues")}
                 </td>
               </tr>
             )}

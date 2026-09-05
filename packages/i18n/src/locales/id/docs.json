@@ -1,0 +1,66 @@
+{
+  "untitled": "Tanpa judul",
+  "loadingEllipsis": "Memuat…",
+  "restore": "Pulihkan",
+  "send": "Kirim",
+  "docsBrand": "Dokumen",
+  "docsTree": { "noPagesYet": "Belum ada halaman" },
+  "editor": {
+    "aiWritingPlaceholder": "AI sedang menulis…",
+    "aiFailedPrefix": "AI gagal: {{message}}",
+    "unknownError": "kesalahan tidak diketahui",
+    "kanbanTableSlashItem": "Tabel Kanban",
+    "aiContinue": "AI: Lanjutkan menulis",
+    "aiImprove": "AI: Perbaiki tulisan",
+    "aiShorten": "AI: Perpendek",
+    "aiExpand": "AI: Perpanjang",
+    "aiSummarize": "AI: Ringkas",
+    "aiTranslateToEnglish": "AI: Terjemahkan ke Inggris",
+    "aiTranslateToIndonesian": "AI: Terjemahkan ke Indonesia"
+  },
+  "versionHistory": {
+    "historyButton": "🕐 Riwayat",
+    "noHistoryYet": "Belum ada riwayat. Versi baru tersimpan otomatis setiap beberapa menit saat halaman diedit.",
+    "unknownAuthor": "Tidak diketahui"
+  },
+  "pageDetail": {
+    "favoriteOn": "★ Favorit",
+    "favoriteOff": "☆ Favorit",
+    "share": "🔗 Bagikan",
+    "templateBadge": "Template",
+    "makeTemplate": "Jadikan template",
+    "archive": "Arsipkan",
+    "shareLinkHeading": "Tautan berbagi",
+    "newLink": "+ Buat tautan",
+    "noShareLinksYet": "Belum ada tautan berbagi. Halaman ini hanya bisa dilihat anggota workspace.",
+    "viewOnly": "Lihat saja",
+    "canComment": "Bisa komentar",
+    "withPassword": "· dengan kata sandi",
+    "revoked": "· dicabut",
+    "revokeLink": "Cabut",
+    "subPagesHeading": "Sub-halaman",
+    "addSubPage": "+ Sub-halaman",
+    "linkedIssuesHeading": "Tiket tertaut",
+    "linkIssueButton": "Tautkan tiket",
+    "linkIssueFormatError": "Format harus seperti KPT-12",
+    "linkIssueNotFound": "Tiket tidak ditemukan.",
+    "mentionedInHeading": "Disebutkan di",
+    "commentsHeading": "Komentar",
+    "noCommentsYet": "Belum ada komentar.",
+    "commentPlaceholder": "Tulis komentar…"
+  },
+  "index": {
+    "newPageButton": "+ Halaman baru",
+    "templatesHeading": "Template",
+    "useTemplate": "Gunakan",
+    "usingTemplateEllipsis": "Membuat…",
+    "emptyStateText": "Belum ada halaman. Docs adalah ruang kolaboratif untuk catatan, spesifikasi, dan dokumentasi tim — mirip Notion, bisa ditautkan langsung ke tiket kanban."
+  },
+  "trash": {
+    "trashHeading": "Sampah",
+    "trashEmpty": "Sampah kosong.",
+    "archivedOn": "Diarsipkan {{date}}",
+    "deletePermanently": "Hapus permanen",
+    "deleteConfirm": "Hapus permanen \"{{title}}\"? Tindakan ini tidak bisa dibatalkan."
+  }
+}

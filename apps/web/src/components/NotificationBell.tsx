@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { listNotificationsFn, markNotificationReadFn, markAllNotificationsReadFn } from "@/lib/server-fns/notifications";
 
 type NotificationsData = Awaited<ReturnType<typeof listNotificationsFn>>;
 
 const POLL_MS = 30_000;
 
+const INTL_LOCALE: Record<SupportedLocale, string> = { en: "en-US", id: "id-ID", "zh-Hant": "zh-Hant-TW" };
+
 export function NotificationBell() {
+  const { t, i18n } = useTranslation("notifications");
+  const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const [data, setData] = useState<NotificationsData | null>(null);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -59,14 +64,14 @@ export function NotificationBell() {
       {open && (
         <div className="absolute right-0 top-[36px] z-50 w-[320px] rounded-[10px] border border-border bg-surface shadow-kp">
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <span className="text-[12.5px] font-semibold">Notifikasi</span>
+            <span className="text-[12.5px] font-semibold">{t("bellTitle")}</span>
             <button onClick={handleMarkAllRead} className="text-[11px] text-text-3 hover:text-text">
-              Tandai semua dibaca
+              {t("markAllRead")}
             </button>
           </div>
           <div className="max-h-[360px] overflow-y-auto">
             {!data || data.notifications.length === 0 ? (
-              <p className="p-4 text-center text-[12.5px] text-text-3">Tidak ada notifikasi.</p>
+              <p className="p-4 text-center text-[12.5px] text-text-3">{t("noNotifications")}</p>
             ) : (
               data.notifications.map((n) => (
                 <button
@@ -77,7 +82,7 @@ export function NotificationBell() {
                 >
                   <span className="text-[12.5px] font-medium leading-snug">{n.title}</span>
                   {n.body && <span className="truncate text-[11.5px] text-text-3">{n.body}</span>}
-                  <span className="font-mono text-[10px] text-text-3">{new Date(n.createdAt).toLocaleString("id-ID")}</span>
+                  <span className="font-mono text-[10px] text-text-3">{new Date(n.createdAt).toLocaleString(intlLocale)}</span>
                 </button>
               ))
             )}
@@ -87,7 +92,7 @@ export function NotificationBell() {
             onClick={() => setOpen(false)}
             className="block border-t border-border px-3 py-2 text-center text-[11.5px] text-text-2 hover:bg-surface-3"
           >
-            Pengaturan notifikasi
+            {t("settingsLink")}
           </Link>
         </div>
       )}

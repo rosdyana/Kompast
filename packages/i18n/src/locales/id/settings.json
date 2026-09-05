@@ -1,0 +1,105 @@
+{
+  "tabs": { "members": "Anggota", "teams": "Tim", "roles": "Peran & Izin", "integrations": "Integrasi" },
+  "pageTitle": "Pengaturan workspace",
+  "teamsNonAdminNote": "Hanya super admin yang bisa mengelola daftar tim workspace di sini.",
+  "integrations": {
+    "subtitle": "Konfigurasi vendor AI dan email untuk seluruh deployment ini.",
+    "embedding": {
+      "heading": "Embedding (Ask Kompast)",
+      "description": "Provider terpisah dari AI di atas — Anthropic tidak memiliki API embeddings publik, jadi Ask Kompast butuh Azure OpenAI atau endpoint kompatibel-OpenAI, apa pun provider AI yang dipilih di atas.",
+      "enable": "Aktifkan Ask Kompast",
+      "providerLabel": "Provider",
+      "apiKeyLabel": "API key",
+      "savedNoteLong": "(tersimpan — kosongkan untuk tidak mengubah)",
+      "azureEndpointLabel": "Azure endpoint",
+      "azureDeploymentEmbeddingsLabel": "Azure deployment (embeddings)",
+      "baseUrlLabel": "Base URL",
+      "modelLabel": "Model",
+      "savingEllipsis": "Menyimpan…",
+      "save": "Simpan",
+      "saved": "Tersimpan."
+    },
+    "entra": {
+      "heading": "Microsoft Entra ID",
+      "warningPart1": "⚠️ Sebuah Tenant ID yang salah (bukan salah format, tapi GUID yang valid namun keliru) membuat ",
+      "warningBold": "seluruh aplikasi",
+      "warningPart2": " gagal — bukan hanya login Microsoft — karena setiap permintaan yang memeriksa sesi memicu penemuan OIDC langsung ke tenant tersebut. Periksa kembali sebelum menyimpan.",
+      "tenantIdLabel": "Tenant ID",
+      "clientIdLabel": "Client ID",
+      "clientSecretLabel": "Client Secret",
+      "savedNoteLong": "(tersimpan — kosongkan untuk tidak mengubah)",
+      "savingEllipsis": "Menyimpan…",
+      "save": "Simpan",
+      "saved": "Tersimpan.",
+      "saveFailed": "Gagal menyimpan konfigurasi Entra ID"
+    },
+    "ai": {
+      "heading": "AI",
+      "enable": "Aktifkan fitur AI",
+      "providerLabel": "Provider",
+      "apiKeyLabel": "API key",
+      "savedNoteLong": "(tersimpan — kosongkan untuk tidak mengubah)",
+      "modelLabel": "Model",
+      "modelBlankNote": "(kosongkan untuk default)",
+      "modelPlaceholderOther": "nama model di endpoint ini",
+      "azureEndpointLabel": "Azure endpoint",
+      "azureDeploymentLabel": "Azure deployment",
+      "baseUrlLabel": "Base URL",
+      "savingEllipsis": "Menyimpan…",
+      "save": "Simpan",
+      "saved": "Tersimpan."
+    },
+    "mail": {
+      "heading": "Email",
+      "driverLabel": "Driver",
+      "fromAddressLabel": "Alamat pengirim",
+      "smtpUrlLabel": "SMTP URL",
+      "savedNoteShort": "(tersimpan)",
+      "apiKeyLabel": "API key",
+      "savingEllipsis": "Menyimpan…",
+      "save": "Simpan",
+      "saved": "Tersimpan."
+    }
+  },
+  "members": {
+    "subtitle": "Undang orang baru dan kelola undangan yang masih menunggu.",
+    "inviteHeading": "Undang anggota baru",
+    "emailPlaceholder": "nama@perusahaan.com",
+    "invitingEllipsis": "Mengirim…",
+    "invite": "Undang",
+    "inviteFailed": "Gagal mengirim undangan",
+    "pendingInvitesHeading": "Undangan menunggu",
+    "cancel": "Batalkan",
+    "currentMembersHeading": "Anggota saat ini",
+    "memberRoleLabel": "Member",
+    "adminRoleLabel": "Admin"
+  },
+  "roles": {
+    "intro": "Hierarki peran yang berlaku saat ini di Kompast — bukan matriks izin yang bisa dikonfigurasi, hanya rangkuman dari aturan yang sudah ada di kode.",
+    "superAdmin": {
+      "name": "Super Admin",
+      "scope": "Satu per workspace",
+      "desc": "Bisa membuat tim baru dan mengelola tim mana pun (member.isSuperAdmin). Memindahkan peran ini mencabutnya dari pemegang sebelumnya."
+    },
+    "workspaceOwner": {
+      "name": "Pemilik / Admin Workspace",
+      "scope": "Workspace",
+      "desc": "Bisa membuka Pengaturan (integrasi Entra/AI/Email) dan mengundang/mengelola anggota workspace (member.role)."
+    },
+    "teamAdmin": {
+      "name": "Admin Tim",
+      "scope": "Per tim",
+      "desc": "Bisa membuat proyek di timnya sendiri dan mengelola keanggotaan tim tersebut (team_member.role). Tidak punya hak di tim lain atau di seluruh workspace."
+    },
+    "teamMember": {
+      "name": "Anggota Tim",
+      "scope": "Per tim",
+      "desc": "Anggota biasa sebuah tim, tanpa hak kelola."
+    },
+    "projectRole": {
+      "name": "Lead / Kontributor / Viewer Proyek",
+      "scope": "Per proyek",
+      "desc": "Peran yang bisa ditetapkan per proyek (project_member.role). Belum ditegakkan di mana pun dalam kode saat ini — baru sebatas bisa diberikan."
+    }
+  }
+}

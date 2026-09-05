@@ -13,6 +13,7 @@ import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
 import { Tabs } from "@kompast/ui/Tabs";
+import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
 import { listProjectPagesFn, createPageFn } from "@/lib/server-fns/pages";
@@ -39,26 +40,29 @@ export const Route = createFileRoute("/_app/projects/$projectKey")({
   component: ProjectPage,
 });
 
-const VIEW_TABS = [
-  { key: "board", label: "Board", icon: "◫" },
-  { key: "sprint", label: "Sprint", icon: "⚑" },
-  { key: "table", label: "Tabel", icon: "▤" },
-  { key: "roadmap", label: "Roadmap", icon: "▬" },
-  { key: "docs", label: "Docs", icon: "▤" },
-  { key: "automation", label: "Otomasi", icon: "⚡" },
-  { key: "import", label: "Impor", icon: "⇩" },
-];
+const INTL_LOCALE: Record<SupportedLocale, string> = { en: "en-US", id: "id-ID", "zh-Hant": "zh-Hant-TW" };
 
 function ProjectPage() {
+  const { t } = useTranslation("board");
   const data = Route.useLoaderData();
   const router = useRouter();
   const [view, setView] = useState("board");
-  const viewTabs = data.canManageProject ? [...VIEW_TABS, { key: "settings", label: "Pengaturan", icon: "⚙" }] : VIEW_TABS;
+
+  const VIEW_TABS = [
+    { key: "board", label: t("tabs.board"), icon: "◫" },
+    { key: "sprint", label: t("tabs.sprint"), icon: "⚑" },
+    { key: "table", label: t("tabs.table"), icon: "▤" },
+    { key: "roadmap", label: t("tabs.roadmap"), icon: "▬" },
+    { key: "docs", label: t("tabs.docs"), icon: "▤" },
+    { key: "automation", label: t("tabs.automation"), icon: "⚡" },
+    { key: "import", label: t("tabs.import"), icon: "⇩" },
+  ];
+  const viewTabs = data.canManageProject ? [...VIEW_TABS, { key: "settings", label: t("tabs.settings"), icon: "⚙" }] : VIEW_TABS;
   const [addingIssue, setAddingIssue] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const defaultType = data.issueTypes.find((t) => !t.isSubtask);
+  const defaultType = data.issueTypes.find((tp) => !tp.isSubtask);
   const backlogColumn = data.columns.find((c) => c.isBacklog) ?? data.columns[0];
 
   async function submitNewIssue() {
@@ -91,7 +95,7 @@ function ProjectPage() {
           <div className="min-w-0 flex-1">
             <h1 className="mb-1 text-xl font-semibold tracking-tight">{data.project.name}</h1>
             <p className="text-xs text-text-2">
-              {data.project.key} · {data.columns.reduce((n, c) => n + c.issues.length, 0)} tiket
+              {data.project.key} · {t("header.ticketCount", { count: data.columns.reduce((n, c) => n + c.issues.length, 0) })}
             </p>
           </div>
           <div className="flex gap-1.5">
@@ -105,19 +109,19 @@ function ProjectPage() {
                     if (e.key === "Enter") submitNewIssue();
                     if (e.key === "Escape") setAddingIssue(false);
                   }}
-                  placeholder="Judul tiket…"
+                  placeholder={t("header.newIssuePlaceholder")}
                   className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
                 />
                 <Button variant="primary" className="text-[12.5px]" onClick={submitNewIssue} disabled={creating}>
-                  Simpan
+                  {t("save")}
                 </Button>
                 <Button variant="outline" className="text-[12.5px]" onClick={() => setAddingIssue(false)}>
-                  Batal
+                  {t("cancel")}
                 </Button>
               </>
             ) : (
               <Button variant="primary" className="text-[12.5px]" onClick={() => setAddingIssue(true)}>
-                + Tiket baru
+                {t("header.newIssueButton")}
               </Button>
             )}
           </div>
@@ -133,9 +137,9 @@ function ProjectPage() {
       {view === "automation" && <AutomationTab projectId={data.project.id} data={data} />}
       {view === "import" && <ImportTab projectId={data.project.id} boardId={data.board.id} />}
       {view === "settings" && data.canManageProject && <ProjectSettingsTab data={data} />}
-      {![...VIEW_TABS.map((t) => t.key), "settings"].includes(view) && (
+      {![...VIEW_TABS.map((tb) => tb.key), "settings"].includes(view) && (
         <div className="p-10 text-center text-sm text-text-3">
-          Mode <strong className="text-text-2">{viewTabs.find((t) => t.key === view)?.label}</strong> belum dibangun.
+          {t("header.viewNotBuilt", { label: viewTabs.find((tb) => tb.key === view)?.label })}
         </div>
       )}
     </div>
@@ -162,6 +166,7 @@ function initialsOf(name: string) {
 }
 
 function ProjectDocsTab({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("board");
   const navigate = useNavigate();
   const [pages, setPages] = useState<Awaited<ReturnType<typeof listProjectPagesFn>> | null>(null);
   const [creating, setCreating] = useState(false);
@@ -183,16 +188,16 @@ function ProjectDocsTab({ projectId }: { projectId: string }) {
   return (
     <div className="px-6 py-5">
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-[12.5px] text-text-3">Halaman docs yang ditautkan ke proyek ini.</p>
+        <p className="text-[12.5px] text-text-3">{t("docsTab.subtitle")}</p>
         <Button variant="primary" className="text-[12.5px]" onClick={newPage} disabled={creating}>
-          + Halaman baru
+          {t("docsTab.newPageButton")}
         </Button>
       </div>
       {pages === null ? (
-        <p className="text-sm text-text-3">Memuat…</p>
+        <p className="text-sm text-text-3">{t("loadingEllipsis")}</p>
       ) : pages.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-text-3">
-          Belum ada halaman docs untuk proyek ini.
+          {t("docsTab.emptyState")}
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-surface p-2">
@@ -207,9 +212,9 @@ type SprintSummary = Awaited<ReturnType<typeof listSprintsFn>>[number];
 type BacklogIssue = Awaited<ReturnType<typeof listBacklogFn>>[number];
 type SprintDetail = Awaited<ReturnType<typeof getSprintDetailFn>>;
 
-const SPRINT_STATE_LABEL: Record<string, string> = { future: "Belum mulai", active: "Berjalan", closed: "Selesai" };
-
 function SprintTab({ projectId, boardId, boardData }: { projectId: string; boardId: string; boardData: BoardData }) {
+  const { t } = useTranslation("board");
+  const SPRINT_STATE_LABEL: Record<string, string> = { future: t("sprint.stateFuture"), active: t("sprint.stateActive"), closed: t("sprint.stateClosed") };
   const [sprints, setSprints] = useState<SprintSummary[] | null>(null);
   const [backlog, setBacklog] = useState<BacklogIssue[] | null>(null);
   const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
@@ -256,7 +261,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
         setAiSummary((prev) => (prev ?? "") + delta);
       });
     } catch (err) {
-      setAiError(err instanceof Error ? err.message : "Gagal membuat ringkasan AI");
+      setAiError(err instanceof Error ? err.message : t("sprint.aiSummaryFailed"));
     } finally {
       setAiBusy(false);
     }
@@ -324,7 +329,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
   }
 
   if (sprints === null || backlog === null) {
-    return <p className="p-6 text-sm text-text-3">Memuat…</p>;
+    return <p className="p-6 text-sm text-text-3">{t("loadingEllipsis")}</p>;
   }
 
   const sprint = detail?.sprint;
@@ -338,7 +343,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
           className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
         >
           <option value="" disabled>
-            Pilih sprint…
+            {t("sprint.selectPlaceholder")}
           </option>
           {sprints.map((s) => (
             <option key={s.id} value={s.id}>
@@ -350,23 +355,23 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
           value={newSprintName}
           onChange={(e) => setNewSprintName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && createSprint()}
-          placeholder="Nama sprint baru…"
+          placeholder={t("sprint.newNamePlaceholder")}
           className="flex-1 rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
         />
         <Button variant="outline" className="text-[12.5px]" onClick={createSprint} disabled={creating}>
-          + Sprint
+          {t("sprint.addButton")}
         </Button>
 
         {sprint && (
           <div className="ml-auto flex items-center gap-2">
             {sprint.state === "future" && (
               <Button variant="primary" className="text-[12.5px]" onClick={handleStart} disabled={busy}>
-                Mulai sprint
+                {t("sprint.start")}
               </Button>
             )}
             {sprint.state === "active" && (
               <Button variant="primary" className="text-[12.5px]" onClick={handleComplete} disabled={busy}>
-                Selesaikan sprint
+                {t("sprint.complete")}
               </Button>
             )}
           </div>
@@ -376,13 +381,13 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
       {sprint && detail && (
         <div className="col-span-2 flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-[12px] text-text-2">
           <span>
-            Scope: <strong>{detail.report.scopeIssueCount}</strong> tiket / <strong>{detail.report.scopePoints}</strong> poin
+            {t("sprint.scopeLabel")} <strong>{detail.report.scopeIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.scopePoints}</strong> {t("sprint.pointsUnit")}
           </span>
           <span>
-            Selesai: <strong>{detail.report.completedIssueCount}</strong> tiket / <strong>{detail.report.completedPoints}</strong> poin
+            {t("sprint.completedLabel")} <strong>{detail.report.completedIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.completedPoints}</strong> {t("sprint.pointsUnit")}
           </span>
           <span>
-            Sisa: <strong>{detail.report.remainingPoints}</strong> poin
+            {t("sprint.remainingLabel")} <strong>{detail.report.remainingPoints}</strong> {t("sprint.pointsUnit")}
           </span>
         </div>
       )}
@@ -390,9 +395,9 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
       {sprint && detail && (
         <div className="col-span-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
           <div className="flex items-center justify-between">
-            <p className="text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Ringkasan AI</p>
+            <p className="text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("sprint.aiSummaryHeading")}</p>
             <Button variant="outline" className="text-[11px]" onClick={generateAiSummary} disabled={aiBusy}>
-              {aiBusy ? "Menulis…" : "Buat ringkasan"}
+              {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
             </Button>
           </div>
           {aiError && <p className="text-[12px] text-red-500">{aiError}</p>}
@@ -401,9 +406,9 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
       )}
 
       <div className="rounded-xl border border-border bg-surface p-3">
-        <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Backlog</p>
+        <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("sprint.backlogHeading")}</p>
         <div className="flex flex-col gap-1.5">
-          {backlog.length === 0 && <p className="text-[12.5px] text-text-3">Backlog kosong.</p>}
+          {backlog.length === 0 && <p className="text-[12.5px] text-text-3">{t("sprint.backlogEmpty")}</p>}
           {backlog.map((issue) => (
             <div key={issue.id} className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5">
               <span className="truncate text-[12.5px]">{issue.title}</span>
@@ -413,7 +418,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
                 disabled={!selectedSprintId || sprint?.state === "closed" || busy}
                 onClick={() => addToSprint(issue.id)}
               >
-                + Sprint
+                {t("sprint.addToSprintButton")}
               </Button>
             </div>
           ))}
@@ -421,14 +426,14 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
       </div>
 
       <div className="rounded-xl border border-border bg-surface p-3">
-        <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Isi sprint</p>
+        <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("sprint.contentsHeading")}</p>
         <div className="flex flex-col gap-1.5">
-          {(!detail || detail.issues.length === 0) && <p className="text-[12.5px] text-text-3">Belum ada tiket di sprint ini.</p>}
+          {(!detail || detail.issues.length === 0) && <p className="text-[12.5px] text-text-3">{t("sprint.noIssuesInSprint")}</p>}
           {detail?.issues.map((issue) => (
             <div key={issue.id} className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5">
               <span className="truncate text-[12.5px]">{issue.title}</span>
               <Button variant="outline" className="text-[11px]" disabled={busy} onClick={() => removeFromSprint(issue.id)}>
-                Keluarkan
+                {t("sprint.removeButton")}
               </Button>
             </div>
           ))}
@@ -437,7 +442,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
 
       {detail && detail.issues.length > 0 && (
         <div className="col-span-2 rounded-xl border border-border bg-surface">
-          <p className="p-3 pb-0 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Tinjauan sprint</p>
+          <p className="p-3 pb-0 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("sprint.reviewHeading")}</p>
           <SprintReviewTable boardData={boardData} sprintIssueIds={new Set(detail.issues.map((i) => i.id))} />
         </div>
       )}
@@ -464,19 +469,21 @@ function SprintReviewTable({ boardData, sprintIssueIds }: { boardData: BoardData
 type RoadmapEpic = Awaited<ReturnType<typeof getRoadmapFn>>[number];
 
 function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: string }) {
+  const { t, i18n } = useTranslation("board");
+  const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const [epics, setEpics] = useState<RoadmapEpic[] | null>(null);
 
   useEffect(() => {
     getRoadmapFn({ data: projectId }).then(setEpics);
   }, [projectId]);
 
-  if (epics === null) return <p className="p-6 text-sm text-text-3">Memuat…</p>;
+  if (epics === null) return <p className="p-6 text-sm text-text-3">{t("loadingEllipsis")}</p>;
 
   if (epics.length === 0) {
     return (
       <div className="p-6">
         <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-text-3">
-          Belum ada epic. Buat tiket bertipe "Epic" lalu tautkan tiket lain ke epic tersebut untuk melihat roadmap.
+          {t("roadmap.noEpicsYet")}
         </div>
       </div>
     );
@@ -494,15 +501,15 @@ function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: 
               </span>
               <span className="text-[13px] font-semibold tracking-tight">{epic.title}</span>
               <span className="ml-auto text-[11.5px] text-text-3">
-                {epic.startDate ? new Date(epic.startDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" }) : "?"} –{" "}
-                {epic.dueDate ? new Date(epic.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" }) : "?"}
+                {epic.startDate ? new Date(epic.startDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" }) : "?"} –{" "}
+                {epic.dueDate ? new Date(epic.dueDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" }) : "?"}
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-surface-3">
               <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--violet)" }} />
             </div>
             <p className="mt-1 text-[11px] text-text-3">
-              {epic.doneCount}/{epic.childCount} tiket selesai ({pct}%)
+              {t("roadmap.progressSummary", { done: epic.doneCount, total: epic.childCount, pct })}
             </p>
           </div>
         );
@@ -514,21 +521,7 @@ function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: 
 type AutomationRule = Awaited<ReturnType<typeof listAutomationRulesFn>>[number];
 
 type TriggerType = "issue.created" | "issue.updated" | "issue.transitioned" | "issue.assigned" | "issue.commented";
-const TRIGGER_LABEL: Record<TriggerType, string> = {
-  "issue.created": "Tiket dibuat",
-  "issue.updated": "Tiket diubah",
-  "issue.transitioned": "Status berpindah",
-  "issue.assigned": "Ditugaskan",
-  "issue.commented": "Ada komentar baru",
-};
 const ACTION_TYPES = ["add_label", "comment", "transition", "assign", "create_subtask"] as const;
-const ACTION_LABEL: Record<(typeof ACTION_TYPES)[number], string> = {
-  add_label: "Tambah label",
-  comment: "Tambah komentar",
-  transition: "Pindahkan status",
-  assign: "Tugaskan ke",
-  create_subtask: "Buat subtask",
-};
 
 /**
  * v1 scope: one action per rule, no condition builder in the UI (the
@@ -541,6 +534,21 @@ const ACTION_LABEL: Record<(typeof ACTION_TYPES)[number], string> = {
  * templated from the triggering issue — all documented v1 limitations.
  */
 function AutomationTab({ projectId, data }: { projectId: string; data: BoardData }) {
+  const { t } = useTranslation("board");
+  const TRIGGER_LABEL: Record<TriggerType, string> = {
+    "issue.created": t("automation.triggerCreated"),
+    "issue.updated": t("automation.triggerUpdated"),
+    "issue.transitioned": t("automation.triggerTransitioned"),
+    "issue.assigned": t("automation.triggerAssigned"),
+    "issue.commented": t("automation.triggerCommented"),
+  };
+  const ACTION_LABEL: Record<(typeof ACTION_TYPES)[number], string> = {
+    add_label: t("automation.actionAddLabel"),
+    comment: t("automation.actionComment"),
+    transition: t("automation.actionTransition"),
+    assign: t("automation.actionAssign"),
+    create_subtask: t("automation.actionCreateSubtask"),
+  };
   const [rules, setRules] = useState<AutomationRule[] | null>(null);
   const [runsByRule, setRunsByRule] = useState<Record<string, Awaited<ReturnType<typeof listAutomationRunsFn>>>>({});
   const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
@@ -551,7 +559,7 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
   const [actionText, setActionText] = useState("");
   const [actionStatusId, setActionStatusId] = useState(data.columns[0]?.statusIds[0] ?? "");
   const [actionAssigneeId, setActionAssigneeId] = useState("");
-  const [actionSubtaskTypeId, setActionSubtaskTypeId] = useState(data.issueTypes.find((t) => t.isSubtask)?.id ?? data.issueTypes[0]?.id ?? "");
+  const [actionSubtaskTypeId, setActionSubtaskTypeId] = useState(data.issueTypes.find((tp) => tp.isSubtask)?.id ?? data.issueTypes[0]?.id ?? "");
   const [actionSubtaskTitle, setActionSubtaskTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -623,19 +631,19 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
     }
   }
 
-  if (rules === null) return <p className="p-6 text-sm text-text-3">Memuat…</p>;
+  if (rules === null) return <p className="p-6 text-sm text-text-3">{t("loadingEllipsis")}</p>;
 
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="rounded-xl border border-border bg-surface p-4">
-        <p className="mb-3 text-[13px] font-semibold">Aturan baru</p>
+        <p className="mb-3 text-[13px] font-semibold">{t("automation.newRuleHeading")}</p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
-            Nama
+            {t("automation.nameLabel")}
             <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
           </label>
           <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
-            Ketika
+            {t("automation.whenLabel")}
             <select value={triggerType} onChange={(e) => setTriggerType(e.target.value as keyof typeof TRIGGER_LABEL)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
               {Object.entries(TRIGGER_LABEL).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -645,7 +653,7 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
             </select>
           </label>
           <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
-            Maka
+            {t("automation.thenLabel")}
             <select value={actionType} onChange={(e) => setActionType(e.target.value as (typeof ACTION_TYPES)[number])} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
               {ACTION_TYPES.map((value) => (
                 <option key={value} value={value}>
@@ -655,10 +663,10 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
             </select>
           </label>
           {actionType === "add_label" && (
-            <input value={actionLabel} onChange={(e) => setActionLabel(e.target.value)} placeholder="nama label" className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
+            <input value={actionLabel} onChange={(e) => setActionLabel(e.target.value)} placeholder={t("automation.labelNamePlaceholder")} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
           )}
           {actionType === "comment" && (
-            <input value={actionText} onChange={(e) => setActionText(e.target.value)} placeholder="isi komentar" className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
+            <input value={actionText} onChange={(e) => setActionText(e.target.value)} placeholder={t("automation.commentBodyPlaceholder")} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
           )}
           {actionType === "transition" && (
             <select value={actionStatusId} onChange={(e) => setActionStatusId(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
@@ -671,7 +679,7 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
           )}
           {actionType === "assign" && (
             <select value={actionAssigneeId} onChange={(e) => setActionAssigneeId(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
-              <option value="">(kosongkan penugasan)</option>
+              <option value="">{t("automation.clearAssignmentOption")}</option>
               {data.users.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name}
@@ -682,58 +690,58 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
           {actionType === "create_subtask" && (
             <>
               <select value={actionSubtaskTypeId} onChange={(e) => setActionSubtaskTypeId(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
-                {data.issueTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+                {data.issueTypes.map((tp) => (
+                  <option key={tp.id} value={tp.id}>
+                    {tp.name}
                   </option>
                 ))}
               </select>
               <input
                 value={actionSubtaskTitle}
                 onChange={(e) => setActionSubtaskTitle(e.target.value)}
-                placeholder="judul subtask (tetap, tidak berbasis judul tiket induk)"
+                placeholder={t("automation.subtaskTitlePlaceholder")}
                 className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]"
               />
             </>
           )}
           <Button variant="primary" className="text-[12.5px]" onClick={createRule} disabled={creating}>
-            + Aturan
+            {t("automation.addRuleButton")}
           </Button>
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
-        {rules.length === 0 && <p className="text-[12.5px] text-text-3">Belum ada aturan otomasi.</p>}
+        {rules.length === 0 && <p className="text-[12.5px] text-text-3">{t("automation.noRulesYet")}</p>}
         {rules.map((rule) => (
           <div key={rule.id} className="rounded-xl border border-border bg-surface p-3.5">
             <div className="flex items-center gap-2">
               <span className="text-[13px] font-semibold">{rule.name}</span>
-              {rule.dryRun && <Badge>uji coba</Badge>}
+              {rule.dryRun && <Badge>{t("automation.dryRunBadge")}</Badge>}
               <span className="text-[11.5px] text-text-3">
                 {TRIGGER_LABEL[(rule.trigger as { type: TriggerType }).type] ?? (rule.trigger as { type: string }).type}
               </span>
               <div className="ml-auto flex items-center gap-2">
                 <button onClick={() => toggleRuns(rule.id)} className="text-[11.5px] text-text-3 hover:text-text">
-                  Riwayat
+                  {t("automation.historyToggle")}
                 </button>
                 <label className="flex items-center gap-1.5 text-[11.5px] text-text-3">
                   <input type="checkbox" checked={rule.enabled} disabled={busy} onChange={(e) => toggleEnabled(rule.id, e.target.checked)} />
-                  Aktif
+                  {t("automation.activeLabel")}
                 </label>
                 <Button variant="outline" className="text-[11px]" onClick={() => removeRule(rule.id)} disabled={busy}>
-                  Hapus
+                  {t("automation.deleteButton")}
                 </Button>
               </div>
             </div>
             {expandedRuleId === rule.id && (
               <div className="mt-2.5 border-t border-border pt-2.5">
                 {!runsByRule[rule.id] || runsByRule[rule.id]!.length === 0 ? (
-                  <p className="text-[11.5px] text-text-3">Belum ada riwayat berjalan.</p>
+                  <p className="text-[11.5px] text-text-3">{t("automation.noRunsYet")}</p>
                 ) : (
                   <div className="flex flex-col gap-1">
                     {runsByRule[rule.id]!.map((run) => (
                       <div key={run.id} className="flex items-center gap-2 text-[11.5px] text-text-3">
-                        <span className="font-mono">{new Date(run.createdAt).toLocaleString("id-ID")}</span>
+                        <span className="font-mono">{new Date(run.createdAt).toLocaleString()}</span>
                         <Badge>{run.status}</Badge>
                         {run.error && <span className="text-danger">{run.error}</span>}
                       </div>
@@ -751,13 +759,6 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
 
 type ImportRun = Awaited<ReturnType<typeof listImportRunsFn>>[number];
 
-const IMPORT_RUN_STATUS_LABEL: Record<string, string> = {
-  pending: "Menunggu",
-  running: "Berjalan",
-  completed: "Selesai",
-  failed: "Gagal",
-};
-
 /**
  * Runs synchronously against a real JIRA instance from this one request —
  * see startJiraImportFn's own doc comment for why. The API token is only
@@ -766,6 +767,13 @@ const IMPORT_RUN_STATUS_LABEL: Record<string, string> = {
  * deliberately excludes it (see packages/db/src/schema/import.ts).
  */
 function ImportTab({ projectId, boardId }: { projectId: string; boardId: string }) {
+  const { t } = useTranslation("board");
+  const IMPORT_RUN_STATUS_LABEL: Record<string, string> = {
+    pending: t("importTab.statusPending"),
+    running: t("importTab.statusRunning"),
+    completed: t("importTab.statusCompleted"),
+    failed: t("importTab.statusFailed"),
+  };
   const [runs, setRuns] = useState<ImportRun[] | null>(null);
   const [jiraBaseUrl, setJiraBaseUrl] = useState("");
   const [jiraEmail, setJiraEmail] = useState("");
@@ -801,72 +809,72 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
     }
   }
 
-  if (runs === null) return <p className="p-6 text-sm text-text-3">Memuat…</p>;
+  if (runs === null) return <p className="p-6 text-sm text-text-3">{t("loadingEllipsis")}</p>;
 
   return (
     <div className="grid grid-cols-2 gap-4 p-6">
       <div className="rounded-xl border border-border bg-surface p-4">
-        <p className="mb-3 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Impor dari JIRA</p>
+        <p className="mb-3 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("importTab.heading")}</p>
         <div className="flex flex-col gap-2.5">
           <label className="block">
-            <span className="mb-1 block text-[12px] text-text-2">Base URL JIRA</span>
+            <span className="mb-1 block text-[12px] text-text-2">{t("importTab.baseUrlLabel")}</span>
             <input
               value={jiraBaseUrl}
               onChange={(e) => setJiraBaseUrl(e.target.value)}
-              placeholder="https://situs-anda.atlassian.net"
+              placeholder={t("importTab.baseUrlPlaceholder")}
               className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-[12px] text-text-2">Email</span>
+            <span className="mb-1 block text-[12px] text-text-2">{t("importTab.emailLabel")}</span>
             <input value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none" />
           </label>
           <label className="block">
-            <span className="mb-1 block text-[12px] text-text-2">API token</span>
+            <span className="mb-1 block text-[12px] text-text-2">{t("importTab.apiTokenLabel")}</span>
             <input type="password" value={jiraApiToken} onChange={(e) => setJiraApiToken(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none" />
           </label>
           <label className="block">
-            <span className="mb-1 block text-[12px] text-text-2">JQL</span>
+            <span className="mb-1 block text-[12px] text-text-2">{t("importTab.jqlLabel")}</span>
             <input value={jql} onChange={(e) => setJql(e.target.value)} placeholder='project = "DEMO"' className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none" />
           </label>
           <label className="flex items-center gap-1.5 text-[12px] text-text-2">
             <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
-            Dry-run (jangan tulis apa pun, hanya tampilkan pemetaan status/tipe)
+            {t("importTab.dryRunLabel")}
           </label>
           <label className="flex items-center gap-1.5 text-[12px] text-text-2">
             <input type="checkbox" checked={fetchAttachments} onChange={(e) => setFetchAttachments(e.target.checked)} />
-            Unduh lampiran
+            {t("importTab.fetchAttachmentsLabel")}
           </label>
           <Button variant="primary" className="text-[12.5px]" onClick={runImport} disabled={running}>
-            {running ? "Mengimpor…" : "Jalankan impor"}
+            {running ? t("importTab.importingEllipsis") : t("importTab.runButton")}
           </Button>
           {lastResult?.error && <p className="text-[12px] text-red-500">{lastResult.error}</p>}
           {lastResult?.report && (
             <div className="rounded-lg border border-border bg-surface-2 p-2.5 text-[12px] text-text-2">
               <p>
-                Dibuat: <strong>{lastResult.report.counts.issuesCreated}</strong> · Dilewati: <strong>{lastResult.report.counts.issuesSkipped}</strong> · Status baru:{" "}
-                <strong>{lastResult.report.counts.statusesCreated}</strong> · Tipe baru: <strong>{lastResult.report.counts.typesCreated}</strong>
+                {t("importTab.resultCreated")} <strong>{lastResult.report.counts.issuesCreated}</strong> · {t("importTab.resultSkipped")} <strong>{lastResult.report.counts.issuesSkipped}</strong> · {t("importTab.resultNewStatuses")}{" "}
+                <strong>{lastResult.report.counts.statusesCreated}</strong> · {t("importTab.resultNewTypes")} <strong>{lastResult.report.counts.typesCreated}</strong>
               </p>
-              {lastResult.report.errors.length > 0 && <p className="mt-1 text-red-500">{lastResult.report.errors.length} tiket gagal — lihat riwayat di bawah.</p>}
+              {lastResult.report.errors.length > 0 && <p className="mt-1 text-red-500">{t("importTab.resultErrorsNote", { count: lastResult.report.errors.length })}</p>}
             </div>
           )}
         </div>
       </div>
 
       <div className="rounded-xl border border-border bg-surface p-4">
-        <p className="mb-3 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Riwayat impor</p>
+        <p className="mb-3 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("importTab.historyHeading")}</p>
         <div className="flex flex-col gap-2">
-          {runs.length === 0 && <p className="text-[12.5px] text-text-3">Belum ada impor.</p>}
+          {runs.length === 0 && <p className="text-[12.5px] text-text-3">{t("importTab.noImportsYet")}</p>}
           {runs.map((run) => (
             <div key={run.id} className="rounded-lg border border-border px-2.5 py-2 text-[12px]">
               <div className="flex items-center justify-between">
                 <span className="font-medium">
                   {run.source.toUpperCase()} · {IMPORT_RUN_STATUS_LABEL[run.status] ?? run.status}
                 </span>
-                <span className="text-text-3">{run.dryRun ? "dry-run" : "nyata"}</span>
+                <span className="text-text-3">{run.dryRun ? t("importTab.dryRunTag") : t("importTab.realTag")}</span>
               </div>
               {run.counts != null && <p className="mt-1 text-text-2">{JSON.stringify(run.counts)}</p>}
-              {Array.isArray(run.errors) && run.errors.length > 0 && <p className="mt-1 text-red-500">{run.errors.length} error</p>}
+              {Array.isArray(run.errors) && run.errors.length > 0 && <p className="mt-1 text-red-500">{t("importTab.errorCount", { count: run.errors.length })}</p>}
             </div>
           ))}
         </div>
@@ -876,12 +884,13 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
 }
 
 function BoardView({ data }: { data: BoardData }) {
+  const { t } = useTranslation("board");
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [search, setSearch] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const usersById = new Map(data.users.map((u) => [u.id, u]));
-  const issueTypesById = new Map(data.issueTypes.map((t) => [t.id, t]));
+  const issueTypesById = new Map(data.issueTypes.map((tp) => [tp.id, tp]));
 
   const needle = search.trim().toLowerCase();
   const columns = needle
@@ -941,12 +950,12 @@ function BoardView({ data }: { data: BoardData }) {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari di board"
+              placeholder={t("boardView.searchPlaceholder")}
               className="min-w-0 flex-1 border-none bg-transparent text-[12.5px] outline-none placeholder:text-text-3"
             />
           </div>
           <div className="ml-auto flex items-center gap-2 text-[11.5px] text-text-3">
-            {pending ? "Menyimpan…" : null}
+            {pending ? t("savingEllipsis") : null}
           </div>
         </div>
 
@@ -986,6 +995,7 @@ function Column({
   usersById: Map<string, BoardData["users"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
 }) {
+  const { t } = useTranslation("board");
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
   return (
@@ -994,7 +1004,7 @@ function Column({
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: column.color }} />
         <span className="text-[12.5px] font-semibold tracking-tight">{column.name}</span>
         <span className="font-mono text-[10.5px] text-text-3">{column.issues.length}</span>
-        {column.isBacklog && <Badge>tetap</Badge>}
+        {column.isBacklog && <Badge>{t("fixedBadge")}</Badge>}
         {column.wipLimit != null && column.issues.length > column.wipLimit && (
           <span className="ml-auto text-[10px] font-semibold text-amber">
             {column.issues.length}/{column.wipLimit}
@@ -1022,13 +1032,13 @@ function Column({
   );
 }
 
-function formatPropertyValue(type: string, value: unknown): string | null {
+function formatPropertyValue(type: string, value: unknown, intlLocale: string): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (type === "checkbox") return value ? "✓" : null;
   if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : null;
   if (type === "date") {
     const d = new Date(value as string);
-    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString(intlLocale, { day: "numeric", month: "short" });
   }
   return String(value);
 }
@@ -1046,12 +1056,14 @@ function Card({
   usersById: Map<string, BoardData["users"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
 }) {
+  const { i18n } = useTranslation("board");
+  const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: issue.id });
   const type = issueTypesById.get(issue.typeId);
   const assignee = issue.assigneeId ? usersById.get(issue.assigneeId) : undefined;
   const customFields = (issue.customFields ?? {}) as Record<string, unknown>;
   const propertyChips = visibleProperties
-    .map((p) => ({ def: p, text: formatPropertyValue(p.type, customFields[p.key]) }))
+    .map((p) => ({ def: p, text: formatPropertyValue(p.type, customFields[p.key], intlLocale) }))
     .filter((c): c is { def: (typeof visibleProperties)[number]; text: string } => c.text !== null);
 
   return (
@@ -1107,7 +1119,7 @@ function Card({
         {assignee && <Avatar initials={initialsOf(assignee.name)} size={21} className="text-[9px]" />}
         {issue.dueDate && (
           <span className="font-mono text-[10px]" style={{ color: PRIORITY_COLOR[issue.priority] }}>
-            {new Date(issue.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+            {new Date(issue.dueDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" })}
           </span>
         )}
         {issue.storyPoints != null && (

@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { createReactBlockSpec } from "@blocknote/react";
 import { Avatar } from "@kompast/ui/Avatar";
 import type { TableViewConfig } from "@kompast/core";
+import { useTranslation } from "@kompast/i18n";
 import { getBoardEmbedDataFn, listEmbeddableBoardsFn } from "@/lib/server-fns/projects";
 import { kompastViewBlockConfig } from "@/lib/blocknote-schema";
 
@@ -30,6 +31,7 @@ function sortIssues(issues: FlatIssue[], sortBy: TableViewConfig["sortBy"], sort
 
 /** No grouping/sort controls, no config mutation — the same saved_view backs the project's own Table tab, an embed only ever reads it. */
 function ReadOnlyTable({ data }: { data: BoardData }) {
+  const { t } = useTranslation("board");
   const config = data.tableView.config as unknown as TableViewConfig;
   const usersById = new Map(data.users.map((u) => [u.id, u]));
 
@@ -43,18 +45,18 @@ function ReadOnlyTable({ data }: { data: BoardData }) {
           {data.project.key} · {data.project.name}
         </span>
         <Link to="/projects/$projectKey" params={{ projectKey: data.project.key }} className="hover:text-accent">
-          Buka di proyek →
+          {t("tableView.openInProjectLink")}
         </Link>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-[12px]">
           <thead>
             <tr className="border-b border-border bg-surface-2 text-left text-text-3">
-              <th className="px-3 py-1.5 font-medium">Key</th>
-              <th className="px-3 py-1.5 font-medium">Judul</th>
-              <th className="px-3 py-1.5 font-medium">Status</th>
-              <th className="px-3 py-1.5 font-medium">Assignee</th>
-              <th className="px-3 py-1.5 font-medium">Prioritas</th>
+              <th className="px-3 py-1.5 font-medium">{t("tableView.colKey")}</th>
+              <th className="px-3 py-1.5 font-medium">{t("tableView.colTitle")}</th>
+              <th className="px-3 py-1.5 font-medium">{t("tableView.colStatus")}</th>
+              <th className="px-3 py-1.5 font-medium">{t("tableView.colAssignee")}</th>
+              <th className="px-3 py-1.5 font-medium">{t("tableView.colPriority")}</th>
             </tr>
           </thead>
           <tbody>
@@ -95,7 +97,7 @@ function ReadOnlyTable({ data }: { data: BoardData }) {
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-3 py-6 text-center text-text-3">
-                  Tidak ada tiket.
+                  {t("tableView.noIssues")}
                 </td>
               </tr>
             )}
@@ -109,6 +111,7 @@ function ReadOnlyTable({ data }: { data: BoardData }) {
 type Boards = Awaited<ReturnType<typeof listEmbeddableBoardsFn>>;
 
 function BoardPicker({ onPick }: { onPick: (boardId: string) => void }) {
+  const { t } = useTranslation("board");
   const [boards, setBoards] = useState<Boards | null>(null);
 
   useEffect(() => {
@@ -117,9 +120,9 @@ function BoardPicker({ onPick }: { onPick: (boardId: string) => void }) {
 
   return (
     <div className="rounded-xl border border-dashed border-border-2 bg-surface-2 p-4 text-[12.5px]">
-      <p className="mb-2 text-text-2">Sisipkan tabel kanban dari proyek:</p>
-      {boards === null && <p className="text-text-3">Memuat…</p>}
-      {boards !== null && boards.length === 0 && <p className="text-text-3">Belum ada proyek dengan board.</p>}
+      <p className="mb-2 text-text-2">{t("tableView.embedInsertPrompt")}</p>
+      {boards === null && <p className="text-text-3">{t("loadingEllipsis")}</p>}
+      {boards !== null && boards.length === 0 && <p className="text-text-3">{t("tableView.noProjectsWithBoard")}</p>}
       {boards !== null && boards.length > 0 && (
         <select
           defaultValue=""
@@ -127,7 +130,7 @@ function BoardPicker({ onPick }: { onPick: (boardId: string) => void }) {
           className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 outline-none"
         >
           <option value="" disabled>
-            Pilih proyek…
+            {t("tableView.selectProjectPlaceholder")}
           </option>
           {boards.map((b) => (
             <option key={b.boardId} value={b.boardId}>
@@ -142,6 +145,7 @@ function BoardPicker({ onPick }: { onPick: (boardId: string) => void }) {
 
 export const kompastViewBlockSpec = createReactBlockSpec(kompastViewBlockConfig, {
   render: ({ block, editor }) => {
+    const { t } = useTranslation("board");
     const [data, setData] = useState<BoardData | null>(null);
     const [error, setError] = useState(false);
 
@@ -163,13 +167,13 @@ export const kompastViewBlockSpec = createReactBlockSpec(kompastViewBlockConfig,
     if (error) {
       return (
         <div className="rounded-xl border border-border bg-surface-2 p-4 text-[12.5px] text-text-3">
-          Board ini tidak ditemukan atau sudah dihapus.
+          {t("tableView.boardNotFoundOrDeleted")}
         </div>
       );
     }
 
     if (!data) {
-      return <div className="rounded-xl border border-border bg-surface-2 p-4 text-[12.5px] text-text-3">Memuat tabel…</div>;
+      return <div className="rounded-xl border border-border bg-surface-2 p-4 text-[12.5px] text-text-3">{t("tableView.loadingTable")}</div>;
     }
 
     return <ReadOnlyTable data={data} />;

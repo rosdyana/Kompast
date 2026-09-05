@@ -1,0 +1,66 @@
+{
+  "untitled": "無標題",
+  "loadingEllipsis": "載入中…",
+  "restore": "還原",
+  "send": "傳送",
+  "docsBrand": "文件",
+  "docsTree": { "noPagesYet": "尚無頁面" },
+  "editor": {
+    "aiWritingPlaceholder": "AI 正在撰寫…",
+    "aiFailedPrefix": "AI 失敗：{{message}}",
+    "unknownError": "未知錯誤",
+    "kanbanTableSlashItem": "看板表格",
+    "aiContinue": "AI：繼續寫作",
+    "aiImprove": "AI：潤飾文字",
+    "aiShorten": "AI：精簡",
+    "aiExpand": "AI：擴寫",
+    "aiSummarize": "AI：摘要",
+    "aiTranslateToEnglish": "AI：翻譯成英文",
+    "aiTranslateToIndonesian": "AI：翻譯成印尼文"
+  },
+  "versionHistory": {
+    "historyButton": "🕐 歷史紀錄",
+    "noHistoryYet": "尚無歷史紀錄。編輯頁面時，每隔幾分鐘會自動儲存新版本。",
+    "unknownAuthor": "不明"
+  },
+  "pageDetail": {
+    "favoriteOn": "★ 最愛",
+    "favoriteOff": "☆ 最愛",
+    "share": "🔗 分享",
+    "templateBadge": "範本",
+    "makeTemplate": "設為範本",
+    "archive": "封存",
+    "shareLinkHeading": "分享連結",
+    "newLink": "+ 建立連結",
+    "noShareLinksYet": "尚無分享連結。此頁面目前僅工作區成員可檢視。",
+    "viewOnly": "僅檢視",
+    "canComment": "可留言",
+    "withPassword": "· 已設密碼",
+    "revoked": "· 已撤銷",
+    "revokeLink": "撤銷",
+    "subPagesHeading": "子頁面",
+    "addSubPage": "+ 子頁面",
+    "linkedIssuesHeading": "已連結工單",
+    "linkIssueButton": "連結工單",
+    "linkIssueFormatError": "格式須為 KPT-12 這樣的形式",
+    "linkIssueNotFound": "找不到工單。",
+    "mentionedInHeading": "提及於",
+    "commentsHeading": "留言",
+    "noCommentsYet": "尚無留言。",
+    "commentPlaceholder": "輸入留言…"
+  },
+  "index": {
+    "newPageButton": "+ 新增頁面",
+    "templatesHeading": "範本",
+    "useTemplate": "使用",
+    "usingTemplateEllipsis": "建立中…",
+    "emptyStateText": "尚無頁面。文件是團隊筆記、規格與說明文件的協作空間 —— 類似 Notion，並可直接連結到看板工單。"
+  },
+  "trash": {
+    "trashHeading": "垃圾桶",
+    "trashEmpty": "垃圾桶是空的。",
+    "archivedOn": "封存於 {{date}}",
+    "deletePermanently": "永久刪除",
+    "deleteConfirm": "永久刪除「{{title}}」？此操作無法復原。"
+  }
+}

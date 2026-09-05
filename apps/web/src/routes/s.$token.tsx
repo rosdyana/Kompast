@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@kompast/ui/Button";
+import { useTranslation } from "@kompast/i18n";
 import { getSharedPageMetaFn, getSharedPageContentFn } from "@/lib/server-fns/share";
 
 export const Route = createFileRoute("/s/$token")({
@@ -17,6 +18,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 function SharedPage() {
+  const { t } = useTranslation("share");
   const meta = Route.useLoaderData();
   const { token } = Route.useParams();
   const [password, setPassword] = useState("");
@@ -38,7 +40,7 @@ function SharedPage() {
     try {
       const res = await getSharedPageContentFn({ data: { token, password } });
       if (res.ok) setContent(res);
-      else setError("Kata sandi salah.");
+      else setError(t("wrongPassword"));
     } finally {
       setLoading(false);
     }
@@ -47,7 +49,7 @@ function SharedPage() {
   if (!meta) {
     return (
       <Centered>
-        <p className="text-sm text-text-3">Tautan tidak valid atau sudah kedaluwarsa.</p>
+        <p className="text-sm text-text-3">{t("invalidLink")}</p>
       </Centered>
     );
   }
@@ -56,19 +58,19 @@ function SharedPage() {
     return (
       <Centered>
         <div className="mb-4 text-3xl">{meta.icon || "▤"}</div>
-        <h1 className="mb-1 text-lg font-semibold">{meta.title || "Tanpa judul"}</h1>
-        <p className="mb-4 text-sm text-text-3">Halaman ini dilindungi kata sandi.</p>
+        <h1 className="mb-1 text-lg font-semibold">{meta.title || t("untitled")}</h1>
+        <p className="mb-4 text-sm text-text-3">{t("passwordProtected")}</p>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submitPassword()}
-          placeholder="Kata sandi"
+          placeholder={t("passwordPlaceholder")}
           className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] outline-none focus:border-border-2"
         />
         {error && <p className="mb-2 text-[12px] text-danger">{error}</p>}
         <Button variant="primary" className="w-full" onClick={submitPassword} disabled={loading || !password}>
-          Buka
+          {t("open")}
         </Button>
       </Centered>
     );
@@ -77,7 +79,7 @@ function SharedPage() {
   if (!content) {
     return (
       <Centered>
-        <p className="text-sm text-text-3">Memuat…</p>
+        <p className="text-sm text-text-3">{t("loadingEllipsis")}</p>
       </Centered>
     );
   }
@@ -85,12 +87,12 @@ function SharedPage() {
   return (
     <div className="min-h-screen bg-bg">
       <header className="border-b border-border bg-surface-2 px-6 py-3 text-center text-[11.5px] text-text-3">
-        Dibagikan dari Kompast — hanya lihat
+        {t("sharedFooter")}
       </header>
       <div className="mx-auto max-w-[820px] px-8 py-12">
         <h1 className="mb-6 flex items-center gap-2.5 text-3xl font-semibold tracking-tight">
           <span>{content.icon || "▤"}</span>
-          {content.title || "Tanpa judul"}
+          {content.title || t("untitled")}
         </h1>
         <div className="bn-shared-content text-[15px] leading-relaxed" dangerouslySetInnerHTML={{ __html: content.html }} />
       </div>

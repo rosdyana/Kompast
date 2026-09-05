@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
+import { useTranslation } from "@kompast/i18n";
 import { getSetupStatusFn, completeSetupFn } from "@/lib/server-fns/setup";
 
 export const Route = createFileRoute("/setup")({
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/setup")({
 });
 
 function SetupPage() {
+  const { t } = useTranslation("auth");
   const router = useRouter();
   const [tenantId, setTenantId] = useState("");
   const [clientId, setClientId] = useState("");
@@ -27,7 +29,7 @@ function SetupPage() {
       await completeSetupFn({ data: { tenantId: tenantId.trim(), clientId: clientId.trim(), clientSecret } });
       await router.navigate({ to: "/login" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan konfigurasi.");
+      setError(err instanceof Error ? err.message : t("saveFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -43,21 +45,17 @@ function SetupPage() {
           <span className="text-[17px] font-semibold tracking-tight">Kompast</span>
         </div>
 
-        <h1 className="mb-2 text-2xl font-semibold tracking-tight">Setup awal</h1>
-        <p className="mb-7 text-sm leading-relaxed text-text-2">
-          Sambungkan Microsoft Entra ID sebelum siapa pun bisa masuk. Anda perlu tenant ID, client ID, dan client
-          secret dari app registration di Azure. Orang pertama yang berhasil masuk akan otomatis menjadi admin
-          workspace.
-        </p>
+        <h1 className="mb-2 text-2xl font-semibold tracking-tight">{t("setupTitle")}</h1>
+        <p className="mb-7 text-sm leading-relaxed text-text-2">{t("setupSubtitle")}</p>
 
         <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
-          <Field label="Tenant ID" value={tenantId} onChange={setTenantId} placeholder="00000000-0000-0000-0000-000000000000" />
-          <Field label="Client ID" value={clientId} onChange={setClientId} placeholder="Application (client) ID" />
+          <Field label={t("tenantIdLabel")} value={tenantId} onChange={setTenantId} placeholder="00000000-0000-0000-0000-000000000000" />
+          <Field label={t("clientIdLabel")} value={clientId} onChange={setClientId} placeholder={t("clientIdPlaceholder")} />
           <Field
-            label="Client Secret"
+            label={t("clientSecretLabel")}
             value={clientSecret}
             onChange={setClientSecret}
-            placeholder="Client secret value"
+            placeholder={t("clientSecretPlaceholder")}
             type="password"
           />
 
@@ -69,12 +67,12 @@ function SetupPage() {
             disabled={submitting || !tenantId || !clientId || !clientSecret}
             className="w-full py-2.5"
           >
-            {submitting ? "Menyimpan…" : "Simpan dan lanjut ke login"}
+            {submitting ? t("savingEllipsis") : t("saveAndContinue")}
           </Button>
         </div>
 
         <p className="mt-5 text-[12px] leading-relaxed text-text-3">
-          Redirect URI yang harus terdaftar di app registration:{" "}
+          {t("redirectUriNote")}{" "}
           <code className="rounded bg-surface-3 px-1 py-0.5">{"<APP_URL>"}/api/auth/callback/microsoft-entra-id</code>
         </p>
       </div>

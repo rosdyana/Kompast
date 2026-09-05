@@ -1,0 +1,105 @@
+{
+  "tabs": { "members": "Members", "teams": "Teams", "roles": "Roles & Permissions", "integrations": "Integrations" },
+  "pageTitle": "Workspace settings",
+  "teamsNonAdminNote": "Only super admins can manage the workspace's team list here.",
+  "integrations": {
+    "subtitle": "Configure AI and email vendors for this whole deployment.",
+    "embedding": {
+      "heading": "Embedding (Ask Kompast)",
+      "description": "A separate provider from the AI settings above — Anthropic doesn't have a public embeddings API, so Ask Kompast needs Azure OpenAI or an OpenAI-compatible endpoint, regardless of which AI provider is selected above.",
+      "enable": "Enable Ask Kompast",
+      "providerLabel": "Provider",
+      "apiKeyLabel": "API key",
+      "savedNoteLong": "(saved — leave blank to keep unchanged)",
+      "azureEndpointLabel": "Azure endpoint",
+      "azureDeploymentEmbeddingsLabel": "Azure deployment (embeddings)",
+      "baseUrlLabel": "Base URL",
+      "modelLabel": "Model",
+      "savingEllipsis": "Saving…",
+      "save": "Save",
+      "saved": "Saved."
+    },
+    "entra": {
+      "heading": "Microsoft Entra ID",
+      "warningPart1": "⚠️ An incorrect Tenant ID (not malformed — a valid but wrong GUID) breaks ",
+      "warningBold": "the entire application",
+      "warningPart2": ", not just Microsoft login — because every request that checks a session triggers OIDC discovery straight against that tenant. Double-check before saving.",
+      "tenantIdLabel": "Tenant ID",
+      "clientIdLabel": "Client ID",
+      "clientSecretLabel": "Client Secret",
+      "savedNoteLong": "(saved — leave blank to keep unchanged)",
+      "savingEllipsis": "Saving…",
+      "save": "Save",
+      "saved": "Saved.",
+      "saveFailed": "Failed to save Entra ID configuration"
+    },
+    "ai": {
+      "heading": "AI",
+      "enable": "Enable AI features",
+      "providerLabel": "Provider",
+      "apiKeyLabel": "API key",
+      "savedNoteLong": "(saved — leave blank to keep unchanged)",
+      "modelLabel": "Model",
+      "modelBlankNote": "(leave blank for default)",
+      "modelPlaceholderOther": "model name at this endpoint",
+      "azureEndpointLabel": "Azure endpoint",
+      "azureDeploymentLabel": "Azure deployment",
+      "baseUrlLabel": "Base URL",
+      "savingEllipsis": "Saving…",
+      "save": "Save",
+      "saved": "Saved."
+    },
+    "mail": {
+      "heading": "Email",
+      "driverLabel": "Driver",
+      "fromAddressLabel": "From address",
+      "smtpUrlLabel": "SMTP URL",
+      "savedNoteShort": "(saved)",
+      "apiKeyLabel": "API key",
+      "savingEllipsis": "Saving…",
+      "save": "Save",
+      "saved": "Saved."
+    }
+  },
+  "members": {
+    "subtitle": "Invite new people and manage pending invitations.",
+    "inviteHeading": "Invite new member",
+    "emailPlaceholder": "name@company.com",
+    "invitingEllipsis": "Sending…",
+    "invite": "Invite",
+    "inviteFailed": "Failed to send invitation",
+    "pendingInvitesHeading": "Pending invitations",
+    "cancel": "Cancel",
+    "currentMembersHeading": "Current members",
+    "memberRoleLabel": "Member",
+    "adminRoleLabel": "Admin"
+  },
+  "roles": {
+    "intro": "The role hierarchy currently in effect in Kompast — not a configurable permission matrix, just a summary of the rules already in the code.",
+    "superAdmin": {
+      "name": "Super Admin",
+      "scope": "One per workspace",
+      "desc": "Can create new teams and manage any team (member.isSuperAdmin). Transferring this role revokes it from the previous holder."
+    },
+    "workspaceOwner": {
+      "name": "Workspace Owner / Admin",
+      "scope": "Workspace",
+      "desc": "Can open Settings (Entra/AI/Email integrations) and invite/manage workspace members (member.role)."
+    },
+    "teamAdmin": {
+      "name": "Team Admin",
+      "scope": "Per team",
+      "desc": "Can create projects within their own team and manage that team's membership (team_member.role). Has no rights in other teams or workspace-wide."
+    },
+    "teamMember": {
+      "name": "Team Member",
+      "scope": "Per team",
+      "desc": "A regular member of a team, with no management rights."
+    },
+    "projectRole": {
+      "name": "Project Lead / Contributor / Viewer",
+      "scope": "Per project",
+      "desc": "A role that can be assigned per project (project_member.role). Not enforced anywhere in the code yet — it can currently only be assigned."
+    }
+  }
+}

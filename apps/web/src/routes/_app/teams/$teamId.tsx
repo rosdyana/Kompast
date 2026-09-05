@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Card } from "@kompast/ui/Card";
 import { Button } from "@kompast/ui/Button";
+import { useTranslation } from "@kompast/i18n";
 import { getTeamManagementFn, addTeamMemberFn, removeTeamMemberFn, setTeamMemberRoleFn } from "@/lib/server-fns/teams";
 
 export const Route = createFileRoute("/_app/teams/$teamId")({
@@ -18,6 +19,7 @@ export const Route = createFileRoute("/_app/teams/$teamId")({
 });
 
 function TeamManagementPage() {
+  const { t } = useTranslation("teams");
   const data = Route.useLoaderData();
   const { teamId } = Route.useParams();
   const router = useRouter();
@@ -36,7 +38,7 @@ function TeamManagementPage() {
       setCandidateUserId("");
       await router.invalidate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menambah anggota");
+      setError(err instanceof Error ? err.message : t("addMemberFailed"));
     } finally {
       setAdding(false);
     }
@@ -54,11 +56,11 @@ function TeamManagementPage() {
 
   return (
     <div className="mx-auto max-w-[640px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">Kelola tim</h1>
-      <p className="mb-8 text-sm text-text-2">Tambah atau hapus anggota, dan atur siapa yang menjadi admin tim ini.</p>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("manageTeamHeading")}</h1>
+      <p className="mb-8 text-sm text-text-2">{t("manageTeamSubtitle")}</p>
 
       <section className="mb-8">
-        <h2 className="mb-3 text-[13px] font-semibold">Tambah anggota</h2>
+        <h2 className="mb-3 text-[13px] font-semibold">{t("addMemberHeading")}</h2>
         <Card className="flex flex-col gap-3 p-4">
           <div className="flex gap-2">
             <select
@@ -66,7 +68,7 @@ function TeamManagementPage() {
               onChange={(e) => setCandidateUserId(e.target.value)}
               className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
             >
-              <option value="">Pilih anggota workspace…</option>
+              <option value="">{t("teamMemberSelectPlaceholder")}</option>
               {data.candidates.map((c) => (
                 <option key={c.userId} value={c.userId}>
                   {c.name} ({c.email})
@@ -74,18 +76,18 @@ function TeamManagementPage() {
               ))}
             </select>
             <Button variant="primary" onClick={addMember} disabled={adding || !candidateUserId}>
-              {adding ? "Menambah…" : "Tambah"}
+              {adding ? t("addingEllipsis") : t("add")}
             </Button>
           </div>
           {data.candidates.length === 0 && (
-            <p className="text-[12px] text-text-3">Semua anggota workspace sudah ada di tim ini.</p>
+            <p className="text-[12px] text-text-3">{t("allMembersAlready")}</p>
           )}
           {error && <p className="text-[12px] text-danger">{error}</p>}
         </Card>
       </section>
 
       <section>
-        <h2 className="mb-3 text-[13px] font-semibold">Anggota tim</h2>
+        <h2 className="mb-3 text-[13px] font-semibold">{t("teamMembersHeading")}</h2>
         <div className="flex flex-col gap-1.5">
           {data.members.map((m) => (
             <div key={m.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px]">
@@ -95,19 +97,19 @@ function TeamManagementPage() {
                 value={m.role}
                 onChange={(e) => setRole(m.userId, e.target.value as "admin" | "member")}
                 disabled={m.role === "admin" && adminCount <= 1}
-                title={m.role === "admin" && adminCount <= 1 ? "Tim ini butuh setidaknya satu admin" : undefined}
+                title={m.role === "admin" && adminCount <= 1 ? t("needsAdminTitle") : undefined}
                 className="rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
               >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
+                <option value="member">{t("memberRoleLabel")}</option>
+                <option value="admin">{t("adminRoleLabel")}</option>
               </select>
               <button
                 onClick={() => remove(m.userId)}
                 disabled={m.role === "admin" && adminCount <= 1}
-                title={m.role === "admin" && adminCount <= 1 ? "Tim ini butuh setidaknya satu admin" : undefined}
+                title={m.role === "admin" && adminCount <= 1 ? t("needsAdminTitle") : undefined}
                 className="rounded px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger disabled:pointer-events-none disabled:opacity-40"
               >
-                Hapus
+                {t("remove")}
               </button>
             </div>
           ))}

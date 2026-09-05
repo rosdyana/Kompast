@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
 import { Tabs } from "@kompast/ui/Tabs";
+import { useTranslation } from "@kompast/i18n";
 import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn } from "@/lib/server-fns/settings";
 import { listMembersFn } from "@/lib/server-fns/members";
 import { listTeamsFn } from "@/lib/server-fns/teams";
@@ -31,27 +32,28 @@ export const Route = createFileRoute("/_app/settings")({
 });
 
 function SettingsPage() {
+  const { t } = useTranslation("settings");
   const data = Route.useLoaderData();
   const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const active: TabKey = tab ?? "members";
 
   const items = [
-    { key: "members", label: "Anggota" },
-    { key: "teams", label: "Tim" },
-    { key: "roles", label: "Peran & Izin" },
-    { key: "integrations", label: "Integrasi" },
+    { key: "members", label: t("tabs.members") },
+    { key: "teams", label: t("tabs.teams") },
+    { key: "roles", label: t("tabs.roles") },
+    { key: "integrations", label: t("tabs.integrations") },
   ];
 
   return (
     <div className="mx-auto max-w-[760px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">Pengaturan workspace</h1>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
       <Tabs items={items} active={active} onChange={(key) => navigate({ search: { tab: key as TabKey } })} className="mb-6 border-b border-border" />
 
       {active === "members" && <MembersTab data={data.members} />}
       {active === "teams" && data.integrations.isSuperAdmin && <TeamsTab teams={data.teams} members={data.members.members} />}
       {active === "teams" && !data.integrations.isSuperAdmin && (
-        <p className="text-sm text-text-3">Hanya super admin yang bisa mengelola daftar tim workspace di sini.</p>
+        <p className="text-sm text-text-3">{t("teamsNonAdminNote")}</p>
       )}
       {active === "roles" && <RolesTab />}
       {active === "integrations" && <IntegrationsTab data={data.integrations} />}
@@ -60,9 +62,10 @@ function SettingsPage() {
 }
 
 function IntegrationsTab({ data }: { data: Awaited<ReturnType<typeof getIntegrationSettingsFn>> }) {
+  const { t } = useTranslation("settings");
   return (
     <div>
-      <p className="mb-8 text-sm text-text-2">Konfigurasi vendor AI dan email untuk seluruh deployment ini.</p>
+      <p className="mb-8 text-sm text-text-2">{t("integrations.subtitle")}</p>
       <EntraSection initial={data.entra} />
       <div className="mt-8">
         <AiSection initial={data.ai} />
@@ -78,6 +81,7 @@ function IntegrationsTab({ data }: { data: Awaited<ReturnType<typeof getIntegrat
 }
 
 function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["embedding"] }) {
+  const { t } = useTranslation("settings");
   const router = useRouter();
   const [provider, setProvider] = useState(initial.provider ?? "azure-openai");
   const [apiKey, setApiKey] = useState("");
@@ -114,18 +118,16 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
 
   return (
     <section>
-      <h2 className="mb-3 text-[13px] font-semibold">Embedding (Ask Kompast)</h2>
-      <p className="mb-3 text-[12px] text-text-2">
-        Provider terpisah dari AI di atas — Anthropic tidak memiliki API embeddings publik, jadi Ask Kompast butuh Azure OpenAI atau endpoint kompatibel-OpenAI, apa pun provider AI yang dipilih di atas.
-      </p>
+      <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.embedding.heading")}</h2>
+      <p className="mb-3 text-[12px] text-text-2">{t("integrations.embedding.description")}</p>
       <Card className="flex flex-col gap-4 p-4">
         <label className="flex items-center gap-2 text-[13px]">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          Aktifkan Ask Kompast
+          {t("integrations.embedding.enable")}
         </label>
 
         <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">Provider</span>
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.providerLabel")}</span>
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value as typeof provider)}
@@ -138,7 +140,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
 
         <label className="block">
           <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-            API key {initial.hasApiKey && <span className="text-text-3">(tersimpan — kosongkan untuk tidak mengubah)</span>}
+            {t("integrations.embedding.apiKeyLabel")} {initial.hasApiKey && <span className="text-text-3">{t("integrations.embedding.savedNoteLong")}</span>}
           </span>
           <input
             type="password"
@@ -152,7 +154,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
         {provider === "azure-openai" ? (
           <>
             <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Azure endpoint</span>
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.azureEndpointLabel")}</span>
               <input
                 value={azureEndpoint}
                 onChange={(e) => setAzureEndpoint(e.target.value)}
@@ -160,7 +162,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Azure deployment (embeddings)</span>
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.azureDeploymentEmbeddingsLabel")}</span>
               <input
                 value={azureDeployment}
                 onChange={(e) => setAzureDeployment(e.target.value)}
@@ -171,7 +173,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
         ) : (
           <>
             <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Base URL</span>
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.baseUrlLabel")}</span>
               <input
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
@@ -179,7 +181,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Model</span>
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.modelLabel")}</span>
               <input
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
@@ -192,9 +194,9 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
 
         <div className="flex items-center gap-2.5">
           <Button variant="primary" onClick={save} disabled={saving}>
-            {saving ? "Menyimpan…" : "Simpan"}
+            {saving ? t("integrations.embedding.savingEllipsis") : t("integrations.embedding.save")}
           </Button>
-          {saved && <span className="text-[12px] text-green">Tersimpan.</span>}
+          {saved && <span className="text-[12px] text-green">{t("integrations.embedding.saved")}</span>}
         </div>
       </Card>
     </section>
@@ -202,6 +204,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
 }
 
 function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["entra"] }) {
+  const { t } = useTranslation("settings");
   const router = useRouter();
   const [tenantId, setTenantId] = useState(initial.tenantId ?? "");
   const [clientId, setClientId] = useState(initial.clientId ?? "");
@@ -220,7 +223,7 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
       setSaved(true);
       await router.invalidate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan konfigurasi Entra ID");
+      setError(err instanceof Error ? err.message : t("integrations.entra.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -228,15 +231,15 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
 
   return (
     <section>
-      <h2 className="mb-3 text-[13px] font-semibold">Microsoft Entra ID</h2>
+      <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.entra.heading")}</h2>
       <Card className="flex flex-col gap-4 p-4">
         <p className="rounded-[7px] border border-dashed border-border-2 bg-surface-2 p-3 text-[12px] leading-relaxed text-text-2">
-          ⚠️ Sebuah Tenant ID yang salah (bukan salah format, tapi GUID yang valid namun keliru) membuat <strong>seluruh aplikasi</strong> gagal —
-          bukan hanya login Microsoft — karena setiap permintaan yang memeriksa sesi memicu penemuan OIDC langsung ke tenant tersebut. Periksa kembali
-          sebelum menyimpan.
+          {t("integrations.entra.warningPart1")}
+          <strong>{t("integrations.entra.warningBold")}</strong>
+          {t("integrations.entra.warningPart2")}
         </p>
         <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">Tenant ID</span>
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.entra.tenantIdLabel")}</span>
           <input
             value={tenantId}
             onChange={(e) => setTenantId(e.target.value)}
@@ -245,12 +248,12 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
           />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">Client ID</span>
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.entra.clientIdLabel")}</span>
           <input value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none" />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-            Client Secret {initial.hasClientSecret && <span className="text-text-3">(tersimpan — kosongkan untuk tidak mengubah)</span>}
+            {t("integrations.entra.clientSecretLabel")} {initial.hasClientSecret && <span className="text-text-3">{t("integrations.entra.savedNoteLong")}</span>}
           </span>
           <input
             type="password"
@@ -262,9 +265,9 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
         </label>
         <div className="flex items-center gap-2.5">
           <Button variant="primary" onClick={save} disabled={saving || !tenantId.trim() || !clientId.trim()}>
-            {saving ? "Menyimpan…" : "Simpan"}
+            {saving ? t("integrations.entra.savingEllipsis") : t("integrations.entra.save")}
           </Button>
-          {saved && <span className="text-[12px] text-green">Tersimpan.</span>}
+          {saved && <span className="text-[12px] text-green">{t("integrations.entra.saved")}</span>}
           {error && <span className="text-[12px] text-danger">{error}</span>}
         </div>
       </Card>
@@ -273,6 +276,7 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
 }
 
 function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["ai"] }) {
+  const { t } = useTranslation("settings");
   const router = useRouter();
   const [provider, setProvider] = useState(initial.provider ?? "anthropic");
   const [apiKey, setApiKey] = useState("");
@@ -309,15 +313,15 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
 
   return (
     <section>
-      <h2 className="mb-3 text-[13px] font-semibold">AI</h2>
+      <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.ai.heading")}</h2>
       <Card className="flex flex-col gap-4 p-4">
         <label className="flex items-center gap-2 text-[13px]">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          Aktifkan fitur AI
+          {t("integrations.ai.enable")}
         </label>
 
         <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">Provider</span>
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.ai.providerLabel")}</span>
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value as typeof provider)}
@@ -331,7 +335,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
 
         <label className="block">
           <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-            API key {initial.hasApiKey && <span className="text-text-3">(tersimpan — kosongkan untuk tidak mengubah)</span>}
+            {t("integrations.ai.apiKeyLabel")} {initial.hasApiKey && <span className="text-text-3">{t("integrations.ai.savedNoteLong")}</span>}
           </span>
           <input
             type="password"
@@ -345,12 +349,12 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
         {provider !== "azure-openai" && (
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-              Model {provider === "anthropic" && <span className="text-text-3">(kosongkan untuk default)</span>}
+              {t("integrations.ai.modelLabel")} {provider === "anthropic" && <span className="text-text-3">{t("integrations.ai.modelBlankNote")}</span>}
             </span>
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder={provider === "anthropic" ? "claude-sonnet-5" : "nama model di endpoint ini"}
+              placeholder={provider === "anthropic" ? "claude-sonnet-5" : t("integrations.ai.modelPlaceholderOther")}
               className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
             />
           </label>
@@ -359,7 +363,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
         {provider === "azure-openai" && (
           <>
             <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Azure endpoint</span>
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.ai.azureEndpointLabel")}</span>
               <input
                 value={azureEndpoint}
                 onChange={(e) => setAzureEndpoint(e.target.value)}
@@ -367,7 +371,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
               />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">Azure deployment</span>
+              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.ai.azureDeploymentLabel")}</span>
               <input
                 value={azureDeployment}
                 onChange={(e) => setAzureDeployment(e.target.value)}
@@ -379,7 +383,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
 
         {provider === "openai-compatible" && (
           <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-text-2">Base URL</span>
+            <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.ai.baseUrlLabel")}</span>
             <input
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
@@ -390,9 +394,9 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
 
         <div className="flex items-center gap-2.5">
           <Button variant="primary" onClick={save} disabled={saving}>
-            {saving ? "Menyimpan…" : "Simpan"}
+            {saving ? t("integrations.ai.savingEllipsis") : t("integrations.ai.save")}
           </Button>
-          {saved && <span className="text-[12px] text-green">Tersimpan.</span>}
+          {saved && <span className="text-[12px] text-green">{t("integrations.ai.saved")}</span>}
         </div>
       </Card>
     </section>
@@ -400,6 +404,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
 }
 
 function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["mail"] }) {
+  const { t } = useTranslation("settings");
   const router = useRouter();
   const [driver, setDriver] = useState(initial.driver ?? "resend");
   const [from, setFrom] = useState(initial.from ?? "");
@@ -426,10 +431,10 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
 
   return (
     <section>
-      <h2 className="mb-3 text-[13px] font-semibold">Email</h2>
+      <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.mail.heading")}</h2>
       <Card className="flex flex-col gap-4 p-4">
         <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">Driver</span>
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.mail.driverLabel")}</span>
           <select
             value={driver}
             onChange={(e) => setDriver(e.target.value as typeof driver)}
@@ -442,7 +447,7 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
         </label>
 
         <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">Alamat pengirim</span>
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.mail.fromAddressLabel")}</span>
           <input
             type="email"
             value={from}
@@ -455,7 +460,7 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
         {driver === "smtp" ? (
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-              SMTP URL {initial.hasSmtpUrl && <span className="text-text-3">(tersimpan)</span>}
+              {t("integrations.mail.smtpUrlLabel")} {initial.hasSmtpUrl && <span className="text-text-3">{t("integrations.mail.savedNoteShort")}</span>}
             </span>
             <input
               type="password"
@@ -468,7 +473,7 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
         ) : (
           <label className="block">
             <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-              API key {initial.hasApiKey && <span className="text-text-3">(tersimpan)</span>}
+              {t("integrations.mail.apiKeyLabel")} {initial.hasApiKey && <span className="text-text-3">{t("integrations.mail.savedNoteShort")}</span>}
             </span>
             <input
               type="password"
@@ -482,9 +487,9 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
 
         <div className="flex items-center gap-2.5">
           <Button variant="primary" onClick={save} disabled={saving}>
-            {saving ? "Menyimpan…" : "Simpan"}
+            {saving ? t("integrations.mail.savingEllipsis") : t("integrations.mail.save")}
           </Button>
-          {saved && <span className="text-[12px] text-green">Tersimpan.</span>}
+          {saved && <span className="text-[12px] text-green">{t("integrations.mail.saved")}</span>}
         </div>
       </Card>
     </section>

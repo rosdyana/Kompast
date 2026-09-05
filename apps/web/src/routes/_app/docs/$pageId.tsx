@@ -2,6 +2,7 @@ import { createFileRoute, ClientOnly, Link, useRouter, useLoaderData } from "@ta
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Avatar } from "@kompast/ui/Avatar";
+import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import {
   getPageDetailFn,
   updatePageMetaFn,
@@ -23,6 +24,8 @@ export const Route = createFileRoute("/_app/docs/$pageId")({
   component: DocPage,
 });
 
+const INTL_LOCALE: Record<SupportedLocale, string> = { en: "en-US", id: "id-ID", "zh-Hant": "zh-Hant-TW" };
+
 function initialsOf(name: string) {
   return name
     .split(/\s+/)
@@ -33,6 +36,8 @@ function initialsOf(name: string) {
 }
 
 function DocPage() {
+  const { t, i18n } = useTranslation("docs");
+  const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const data = Route.useLoaderData();
   const shell = useLoaderData({ from: "/_app" });
   const router = useRouter();
@@ -104,7 +109,7 @@ function DocPage() {
   async function linkIssue() {
     const match = /^([a-zA-Z]+)-(\d+)$/.exec(issueKeyInput.trim());
     if (!match) {
-      setLinkIssueError("Format harus seperti KPT-12");
+      setLinkIssueError(t("pageDetail.linkIssueFormatError"));
       return;
     }
     setLinkingIssue(true);
@@ -115,7 +120,7 @@ function DocPage() {
       setIssueKeyInput("");
       await router.invalidate();
     } catch {
-      setLinkIssueError("Tiket tidak ditemukan.");
+      setLinkIssueError(t("pageDetail.linkIssueNotFound"));
     } finally {
       setLinkingIssue(false);
     }
@@ -129,19 +134,19 @@ function DocPage() {
         <span className="text-2xl">{data.page.icon || "▤"}</span>
         <div className="flex items-center gap-1.5">
           <Button variant="outline" className="text-[12px]" onClick={toggleFavorite}>
-            {favorited ? "★ Favorit" : "☆ Favorit"}
+            {favorited ? t("pageDetail.favoriteOn") : t("pageDetail.favoriteOff")}
           </Button>
           <Button variant="outline" className="text-[12px]" onClick={() => setShareOpen((s) => !s)}>
-            🔗 Bagikan
+            {t("pageDetail.share")}
           </Button>
           {data.canEdit && (
             <Button variant={isTemplate ? "primary" : "outline"} className="text-[12px]" onClick={toggleTemplate}>
-              {isTemplate ? "Template" : "Jadikan template"}
+              {isTemplate ? t("pageDetail.templateBadge") : t("pageDetail.makeTemplate")}
             </Button>
           )}
           {data.canEdit && (
             <Button variant="outline" className="text-[12px]" onClick={archive}>
-              Arsipkan
+              {t("pageDetail.archive")}
             </Button>
           )}
         </div>
@@ -151,7 +156,7 @@ function DocPage() {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onBlur={saveTitle}
-        placeholder="Tanpa judul"
+        placeholder={t("untitled")}
         disabled={!data.canEdit}
         className="mb-6 w-full border-none bg-transparent text-3xl font-semibold tracking-tight outline-none placeholder:text-text-3"
       />
@@ -159,24 +164,24 @@ function DocPage() {
       {shareOpen && (
         <div className="mb-6 rounded-xl border border-border bg-surface p-4 text-[12.5px]">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-semibold">Tautan berbagi</h3>
+            <h3 className="font-semibold">{t("pageDetail.shareLinkHeading")}</h3>
             <Button variant="primary" className="text-[12px]" onClick={createShare}>
-              + Buat tautan
+              {t("pageDetail.newLink")}
             </Button>
           </div>
           {data.shareLinks.length === 0 ? (
-            <p className="text-text-3">Belum ada tautan berbagi. Halaman ini hanya bisa dilihat anggota workspace.</p>
+            <p className="text-text-3">{t("pageDetail.noShareLinksYet")}</p>
           ) : (
             <div className="flex flex-col gap-1.5">
               {data.shareLinks.map((link) => (
                 <div key={link.id} className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                  <span className="text-text-3">{link.scope === "view" ? "Lihat saja" : "Bisa komentar"}</span>
-                  {link.hasPassword && <span className="text-text-3">· dengan kata sandi</span>}
+                  <span className="text-text-3">{link.scope === "view" ? t("pageDetail.viewOnly") : t("pageDetail.canComment")}</span>
+                  {link.hasPassword && <span className="text-text-3">{t("pageDetail.withPassword")}</span>}
                   {link.revokedAt ? (
-                    <span className="text-danger">· dicabut</span>
+                    <span className="text-danger">{t("pageDetail.revoked")}</span>
                   ) : (
                     <button onClick={() => revokeShare(link.id)} className="ml-auto text-text-3 hover:text-danger">
-                      Cabut
+                      {t("pageDetail.revokeLink")}
                     </button>
                   )}
                 </div>
@@ -199,7 +204,7 @@ function DocPage() {
 
       {data.children.length > 0 && (
         <section className="mb-8 mt-8">
-          <h2 className="mb-3 text-[13px] font-semibold">Sub-halaman</h2>
+          <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.subPagesHeading")}</h2>
           <div className="flex flex-col gap-1.5">
             {data.children.map((child) => (
               <Link
@@ -209,7 +214,7 @@ function DocPage() {
                 className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] hover:border-border-2"
               >
                 <span>{child.icon || "▤"}</span>
-                {child.title || "Tanpa judul"}
+                {child.title || t("untitled")}
               </Link>
             ))}
           </div>
@@ -219,14 +224,14 @@ function DocPage() {
       {data.canEdit && (
         <div className="mb-8">
           <Button variant="outline" className="text-[12px]" onClick={addChildPage} disabled={addingChild}>
-            + Sub-halaman
+            {t("pageDetail.addSubPage")}
           </Button>
         </div>
       )}
 
       {data.canEdit && (
         <section className="mb-8">
-          <h2 className="mb-3 text-[13px] font-semibold">Tiket tertaut</h2>
+          <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.linkedIssuesHeading")}</h2>
           {data.linkedIssues.length > 0 && (
             <div className="mb-2 flex flex-col gap-1.5">
               {data.linkedIssues.map((issue) => {
@@ -262,7 +267,7 @@ function DocPage() {
               className="w-[140px] rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] outline-none focus:border-border-2"
             />
             <Button variant="outline" className="text-[12px]" onClick={linkIssue} disabled={linkingIssue || !issueKeyInput.trim()}>
-              Tautkan tiket
+              {t("pageDetail.linkIssueButton")}
             </Button>
             {linkIssueError && <span className="self-center text-[11.5px] text-danger">{linkIssueError}</span>}
           </div>
@@ -271,7 +276,7 @@ function DocPage() {
 
       {data.backlinkPages.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 text-[13px] font-semibold">Disebutkan di</h2>
+          <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.mentionedInHeading")}</h2>
           <div className="flex flex-col gap-1.5">
             {data.backlinkPages.map((p) => (
               <Link
@@ -281,7 +286,7 @@ function DocPage() {
                 className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] hover:border-border-2"
               >
                 <span>{p.icon || "▤"}</span>
-                {p.title || "Tanpa judul"}
+                {p.title || t("untitled")}
               </Link>
             ))}
           </div>
@@ -289,9 +294,9 @@ function DocPage() {
       )}
 
       <section>
-        <h2 className="mb-3 text-[13px] font-semibold">Komentar</h2>
+        <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.commentsHeading")}</h2>
         <div className="mb-3 flex flex-col gap-3">
-          {data.comments.length === 0 && <p className="text-sm text-text-3">Belum ada komentar.</p>}
+          {data.comments.length === 0 && <p className="text-sm text-text-3">{t("pageDetail.noCommentsYet")}</p>}
           {data.comments.map((c) => {
             const author = usersById.get(c.authorId);
             const body = c.bodyJson as { text?: string } | null;
@@ -300,8 +305,8 @@ function DocPage() {
                 <Avatar initials={author ? initialsOf(author.name) : "?"} size={24} />
                 <div className="min-w-0 flex-1 rounded-lg border border-border bg-surface p-2.5">
                   <p className="mb-1 flex items-center gap-2 text-[11.5px]">
-                    <strong>{author?.name ?? "Unknown"}</strong>
-                    <span className="text-text-3">{new Date(c.createdAt).toLocaleString("id-ID")}</span>
+                    <strong>{author?.name ?? t("versionHistory.unknownAuthor")}</strong>
+                    <span className="text-text-3">{new Date(c.createdAt).toLocaleString(intlLocale)}</span>
                   </p>
                   <p className="text-[13px] leading-snug">{body?.text ?? ""}</p>
                 </div>
@@ -313,12 +318,12 @@ function DocPage() {
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Tulis komentar…"
+            placeholder={t("pageDetail.commentPlaceholder")}
             rows={2}
             className="min-w-0 flex-1 rounded-lg border border-border bg-surface p-2.5 text-[13px] outline-none focus:border-border-2"
           />
           <Button variant="primary" onClick={submitComment} disabled={!comment.trim()}>
-            Kirim
+            {t("send")}
           </Button>
         </div>
       </section>

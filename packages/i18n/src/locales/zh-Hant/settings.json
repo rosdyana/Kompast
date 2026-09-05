@@ -1,0 +1,105 @@
+{
+  "tabs": { "members": "成員", "teams": "團隊", "roles": "角色與權限", "integrations": "整合" },
+  "pageTitle": "工作區設定",
+  "teamsNonAdminNote": "只有超級管理員可以在此管理工作區的團隊清單。",
+  "integrations": {
+    "subtitle": "為此整個部署設定 AI 與電子郵件供應商。",
+    "embedding": {
+      "heading": "Embedding（Ask Kompast）",
+      "description": "與上方 AI 設定使用不同的供應商 —— Anthropic 沒有公開的 embeddings API，因此無論上方選擇哪個 AI 供應商，Ask Kompast 都需要 Azure OpenAI 或相容 OpenAI 的端點。",
+      "enable": "啟用 Ask Kompast",
+      "providerLabel": "Provider",
+      "apiKeyLabel": "API key",
+      "savedNoteLong": "（已儲存 —— 留空表示不變更）",
+      "azureEndpointLabel": "Azure endpoint",
+      "azureDeploymentEmbeddingsLabel": "Azure deployment（embeddings）",
+      "baseUrlLabel": "Base URL",
+      "modelLabel": "Model",
+      "savingEllipsis": "儲存中…",
+      "save": "儲存",
+      "saved": "已儲存。"
+    },
+    "entra": {
+      "heading": "Microsoft Entra ID",
+      "warningPart1": "⚠️ 錯誤的 Tenant ID（並非格式錯誤，而是格式正確但錯誤的 GUID）會導致",
+      "warningBold": "整個應用程式",
+      "warningPart2": "故障 —— 不只是 Microsoft 登入 —— 因為每個檢查工作階段的請求都會直接對該租戶觸發 OIDC 探索。儲存前請再次確認。",
+      "tenantIdLabel": "Tenant ID",
+      "clientIdLabel": "Client ID",
+      "clientSecretLabel": "Client Secret",
+      "savedNoteLong": "（已儲存 —— 留空表示不變更）",
+      "savingEllipsis": "儲存中…",
+      "save": "儲存",
+      "saved": "已儲存。",
+      "saveFailed": "儲存 Entra ID 設定失敗"
+    },
+    "ai": {
+      "heading": "AI",
+      "enable": "啟用 AI 功能",
+      "providerLabel": "Provider",
+      "apiKeyLabel": "API key",
+      "savedNoteLong": "（已儲存 —— 留空表示不變更）",
+      "modelLabel": "Model",
+      "modelBlankNote": "（留空使用預設值）",
+      "modelPlaceholderOther": "此端點使用的模型名稱",
+      "azureEndpointLabel": "Azure endpoint",
+      "azureDeploymentLabel": "Azure deployment",
+      "baseUrlLabel": "Base URL",
+      "savingEllipsis": "儲存中…",
+      "save": "儲存",
+      "saved": "已儲存。"
+    },
+    "mail": {
+      "heading": "Email",
+      "driverLabel": "Driver",
+      "fromAddressLabel": "寄件地址",
+      "smtpUrlLabel": "SMTP URL",
+      "savedNoteShort": "（已儲存）",
+      "apiKeyLabel": "API key",
+      "savingEllipsis": "儲存中…",
+      "save": "儲存",
+      "saved": "已儲存。"
+    }
+  },
+  "members": {
+    "subtitle": "邀請新成員並管理待處理的邀請。",
+    "inviteHeading": "邀請新成員",
+    "emailPlaceholder": "name@company.com",
+    "invitingEllipsis": "傳送中…",
+    "invite": "邀請",
+    "inviteFailed": "傳送邀請失敗",
+    "pendingInvitesHeading": "待處理的邀請",
+    "cancel": "取消",
+    "currentMembersHeading": "目前成員",
+    "memberRoleLabel": "成員",
+    "adminRoleLabel": "管理員"
+  },
+  "roles": {
+    "intro": "Kompast 目前實際生效的角色階層 —— 並非可設定的權限矩陣，只是程式碼中既有規則的摘要。",
+    "superAdmin": {
+      "name": "Super Admin",
+      "scope": "每個工作區一位",
+      "desc": "可以建立新團隊並管理任何團隊（member.isSuperAdmin）。轉移此角色會將其從前任持有者手中撤銷。"
+    },
+    "workspaceOwner": {
+      "name": "工作區擁有者／管理員",
+      "scope": "工作區",
+      "desc": "可以開啟設定（Entra／AI／Email 整合）並邀請／管理工作區成員（member.role）。"
+    },
+    "teamAdmin": {
+      "name": "團隊管理員",
+      "scope": "依團隊",
+      "desc": "可以在自己的團隊內建立專案，並管理該團隊的成員（team_member.role）。對其他團隊或整個工作區沒有權限。"
+    },
+    "teamMember": {
+      "name": "團隊成員",
+      "scope": "依團隊",
+      "desc": "團隊的一般成員，沒有管理權限。"
+    },
+    "projectRole": {
+      "name": "專案負責人／貢獻者／檢視者",
+      "scope": "依專案",
+      "desc": "可依專案指派的角色（project_member.role）。目前程式碼中尚未實際套用此權限限制 —— 目前僅能指派。"
+    }
+  }
+}

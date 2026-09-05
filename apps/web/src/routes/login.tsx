@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@kompast/ui/Button";
+import { useTranslation } from "@kompast/i18n";
 import { signInWithMicrosoft } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/login")({
@@ -7,6 +8,8 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
+  const { t } = useTranslation("auth");
+
   return (
     <div className="grid min-h-screen grid-cols-[1.05fr_0.95fr] bg-bg">
       <div className="relative flex flex-col justify-between overflow-hidden bg-indigo px-15 py-14 text-white">
@@ -25,50 +28,48 @@ function LoginPage() {
           <span className="text-[17px] font-semibold tracking-tight">Kompast</span>
         </div>
         <div className="relative max-w-[430px]">
-          <p className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-white/55">
-            Docs · Tabel · Kanban · Otomasi
-          </p>
-          <h1 className="font-serif text-[52px] font-normal leading-[1.04] tracking-tight">
-            Satu arah untuk sprint dan pengetahuan tim.
-          </h1>
-          <p className="mt-5 text-[15px] leading-relaxed text-white/72">
-            Tiket, tabel, dan dokumen hidup di database yang sama. Ganti view, bukan tool.
-          </p>
+          <p className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-white/55">{t("tagline")}</p>
+          <h1 className="font-serif text-[52px] font-normal leading-[1.04] tracking-tight">{t("heroHeadline")}</h1>
+          <p className="mt-5 text-[15px] leading-relaxed text-white/72">{t("heroSubtext")}</p>
         </div>
         <div className="relative flex gap-7 text-[12.5px] text-white/60">
-          <span>Workspace &amp; team</span>
-          <span>Peran granular</span>
-          <span>SSO Microsoft</span>
+          <span>{t("featureWorkspaceTeam")}</span>
+          <span>{t("featureGranularRoles")}</span>
+          <span>{t("featureSsoMicrosoft")}</span>
         </div>
       </div>
 
       <div className="flex items-center justify-center p-12">
         <div className="w-full max-w-[352px]">
-          <h2 className="mb-2 text-[25px] font-semibold tracking-tight">Masuk ke Kompast</h2>
-          <p className="mb-7 text-sm leading-relaxed text-text-2">
-            Gunakan akun kerja Anda. Workspace dipilih otomatis dari direktori organisasi.
-          </p>
+          <h2 className="mb-2 text-[25px] font-semibold tracking-tight">{t("signInHeading")}</h2>
+          <p className="mb-7 text-sm leading-relaxed text-text-2">{t("signInSubtext")}</p>
           <Button variant="dark" className="w-full py-3.5 text-[14.5px]" onClick={() => signInWithMicrosoft()}>
             <MicrosoftGlyph />
-            Lanjut dengan Microsoft
+            {t("continueWithMicrosoft")}
           </Button>
           <div className="my-[22px] flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
-            <span className="text-[11.5px] text-text-3">atau</span>
+            <span className="text-[11.5px] text-text-3">{t("or")}</span>
             <div className="h-px flex-1 bg-border" />
           </div>
           <Button variant="outline" className="w-full py-3 text-[14px]" onClick={() => signInWithMicrosoft()}>
-            Masuk dengan tautan email
+            {t("signInWithEmailLink")}
           </Button>
           <p className="mt-7 text-[12px] leading-relaxed text-text-3">
-            Dengan masuk Anda menyetujui <a href="#">Ketentuan Layanan</a> dan{" "}
-            <a href="#">Kebijakan Privasi</a> Kompast.
+            {t("agreementPart1")}
+            <a href="#">{t("termsOfService")}</a>
+            {t("agreementPart2")}
+            <a href="#">{t("privacyPolicy")}</a>
+            {t("agreementPart3")}
           </p>
           <div className="mt-[34px] flex items-start gap-2.5 rounded-[9px] border border-dashed border-border-2 bg-surface-2 p-3.5">
             <div className="mt-1.5 h-1.5 w-1.5 animate-[kp-blink_2.2s_infinite] rounded-full bg-green" />
             <p className="text-[12px] leading-relaxed text-text-2">
-              Tenant <strong className="text-text">asus.com</strong> terdeteksi — Anda akan masuk
-              sebagai anggota workspace <strong className="text-text">Cloud Platform</strong>.
+              {t("tenantDetectedPart1")}
+              <strong className="text-text">asus.com</strong>
+              {t("tenantDetectedPart2")}
+              <strong className="text-text">Cloud Platform</strong>
+              {t("tenantDetectedPart3")}
             </p>
           </div>
         </div>
@@ -87,4 +88,3 @@ function MicrosoftGlyph() {
     </span>
   );
 }
-

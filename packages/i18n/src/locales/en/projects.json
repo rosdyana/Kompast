@@ -1,0 +1,9 @@
+{
+  "pageTitle": "New project",
+  "pageSubtitle": "Every project belongs to a team, and gets a default kanban board.",
+  "namePlaceholder": "Project name, e.g. Kompast Core",
+  "keyPlaceholder": "Project key, e.g. KPT",
+  "creatingEllipsis": "Creating…",
+  "createProject": "Create project",
+  "createFailed": "Failed to create project"
+}

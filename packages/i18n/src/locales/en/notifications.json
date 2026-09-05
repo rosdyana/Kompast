@@ -1,0 +1,16 @@
+{
+  "bellTitle": "Notifications",
+  "markAllRead": "Mark all read",
+  "noNotifications": "No notifications.",
+  "settingsLink": "Notification settings",
+  "pageTitle": "Notification settings",
+  "pageSubtitle": "Choose how you want to be notified for each activity type.",
+  "inApp": "In-app",
+  "email": "Email",
+  "digest": "Digest:",
+  "digest_instant": "Instant",
+  "digest_hourly": "Hourly",
+  "digest_daily": "Daily",
+  "digest_off": "Off",
+  "digestNote": "Note: hourly/daily batching isn't running yet — email for this preference won't be sent until that feature is built."
+}

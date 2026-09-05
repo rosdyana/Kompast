@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
+import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import {
   getIssueDetailFn,
   addCommentFn,
@@ -21,6 +22,8 @@ export const Route = createFileRoute("/_app/issues/$projectKey/$issueKeySeq")({
   component: IssueDetailPage,
 });
 
+const INTL_LOCALE: Record<SupportedLocale, string> = { en: "en-US", id: "id-ID", "zh-Hant": "zh-Hant-TW" };
+
 function initialsOf(name: string) {
   return name
     .split(/\s+/)
@@ -31,6 +34,8 @@ function initialsOf(name: string) {
 }
 
 function IssueDetailPage() {
+  const { t, i18n } = useTranslation("issue");
+  const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const data = Route.useLoaderData();
   const router = useRouter();
   const [comment, setComment] = useState("");
@@ -124,7 +129,7 @@ function IssueDetailPage() {
         setDescriptionDraft((prev) => prev + delta);
       });
     } catch (err) {
-      setDescriptionDraft(err instanceof Error ? `(AI gagal: ${err.message})` : "(AI gagal)");
+      setDescriptionDraft(err instanceof Error ? t("aiDraftFailed", { message: err.message }) : t("aiDraftFailedGeneric"));
     } finally {
       setAiDraftBusy(false);
     }
@@ -151,13 +156,13 @@ function IssueDetailPage() {
 
       <div className="mb-8 flex flex-wrap gap-4 rounded-xl border border-border bg-surface p-4 text-[12.5px]">
         <div>
-          <p className="mb-1 text-text-3">Assignee</p>
+          <p className="mb-1 text-text-3">{t("assigneeLabel")}</p>
           <select
             value={data.issue.assigneeId ?? ""}
             onChange={(e) => setAssignee(e.target.value)}
             className="rounded-md border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
           >
-            <option value="">Belum ditugaskan</option>
+            <option value="">{t("unassigned")}</option>
             {data.orgMembers.map((m) => (
               <option key={m.userId} value={m.userId}>
                 {m.name}
@@ -166,11 +171,11 @@ function IssueDetailPage() {
           </select>
         </div>
         <div>
-          <p className="mb-1 text-text-3">Reporter</p>
+          <p className="mb-1 text-text-3">{t("reporterLabel")}</p>
           {usersById.get(data.issue.reporterId)?.name ?? "—"}
         </div>
         <div>
-          <p className="mb-1 text-text-3">Priority</p>
+          <p className="mb-1 text-text-3">{t("priorityLabel")}</p>
           <select
             value={data.issue.priority}
             onChange={(e) => setPriority(e.target.value)}
@@ -185,13 +190,13 @@ function IssueDetailPage() {
         </div>
         {data.issue.storyPoints != null && (
           <div>
-            <p className="mb-1 text-text-3">Points</p>
+            <p className="mb-1 text-text-3">{t("pointsLabel")}</p>
             {data.issue.storyPoints}
           </div>
         )}
         <div className="ml-auto">
           <Button variant={watching ? "primary" : "outline"} onClick={toggleWatch} className="text-[12px]">
-            {watching ? "◔ Mengawasi" : "◔ Awasi"}
+            {watching ? t("watching") : t("watch")}
           </Button>
         </div>
       </div>
@@ -206,7 +211,7 @@ function IssueDetailPage() {
 
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-[13px] font-semibold">Deskripsi</h2>
+          <h2 className="text-[13px] font-semibold">{t("descriptionHeading")}</h2>
           {!editingDescription && (
             <Button
               variant="outline"
@@ -216,7 +221,7 @@ function IssueDetailPage() {
                 setEditingDescription(true);
               }}
             >
-              {initialDescription ? "Edit" : "+ Tambah deskripsi"}
+              {initialDescription ? t("edit") : t("addDescription")}
             </Button>
           )}
         </div>
@@ -226,33 +231,33 @@ function IssueDetailPage() {
               value={descriptionDraft}
               onChange={(e) => setDescriptionDraft(e.target.value)}
               rows={6}
-              placeholder="Tulis deskripsi (Markdown didukung)…"
+              placeholder={t("descriptionPlaceholder")}
               className="w-full rounded-lg border border-border bg-surface p-2.5 text-[13px] outline-none focus:border-border-2"
             />
             <div className="flex items-center gap-2">
               <Button variant="primary" className="text-[12px]" onClick={saveDescription} disabled={savingDescription}>
-                {savingDescription ? "Menyimpan…" : "Simpan"}
+                {savingDescription ? t("savingEllipsis") : t("save")}
               </Button>
               <Button variant="outline" className="text-[12px]" onClick={() => setEditingDescription(false)} disabled={savingDescription}>
-                Batal
+                {t("cancel")}
               </Button>
               <Button variant="outline" className="text-[12px]" onClick={generateAiDescriptionDraft} disabled={aiDraftBusy}>
-                {aiDraftBusy ? "AI menulis…" : "✨ Buat draft dengan AI"}
+                {aiDraftBusy ? t("aiDraftingEllipsis") : t("aiDraftButton")}
               </Button>
             </div>
           </div>
         ) : initialDescription ? (
           <p className="whitespace-pre-wrap text-[13px] leading-snug text-text-2">{initialDescription}</p>
         ) : (
-          <p className="text-sm text-text-3">Belum ada deskripsi.</p>
+          <p className="text-sm text-text-3">{t("noDescriptionYet")}</p>
         )}
       </section>
 
       <section className="mb-8">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-[13px] font-semibold">Lampiran</h2>
+          <h2 className="text-[13px] font-semibold">{t("attachmentsHeading")}</h2>
           <Button variant="outline" className="text-[12px]" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-            {uploading ? "Mengunggah…" : "+ Lampirkan file"}
+            {uploading ? t("uploadingEllipsis") : t("attachButton")}
           </Button>
           <input
             ref={fileInputRef}
@@ -265,7 +270,7 @@ function IssueDetailPage() {
           />
         </div>
         {data.attachments.length === 0 ? (
-          <p className="text-sm text-text-3">Belum ada lampiran.</p>
+          <p className="text-sm text-text-3">{t("noAttachmentsYet")}</p>
         ) : (
           <div className="flex flex-col gap-1.5">
             {data.attachments.map((a) => (
@@ -293,9 +298,9 @@ function IssueDetailPage() {
       </section>
 
       <section className="mb-8">
-        <h2 className="mb-3 text-[13px] font-semibold">Komentar</h2>
+        <h2 className="mb-3 text-[13px] font-semibold">{t("commentsHeading")}</h2>
         <div className="mb-3 flex flex-col gap-3">
-          {data.comments.length === 0 && <p className="text-sm text-text-3">Belum ada komentar.</p>}
+          {data.comments.length === 0 && <p className="text-sm text-text-3">{t("noCommentsYet")}</p>}
           {data.comments.map((c) => {
             const author = usersById.get(c.authorId);
             const body = c.bodyJson as { text?: string } | null;
@@ -304,8 +309,8 @@ function IssueDetailPage() {
                 <Avatar initials={author ? initialsOf(author.name) : "?"} size={24} />
                 <div className="min-w-0 flex-1 rounded-lg border border-border bg-surface p-2.5">
                   <p className="mb-1 flex items-center gap-2 text-[11.5px]">
-                    <strong>{author?.name ?? "Unknown"}</strong>
-                    <span className="text-text-3">{new Date(c.createdAt).toLocaleString("id-ID")}</span>
+                    <strong>{author?.name ?? t("unknownAuthor")}</strong>
+                    <span className="text-text-3">{new Date(c.createdAt).toLocaleString(intlLocale)}</span>
                   </p>
                   <p className="text-[13px] leading-snug">{body?.text ?? ""}</p>
                 </div>
@@ -317,25 +322,25 @@ function IssueDetailPage() {
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Tulis komentar…"
+            placeholder={t("commentPlaceholder")}
             rows={2}
             className="min-w-0 flex-1 rounded-lg border border-border bg-surface p-2.5 text-[13px] outline-none focus:border-border-2"
           />
           <Button variant="primary" onClick={submitComment} disabled={submitting || !comment.trim()}>
-            Kirim
+            {t("send")}
           </Button>
         </div>
       </section>
 
       <section>
-        <h2 className="mb-3 text-[13px] font-semibold">Aktivitas</h2>
+        <h2 className="mb-3 text-[13px] font-semibold">{t("activityHeading")}</h2>
         <div className="flex flex-col gap-2">
-          {data.history.length === 0 && <p className="text-sm text-text-3">Belum ada aktivitas.</p>}
+          {data.history.length === 0 && <p className="text-sm text-text-3">{t("noActivityYet")}</p>}
           {data.history.map((h) => (
             <p key={h.id} className="text-[12px] text-text-2">
-              <span className="font-mono text-text-3">{new Date(h.createdAt).toLocaleString("id-ID")}</span>{" "}
-              {h.field === "created" ? "dibuat" : `${h.field}: ${h.fromValue ?? "—"} → ${h.toValue ?? "—"}`}
-              {h.origin !== "user" && <span className="ml-1 text-text-3">via {h.originClient ?? h.origin}</span>}
+              <span className="font-mono text-text-3">{new Date(h.createdAt).toLocaleString(intlLocale)}</span>{" "}
+              {h.field === "created" ? t("historyCreated") : `${h.field}: ${h.fromValue ?? "—"} → ${h.toValue ?? "—"}`}
+              {h.origin !== "user" && <span className="ml-1 text-text-3">{t("historyOrigin", { origin: h.originClient ?? h.origin })}</span>}
             </p>
           ))}
         </div>
@@ -355,9 +360,10 @@ function CustomPropertiesSection({
   customFields: Record<string, unknown>;
   onChange: (key: string, value: string | number | boolean | string[] | null) => void;
 }) {
+  const { t } = useTranslation("issue");
   return (
     <section className="mb-8">
-      <h2 className="mb-3 text-[13px] font-semibold">Properti kustom</h2>
+      <h2 className="mb-3 text-[13px] font-semibold">{t("customPropertiesHeading")}</h2>
       <div className="flex flex-wrap gap-4 rounded-xl border border-border bg-surface p-4 text-[12.5px]">
         {definitions.map((def) => (
           <CustomPropertyField key={def.id} def={def} value={customFields[def.key]} onChange={(v) => onChange(def.key, v)} />

@@ -1,0 +1,10 @@
+{
+  "invalidLink": "This link is invalid or has expired.",
+  "untitled": "Untitled",
+  "passwordProtected": "This page is password protected.",
+  "passwordPlaceholder": "Password",
+  "wrongPassword": "Incorrect password.",
+  "open": "Open",
+  "loadingEllipsis": "Loading…",
+  "sharedFooter": "Shared from Kompast — view only"
+}

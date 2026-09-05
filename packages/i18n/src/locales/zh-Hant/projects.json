@@ -1,0 +1,9 @@
+{
+  "pageTitle": "新增專案",
+  "pageSubtitle": "每個專案都隸屬於某個團隊，並會取得預設的看板。",
+  "namePlaceholder": "專案名稱，例如 Kompast Core",
+  "keyPlaceholder": "專案代碼，例如 KPT",
+  "creatingEllipsis": "建立中…",
+  "createProject": "建立專案",
+  "createFailed": "建立專案失敗"
+}

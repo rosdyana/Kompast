@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useLoaderData, useRouter } from "@tanstack/r
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
+import { useTranslation } from "@kompast/i18n";
 import { createTeamFn } from "@/lib/server-fns/teams";
 
 export const Route = createFileRoute("/_app/teams/new")({
@@ -9,6 +10,7 @@ export const Route = createFileRoute("/_app/teams/new")({
 });
 
 function NewTeamPage() {
+  const { t } = useTranslation("teams");
   const shell = useLoaderData({ from: "/_app" });
   const router = useRouter();
   const [name, setName] = useState("");
@@ -31,7 +33,7 @@ function NewTeamPage() {
       await router.invalidate();
       await router.navigate({ to: "/" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal membuat tim");
+      setError(err instanceof Error ? err.message : t("createTeamFailed"));
     } finally {
       setCreating(false);
     }
@@ -39,23 +41,21 @@ function NewTeamPage() {
 
   return (
     <div className="mx-auto max-w-[520px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">Tim baru</h1>
-      <p className="mb-8 text-sm text-text-2">
-        Setiap proyek di Kompast dimiliki oleh sebuah tim. Buat tim pertama untuk workspace ini.
-      </p>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("newTeamPageTitle")}</h1>
+      <p className="mb-8 text-sm text-text-2">{t("newTeamPageSubtitle")}</p>
 
       <Card className="flex flex-col gap-3 p-4">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && create()}
-          placeholder="Nama tim, mis. Cloud Platform Team"
+          placeholder={t("teamNamePlaceholder")}
           autoFocus
           className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
         />
         {error && <p className="text-[12px] text-danger">{error}</p>}
         <Button variant="primary" onClick={create} disabled={creating || !name.trim()} className="self-start">
-          {creating ? "Membuat…" : "Buat tim"}
+          {creating ? t("creatingEllipsis") : t("createTeam")}
         </Button>
       </Card>
     </div>

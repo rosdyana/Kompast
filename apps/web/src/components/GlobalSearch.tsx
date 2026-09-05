@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { SearchField } from "@kompast/ui/Input";
+import { useTranslation } from "@kompast/i18n";
 import { searchWorkspaceFn } from "@/lib/server-fns/search";
 
 type SearchResult = Awaited<ReturnType<typeof searchWorkspaceFn>>;
 
 export function GlobalSearch() {
+  const { t } = useTranslation("search");
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<SearchResult | null>(null);
   const [open, setOpen] = useState(false);
@@ -50,7 +52,7 @@ export function GlobalSearch() {
   return (
     <div ref={containerRef} className="relative">
       <SearchField
-        placeholder="Cari tiket, orang…"
+        placeholder={t("placeholder")}
         className="w-[210px]"
         value={query}
         onChange={(e) => handleChange(e.target.value)}
@@ -59,11 +61,11 @@ export function GlobalSearch() {
       />
       {open && (
         <div className="absolute right-0 top-[calc(100%+6px)] z-20 max-h-[360px] w-[320px] overflow-y-auto rounded-[9px] border border-border bg-surface shadow-kp">
-          {loading && <p className="px-3 py-3 text-[12px] text-text-3">Mencari…</p>}
-          {!loading && !hasResults && <p className="px-3 py-3 text-[12px] text-text-3">Tidak ada hasil.</p>}
+          {loading && <p className="px-3 py-3 text-[12px] text-text-3">{t("searching")}</p>}
+          {!loading && !hasResults && <p className="px-3 py-3 text-[12px] text-text-3">{t("noResults")}</p>}
           {!loading && result && result.issues.length > 0 && (
             <div className="border-b border-border py-1.5">
-              <p className="px-3 pb-1 font-mono text-[9.5px] uppercase tracking-[0.1em] text-text-3">Tiket</p>
+              <p className="px-3 pb-1 font-mono text-[9.5px] uppercase tracking-[0.1em] text-text-3">{t("issuesHeading")}</p>
               {result.issues.map((issue) => (
                 <Link
                   key={issue.id}
@@ -83,7 +85,7 @@ export function GlobalSearch() {
           )}
           {!loading && result && result.people.length > 0 && (
             <div className="py-1.5">
-              <p className="px-3 pb-1 font-mono text-[9.5px] uppercase tracking-[0.1em] text-text-3">Orang</p>
+              <p className="px-3 pb-1 font-mono text-[9.5px] uppercase tracking-[0.1em] text-text-3">{t("peopleHeading")}</p>
               {result.people.map((person) => (
                 <div key={person.id} className="flex items-center gap-2 px-3 py-1.5 text-[12.5px]">
                   <span className="min-w-0 flex-1 truncate">{person.name}</span>

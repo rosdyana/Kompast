@@ -1,0 +1,16 @@
+{
+  "bellTitle": "通知",
+  "markAllRead": "全部標為已讀",
+  "noNotifications": "沒有通知。",
+  "settingsLink": "通知設定",
+  "pageTitle": "通知設定",
+  "pageSubtitle": "選擇每種活動類型要如何通知您。",
+  "inApp": "應用內",
+  "email": "電子郵件",
+  "digest": "摘要頻率：",
+  "digest_instant": "即時",
+  "digest_hourly": "每小時",
+  "digest_daily": "每日",
+  "digest_off": "關閉",
+  "digestNote": "備註：每小時／每日批次寄送尚未實作 —— 在該功能完成前，此偏好設定不會寄送電子郵件。"
+}

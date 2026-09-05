@@ -1,0 +1,11 @@
+{
+  "newConversationButton": "+ 新對話",
+  "untitledThread": "新對話",
+  "noConversationsYet": "尚無對話。",
+  "askHeading": "詢問 Kompast",
+  "askSubtitle": "詢問此工作區中工單與留言的相關問題。",
+  "inputPlaceholder": "輸入您的問題…",
+  "sendingEllipsis": "傳送中…",
+  "send": "傳送",
+  "askFailed": "Ask Kompast 失敗"
+}

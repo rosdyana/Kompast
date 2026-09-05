@@ -1,0 +1,11 @@
+{
+  "newConversationButton": "+ New conversation",
+  "untitledThread": "New conversation",
+  "noConversationsYet": "No conversations yet.",
+  "askHeading": "Ask Kompast",
+  "askSubtitle": "Ask something about the issues and comments in this workspace.",
+  "inputPlaceholder": "Ask something…",
+  "sendingEllipsis": "Sending…",
+  "send": "Send",
+  "askFailed": "Ask Kompast failed"
+}

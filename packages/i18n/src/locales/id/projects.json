@@ -1,0 +1,9 @@
+{
+  "pageTitle": "Proyek baru",
+  "pageSubtitle": "Setiap proyek termasuk dalam sebuah tim, dan mendapat board kanban default.",
+  "namePlaceholder": "Nama proyek, mis. Kompast Core",
+  "keyPlaceholder": "Kode proyek, mis. KPT",
+  "creatingEllipsis": "Membuat…",
+  "createProject": "Buat proyek",
+  "createFailed": "Gagal membuat proyek"
+}

@@ -1,4 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useTranslation } from "@kompast/i18n";
 import { listNotificationPrefsFn, setNotificationPrefFn } from "@/lib/server-fns/notifications";
 
 export const Route = createFileRoute("/_app/notifications")({
@@ -6,9 +7,10 @@ export const Route = createFileRoute("/_app/notifications")({
   component: NotificationsPage,
 });
 
-const DIGEST_LABEL: Record<string, string> = { instant: "Langsung", hourly: "Per jam", daily: "Harian", off: "Nonaktif" };
+const DIGEST_VALUES = ["instant", "hourly", "daily", "off"] as const;
 
 function NotificationsPage() {
+  const { t } = useTranslation("notifications");
   const prefs = Route.useLoaderData();
   const router = useRouter();
 
@@ -19,8 +21,8 @@ function NotificationsPage() {
 
   return (
     <div className="mx-auto max-w-[640px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">Pengaturan Notifikasi</h1>
-      <p className="mb-8 text-sm text-text-2">Pilih bagaimana Anda ingin diberi tahu untuk setiap jenis aktivitas.</p>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
+      <p className="mb-8 text-sm text-text-2">{t("pageSubtitle")}</p>
 
       <div className="flex flex-col gap-3">
         {prefs.map((pref) => (
@@ -29,31 +31,29 @@ function NotificationsPage() {
             <div className="flex flex-wrap items-center gap-4 text-[12.5px]">
               <label className="flex items-center gap-1.5">
                 <input type="checkbox" checked={pref.inApp} onChange={(e) => updatePref(pref.eventType, { inApp: e.target.checked })} />
-                Dalam aplikasi
+                {t("inApp")}
               </label>
               <label className="flex items-center gap-1.5">
                 <input type="checkbox" checked={pref.email} onChange={(e) => updatePref(pref.eventType, { email: e.target.checked })} />
-                Email
+                {t("email")}
               </label>
               <label className="flex items-center gap-1.5 text-text-2">
-                Digest:
+                {t("digest")}
                 <select
                   value={pref.digest}
                   onChange={(e) => updatePref(pref.eventType, { digest: e.target.value as "instant" | "hourly" | "daily" | "off" })}
                   className="rounded-md border border-border bg-surface px-1.5 py-1 text-[12px]"
                 >
-                  {Object.entries(DIGEST_LABEL).map(([value, label]) => (
+                  {DIGEST_VALUES.map((value) => (
                     <option key={value} value={value}>
-                      {label}
+                      {t(`digest_${value}`)}
                     </option>
                   ))}
                 </select>
               </label>
             </div>
             {pref.digest !== "instant" && pref.digest !== "off" && (
-              <p className="mt-2 text-[11px] text-text-3">
-                Catatan: batching per jam/hari belum berjalan — email untuk preferensi ini belum dikirim sampai fitur itu dibangun.
-              </p>
+              <p className="mt-2 text-[11px] text-text-3">{t("digestNote")}</p>
             )}
           </div>
         ))}
