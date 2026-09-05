@@ -125,4 +125,20 @@ describe("comments + watchers", () => {
     const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
     expect(notifications.filter((n) => n.eventType === "issue.commented")).toHaveLength(0);
   });
+
+  it('addComment with origin:"import" never notifies, even with an assignee who would otherwise be notified, and honors a backdated createdAt', async () => {
+    const issueId = await seedIssue({ assigneeId }); // create-time assignment already queues one notification
+    const backdated = new Date("2018-03-01T00:00:00.000Z");
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, { issueId, authorId: userId, bodyJson: { text: "old jira comment" }, origin: "import", createdAt: backdated }),
+    );
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    // Exactly the one notification from seedIssue's create-time assignment — none from the import comment.
+    expect(notifications.filter((n) => n.eventType === "issue.commented")).toHaveLength(0);
+
+    const [comment] = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listComments(tx, issueId));
+    expect(comment?.createdAt).toEqual(backdated);
+  });
 });

@@ -12,6 +12,8 @@ export interface AddCommentInput {
   origin?: "user" | "automation" | "mcp" | "api" | "import";
   originClient?: string;
   automationContext?: AutomationContext;
+  /** Backdates the comment — for the importer, preserving a JIRA/Notion comment's real timestamp. Omit for a real-time comment (defaults to now). */
+  createdAt?: Date;
 }
 
 /**
@@ -77,7 +79,13 @@ export async function addComment(tx: Tx, input: AddCommentInput) {
     bodyJson: input.bodyJson,
     origin: input.origin ?? "user",
     originClient: input.originClient,
+    ...(input.createdAt ? { createdAt: input.createdAt, updatedAt: input.createdAt } : {}),
   });
+
+  // Historical bulk-loaded data (origin "import") never notifies or fires
+  // automation — see createIssue's identical gate for why.
+  if (input.origin === "import") return { commentId };
+
   const issue = await notifyCommentParticipants(tx, input.issueId, input.authorId);
   if (issue) {
     await emitAutomationEvent(tx, {

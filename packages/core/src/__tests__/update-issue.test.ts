@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
-import { createIssue, updateIssue } from "../issue";
+import { createIssue, updateIssue, recordHistoricalStatusChange } from "../issue";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -210,5 +210,51 @@ describe("updateIssue + createIssue attribution", () => {
     const nonCreation = history.filter((h) => h.field !== "created");
     // customFields is jsonb/set-valued like labels — no diffable history row, unlike the three scalar fields.
     expect(nonCreation.map((h) => h.field).sort()).toEqual(["estimateSeconds", "parentId", "spentSeconds"]);
+  });
+
+  it('origin:"import" never notifies or fires automation, on create or update, even when it would otherwise', async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx, { origin: "import", assigneeId: otherUserId });
+
+    let notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications).toHaveLength(0);
+    let events = await admin.select().from(schema.automationEvent).where(eq(schema.automationEvent.organizationId, orgId));
+    expect(events).toHaveLength(0);
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { assigneeId: userId, origin: "import", actorId: otherUserId }));
+
+    notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications).toHaveLength(0);
+    events = await admin.select().from(schema.automationEvent).where(eq(schema.automationEvent.organizationId, orgId));
+    expect(events).toHaveLength(0);
+
+    // The history row itself still gets written — only the side effects are suppressed.
+    const history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history.some((h) => h.field === "assigneeId")).toBe(true);
+  });
+
+  it("recordHistoricalStatusChange writes a backdated status history row with no other side effect", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx, { origin: "import" });
+    const backdated = new Date("2017-11-20T00:00:00.000Z");
+
+    const [before] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    const statusIdBefore = before!.statusId;
+
+    await withAuthorizedTenant(ctx, (tx) =>
+      recordHistoricalStatusChange(tx, { issueId, actorId: userId, fromStatusId: "status_old", toStatusId: "status_new", createdAt: backdated }),
+    );
+
+    const [after] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    // Unlike moveIssue, this never touches the issue's current statusId/rank.
+    expect(after?.statusId).toBe(statusIdBefore);
+
+    const history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    const statusEntry = history.find((h) => h.field === "status");
+    expect(statusEntry).toMatchObject({ fromValue: "status_old", toValue: "status_new", origin: "import" });
+    expect(statusEntry?.createdAt).toEqual(backdated);
+
+    const events = await admin.select().from(schema.automationEvent).where(eq(schema.automationEvent.organizationId, orgId));
+    expect(events).toHaveLength(0);
   });
 });

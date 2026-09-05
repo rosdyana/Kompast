@@ -92,9 +92,14 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
     ...(input.createdAt ? { createdAt: input.createdAt } : {}),
   });
 
-  if (input.assigneeId && input.assigneeId !== input.reporterId) {
+  // Historical bulk-loaded data (origin "import") never notifies or fires
+  // automation — importing 5,000 old JIRA issues should not send 5,000
+  // assignment emails or trigger rules meant for live workflow.
+  if (input.origin !== "import" && input.assigneeId && input.assigneeId !== input.reporterId) {
     await notifyAssignment(tx, issueId, { organizationId: input.organizationId, projectId: input.projectId, keySeq: nextSeq, title: input.title }, input.assigneeId);
   }
+
+  if (input.origin === "import") return { issueId, keySeq: nextSeq };
 
   await emitAutomationEvent(tx, {
     organizationId: input.organizationId,
@@ -192,11 +197,15 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
   if (historyRows.length > 0) await tx.insert(schema.issueHistory).values(historyRows);
 
   const assigneeChanged = patch.assigneeId !== undefined && patch.assigneeId !== current.assigneeId;
-  if (assigneeChanged && patch.assigneeId && patch.assigneeId !== patch.actorId) {
+  // See createIssue's identical origin==="import" gate — historical bulk
+  // updates (e.g. backfilling parentId/epicId in a second import pass,
+  // once every referenced issue is guaranteed to exist) never notify or
+  // fire automation either.
+  if (patch.origin !== "import" && assigneeChanged && patch.assigneeId && patch.assigneeId !== patch.actorId) {
     await notifyAssignment(tx, issueId, { ...current, title: patch.title ?? current.title }, patch.assigneeId);
   }
 
-  if (assigneeChanged || historyRows.length > 0) {
+  if (patch.origin !== "import" && (assigneeChanged || historyRows.length > 0)) {
     await emitAutomationEvent(tx, {
       organizationId: current.organizationId,
       projectId: current.projectId,
@@ -304,4 +313,37 @@ export async function moveIssue(tx: Tx, input: MoveIssueInput) {
       automationContext: input.automationContext,
     });
   }
+}
+
+export interface RecordHistoricalStatusChangeInput {
+  issueId: string;
+  actorId: string;
+  fromStatusId: string | null;
+  toStatusId: string;
+  createdAt: Date;
+  originClient?: string;
+}
+
+/**
+ * Writes ONE issue_history "status" row with a caller-given timestamp and
+ * no other side effect — no rank/current-status update, no notification,
+ * no automation event. Exists solely for the importer replaying a JIRA
+ * changelog: "Changelog history -> issue_history so imported issues have
+ * honest burndown/cycle-time" (see plan). Deliberately not moveIssue()
+ * with a backdated clock — moveIssue also mutates the issue's CURRENT
+ * status/rank and can fire automation, neither of which a historical
+ * replay of an already-resolved-to-its-final-state issue should do.
+ */
+export async function recordHistoricalStatusChange(tx: Tx, input: RecordHistoricalStatusChangeInput) {
+  await tx.insert(schema.issueHistory).values({
+    id: id("hist"),
+    issueId: input.issueId,
+    actorId: input.actorId,
+    origin: "import",
+    originClient: input.originClient,
+    field: "status",
+    fromValue: input.fromStatusId,
+    toValue: input.toStatusId,
+    createdAt: input.createdAt,
+  });
 }
