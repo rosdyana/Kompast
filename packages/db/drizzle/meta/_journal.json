@@ -78,6 +78,13 @@
       "when": 1788571025953,
       "tag": "0010_sleepy_nicolaos",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788590452739,
+      "tag": "0011_daily_cable",
+      "breakpoints": true
     }
   ]
 }

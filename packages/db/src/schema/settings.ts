@@ -36,6 +36,25 @@ export const systemSettings = pgTable("system_settings", {
   mailApiKeyEncrypted: text("mail_api_key_encrypted"),
   mailSmtpUrlEncrypted: text("mail_smtp_url_encrypted"),
 
+  /**
+   * Deliberately independent of aiProvider above, not reused even when
+   * aiProvider happens to already be azure-openai/openai-compatible —
+   * Anthropic (a valid aiProvider choice) has no public embeddings API at
+   * all, so Ask Kompast's embedding step needs its own provider selection
+   * that can never be "anthropic". Dimensions are fixed at 1536 (the
+   * embedding table's vector column is a fixed-size pgvector column, see
+   * packages/db/src/schema/rag.ts) — switching to a different-dimension
+   * model later means a schema migration plus a full reindex, not a
+   * config change alone.
+   */
+  embeddingProvider: text("embedding_provider", { enum: ["azure-openai", "openai-compatible"] }),
+  embeddingApiKeyEncrypted: text("embedding_api_key_encrypted"),
+  embeddingModel: text("embedding_model"),
+  embeddingAzureEndpoint: text("embedding_azure_endpoint"),
+  embeddingAzureDeployment: text("embedding_azure_deployment"),
+  embeddingOpenAiCompatibleBaseUrl: text("embedding_openai_compatible_base_url"),
+  embeddingFeaturesEnabled: boolean("embedding_features_enabled").notNull().default(false),
+
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   updatedBy: text("updated_by").references(() => user.id),
 });

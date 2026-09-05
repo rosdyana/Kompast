@@ -74,6 +74,14 @@ alter table import_run enable row level security;
 alter table import_run force row level security;
 alter table external_ref enable row level security;
 alter table external_ref force row level security;
+alter table embedding enable row level security;
+alter table embedding force row level security;
+alter table embedding_index_queue enable row level security;
+alter table embedding_index_queue force row level security;
+alter table ai_thread enable row level security;
+alter table ai_thread force row level security;
+alter table ai_message enable row level security;
+alter table ai_message force row level security;
 
 -- apps/collab (Yjs persistence) and the public /s/:token guest route both
 -- connect via the admin connection instead of kompast_app, and so bypass
@@ -89,15 +97,16 @@ alter table external_ref force row level security;
 -- going through collab/share-link.ts, it fails closed instead of leaking
 -- cross-tenant rows.
 --
--- apps/worker is a third such exception, for email_outbox and
--- automation_event: claiming pending rows (packages/core/src/email.ts's
--- claimPendingEmails, packages/core/src/automation.ts's
--- claimPendingAutomationEvents) is a system-wide scan across every
--- workspace's queue in one process, not one workspace's request — there
--- is no single app.current_workspace to set for that query, so both also
--- connect via the admin connection. The policies above still guard these
--- tables against the kompast_app role for the same defense-in-depth
--- reason.
+-- apps/worker is a third such exception, for email_outbox,
+-- automation_event, and embedding_index_queue: claiming pending rows
+-- (packages/core/src/email.ts's claimPendingEmails,
+-- packages/core/src/automation.ts's claimPendingAutomationEvents,
+-- packages/core/src/rag.ts's claimPendingReindexTasks) is a system-wide
+-- scan across every workspace's queue in one process, not one workspace's
+-- request — there is no single app.current_workspace to set for that
+-- query, so all three also connect via the admin connection. The
+-- policies above still guard these tables against the kompast_app role
+-- for the same defense-in-depth reason.
 
 drop policy if exists tenant_isolation_project on project;
 create policy tenant_isolation_project on project
@@ -325,3 +334,26 @@ create policy tenant_isolation_import_run on import_run
 drop policy if exists tenant_isolation_external_ref on external_ref;
 create policy tenant_isolation_external_ref on external_ref
   using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_embedding on embedding;
+create policy tenant_isolation_embedding on embedding
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_embedding_index_queue on embedding_index_queue;
+create policy tenant_isolation_embedding_index_queue on embedding_index_queue
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_ai_thread on ai_thread;
+create policy tenant_isolation_ai_thread on ai_thread
+  using (organization_id = current_setting('app.current_workspace', true));
+
+-- Indirectly scoped (via thread_id -> ai_thread.organization_id), same
+-- pattern as issue_comment -> issue above.
+drop policy if exists tenant_isolation_ai_message on ai_message;
+create policy tenant_isolation_ai_message on ai_message
+  using (
+    thread_id in (
+      select id from ai_thread
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
