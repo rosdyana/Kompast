@@ -91,6 +91,9 @@ importers:
       '@kompast/env':
         specifier: workspace:*
         version: link:../../packages/env
+      '@kompast/import':
+        specifier: workspace:*
+        version: link:../../packages/import
       '@kompast/storage':
         specifier: workspace:*
         version: link:../../packages/storage

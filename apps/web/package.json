@@ -22,6 +22,7 @@
     "@kompast/core": "workspace:*",
     "@kompast/db": "workspace:*",
     "@kompast/env": "workspace:*",
+    "@kompast/import": "workspace:*",
     "@kompast/storage": "workspace:*",
     "@kompast/ui": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",

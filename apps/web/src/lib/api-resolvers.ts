@@ -103,6 +103,12 @@ export async function resolveAutomationRule(tx: Tx, organizationId: string, rule
   return rule;
 }
 
+export async function resolveImportRun(tx: Tx, organizationId: string, importRunId: string) {
+  const [run] = await tx.select().from(schema.importRun).where(and(eq(schema.importRun.id, importRunId), eq(schema.importRun.organizationId, organizationId)));
+  if (!run) throw new ApiError(404, "Not Found", `Import run ${importRunId} not found`);
+  return run;
+}
+
 export async function resolveUserByEmail(tx: Tx, organizationId: string, email: string) {
   const [row] = await tx
     .select({ id: schema.user.id })
