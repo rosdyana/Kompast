@@ -38,3 +38,24 @@ export interface AiCredentials {
   azureDeployment: string | null;
   openAiCompatibleBaseUrl: string | null;
 }
+
+/**
+ * Deliberately a separate credentials shape from AiCredentials, not a
+ * reuse of it — Anthropic (a valid AiCredentials provider) has no public
+ * embeddings API at all, so "the workspace's AI provider" and "the
+ * workspace's embedding provider" are independent choices in /settings,
+ * not the same setting doing double duty.
+ */
+export interface EmbeddingCredentials {
+  provider: "azure-openai" | "openai-compatible";
+  apiKey: string | null;
+  model: string | null;
+  azureEndpoint: string | null;
+  azureDeployment: string | null;
+  openAiCompatibleBaseUrl: string | null;
+}
+
+export interface EmbeddingDriver {
+  /** One embedding vector per input string, same order as `texts`. */
+  embed(texts: string[]): Promise<number[][]>;
+}

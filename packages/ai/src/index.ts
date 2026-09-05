@@ -1,9 +1,9 @@
 import { createAnthropicDriver, DEFAULT_ANTHROPIC_MODEL } from "./drivers/anthropic";
-import { createAzureOpenAiDriver } from "./drivers/azure-openai";
-import { createOpenAiCompatibleDriver } from "./drivers/openai-compatible";
-import type { AiCredentials, AiDriver, CompletionRequest, CompletionResult } from "./types";
+import { createAzureOpenAiDriver, createAzureOpenAiEmbeddingsDriver } from "./drivers/azure-openai";
+import { createOpenAiCompatibleDriver, createOpenAiCompatibleEmbeddingsDriver } from "./drivers/openai-compatible";
+import type { AiCredentials, AiDriver, CompletionRequest, CompletionResult, EmbeddingCredentials, EmbeddingDriver } from "./types";
 
-export type { AiCredentials, AiDriver, AiMessage, CompletionRequest, CompletionResult } from "./types";
+export type { AiCredentials, AiDriver, AiMessage, CompletionRequest, CompletionResult, EmbeddingCredentials, EmbeddingDriver } from "./types";
 
 function createDriver(creds: AiCredentials): AiDriver {
   if (creds.provider === "anthropic") {
@@ -46,4 +46,26 @@ export function resolveModelName(creds: AiCredentials): string {
   if (creds.provider === "azure-openai") return creds.azureDeployment ?? "unknown-deployment";
   if (creds.provider === "anthropic") return creds.model ?? DEFAULT_ANTHROPIC_MODEL;
   return creds.model ?? "unknown-model";
+}
+
+function createEmbeddingDriver(creds: EmbeddingCredentials): EmbeddingDriver {
+  if (creds.provider === "azure-openai") {
+    if (!creds.apiKey) throw new Error("Azure OpenAI requires an API key");
+    if (!creds.azureEndpoint || !creds.azureDeployment) throw new Error("Azure OpenAI requires an endpoint and a deployment name");
+    return createAzureOpenAiEmbeddingsDriver(creds.apiKey, creds.azureEndpoint, creds.azureDeployment);
+  }
+  if (!creds.apiKey) throw new Error("OpenAI-compatible requires an API key");
+  if (!creds.openAiCompatibleBaseUrl) throw new Error("OpenAI-compatible requires a base URL");
+  if (!creds.model) throw new Error("OpenAI-compatible requires a model name (no safe default across arbitrary endpoints)");
+  return createOpenAiCompatibleEmbeddingsDriver(creds.apiKey, creds.openAiCompatibleBaseUrl, creds.model);
+}
+
+export interface EmbeddingClient {
+  embed(texts: string[]): Promise<number[][]>;
+}
+
+/** Same "build fresh per call from /settings-driven config" shape as createAiClient — see its own doc comment. */
+export function createEmbeddingClient(creds: EmbeddingCredentials): EmbeddingClient {
+  const driver = createEmbeddingDriver(creds);
+  return { embed: driver.embed.bind(driver) };
 }

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createAiClient, resolveModelName } from "../index";
-import type { AiCredentials } from "../types";
+import { createAiClient, createEmbeddingClient, resolveModelName } from "../index";
+import type { AiCredentials, EmbeddingCredentials } from "../types";
 
 const base: AiCredentials = { provider: "anthropic", apiKey: null, model: null, azureEndpoint: null, azureDeployment: null, openAiCompatibleBaseUrl: null };
+const embeddingBase: EmbeddingCredentials = { provider: "azure-openai", apiKey: null, model: null, azureEndpoint: null, azureDeployment: null, openAiCompatibleBaseUrl: null };
 
 describe("createAiClient", () => {
   it("throws for anthropic with no API key configured", () => {
@@ -49,5 +50,27 @@ describe("resolveModelName", () => {
 
   it("uses the configured model for openai-compatible", () => {
     expect(resolveModelName({ ...base, provider: "openai-compatible", model: "local-llama" })).toBe("local-llama");
+  });
+});
+
+describe("createEmbeddingClient", () => {
+  it("throws for azure-openai missing endpoint/deployment", () => {
+    expect(() => createEmbeddingClient({ ...embeddingBase, apiKey: "k" })).toThrow(/endpoint/i);
+  });
+
+  it("throws for openai-compatible missing a base URL", () => {
+    expect(() => createEmbeddingClient({ ...embeddingBase, provider: "openai-compatible", apiKey: "k" })).toThrow(/base url/i);
+  });
+
+  it("throws for openai-compatible missing a model name", () => {
+    expect(() => createEmbeddingClient({ ...embeddingBase, provider: "openai-compatible", apiKey: "k", openAiCompatibleBaseUrl: "https://x" })).toThrow(/model/i);
+  });
+
+  it("succeeds building an azure-openai embedding client given full config", () => {
+    expect(() => createEmbeddingClient({ ...embeddingBase, apiKey: "k", azureEndpoint: "https://x.openai.azure.com", azureDeployment: "embed-dep" })).not.toThrow();
+  });
+
+  it("succeeds building an openai-compatible embedding client given full config", () => {
+    expect(() => createEmbeddingClient({ ...embeddingBase, provider: "openai-compatible", apiKey: "k", openAiCompatibleBaseUrl: "https://x", model: "m" })).not.toThrow();
   });
 });
