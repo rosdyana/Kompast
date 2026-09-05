@@ -1,0 +1,67 @@
+{
+  "issues": [
+    {
+      "id": "10001",
+      "key": "DEMO-1",
+      "fields": {
+        "summary": "Parent story",
+        "issuetype": { "name": "Improvement", "subtask": false },
+        "status": { "name": "Code Review", "statusCategory": { "key": "indeterminate", "name": "Code Review" } },
+        "assignee": { "accountId": "acc1", "emailAddress": "assignee@example.com", "displayName": "Assignee" },
+        "reporter": { "accountId": "acc2", "emailAddress": "reporter@example.com", "displayName": "Reporter" },
+        "priority": { "name": "High" },
+        "labels": ["backend"],
+        "description": "Plain text description",
+        "fixVersions": [{ "name": "1.0" }],
+        "components": [{ "name": "API" }],
+        "timeoriginalestimate": 7200,
+        "created": "2021-01-01T00:00:00.000+0000",
+        "comment": {
+          "comments": [
+            { "id": "c1", "author": { "accountId": "acc2", "displayName": "Reporter" }, "body": "First comment", "created": "2021-01-02T00:00:00.000+0000" }
+          ]
+        },
+        "worklog": {
+          "worklogs": [
+            { "id": "w1", "author": { "accountId": "acc1", "displayName": "Assignee" }, "timeSpentSeconds": 3600, "started": "2021-01-03T00:00:00.000+0000" }
+          ]
+        },
+        "issuelinks": [{ "type": { "name": "Blocks" }, "outwardIssue": { "key": "DEMO-2" } }]
+      },
+      "changelog": {
+        "histories": [{ "created": "2021-01-02T12:00:00.000+0000", "items": [{ "field": "status", "fromString": "To Do", "toString": "Code Review" }] }]
+      }
+    },
+    {
+      "id": "10002",
+      "key": "DEMO-2",
+      "fields": {
+        "summary": "Blocked issue",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "To Do", "statusCategory": { "key": "new", "name": "To Do" } },
+        "assignee": null,
+        "reporter": { "accountId": "acc2", "emailAddress": "reporter@example.com", "displayName": "Reporter" },
+        "priority": { "name": "Medium" },
+        "labels": [],
+        "description": null,
+        "created": "2021-01-01T00:00:00.000+0000"
+      }
+    },
+    {
+      "id": "10003",
+      "key": "DEMO-3",
+      "fields": {
+        "summary": "A subtask of the parent story",
+        "issuetype": { "name": "Subtask", "subtask": true },
+        "status": { "name": "Done", "statusCategory": { "key": "done", "name": "Done" } },
+        "assignee": null,
+        "reporter": { "accountId": "acc2", "emailAddress": "reporter@example.com", "displayName": "Reporter" },
+        "priority": null,
+        "labels": [],
+        "description": null,
+        "parent": { "key": "DEMO-1" },
+        "created": "2021-01-05T00:00:00.000+0000"
+      }
+    }
+  ]
+}
