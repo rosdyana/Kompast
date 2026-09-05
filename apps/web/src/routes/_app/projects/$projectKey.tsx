@@ -16,6 +16,7 @@ import { Tabs } from "@kompast/ui/Tabs";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
 import { listProjectPagesFn, createPageFn } from "@/lib/server-fns/pages";
+import { streamAiCompletion } from "@/lib/ai-stream-client";
 import {
   listSprintsFn,
   listBacklogFn,
@@ -210,6 +211,9 @@ function SprintTab({ projectId, boardId }: { projectId: string; boardId: string 
   const [newSprintName, setNewSprintName] = useState("");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
 
   async function refreshSprints() {
     const list = await listSprintsFn({ data: boardId });
@@ -227,12 +231,30 @@ function SprintTab({ projectId, boardId }: { projectId: string; boardId: string 
   }, [projectId, boardId]);
 
   useEffect(() => {
+    setAiSummary(null);
+    setAiError(null);
     if (!selectedSprintId) {
       setDetail(null);
       return;
     }
     getSprintDetailFn({ data: selectedSprintId }).then(setDetail);
   }, [selectedSprintId]);
+
+  async function generateAiSummary() {
+    if (!selectedSprintId) return;
+    setAiBusy(true);
+    setAiError(null);
+    setAiSummary("");
+    try {
+      await streamAiCompletion({ feature: "sprint-summary", sprintId: selectedSprintId }, (delta) => {
+        setAiSummary((prev) => (prev ?? "") + delta);
+      });
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Gagal membuat ringkasan AI");
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   async function refreshAll() {
     await Promise.all([refreshSprints(), listBacklogFn({ data: projectId }).then(setBacklog)]);
@@ -356,6 +378,19 @@ function SprintTab({ projectId, boardId }: { projectId: string; boardId: string 
           <span>
             Sisa: <strong>{detail.report.remainingPoints}</strong> poin
           </span>
+        </div>
+      )}
+
+      {sprint && detail && (
+        <div className="col-span-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Ringkasan AI</p>
+            <Button variant="outline" className="text-[11px]" onClick={generateAiSummary} disabled={aiBusy}>
+              {aiBusy ? "Menulis…" : "Buat ringkasan"}
+            </Button>
+          </div>
+          {aiError && <p className="text-[12px] text-red-500">{aiError}</p>}
+          {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap text-[12.5px] text-text-2">{aiSummary || "…"}</p>}
         </div>
       )}
 

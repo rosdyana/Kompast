@@ -37,6 +37,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
   const router = useRouter();
   const [provider, setProvider] = useState(initial.provider ?? "anthropic");
   const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState(initial.model ?? "");
   const [azureEndpoint, setAzureEndpoint] = useState(initial.azureEndpoint ?? "");
   const [azureDeployment, setAzureDeployment] = useState(initial.azureDeployment ?? "");
   const [baseUrl, setBaseUrl] = useState(initial.openAiCompatibleBaseUrl ?? "");
@@ -52,6 +53,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
         data: {
           provider,
           apiKey: apiKey || undefined,
+          model: model || undefined,
           azureEndpoint: azureEndpoint || undefined,
           azureDeployment: azureDeployment || undefined,
           openAiCompatibleBaseUrl: baseUrl || undefined,
@@ -100,6 +102,20 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
             className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
           />
         </label>
+
+        {provider !== "azure-openai" && (
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-text-2">
+              Model {provider === "anthropic" && <span className="text-text-3">(kosongkan untuk default)</span>}
+            </span>
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder={provider === "anthropic" ? "claude-sonnet-5" : "nama model di endpoint ini"}
+              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            />
+          </label>
+        )}
 
         {provider === "azure-openai" && (
           <>

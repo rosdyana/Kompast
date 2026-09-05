@@ -12,6 +12,52 @@ import { VersionHistory } from "./VersionHistory";
 import { kompastViewBlockSpec } from "./KompastViewBlock";
 import { mentionInlineSpec } from "./MentionInlineContent";
 import { listPageTreeFn, linkPageMentionFn } from "@/lib/server-fns/pages";
+import { streamAiCompletion } from "@/lib/ai-stream-client";
+
+type DocAiMode = "continue" | "improve" | "shorten" | "expand" | "summarize" | "translate";
+
+/**
+ * Always inserts the AI's result as new block(s) right after the current
+ * one — never an in-place rewrite of the user's original text, even for
+ * "improve"/"shorten"/"expand". A deliberate simplification: it means
+ * every action shares one code path (insert-after, then replace the
+ * placeholder), instead of a second in-place-replace path this couldn't
+ * be interactively browser-verified against in this environment (see
+ * README's P7 section — no Entra ID login available here).
+ */
+async function runDocAiAction(editor: ReturnType<typeof useCreateBlockNote>, mode: DocAiMode, targetLanguage?: string) {
+  const currentBlock = editor.getTextCursorPosition().block;
+
+  const sourceBlocks = mode === "continue" ? editor.document.slice(0, editor.document.findIndex((b: { id: string }) => b.id === currentBlock.id) + 1) : [currentBlock];
+  const sourceText = editor.blocksToMarkdownLossy(sourceBlocks.length ? sourceBlocks : [currentBlock]);
+  if (!sourceText.trim()) return;
+
+  const [placeholder] = editor.insertBlocks([{ type: "paragraph", content: "AI sedang menulis…" }], currentBlock, "after");
+  if (!placeholder) return;
+
+  let accumulated = "";
+  try {
+    await streamAiCompletion({ feature: "doc", action: mode, text: sourceText, targetLanguage }, (delta) => {
+      accumulated += delta;
+    });
+  } catch (err) {
+    editor.updateBlock(placeholder.id, { content: `AI gagal: ${err instanceof Error ? err.message : "unknown error"}` });
+    return;
+  }
+
+  const resultBlocks = editor.tryParseMarkdownToBlocks(accumulated);
+  editor.replaceBlocks([placeholder.id], resultBlocks.length ? resultBlocks : [{ type: "paragraph", content: accumulated }]);
+}
+
+const AI_SLASH_ITEMS: { title: string; mode: DocAiMode; targetLanguage?: string; aliases: string[] }[] = [
+  { title: "AI: Lanjutkan menulis", mode: "continue", aliases: ["ai", "continue", "lanjutkan"] },
+  { title: "AI: Perbaiki tulisan", mode: "improve", aliases: ["ai", "improve", "perbaiki"] },
+  { title: "AI: Perpendek", mode: "shorten", aliases: ["ai", "shorten", "perpendek"] },
+  { title: "AI: Perpanjang", mode: "expand", aliases: ["ai", "expand", "perpanjang"] },
+  { title: "AI: Ringkas", mode: "summarize", aliases: ["ai", "summarize", "ringkas"] },
+  { title: "AI: Terjemahkan ke Inggris", mode: "translate", targetLanguage: "English", aliases: ["ai", "translate", "terjemah", "inggris"] },
+  { title: "AI: Terjemahkan ke Indonesia", mode: "translate", targetLanguage: "Indonesian", aliases: ["ai", "translate", "terjemah", "indonesia"] },
+];
 
 const CURSOR_COLORS = ["#f97066", "#f79009", "#f5d90a", "#66c61c", "#15b8a6", "#2e90fa", "#875bf7", "#ee46bc"];
 
@@ -88,6 +134,12 @@ export function DocEditor({
                   aliases: ["kanban", "board", "tabel", "table", "view"],
                   group: "Kompast",
                 },
+                ...AI_SLASH_ITEMS.map((item) => ({
+                  title: item.title,
+                  onItemClick: () => runDocAiAction(editor, item.mode, item.targetLanguage),
+                  aliases: item.aliases,
+                  group: "AI",
+                })),
               ],
               query,
             )

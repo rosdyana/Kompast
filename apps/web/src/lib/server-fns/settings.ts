@@ -14,6 +14,7 @@ export const getIntegrationSettingsFn = createServerFn({ method: "GET" }).handle
 const updateAiSchema = z.object({
   provider: z.enum(["anthropic", "azure-openai", "openai-compatible"]),
   apiKey: z.string().optional(),
+  model: z.string().optional(),
   azureEndpoint: z.string().optional(),
   azureDeployment: z.string().optional(),
   openAiCompatibleBaseUrl: z.string().optional(),
