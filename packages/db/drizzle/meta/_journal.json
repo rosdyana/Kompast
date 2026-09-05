@@ -57,6 +57,13 @@
       "when": 1788562962126,
       "tag": "0007_careless_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788566101959,
+      "tag": "0008_dark_albert_cleary",
+      "breakpoints": true
     }
   ]
 }

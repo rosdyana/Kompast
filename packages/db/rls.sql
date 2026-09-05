@@ -58,6 +58,12 @@ alter table notification_pref enable row level security;
 alter table notification_pref force row level security;
 alter table email_outbox enable row level security;
 alter table email_outbox force row level security;
+alter table automation_rule enable row level security;
+alter table automation_rule force row level security;
+alter table automation_run enable row level security;
+alter table automation_run force row level security;
+alter table automation_event enable row level security;
+alter table automation_event force row level security;
 
 -- apps/collab (Yjs persistence) and the public /s/:token guest route both
 -- connect via the admin connection instead of kompast_app, and so bypass
@@ -73,13 +79,15 @@ alter table email_outbox force row level security;
 -- going through collab/share-link.ts, it fails closed instead of leaking
 -- cross-tenant rows.
 --
--- apps/worker is a third such exception, for email_outbox specifically:
--- claiming pending rows to send (packages/core/src/email.ts's
--- claimPendingEmails) is a system-wide scan across every workspace's
--- queued mail in one process, not one workspace's request — there is no
--- single app.current_workspace to set for that query, so it also connects
--- via the admin connection. The policy above still guards email_outbox
--- against the kompast_app role for the same defense-in-depth reason.
+-- apps/worker is a third such exception, for email_outbox and
+-- automation_event: claiming pending rows (packages/core/src/email.ts's
+-- claimPendingEmails, packages/core/src/automation.ts's
+-- claimPendingAutomationEvents) is a system-wide scan across every
+-- workspace's queue in one process, not one workspace's request — there
+-- is no single app.current_workspace to set for that query, so both also
+-- connect via the admin connection. The policies above still guard these
+-- tables against the kompast_app role for the same defense-in-depth
+-- reason.
 
 drop policy if exists tenant_isolation_project on project;
 create policy tenant_isolation_project on project
@@ -247,4 +255,16 @@ create policy tenant_isolation_notification_pref on notification_pref
 
 drop policy if exists tenant_isolation_email_outbox on email_outbox;
 create policy tenant_isolation_email_outbox on email_outbox
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_automation_rule on automation_rule;
+create policy tenant_isolation_automation_rule on automation_rule
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_automation_run on automation_run;
+create policy tenant_isolation_automation_run on automation_run
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_automation_event on automation_event;
+create policy tenant_isolation_automation_event on automation_event
   using (organization_id = current_setting('app.current_workspace', true));

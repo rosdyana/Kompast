@@ -9,6 +9,7 @@ export * from "./sprint-report";
 export * from "./roadmap";
 export * from "./email";
 export * from "./notification";
+export * from "./automation";
 export * from "./comment";
 export * from "./watcher";
 export * from "./attachment";

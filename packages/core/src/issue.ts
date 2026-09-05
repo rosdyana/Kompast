@@ -4,6 +4,7 @@ import type { Tx } from "./types";
 import { id } from "./ids";
 import { rankBetween } from "./rank";
 import { notify } from "./notification";
+import { emitAutomationEvent, type AutomationContext } from "./automation-events";
 
 export interface CreateIssueInput {
   organizationId: string;
@@ -20,6 +21,7 @@ export interface CreateIssueInput {
   dueDate?: Date;
   origin?: "user" | "automation" | "mcp" | "api" | "import";
   originClient?: string;
+  automationContext?: AutomationContext;
 }
 
 /**
@@ -83,6 +85,23 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
     await notifyAssignment(tx, issueId, { organizationId: input.organizationId, projectId: input.projectId, keySeq: nextSeq, title: input.title }, input.assigneeId);
   }
 
+  await emitAutomationEvent(tx, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: "issue.created",
+    entityId: issueId,
+    payload: {
+      statusId: input.statusId,
+      typeId: input.typeId,
+      priority: input.priority ?? "medium",
+      assigneeId: input.assigneeId ?? null,
+      projectId: input.projectId,
+      labels: input.labels ?? [],
+      storyPoints: input.storyPoints ?? null,
+    },
+    automationContext: input.automationContext,
+  });
+
   return { issueId, keySeq: nextSeq };
 }
 
@@ -99,6 +118,7 @@ export interface UpdateIssueInput {
   actorId: string;
   origin?: "user" | "automation" | "mcp" | "api" | "import";
   originClient?: string;
+  automationContext?: AutomationContext;
 }
 
 const UPDATE_ISSUE_HISTORY_FIELDS = ["title", "priority", "assigneeId", "storyPoints", "dueDate", "startDate", "epicId"] as const;
@@ -144,6 +164,26 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
   if (assigneeChanged && patch.assigneeId && patch.assigneeId !== patch.actorId) {
     await notifyAssignment(tx, issueId, { ...current, title: patch.title ?? current.title }, patch.assigneeId);
   }
+
+  if (assigneeChanged || historyRows.length > 0) {
+    await emitAutomationEvent(tx, {
+      organizationId: current.organizationId,
+      projectId: current.projectId,
+      eventType: assigneeChanged ? "issue.assigned" : "issue.updated",
+      entityId: issueId,
+      payload: {
+        statusId: current.statusId,
+        typeId: current.typeId,
+        priority: patch.priority ?? current.priority,
+        assigneeId: patch.assigneeId !== undefined ? patch.assigneeId : current.assigneeId,
+        projectId: current.projectId,
+        labels: patch.labels ?? current.labels,
+        storyPoints: patch.storyPoints !== undefined ? patch.storyPoints : current.storyPoints,
+        changedFields: historyRows.map((h) => h.field),
+      },
+      automationContext: patch.automationContext,
+    });
+  }
 }
 
 /** Never notifies the person who did the assigning about their own action (checked by the caller). */
@@ -178,6 +218,7 @@ export interface MoveIssueInput {
   actorId: string;
   origin?: "user" | "automation" | "mcp" | "api" | "import";
   originClient?: string;
+  automationContext?: AutomationContext;
 }
 
 /**
@@ -189,7 +230,7 @@ export interface MoveIssueInput {
  */
 export async function moveIssue(tx: Tx, input: MoveIssueInput) {
   const [current] = await tx
-    .select({ statusId: schema.issue.statusId, rank: schema.issue.rank })
+    .select({ organizationId: schema.issue.organizationId, projectId: schema.issue.projectId, statusId: schema.issue.statusId, rank: schema.issue.rank })
     .from(schema.issue)
     .where(eq(schema.issue.id, input.issueId))
     .limit(1);
@@ -221,6 +262,15 @@ export async function moveIssue(tx: Tx, input: MoveIssueInput) {
       field: "status",
       fromValue: current.statusId,
       toValue: input.toStatusId,
+    });
+
+    await emitAutomationEvent(tx, {
+      organizationId: current.organizationId,
+      projectId: current.projectId,
+      eventType: "issue.transitioned",
+      entityId: input.issueId,
+      payload: { statusId: input.toStatusId, fromStatusId: current.statusId, toStatusId: input.toStatusId, projectId: current.projectId },
+      automationContext: input.automationContext,
     });
   }
 }
