@@ -22,6 +22,8 @@ alter table issue_comment enable row level security;
 alter table issue_comment force row level security;
 alter table issue_attachment enable row level security;
 alter table issue_attachment force row level security;
+alter table worklog enable row level security;
+alter table worklog force row level security;
 alter table issue_history enable row level security;
 alter table issue_history force row level security;
 alter table audit_log enable row level security;
@@ -134,6 +136,15 @@ drop policy if exists tenant_isolation_apikey on apikey;
 -- above as long as every read/write goes through withTenant()'s tx.
 drop policy if exists tenant_isolation_issue_comment on issue_comment;
 create policy tenant_isolation_issue_comment on issue_comment
+  using (
+    issue_id in (
+      select id from issue
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
+drop policy if exists tenant_isolation_worklog on worklog;
+create policy tenant_isolation_worklog on worklog
   using (
     issue_id in (
       select id from issue
