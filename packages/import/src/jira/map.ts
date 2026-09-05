@@ -1,4 +1,4 @@
-import type { JiraStatusCategoryKey } from "./types";
+import type { JiraIssue, JiraStatusCategoryKey, JiraUser } from "./types";
 
 const PRIORITY_MAP: Record<string, "lowest" | "low" | "medium" | "high" | "highest"> = {
   highest: "highest",
@@ -24,4 +24,26 @@ export function mapJiraStatusCategory(key: JiraStatusCategoryKey): "todo" | "in_
   if (key === "new") return "todo";
   if (key === "done") return "done";
   return "in_progress";
+}
+
+/**
+ * Every distinct email address across reporter/assignee/comment-authors/
+ * worklog-authors in a batch of issues — the caller (e.g. the REST
+ * endpoint) resolves each once via its own email->Kompast-user lookup
+ * (a DB query, so it can't happen inside runJiraImport's synchronous
+ * resolveUserId) and builds the Map that callback closes over. Avoids
+ * resolving the same prolific commenter's email dozens of times.
+ */
+export function collectJiraEmails(issues: JiraIssue[]): string[] {
+  const emails = new Set<string>();
+  const add = (u: JiraUser | null | undefined) => {
+    if (u?.emailAddress) emails.add(u.emailAddress.toLowerCase());
+  };
+  for (const issue of issues) {
+    add(issue.fields.reporter);
+    add(issue.fields.assignee);
+    for (const c of issue.fields.comment?.comments ?? []) add(c.author);
+    for (const w of issue.fields.worklog?.worklogs ?? []) add(w.author);
+  }
+  return [...emails];
 }
