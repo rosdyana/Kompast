@@ -13,9 +13,9 @@ export const authClient = createAuthClient({
  * generic-oauth client method (none exists; there is no
  * `better-auth/plugins/generic-oauth` client export).
  */
-export function signInWithMicrosoft() {
+export function signInWithMicrosoft(callbackURL = "/") {
   return authClient.signIn.social({
     provider: "microsoft-entra-id",
-    callbackURL: "/",
+    callbackURL,
   });
 }

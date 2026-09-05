@@ -139,6 +139,14 @@ function Sidebar({ shell }: { shell: Shell }) {
       <div className="border-t border-border p-2">
         {shell.isAdmin && (
           <Link
+            to="/members"
+            className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13px] hover:bg-surface-3 [&.active]:bg-surface-3"
+          >
+            <span className="w-[15px] text-center text-xs text-text-3">◔</span>Anggota
+          </Link>
+        )}
+        {shell.isAdmin && (
+          <Link
             to="/settings"
             className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13px] hover:bg-surface-3 [&.active]:bg-surface-3"
           >

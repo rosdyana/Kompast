@@ -48,7 +48,7 @@ function LoginPage() {
           <p className="mb-7 text-sm leading-relaxed text-text-2">
             Gunakan akun kerja Anda. Workspace dipilih otomatis dari direktori organisasi.
           </p>
-          <Button variant="dark" className="w-full py-3.5 text-[14.5px]" onClick={signInWithMicrosoft}>
+          <Button variant="dark" className="w-full py-3.5 text-[14.5px]" onClick={() => signInWithMicrosoft()}>
             <MicrosoftGlyph />
             Lanjut dengan Microsoft
           </Button>
@@ -57,7 +57,7 @@ function LoginPage() {
             <span className="text-[11.5px] text-text-3">atau</span>
             <div className="h-px flex-1 bg-border" />
           </div>
-          <Button variant="outline" className="w-full py-3 text-[14px]" onClick={signInWithMicrosoft}>
+          <Button variant="outline" className="w-full py-3 text-[14px]" onClick={() => signInWithMicrosoft()}>
             Masuk dengan tautan email
           </Button>
           <p className="mt-7 text-[12px] leading-relaxed text-text-3">
