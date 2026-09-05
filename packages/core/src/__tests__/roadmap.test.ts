@@ -16,9 +16,11 @@ describe("epic roadmap", () => {
 
   const orgId = "test-roadmap-org";
   const userId = "test-roadmap-user";
+  const teamId = "test-roadmap-team";
 
   async function cleanup() {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -29,6 +31,7 @@ describe("epic roadmap", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "Roadmap Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -40,7 +43,7 @@ describe("epic roadmap", () => {
 
   it("returns each epic with its child completion, and epicId is settable via updateIssue", async () => {
     const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "rdm", name: "Roadmap Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "rdm", name: "Roadmap Test", actorUserId: userId }),
     );
     const epicType = issueTypes.find((t) => t.name === "Epic")!;
     const storyType = issueTypes.find((t) => t.name === "Story")!;
@@ -73,7 +76,7 @@ describe("epic roadmap", () => {
   });
 
   it("returns an empty list for a project with no epics populated", async () => {
-    const { projectId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, key: "emp", name: "Empty Roadmap", actorUserId: userId }));
+    const { projectId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "emp", name: "Empty Roadmap", actorUserId: userId }));
     const roadmap = await withAuthorizedTenant(ctx, (tx) => getEpicRoadmap(tx, projectId));
     expect(roadmap).toEqual([]);
   });

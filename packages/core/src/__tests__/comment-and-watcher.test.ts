@@ -18,11 +18,13 @@ describe("comments + watchers", () => {
   const orgId = "test-cw-org";
   const userId = "test-cw-user";
   const assigneeId = "test-cw-assignee";
+  const teamId = "test-cw-team";
 
   async function cleanup() {
     await admin.delete(schema.notification).where(eq(schema.notification.organizationId, orgId));
     await admin.delete(schema.emailOutbox).where(eq(schema.emailOutbox.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.user).where(eq(schema.user.id, assigneeId));
@@ -40,6 +42,7 @@ describe("comments + watchers", () => {
       { id: id("mem"), organizationId: orgId, userId, role: "member" },
       { id: id("mem"), organizationId: orgId, userId: assigneeId, role: "member" },
     ]);
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -51,6 +54,7 @@ describe("comments + watchers", () => {
     return withAuthorizedTenant({ userId, organizationId: orgId }, async (tx) => {
       const { projectId, issueTypes, statuses } = await createProject(tx, {
         organizationId: orgId,
+        teamId,
         key: "cw",
         name: "CW",
         actorUserId: userId,

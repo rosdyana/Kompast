@@ -273,12 +273,14 @@ describe("isOnlyUser", () => {
 describe("packages/core/ai", () => {
   const orgId = "test-ai-org";
   const userId = "test-ai-user";
+  const teamId = "test-ai-team";
   const ctx = { userId, organizationId: orgId };
 
   async function cleanup() {
     await db.delete(schema.systemSettings);
     await db.delete(schema.aiUsage).where(eq(schema.aiUsage.organizationId, orgId));
     await db.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await db.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await db.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await db.delete(schema.organization).where(eq(schema.organization.id, orgId));
     await db.delete(schema.user).where(eq(schema.user.id, userId));
@@ -289,6 +291,7 @@ describe("packages/core/ai", () => {
     await db.insert(schema.organization).values({ id: orgId, name: "AI Test Org", slug: orgId });
     await db.insert(schema.user).values({ id: userId, name: "AI User", email: `${userId}@example.com` });
     await db.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await db.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterEach(async () => {
@@ -359,7 +362,7 @@ describe("packages/core/ai", () => {
 
     it("generates a sprint summary whose prompt correctly separates completed from not-completed issues", async () => {
       const { projectId, boardId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
-        createProject(tx, { organizationId: orgId, key: "aisu", name: "AI Sprint Test", actorUserId: userId }),
+        createProject(tx, { organizationId: orgId, teamId, key: "aisu", name: "AI Sprint Test", actorUserId: userId }),
       );
       const doneStatus = statuses.find((s) => s.category === "done")!;
       const todoStatus = statuses.find((s) => s.category === "todo")!;
@@ -419,6 +422,7 @@ describe("chunkText", () => {
 describe("packages/core/rag", () => {
   const orgId = "test-rag-org";
   const userId = "test-rag-user";
+  const teamId = "test-rag-team";
   const ctx = { userId, organizationId: orgId };
 
   async function cleanup() {
@@ -428,6 +432,7 @@ describe("packages/core/rag", () => {
     await db.delete(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.organizationId, orgId));
     await db.delete(schema.embedding).where(eq(schema.embedding.organizationId, orgId));
     await db.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await db.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await db.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await db.delete(schema.organization).where(eq(schema.organization.id, orgId));
     await db.delete(schema.user).where(eq(schema.user.id, userId));
@@ -438,6 +443,7 @@ describe("packages/core/rag", () => {
     await db.insert(schema.organization).values({ id: orgId, name: "RAG Test Org", slug: orgId });
     await db.insert(schema.user).values({ id: userId, name: "RAG User", email: `${userId}@example.com` });
     await db.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await db.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterEach(async () => {
@@ -446,7 +452,7 @@ describe("packages/core/rag", () => {
   });
 
   async function seedProject() {
-    return withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, key: "rag", name: "RAG Test", actorUserId: userId }));
+    return withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "rag", name: "RAG Test", actorUserId: userId }));
   }
 
   /**

@@ -16,11 +16,13 @@ describe("updateIssue + createIssue attribution", () => {
   const orgId = "test-updateissue-org";
   const userId = "test-updateissue-user";
   const otherUserId = "test-updateissue-other-user";
+  const teamId = "test-updateissue-team";
 
   async function cleanup() {
     await admin.delete(schema.notification).where(eq(schema.notification.organizationId, orgId));
     await admin.delete(schema.emailOutbox).where(eq(schema.emailOutbox.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.user).where(eq(schema.user.id, otherUserId));
@@ -38,6 +40,7 @@ describe("updateIssue + createIssue attribution", () => {
       { id: id("mem"), organizationId: orgId, userId, role: "member" },
       { id: id("mem"), organizationId: orgId, userId: otherUserId, role: "member" },
     ]);
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -47,7 +50,7 @@ describe("updateIssue + createIssue attribution", () => {
 
   async function seedIssue(ctx: { userId: string; organizationId: string }, overrides: Partial<Parameters<typeof createIssue>[1]> = {}) {
     const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "upd", name: "Update Test", actorUserId: ctx.userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "upd", name: "Update Test", actorUserId: ctx.userId }),
     );
     const result = await withAuthorizedTenant(ctx, (tx) =>
       createIssue(tx, {
@@ -152,7 +155,7 @@ describe("updateIssue + createIssue attribution", () => {
   it("createIssue accepts parentId, estimateSeconds, customFields, and a backdated createdAt (for importers)", async () => {
     const ctx = { userId, organizationId: orgId };
     const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "upd2", name: "Update Test 2", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "upd2", name: "Update Test 2", actorUserId: userId }),
     );
     const { issueId: parentId } = await withAuthorizedTenant(ctx, (tx) =>
       createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Parent issue", reporterId: userId }),
@@ -187,7 +190,7 @@ describe("updateIssue + createIssue attribution", () => {
   it("updateIssue sets parentId, estimateSeconds, spentSeconds, and customFields, with the diffable ones getting history rows", async () => {
     const ctx = { userId, organizationId: orgId };
     const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "upd3", name: "Update Test 3", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "upd3", name: "Update Test 3", actorUserId: userId }),
     );
     const { issueId: parentId } = await withAuthorizedTenant(ctx, (tx) =>
       createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Some parent", reporterId: userId }),

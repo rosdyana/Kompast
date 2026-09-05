@@ -35,10 +35,12 @@ describe("attachments", () => {
 
   const orgId = "test-attach-org";
   const userId = "test-attach-user";
+  const teamId = "test-attach-team";
   let projectKeyCounter = 0;
 
   beforeEach(async () => {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.userId, userId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -46,10 +48,12 @@ describe("attachments", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "Test Attach Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "Test User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.userId, userId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -61,6 +65,7 @@ describe("attachments", () => {
     return withAuthorizedTenant({ userId, organizationId: orgId }, async (tx) => {
       const { projectId, issueTypes, statuses } = await createProject(tx, {
         organizationId: orgId,
+        teamId,
         key: `att${projectKeyCounter}`,
         name: "Attach",
         actorUserId: userId,

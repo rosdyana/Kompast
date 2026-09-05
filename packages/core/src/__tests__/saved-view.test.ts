@@ -15,9 +15,11 @@ describe("saved views", () => {
 
   const orgId = "test-view-org";
   const userId = "test-view-user";
+  const teamId = "test-view-team";
 
   beforeEach(async () => {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.userId, userId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -25,10 +27,12 @@ describe("saved views", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "Test View Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "Test User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.userId, userId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -37,7 +41,7 @@ describe("saved views", () => {
 
   it("creates exactly one default table view per board even when called repeatedly", async () => {
     const { boardId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "view1", name: "V1", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "view1", name: "V1", actorUserId: userId }),
     );
 
     const first = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
@@ -56,7 +60,7 @@ describe("saved views", () => {
 
   it("persists grouping/sorting changes", async () => {
     const { boardId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "view2", name: "V2", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "view2", name: "V2", actorUserId: userId }),
     );
     const view = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
       getOrCreateDefaultTableView(tx, boardId, userId),

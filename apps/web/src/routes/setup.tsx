@@ -61,7 +61,7 @@ function SetupPage() {
             type="password"
           />
 
-          {error && <p className="text-[12.5px] text-accent">{error}</p>}
+          {error && <p className="text-[12.5px] text-danger">{error}</p>}
 
           <Button
             variant="primary"

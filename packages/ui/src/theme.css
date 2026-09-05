@@ -2,8 +2,11 @@
 
 /*
  * Design tokens extracted verbatim from Kompast.dc.html (the approved
- * Claude Design mockup). Do not hand-tune these — if the design changes,
- * re-import via DesignSync and diff this file against the new :root block.
+ * Claude Design mockup), with --accent/--indigo since retuned to match the
+ * Kompast logo's blue/navy gradient (see --accent's comment below) and
+ * --danger split out as its own token. Don't further hand-tune the rest —
+ * if the base design changes, re-import via DesignSync and diff this file
+ * against the new :root block, re-applying the brand-color overrides after.
  */
 :root {
   --bg: #f6f4ef;
@@ -15,9 +18,13 @@
   --text3: #8f9198;
   --border: #e4e0d8;
   --border2: #d3cec3;
-  --accent: #c9432a;
-  --accent-soft: #fae9e4;
-  --indigo: #2f3f6b;
+  /* Brand blue, sampled from the Kompast compass-mark logo's gradient
+     (lighter cyan-blue stop → deep navy stop). --indigo doubles as the
+     "brand mark surface" navy (login hero panel, workspace-switcher swatch)
+     — retune these two if the sampled logo hex ever drifts from this. */
+  --accent: #2f6fea;
+  --accent-soft: #e8f0fe;
+  --indigo: #1b3a6b;
   --indigo-soft: #e7eaf3;
   --green: #1c7a54;
   --green-soft: #dff0e8;
@@ -25,6 +32,12 @@
   --amber-soft: #faedd4;
   --violet: #584a86;
   --violet-soft: #ebe7f6;
+  /* Error/destructive-action color — split out from --accent (which used to
+     double as both brand color and error color) so rebranding --accent to
+     blue doesn't make error states read as less alarming. Values are the
+     OLD --accent/--accent-soft, unchanged in appearance. */
+  --danger: #c9432a;
+  --danger-soft: #fae9e4;
   --shadow: 0 1px 2px rgba(25, 26, 29, 0.06), 0 8px 20px -10px rgba(25, 26, 29, 0.16);
   --grid: rgba(25, 26, 29, 0.05);
 }
@@ -39,9 +52,9 @@
   --text3: #70757e;
   --border: #2a2e36;
   --border2: #3a3f49;
-  --accent: #ff7a55;
-  --accent-soft: #38201a;
-  --indigo: #a3b4e2;
+  --accent: #6c9bff;
+  --accent-soft: #1b2a4a;
+  --indigo: #9fb8f0;
   --indigo-soft: #1d2331;
   --green: #5cc394;
   --green-soft: #11261d;
@@ -49,34 +62,10 @@
   --amber-soft: #2a2113;
   --violet: #ab97e2;
   --violet-soft: #211b33;
+  --danger: #ff7a55;
+  --danger-soft: #38201a;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
   --grid: rgba(255, 255, 255, 0.045);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #101115;
-    --surface: #191b20;
-    --surface2: #1f2229;
-    --surface3: #282c34;
-    --text: #eceef2;
-    --text2: #a3a8b2;
-    --text3: #70757e;
-    --border: #2a2e36;
-    --border2: #3a3f49;
-    --accent: #ff7a55;
-    --accent-soft: #38201a;
-    --indigo: #a3b4e2;
-    --indigo-soft: #1d2331;
-    --green: #5cc394;
-    --green-soft: #11261d;
-    --amber: #e0aa4d;
-    --amber-soft: #2a2113;
-    --violet: #ab97e2;
-    --violet-soft: #211b33;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
-    --grid: rgba(255, 255, 255, 0.045);
-  }
 }
 
 /* Tailwind v4 CSS-first theme: exposes the tokens above as utilities
@@ -101,6 +90,8 @@
   --color-amber-soft: var(--amber-soft);
   --color-violet: var(--violet);
   --color-violet-soft: var(--violet-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
 
   --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Instrument Serif", Georgia, serif;

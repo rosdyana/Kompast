@@ -95,7 +95,7 @@ function MembersPage() {
                 <span>
                   {inv.email} <span className="text-text-3">· {inv.role}</span>
                 </span>
-                <button onClick={() => cancel(inv.id)} className="rounded px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-accent-soft hover:text-accent">
+                <button onClick={() => cancel(inv.id)} className="rounded px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger">
                   Batalkan
                 </button>
               </div>

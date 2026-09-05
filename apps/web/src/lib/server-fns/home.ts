@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { and, eq, ne, schema } from "@kompast/db";
-import { getBoard, withAuthorizedTenant } from "@kompast/core";
+import { getBoard, listTeamsForWorkspace, withAuthorizedTenant } from "@kompast/core";
 import { requireAuthContext } from "../session";
 
 export const getHomeSummaryFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -40,6 +40,21 @@ export const getHomeSummaryFn = createServerFn({ method: "GET" }).handler(async 
       )
       .limit(10);
 
-    return { projects, activeBoard, myTasks };
+    const [membership, teams] = await Promise.all([
+      tx
+        .select({ isSuperAdmin: schema.member.isSuperAdmin })
+        .from(schema.member)
+        .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)))
+        .then((rows) => rows[0]),
+      listTeamsForWorkspace(tx, ctx),
+    ]);
+
+    return {
+      projects,
+      activeBoard,
+      myTasks,
+      isSuperAdmin: membership?.isSuperAdmin ?? false,
+      adminTeamIds: teams.filter((t) => t.myRole === "admin").map((t) => t.id),
+    };
   });
 });

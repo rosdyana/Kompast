@@ -4,6 +4,14 @@ import { id } from "./ids";
 
 export interface CreateProjectInput {
   organizationId: string;
+  /**
+   * Required for every project created through the app going forward
+   * (packages/core's requireTeamAdmin gates the only caller that supplies
+   * one, apps/web/src/lib/server-fns/projects.ts's createProjectFn). The DB
+   * column itself stays nullable — existing null-teamId rows in any
+   * already-running deployment are left alone, no forced backfill.
+   */
+  teamId: string;
   key: string;
   name: string;
   actorUserId: string;
@@ -39,6 +47,7 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
   await tx.insert(schema.project).values({
     id: projectId,
     organizationId: input.organizationId,
+    teamId: input.teamId,
     key: input.key.toUpperCase(),
     name: input.name,
     icon: input.icon,

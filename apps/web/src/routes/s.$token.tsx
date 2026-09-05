@@ -66,7 +66,7 @@ function SharedPage() {
           placeholder="Kata sandi"
           className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] outline-none focus:border-border-2"
         />
-        {error && <p className="mb-2 text-[12px] text-accent">{error}</p>}
+        {error && <p className="mb-2 text-[12px] text-danger">{error}</p>}
         <Button variant="primary" className="w-full" onClick={submitPassword} disabled={loading || !password}>
           Buka
         </Button>

@@ -16,9 +16,11 @@ describe("worklog", () => {
 
   const orgId = "test-worklog-org";
   const userId = "test-worklog-user";
+  const teamId = "test-worklog-team";
 
   async function cleanup() {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -29,6 +31,7 @@ describe("worklog", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "Test Worklog Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "Test User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -38,7 +41,7 @@ describe("worklog", () => {
 
   async function seedIssue() {
     return withAuthorizedTenant({ userId, organizationId: orgId }, async (tx) => {
-      const { projectId, issueTypes, statuses } = await createProject(tx, { organizationId: orgId, key: "wlog", name: "Worklog Test", actorUserId: userId });
+      const { projectId, issueTypes, statuses } = await createProject(tx, { organizationId: orgId, teamId, key: "wlog", name: "Worklog Test", actorUserId: userId });
       const { issueId } = await createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Test issue", reporterId: userId });
       return issueId;
     });

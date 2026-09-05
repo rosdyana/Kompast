@@ -26,6 +26,7 @@ function req(url: string, options: { method?: string; token?: string; body?: unk
 describe("/api/v1/automation/rules", () => {
   const orgId = "test-rest-automation-org";
   const userId = "test-rest-automation-user";
+  const teamId = "test-rest-automation-team";
   let token: string;
   let projectKey: string;
 
@@ -34,6 +35,7 @@ describe("/api/v1/automation/rules", () => {
     await admin.delete(schema.automationEvent).where(eq(schema.automationEvent.organizationId, orgId));
     await admin.delete(schema.automationRule).where(eq(schema.automationRule.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, userId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
@@ -45,10 +47,11 @@ describe("/api/v1/automation/rules", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "REST Automation Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
 
     projectKey = Array.from({ length: 5 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
     await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: projectKey, name: "REST Automation Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: projectKey, name: "REST Automation Test", actorUserId: userId }),
     );
 
     const auth = await getAuth();

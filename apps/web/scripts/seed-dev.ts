@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins/organization";
-import { db, schema, eq } from "@kompast/db";
-import { withAuthorizedTenant, createProject, createIssue } from "@kompast/core";
+import { db, schema, eq, and } from "@kompast/db";
+import { withAuthorizedTenant, createProject, createIssue, setTeamMemberRole } from "@kompast/core";
 import { loadEnv } from "@kompast/env";
 
 const env = loadEnv();
@@ -22,7 +22,11 @@ const seedAuth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "pg", schema }),
-  plugins: [organization({ teams: { enabled: true } })],
+  // defaultTeam disabled — matches apps/web/src/lib/auth.ts's real bootstrap
+  // hook, so this script exercises the same explicit team-creation path
+  // every real deployment goes through instead of relying on the plugin's
+  // implicit "{org name}" team.
+  plugins: [organization({ teams: { enabled: true, defaultTeam: { enabled: false } } })],
 });
 
 /**
@@ -63,10 +67,17 @@ async function main() {
     if (!org) throw new Error("createOrganization returned no result");
     organizationId = org.id;
     console.log(`workspace created: ${organizationId}`);
+    // Mirror apps/web/src/lib/auth.ts's real bootstrap hook: the founding
+    // user is both org "owner" (set by createOrganization) and super admin
+    // (Kompast-only column, not plugin-aware).
+    await db
+      .update(schema.member)
+      .set({ isSuperAdmin: true })
+      .where(and(eq(schema.member.organizationId, organizationId), eq(schema.member.userId, user.id)));
   }
 
-  // project is RLS-protected — this read must go through a scoped tx like
-  // any real request, not the bare `db` (see packages/db/rls.sql).
+  // project/team are RLS-protected — this read must go through a scoped tx
+  // like any real request, not the bare `db` (see packages/db/rls.sql).
   const [existingProject] = await withAuthorizedTenant({ userId: user.id, organizationId }, (tx) =>
     tx.select().from(schema.project).where(eq(schema.project.organizationId, organizationId)),
   );
@@ -76,9 +87,25 @@ async function main() {
     return;
   }
 
+  let [team] = await db.select().from(schema.team).where(eq(schema.team.organizationId, organizationId));
+  if (!team) {
+    const created = await seedAuth.api.createTeam({ body: { name: "Cloud Platform Team", organizationId } });
+    // auth.api.addTeamMember is requireHeaders:true (needs a real session
+    // cookie) — this script has no HTTP request to take one from, unlike
+    // production code (apps/web/src/lib/server-fns/teams.ts always runs
+    // inside a real request). Insert the join row directly and bump the
+    // plugin's own denormalized memberCount to match what addTeamMember
+    // would have done.
+    await db.insert(schema.teamMember).values({ id: `team_member_${randomUUID()}`, teamId: created.id, userId: user.id });
+    await db.update(schema.team).set({ memberCount: 1 }).where(eq(schema.team.id, created.id));
+    await setTeamMemberRole(db, { teamId: created.id, userId: user.id, role: "admin" });
+    [team] = await db.select().from(schema.team).where(eq(schema.team.id, created.id));
+    console.log(`team created: ${team!.name} (${team!.id})`);
+  }
+
   const { projectId, issueTypes, statuses } = await withAuthorizedTenant(
     { userId: user.id, organizationId },
-    (tx) => createProject(tx, { organizationId, key: "KPT", name: "Kompast Core", actorUserId: user.id }),
+    (tx) => createProject(tx, { organizationId, teamId: team!.id, key: "KPT", name: "Kompast Core", actorUserId: user.id }),
   );
   console.log(`project created: KPT (${projectId})`);
 

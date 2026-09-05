@@ -15,12 +15,14 @@ describe("packages/core/import", () => {
 
   const orgId = "test-import-org";
   const userId = "test-import-user";
+  const teamId = "test-import-team";
   const ctx = { userId, organizationId: orgId };
 
   async function cleanup() {
     await admin.delete(schema.externalRef).where(eq(schema.externalRef.organizationId, orgId));
     await admin.delete(schema.importRun).where(eq(schema.importRun.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -31,6 +33,7 @@ describe("packages/core/import", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "Import Test Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -39,7 +42,7 @@ describe("packages/core/import", () => {
   });
 
   async function seedProject() {
-    return withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, key: "imp", name: "Import Test", actorUserId: userId }));
+    return withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "imp", name: "Import Test", actorUserId: userId }));
   }
 
   it("runs the import_run lifecycle: pending -> running -> completed, with counts/errors recorded", async () => {

@@ -237,7 +237,7 @@ function IssueDetailPage() {
                 <span className="font-mono text-[10.5px] text-text-3">{(a.sizeBytes / 1024).toFixed(0)} KB</span>
                 <button
                   onClick={() => removeAttachment(a.id)}
-                  className="rounded px-1 py-0.5 text-[11px] text-text-3 hover:bg-accent-soft hover:text-accent"
+                  className="rounded px-1 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger"
                 >
                   ✕
                 </button>

@@ -142,7 +142,7 @@ function ProjectPage() {
 type BoardData = Awaited<ReturnType<typeof getProjectBoardFn>>;
 
 const PRIORITY_COLOR: Record<string, string> = {
-  highest: "var(--accent)",
+  highest: "var(--danger)",
   high: "var(--amber)",
   medium: "var(--text-3)",
   low: "var(--text-3)",
@@ -732,7 +732,7 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
                       <div key={run.id} className="flex items-center gap-2 text-[11.5px] text-text-3">
                         <span className="font-mono">{new Date(run.createdAt).toLocaleString("id-ID")}</span>
                         <Badge>{run.status}</Badge>
-                        {run.error && <span className="text-accent">{run.error}</span>}
+                        {run.error && <span className="text-danger">{run.error}</span>}
                       </div>
                     ))}
                   </div>

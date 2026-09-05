@@ -10,6 +10,7 @@ import { id } from "../ids";
 describe("automation engine", () => {
   const orgId = "test-automation-org";
   const userId = "test-automation-user";
+  const teamId = "test-automation-team";
 
   async function cleanup() {
     await admin.delete(schema.automationRun).where(eq(schema.automationRun.organizationId, orgId));
@@ -18,6 +19,7 @@ describe("automation engine", () => {
     await admin.delete(schema.notification).where(eq(schema.notification.organizationId, orgId));
     await admin.delete(schema.emailOutbox).where(eq(schema.emailOutbox.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -28,6 +30,7 @@ describe("automation engine", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "Automation Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -38,7 +41,7 @@ describe("automation engine", () => {
 
   async function seedProjectAndIssue() {
     const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "aut", name: "Automation Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "aut", name: "Automation Test", actorUserId: userId }),
     );
     const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
       createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Automation issue", reporterId: userId, storyPoints: 1 }),

@@ -17,9 +17,11 @@ describe("sprint reports", () => {
 
   const orgId = "test-sprintreport-org";
   const userId = "test-sprintreport-user";
+  const teamId = "test-sprintreport-team";
 
   async function cleanup() {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -30,6 +32,7 @@ describe("sprint reports", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "Sprint Report Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -41,7 +44,7 @@ describe("sprint reports", () => {
 
   it("getBurndown shows a flat scope line and a dropping remaining line once an issue is done", async () => {
     const { boardId, issueTypes, statuses, projectId } = await withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "brn", name: "Burndown Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "brn", name: "Burndown Test", actorUserId: userId }),
     );
     const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1", cycle: "1w" }));
 
@@ -67,7 +70,7 @@ describe("sprint reports", () => {
 
   it("getCumulativeFlow counts today's members by status category", async () => {
     const { boardId, issueTypes, statuses, projectId } = await withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "cfd", name: "CFD Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "cfd", name: "CFD Test", actorUserId: userId }),
     );
     const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));
 
@@ -90,7 +93,7 @@ describe("sprint reports", () => {
 
   it("getVelocityHistory returns completed points from past sprints, oldest first", async () => {
     const { boardId, issueTypes, statuses, projectId } = await withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "vel", name: "Velocity Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "vel", name: "Velocity Test", actorUserId: userId }),
     );
 
     const { sprintId: s1 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));

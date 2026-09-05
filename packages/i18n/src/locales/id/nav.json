@@ -1,0 +1,22 @@
+{
+  "workspaceFallback": "Ruang Kerja",
+  "expandSidebar": "Buka sidebar — {{name}}",
+  "collapseSidebar": "Tutup sidebar",
+  "memberCount_other": "Workspace · {{count}} anggota",
+  "home": "Beranda",
+  "askKompast": "Tanya Kompast",
+  "teams": "Tim",
+  "newTeam": "Tim baru",
+  "noTeamsYetSuperAdmin": "Belum ada tim. Buat tim pertama.",
+  "noTeamsYetMember": "Belum ada tim di workspace ini.",
+  "newProject": "Proyek baru",
+  "noProjectsInTeam": "Belum ada proyek di tim ini",
+  "unassignedTeam": "Tanpa tim",
+  "docs": "Dokumen",
+  "trash": "Sampah",
+  "members": "Anggota",
+  "apiToken": "Token API",
+  "apiDocs": "Dokumentasi API",
+  "themeToLight": "Ganti ke tema terang",
+  "themeToDark": "Ganti ke tema gelap"
+}

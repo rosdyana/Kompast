@@ -16,10 +16,12 @@ describe("issue links", () => {
 
   const orgId = "test-ilink-org";
   const userId = "test-ilink-user";
+  const teamId = "test-ilink-team";
   const ctx = { userId, organizationId: orgId };
 
   async function cleanup() {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -30,6 +32,7 @@ describe("issue links", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "Test Issue Link Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -39,7 +42,7 @@ describe("issue links", () => {
 
   async function seedTwoIssues() {
     return withAuthorizedTenant(ctx, async (tx) => {
-      const { projectId, issueTypes, statuses } = await createProject(tx, { organizationId: orgId, key: "ilnk", name: "Issue Link Test", actorUserId: userId });
+      const { projectId, issueTypes, statuses } = await createProject(tx, { organizationId: orgId, teamId, key: "ilnk", name: "Issue Link Test", actorUserId: userId });
       const a = await createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Issue A", reporterId: userId });
       const b = await createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Issue B", reporterId: userId });
       return { issueAId: a.issueId, issueBId: b.issueId };

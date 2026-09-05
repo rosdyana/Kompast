@@ -1,0 +1,11 @@
+{
+  "welcome": "Welcome.",
+  "activeBoard": "Active board",
+  "openBoard": "Open board →",
+  "noBoardYet": "No projects with a board yet.",
+  "projects": "Projects",
+  "noProjectsYet": "No projects yet.",
+  "createProject": "+ Create project",
+  "myTasks": "My tasks",
+  "noOpenTasks": "No open tasks."
+}

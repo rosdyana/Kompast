@@ -1,7 +1,11 @@
 import { HeadContent, Scripts, Outlet, createRootRoute, redirect } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import themeCss from "@kompast/ui/theme.css?url";
+import { ThemeProvider, type Theme } from "@kompast/ui/theme";
+import { I18nextProvider, createI18nInstance, type SupportedLocale } from "@kompast/i18n";
 import { getSetupStatusFn } from "@/lib/server-fns/setup";
+import { getThemeFn } from "@/lib/server-fns/theme";
+import { getRequestLocaleFn } from "@/lib/server-fns/locale";
 
 export const Route = createRootRoute({
   // Gates the ENTIRE app, not just /login: until Microsoft Entra ID is
@@ -13,6 +17,7 @@ export const Route = createRootRoute({
     const status = await getSetupStatusFn();
     if (!status.isConfigured) throw redirect({ to: "/setup" });
   },
+  loader: async () => ({ theme: await getThemeFn(), locale: await getRequestLocaleFn() }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -27,22 +32,39 @@ export const Route = createRootRoute({
         href: "https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap",
       },
       { rel: "stylesheet", href: themeCss },
+      { rel: "icon", href: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+      { rel: "icon", href: "/favicon.png", type: "image/png" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
     ],
   }),
   component: RootComponent,
 });
 
 function RootComponent() {
+  const { theme, locale } = Route.useLoaderData();
+  const i18n = useMemo(() => createI18nInstance(locale), [locale]);
   return (
-    <RootDocument>
-      <Outlet />
+    <RootDocument theme={theme} locale={locale}>
+      <I18nextProvider i18n={i18n}>
+        <ThemeProvider initialTheme={theme}>
+          <Outlet />
+        </ThemeProvider>
+      </I18nextProvider>
     </RootDocument>
   );
 }
 
-function RootDocument({ children }: { children: ReactNode }) {
+function RootDocument({
+  children,
+  theme,
+  locale,
+}: {
+  children: ReactNode;
+  theme: Theme;
+  locale: SupportedLocale;
+}) {
   return (
-    <html lang="id">
+    <html lang={locale} data-theme={theme}>
       <head>
         <HeadContent />
       </head>

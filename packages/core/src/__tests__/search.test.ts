@@ -18,10 +18,14 @@ describe("search", () => {
   const otherOrgId = "test-search-other-org";
   const userId = "test-search-user";
   const otherUserId = "test-search-other-user";
+  const teamId = "test-search-team";
+  const otherTeamId = "test-search-other-team";
 
   async function cleanup() {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, otherOrgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, otherOrgId));
     await admin.delete(schema.member).where(eq(schema.member.userId, userId));
     await admin.delete(schema.member).where(eq(schema.member.userId, otherUserId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
@@ -44,6 +48,10 @@ describe("search", () => {
       { id: id("mem"), organizationId: orgId, userId, role: "member" },
       { id: id("mem"), organizationId: otherOrgId, userId: otherUserId, role: "member" },
     ]);
+    await admin.insert(schema.team).values([
+      { id: teamId, organizationId: orgId, name: "Test Team" },
+      { id: otherTeamId, organizationId: otherOrgId, name: "Other Test Team" },
+    ]);
   });
 
   afterAll(async () => {
@@ -54,7 +62,7 @@ describe("search", () => {
   it("finds issues by a substring of the title, scoped to the caller's org", async () => {
     const { projectId, boardId, issueTypes, statuses } = await withAuthorizedTenant(
       { userId, organizationId: orgId },
-      (tx) => createProject(tx, { organizationId: orgId, key: "srch", name: "Search Test", actorUserId: userId }),
+      (tx) => createProject(tx, { organizationId: orgId, teamId, key: "srch", name: "Search Test", actorUserId: userId }),
     );
     void boardId;
 
@@ -71,7 +79,7 @@ describe("search", () => {
 
     const { projectId: otherProjectId, issueTypes: otherTypes, statuses: otherStatuses } = await withAuthorizedTenant(
       { userId: otherUserId, organizationId: otherOrgId },
-      (tx) => createProject(tx, { organizationId: otherOrgId, key: "othr", name: "Other Project", actorUserId: otherUserId }),
+      (tx) => createProject(tx, { organizationId: otherOrgId, teamId: otherTeamId, key: "othr", name: "Other Project", actorUserId: otherUserId }),
     );
     await withAuthorizedTenant({ userId: otherUserId, organizationId: otherOrgId }, (tx) =>
       createIssue(tx, {
@@ -94,7 +102,7 @@ describe("search", () => {
 
   it("finds an issue by its exact key", async () => {
     const { projectId, issueTypes, statuses } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "keyt", name: "Key Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "keyt", name: "Key Test", actorUserId: userId }),
     );
     await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
       createIssue(tx, {

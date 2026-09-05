@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { and, count, eq, schema } from "@kompast/db";
-import { withAuthorizedTenant } from "@kompast/core";
+import { listTeamsForWorkspace, withAuthorizedTenant } from "@kompast/core";
 import { getCurrentSession } from "../session";
 
 export const getWorkspaceShellFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -8,19 +8,20 @@ export const getWorkspaceShellFn = createServerFn({ method: "GET" }).handler(asy
   if (!session || !session.organizationId) return null;
 
   const ctx = { userId: session.user.id, organizationId: session.organizationId };
-  const [organization, memberCountRow, projects, membership] = await withAuthorizedTenant(ctx, async (tx) => [
+  const [organization, memberCountRow, projects, membership, teams] = await withAuthorizedTenant(ctx, async (tx) => [
     (await tx.select().from(schema.organization).where(eq(schema.organization.id, ctx.organizationId)))[0],
     (await tx.select({ n: count() }).from(schema.member).where(eq(schema.member.organizationId, ctx.organizationId)))[0],
     await tx
-      .select({ id: schema.project.id, key: schema.project.key, name: schema.project.name })
+      .select({ id: schema.project.id, key: schema.project.key, name: schema.project.name, teamId: schema.project.teamId })
       .from(schema.project)
       .where(eq(schema.project.organizationId, ctx.organizationId)),
     (
       await tx
-        .select({ role: schema.member.role })
+        .select({ role: schema.member.role, isSuperAdmin: schema.member.isSuperAdmin })
         .from(schema.member)
         .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)))
     )[0],
+    await listTeamsForWorkspace(tx, ctx),
   ]);
 
   const role = membership?.role ?? "member";
@@ -30,6 +31,8 @@ export const getWorkspaceShellFn = createServerFn({ method: "GET" }).handler(asy
     organization: organization ?? null,
     memberCount: memberCountRow?.n ?? 0,
     projects,
+    teams,
     isAdmin: role === "owner" || role === "admin",
+    isSuperAdmin: membership?.isSuperAdmin ?? false,
   };
 });

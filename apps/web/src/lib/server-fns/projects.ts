@@ -1,7 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { and, eq, inArray, schema } from "@kompast/db";
-import { getBoard, getOrCreateDefaultTableView, updateSavedViewConfig, withAuthorizedTenant } from "@kompast/core";
+import { and, db, eq, inArray, schema } from "@kompast/db";
+import {
+  createProject,
+  getBoard,
+  getOrCreateDefaultTableView,
+  requireTeamAdmin,
+  updateSavedViewConfig,
+  withAuthorizedTenant,
+} from "@kompast/core";
 import { requireAuthContext } from "../session";
 
 export const listProjectsFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -13,6 +20,36 @@ export const listProjectsFn = createServerFn({ method: "GET" }).handler(async ()
       .where(eq(schema.project.organizationId, ctx.organizationId)),
   );
 });
+
+const createProjectSchema = z.object({
+  teamId: z.string(),
+  key: z.string().min(1).max(10),
+  name: z.string().min(1),
+  icon: z.string().optional(),
+});
+
+/**
+ * requireTeamAdmin runs against plain `db` (team/team_member aren't
+ * RLS-scoped, see packages/db/rls.sql) BEFORE opening the RLS-scoped tx —
+ * project IS RLS-scoped, so the actual insert still goes through
+ * withAuthorizedTenant like every other mutation.
+ */
+export const createProjectFn = createServerFn({ method: "POST" })
+  .validator(createProjectSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireTeamAdmin(db, { ...ctx, teamId: data.teamId });
+    return withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, {
+        organizationId: ctx.organizationId,
+        teamId: data.teamId,
+        key: data.key,
+        name: data.name,
+        icon: data.icon,
+        actorUserId: ctx.userId,
+      }),
+    );
+  });
 
 export const getProjectBoardFn = createServerFn({ method: "GET" })
   .validator((projectKey: string) => projectKey)

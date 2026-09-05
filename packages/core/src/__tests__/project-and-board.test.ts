@@ -36,10 +36,12 @@ describe("project + board service layer", () => {
   const otherOrgId = "test-core-other-org";
   const userId = "test-core-user";
   const outsiderId = "test-core-outsider";
+  const teamId = "test-core-team";
 
   async function resetFixtures() {
     await admin.delete(schema.member).where(eq(schema.member.userId, userId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.user).where(eq(schema.user.id, outsiderId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -59,6 +61,7 @@ describe("project + board service layer", () => {
         { id: id("mem"), organizationId: orgId, userId, role: "member" },
         { id: id("mem"), organizationId: otherOrgId, userId, role: "member" },
       ]);
+    await admin.insert(schema.team).values([{ id: teamId, organizationId: orgId, name: "Test Team" }]);
   }
 
   beforeEach(resetFixtures);
@@ -66,6 +69,7 @@ describe("project + board service layer", () => {
   afterAll(async () => {
     await admin.delete(schema.member).where(eq(schema.member.userId, userId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.user).where(eq(schema.user.id, outsiderId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -80,7 +84,7 @@ describe("project + board service layer", () => {
 
   it("seeds a project with default issue types, statuses, and a board whose columns map onto them", async () => {
     const result = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "kpt", name: "Kompast", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "kpt", name: "Kompast", actorUserId: userId }),
     );
 
     expect(result.issueTypes).toHaveLength(5);
@@ -106,7 +110,7 @@ describe("project + board service layer", () => {
 
   it("rejects project access for a project outside the caller's operating organization", async () => {
     const { projectId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "kpt2", name: "K2", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "kpt2", name: "K2", actorUserId: userId }),
     );
 
     // `userId` IS a real member of otherOrgId — this must fail because the
@@ -121,7 +125,7 @@ describe("project + board service layer", () => {
   it("creates issues with sequential per-project keys and ranks new cards after existing ones", async () => {
     const { projectId, boardId, issueTypes, statuses } = await withAuthorizedTenant(
       { userId, organizationId: orgId },
-      (tx) => createProject(tx, { organizationId: orgId, key: "kpt3", name: "K3", actorUserId: userId }),
+      (tx) => createProject(tx, { organizationId: orgId, teamId, key: "kpt3", name: "K3", actorUserId: userId }),
     );
     const taskType = issueTypes.find((t) => t.name === "Task")!;
     const todoStatus = statuses.find((s) => s.name === "To Do")!;
@@ -163,7 +167,7 @@ describe("project + board service layer", () => {
   it("moveIssue changes status and writes issue_history, but only on an actual status change", async () => {
     const { projectId, issueTypes, statuses } = await withAuthorizedTenant(
       { userId, organizationId: orgId },
-      (tx) => createProject(tx, { organizationId: orgId, key: "kpt4", name: "K4", actorUserId: userId }),
+      (tx) => createProject(tx, { organizationId: orgId, teamId, key: "kpt4", name: "K4", actorUserId: userId }),
     );
     const taskType = issueTypes.find((t) => t.name === "Task")!;
     const todoStatus = statuses.find((s) => s.name === "To Do")!;
@@ -216,7 +220,7 @@ describe("project + board service layer", () => {
 
   it("createWorkflowStatus adds a status past the default seed, with a matching board column so it's visible", async () => {
     const { projectId, boardId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "extst", name: "Extra Status Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "extst", name: "Extra Status Test", actorUserId: userId }),
     );
 
     const { statusId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
@@ -236,7 +240,7 @@ describe("project + board service layer", () => {
 
   it("createIssueType adds an issue type past the default seed", async () => {
     const { projectId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "extty", name: "Extra Type Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "extty", name: "Extra Type Test", actorUserId: userId }),
     );
 
     const { typeId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>

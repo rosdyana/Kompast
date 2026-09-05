@@ -24,12 +24,14 @@ function postReq(url: string, token: string, body: unknown) {
 describe("/api/v1/search", () => {
   const orgId = "test-rest-search-org";
   const userId = "test-rest-search-user";
+  const teamId = "test-rest-search-team";
   let token: string;
   let projectKey: string;
 
   async function cleanup() {
     await admin.delete(schema.issue).where(eq(schema.issue.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, userId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
@@ -41,10 +43,11 @@ describe("/api/v1/search", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "REST Search Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
 
     projectKey = Array.from({ length: 5 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
     await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: projectKey, name: "REST Search Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: projectKey, name: "REST Search Test", actorUserId: userId }),
     );
 
     const auth = await getAuth();

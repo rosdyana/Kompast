@@ -39,11 +39,13 @@ function req(url: string, options: { method?: string; token?: string; body?: unk
 describe("/api/v1/issues", () => {
   const orgId = "test-rest-issues-org";
   const userId = "test-rest-issues-user";
+  const teamId = "test-rest-issues-team";
   let token: string;
   let projectKey: string;
 
   async function cleanup() {
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, userId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
@@ -55,13 +57,14 @@ describe("/api/v1/issues", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "REST Issues Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
 
     const ctx = { userId, organizationId: orgId };
     // Letters only: the issue-key parser (here and in search.ts /
     // docs $pageId.tsx) matches /^([a-zA-Z]+)-(\d+)$/ — an established
     // convention across the codebase, not something to special-case here.
     projectKey = Array.from({ length: 5 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
-    await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, key: projectKey, name: "REST Test", actorUserId: userId }));
+    await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: projectKey, name: "REST Test", actorUserId: userId }));
 
     const auth = await getAuth();
     const created = await auth.api.createApiKey({

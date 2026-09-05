@@ -5,7 +5,7 @@ import { genericOAuth, microsoftEntraId } from "better-auth/plugins/generic-oaut
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { apiKey } from "@better-auth/api-key";
 import { loadEnv } from "@kompast/env";
-import { db, schema, eq } from "@kompast/db";
+import { db, schema, eq, and } from "@kompast/db";
 import { getMicrosoftAuthConfig, isOnlyUser, enqueueEmail, withAuthorizedTenant } from "@kompast/core";
 
 const env = loadEnv();
@@ -106,15 +106,29 @@ function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>
               baseURL: env.BETTER_AUTH_URL,
               secret: env.BETTER_AUTH_SECRET,
               database: drizzleAdapter(db, { provider: "pg", schema }),
-              plugins: [organization({ teams: { enabled: true } })],
+              // defaultTeam disabled here too — see buildAuth's organization()
+              // call below for why: team creation must always be an explicit,
+              // super-admin-gated action, never an implicit side effect.
+              plugins: [organization({ teams: { enabled: true, defaultTeam: { enabled: false } } })],
             });
-            await seedAuth.api.createOrganization({
+            const org = await seedAuth.api.createOrganization({
               body: {
                 name: newUser.name || newUser.email,
                 slug: `ws-${newUser.id.slice(0, 12)}`,
                 userId: newUser.id,
               },
             });
+            if (!org) return;
+            // The founding user is both the org's "owner" (set by
+            // createOrganization itself) AND its super admin (Kompast-only
+            // column, not plugin-aware) — see member.isSuperAdmin's doc
+            // comment in packages/db/src/schema/auth.ts for why these two
+            // must always travel together going forward (transferSuperAdmin
+            // enforces the same pairing on every later handoff).
+            await db
+              .update(schema.member)
+              .set({ isSuperAdmin: true })
+              .where(and(eq(schema.member.organizationId, org.id), eq(schema.member.userId, newUser.id)));
           },
         },
       },
@@ -143,7 +157,16 @@ function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>
     },
     plugins: [
       organization({
-        teams: { enabled: true },
+        // defaultTeam.enabled defaults to true, which silently creates an
+        // "{org name}" team (and joins the creator to it) on every
+        // createOrganization call — that would undermine the whole point
+        // of gating team creation to the super admin (packages/core/src/
+        // permissions.ts's requireSuperAdmin): the founding user would get
+        // a team for free, with no explicit action and a confusing
+        // auto-generated name. Disabled so team creation is always the
+        // explicit, gated apps/web/src/lib/server-fns/teams.ts createTeamFn
+        // path — including the first team, via onboarding.
+        teams: { enabled: true, defaultTeam: { enabled: false } },
         // Better Auth never builds the accept-invitation URL itself — the
         // plugin's own docs say so explicitly ("Better Auth doesn't
         // generate invitation URLs"). See sendInvitationEmail's own doc

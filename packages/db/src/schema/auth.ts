@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * Better Auth core + `organization` + `apiKey` + `jwt` plugin tables.
@@ -83,17 +84,44 @@ export const organization = pgTable("organization", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const member = pgTable("member", {
-  id: text("id").primaryKey(),
-  organizationId: text("organization_id")
-    .notNull()
-    .references(() => organization.id, { onDelete: "cascade" }),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  role: text("role").notNull().default("member"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const member = pgTable(
+  "member",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("member"),
+    /**
+     * The workspace's single transferable super admin — distinct from role
+     * "owner"/"admin" (packages/core/src/settings.ts's requireSystemAdmin
+     * treats those as equivalent for /settings access; a workspace can have
+     * several of those). At most one true per organizationId, enforced by
+     * member_org_super_admin_uq below. Set for the founding owner by
+     * apps/web/src/lib/auth.ts's databaseHooks.user.create.after; changed
+     * afterwards only via packages/core/src/permissions.ts's
+     * transferSuperAdmin (atomic unset-old/set-new swap, which also
+     * promotes the new holder's role to at least "admin" if it wasn't —
+     * required so Better Auth's own org+teams plugin endpoints, which check
+     * member.role directly, keep working for the new super admin).
+     */
+    isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // Postgres can't express "at most one true row per organizationId" any
+    // other way short of a trigger. Checked per-statement (not deferred),
+    // which is why transferSuperAdmin does two sequential UPDATEs (unset
+    // old holder, then set new holder) inside one tx, never a single
+    // UPDATE that could momentarily violate it.
+    uniqueIndex("member_org_super_admin_uq")
+      .on(t.organizationId)
+      .where(sql`${t.isSuperAdmin} = true`),
+  ],
+);
 
 export const team = pgTable("team", {
   id: text("id").primaryKey(),
@@ -117,6 +145,16 @@ export const teamMember = pgTable("team_member", {
     .references(() => user.id, { onDelete: "cascade" }),
   /** Plugin-managed uniqueness key preventing duplicate (team, user) rows — not app-facing. */
   membershipKey: text("membership_key").unique(),
+  /**
+   * Kompast-specific — Better Auth's organization+teams plugin has no
+   * concept of a per-team role, only membership. Every row the plugin
+   * itself creates (auth.api.addTeamMember) gets the default "member";
+   * promoted to "admin" only via packages/core/src/team.ts's
+   * setTeamMemberRole. Intended values "admin" | "member", same soft-enum
+   * convention as project_member.role / page_permission.role elsewhere in
+   * this schema — no DB check constraint, validated in TS.
+   */
+  role: text("role").notNull().default("member"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

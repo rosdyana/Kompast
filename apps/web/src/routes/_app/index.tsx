@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Card } from "@kompast/ui/Card";
+import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { getHomeSummaryFn } from "@/lib/server-fns/home";
 
 export const Route = createFileRoute("/_app/")({
@@ -7,24 +8,28 @@ export const Route = createFileRoute("/_app/")({
   component: HomePage,
 });
 
+const INTL_LOCALE: Record<SupportedLocale, string> = { en: "en-US", id: "id-ID", "zh-Hant": "zh-Hant-TW" };
+
 function HomePage() {
   const data = Route.useLoaderData();
+  const { t, i18n } = useTranslation("home");
+  const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
 
   return (
     <div className="mx-auto max-w-[1080px] px-8 pb-[60px] pt-9">
-      <h1 className="mb-[26px] font-serif text-[40px] font-normal tracking-tight">Selamat datang.</h1>
+      <h1 className="mb-[26px] font-serif text-[40px] font-normal tracking-tight">{t("welcome")}</h1>
 
       <div className="grid grid-cols-[1.35fr_1fr] gap-[22px]">
         <div>
           <div className="mb-2.5 flex items-baseline justify-between">
-            <h2 className="text-[13.5px] font-semibold">Board aktif</h2>
+            <h2 className="text-[13.5px] font-semibold">{t("activeBoard")}</h2>
             {data.activeBoard && (
               <Link
                 to="/projects/$projectKey"
                 params={{ projectKey: data.projects[0]!.key }}
                 className="text-xs text-accent"
               >
-                Buka board →
+                {t("openBoard")}
               </Link>
             )}
           </div>
@@ -57,12 +62,21 @@ function HomePage() {
               </div>
             </Card>
           ) : (
-            <Card className="p-4 text-sm text-text-3">Belum ada proyek dengan board.</Card>
+            <Card className="p-4 text-sm text-text-3">{t("noBoardYet")}</Card>
           )}
 
-          <h2 className="mb-2.5 mt-[26px] text-[13.5px] font-semibold">Proyek</h2>
+          <h2 className="mb-2.5 mt-[26px] text-[13.5px] font-semibold">{t("projects")}</h2>
           <Card className="overflow-hidden">
-            {data.projects.length === 0 && <p className="p-4 text-sm text-text-3">Belum ada proyek.</p>}
+            {data.projects.length === 0 && (
+              <div className="p-4 text-sm text-text-3">
+                <p>{t("noProjectsYet")}</p>
+                {(data.isSuperAdmin || data.adminTeamIds.length > 0) && (
+                  <Link to="/projects/new" className="mt-2 inline-block text-accent">
+                    {t("createProject")}
+                  </Link>
+                )}
+              </div>
+            )}
             {data.projects.map((project) => (
               <Link
                 key={project.id}
@@ -78,9 +92,9 @@ function HomePage() {
         </div>
 
         <div>
-          <h2 className="mb-2.5 text-[13.5px] font-semibold">Tugas saya</h2>
+          <h2 className="mb-2.5 text-[13.5px] font-semibold">{t("myTasks")}</h2>
           <Card className="overflow-hidden">
-            {data.myTasks.length === 0 && <p className="p-4 text-sm text-text-3">Tidak ada tugas terbuka.</p>}
+            {data.myTasks.length === 0 && <p className="p-4 text-sm text-text-3">{t("noOpenTasks")}</p>}
             {data.myTasks.map((task) => (
               <div
                 key={task.id}
@@ -90,7 +104,7 @@ function HomePage() {
                 <span className="min-w-0 flex-1 truncate text-[12.5px]">{task.title}</span>
                 {task.dueDate && (
                   <span className="font-mono text-[10px] text-text-3">
-                    {new Date(task.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                    {new Date(task.dueDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" })}
                   </span>
                 )}
               </div>

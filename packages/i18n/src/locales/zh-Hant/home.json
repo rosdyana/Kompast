@@ -1,0 +1,11 @@
+{
+  "welcome": "歡迎回來。",
+  "activeBoard": "進行中看板",
+  "openBoard": "開啟看板 →",
+  "noBoardYet": "尚無附看板的專案。",
+  "projects": "專案",
+  "noProjectsYet": "尚無專案。",
+  "createProject": "+ 建立專案",
+  "myTasks": "我的任務",
+  "noOpenTasks": "沒有待辦任務。"
+}

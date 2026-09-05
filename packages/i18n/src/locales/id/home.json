@@ -1,0 +1,11 @@
+{
+  "welcome": "Selamat datang.",
+  "activeBoard": "Board aktif",
+  "openBoard": "Buka board →",
+  "noBoardYet": "Belum ada proyek dengan board.",
+  "projects": "Proyek",
+  "noProjectsYet": "Belum ada proyek.",
+  "createProject": "+ Buat proyek",
+  "myTasks": "Tugas saya",
+  "noOpenTasks": "Tidak ada tugas terbuka."
+}

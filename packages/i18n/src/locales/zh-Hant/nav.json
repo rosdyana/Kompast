@@ -1,0 +1,22 @@
+{
+  "workspaceFallback": "工作區",
+  "expandSidebar": "開啟側邊欄 — {{name}}",
+  "collapseSidebar": "關閉側邊欄",
+  "memberCount_other": "Workspace · {{count}} 位成員",
+  "home": "首頁",
+  "askKompast": "詢問 Kompast",
+  "teams": "團隊",
+  "newTeam": "新增團隊",
+  "noTeamsYetSuperAdmin": "尚無團隊，建立第一個團隊。",
+  "noTeamsYetMember": "此工作區尚無團隊。",
+  "newProject": "新增專案",
+  "noProjectsInTeam": "此團隊尚無專案",
+  "unassignedTeam": "無團隊",
+  "docs": "文件",
+  "trash": "垃圾桶",
+  "members": "成員",
+  "apiToken": "API 權杖",
+  "apiDocs": "API 文件",
+  "themeToLight": "切換為淺色主題",
+  "themeToDark": "切換為深色主題"
+}

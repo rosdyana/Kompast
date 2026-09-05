@@ -97,7 +97,7 @@ function TokensPage() {
                   {t.expiresAt && ` · kedaluwarsa ${new Date(t.expiresAt).toLocaleDateString("id-ID")}`}
                 </p>
               </div>
-              <button onClick={() => revoke(t.id)} className="flex-none rounded-md px-2 py-1 text-[11.5px] text-text-3 hover:bg-accent-soft hover:text-accent">
+              <button onClick={() => revoke(t.id)} className="flex-none rounded-md px-2 py-1 text-[11.5px] text-text-3 hover:bg-danger-soft hover:text-danger">
                 Cabut
               </button>
             </div>

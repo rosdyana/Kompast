@@ -173,9 +173,9 @@ function DocPage() {
                   <span className="text-text-3">{link.scope === "view" ? "Lihat saja" : "Bisa komentar"}</span>
                   {link.hasPassword && <span className="text-text-3">· dengan kata sandi</span>}
                   {link.revokedAt ? (
-                    <span className="text-accent">· dicabut</span>
+                    <span className="text-danger">· dicabut</span>
                   ) : (
-                    <button onClick={() => revokeShare(link.id)} className="ml-auto text-text-3 hover:text-accent">
+                    <button onClick={() => revokeShare(link.id)} className="ml-auto text-text-3 hover:text-danger">
                       Cabut
                     </button>
                   )}
@@ -245,7 +245,7 @@ function DocPage() {
                       <span className="font-mono text-text-3">#{issue.keySeq}</span>
                     )}
                     <span className="min-w-0 flex-1 truncate">{issue.title}</span>
-                    <button onClick={() => unlinkIssue(issue.id)} className="text-text-3 hover:text-accent">
+                    <button onClick={() => unlinkIssue(issue.id)} className="text-text-3 hover:text-danger">
                       ✕
                     </button>
                   </div>
@@ -264,7 +264,7 @@ function DocPage() {
             <Button variant="outline" className="text-[12px]" onClick={linkIssue} disabled={linkingIssue || !issueKeyInput.trim()}>
               Tautkan tiket
             </Button>
-            {linkIssueError && <span className="self-center text-[11.5px] text-accent">{linkIssueError}</span>}
+            {linkIssueError && <span className="self-center text-[11.5px] text-danger">{linkIssueError}</span>}
           </div>
         </section>
       )}

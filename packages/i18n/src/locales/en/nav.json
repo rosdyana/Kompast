@@ -1,0 +1,23 @@
+{
+  "workspaceFallback": "Workspace",
+  "expandSidebar": "Open sidebar — {{name}}",
+  "collapseSidebar": "Close sidebar",
+  "memberCount_one": "Workspace · {{count}} member",
+  "memberCount_other": "Workspace · {{count}} members",
+  "home": "Home",
+  "askKompast": "Ask Kompast",
+  "teams": "Teams",
+  "newTeam": "New team",
+  "noTeamsYetSuperAdmin": "No teams yet. Create the first one.",
+  "noTeamsYetMember": "No teams in this workspace yet.",
+  "newProject": "New project",
+  "noProjectsInTeam": "No projects in this team yet",
+  "unassignedTeam": "No team",
+  "docs": "Docs",
+  "trash": "Trash",
+  "members": "Members",
+  "apiToken": "API Token",
+  "apiDocs": "API Docs",
+  "themeToLight": "Switch to light theme",
+  "themeToDark": "Switch to dark theme"
+}

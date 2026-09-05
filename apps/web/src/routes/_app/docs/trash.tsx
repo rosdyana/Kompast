@@ -51,7 +51,7 @@ function TrashPage() {
               </Button>
               <button
                 onClick={() => deleteForever(page.id, page.title)}
-                className="rounded-md px-2 py-1 text-[11.5px] text-text-3 hover:bg-accent-soft hover:text-accent"
+                className="rounded-md px-2 py-1 text-[11.5px] text-text-3 hover:bg-danger-soft hover:text-danger"
               >
                 Hapus permanen
               </button>

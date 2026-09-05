@@ -40,6 +40,7 @@ const FIXTURE_ISSUE = {
 describe("/api/v1/imports", () => {
   const orgId = "test-rest-imports-org";
   const userId = "test-rest-imports-user";
+  const teamId = "test-rest-imports-team";
   let token: string;
   let projectKey: string;
 
@@ -47,6 +48,7 @@ describe("/api/v1/imports", () => {
     await admin.delete(schema.externalRef).where(eq(schema.externalRef.organizationId, orgId));
     await admin.delete(schema.importRun).where(eq(schema.importRun.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, userId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
@@ -58,10 +60,11 @@ describe("/api/v1/imports", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "REST Imports Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
 
     projectKey = Array.from({ length: 5 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
     await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      createProject(tx, { organizationId: orgId, key: projectKey, name: "REST Imports Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: projectKey, name: "REST Imports Test", actorUserId: userId }),
     );
 
     const auth = await getAuth();

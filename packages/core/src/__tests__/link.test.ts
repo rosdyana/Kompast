@@ -17,10 +17,12 @@ describe("links", () => {
 
   const orgId = "test-link-org";
   const userId = "test-link-user";
+  const teamId = "test-link-team";
 
   async function cleanup() {
     await admin.delete(schema.link).where(eq(schema.link.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.page).where(eq(schema.page.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
@@ -32,6 +34,7 @@ describe("links", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "Link Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -43,7 +46,7 @@ describe("links", () => {
     const ctx = { userId, organizationId: orgId };
     const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Design doc", actorUserId: userId }));
     const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, { organizationId: orgId, key: "link", name: "Link Test", actorUserId: userId }),
+      createProject(tx, { organizationId: orgId, teamId, key: "link", name: "Link Test", actorUserId: userId }),
     );
     const issue = await withAuthorizedTenant(ctx, (tx) =>
       createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Ship it", reporterId: userId }),
