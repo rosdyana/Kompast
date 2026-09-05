@@ -97,6 +97,12 @@ export async function resolveSprint(tx: Tx, organizationId: string, sprintId: st
   return sprint;
 }
 
+export async function resolveAutomationRule(tx: Tx, organizationId: string, ruleId: string) {
+  const [rule] = await tx.select().from(schema.automationRule).where(and(eq(schema.automationRule.id, ruleId), eq(schema.automationRule.organizationId, organizationId)));
+  if (!rule) throw new ApiError(404, "Not Found", `Automation rule ${ruleId} not found`);
+  return rule;
+}
+
 export async function resolveUserByEmail(tx: Tx, organizationId: string, email: string) {
   const [row] = await tx
     .select({ id: schema.user.id })
