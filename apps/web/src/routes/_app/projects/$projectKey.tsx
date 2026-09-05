@@ -27,6 +27,7 @@ import {
   removeIssueFromSprintFn,
 } from "@/lib/server-fns/sprints";
 import { getRoadmapFn } from "@/lib/server-fns/roadmap";
+import { listAutomationRulesFn, listAutomationRunsFn, createAutomationRuleFn, setAutomationRuleEnabledFn, deleteAutomationRuleFn } from "@/lib/server-fns/automation";
 import { TableView } from "@/components/board/TableView";
 import { DocsTree } from "@/components/docs/DocsTree";
 
@@ -124,10 +125,10 @@ function ProjectPage() {
       {view === "table" && <TableView data={data} />}
       {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
-      {view !== "board" && view !== "sprint" && view !== "table" && view !== "roadmap" && view !== "docs" && (
+      {view === "automation" && <AutomationTab projectId={data.project.id} data={data} />}
+      {view !== "board" && view !== "sprint" && view !== "table" && view !== "roadmap" && view !== "docs" && view !== "automation" && (
         <div className="p-10 text-center text-sm text-text-3">
-          Mode <strong className="text-text-2">{VIEW_TABS.find((t) => t.key === view)?.label}</strong>{" "}
-          belum dibangun — lihat fase di plan (Timeline: P3+, Otomasi: P6).
+          Mode <strong className="text-text-2">{VIEW_TABS.find((t) => t.key === view)?.label}</strong> belum dibangun.
         </div>
       )}
     </div>
@@ -442,6 +443,220 @@ function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+type AutomationRule = Awaited<ReturnType<typeof listAutomationRulesFn>>[number];
+
+type TriggerType = "issue.created" | "issue.updated" | "issue.transitioned" | "issue.assigned" | "issue.commented";
+const TRIGGER_LABEL: Record<TriggerType, string> = {
+  "issue.created": "Tiket dibuat",
+  "issue.updated": "Tiket diubah",
+  "issue.transitioned": "Status berpindah",
+  "issue.assigned": "Ditugaskan",
+  "issue.commented": "Ada komentar baru",
+};
+const ACTION_TYPES = ["add_label", "comment", "transition", "assign"] as const;
+const ACTION_LABEL: Record<(typeof ACTION_TYPES)[number], string> = {
+  add_label: "Tambah label",
+  comment: "Tambah komentar",
+  transition: "Pindahkan status",
+  assign: "Tugaskan ke",
+};
+
+/**
+ * v1 scope: one action per rule, no condition builder in the UI (the
+ * underlying REST API/engine supports full arrays of both — see
+ * packages/core/src/automation.ts — this form just doesn't expose it yet).
+ * The "transition" action picks a board column's first mapped status,
+ * and "assign" only offers users who already appear as an assignee
+ * somewhere on this board (getProjectBoardFn doesn't return the full
+ * workspace member list) — both documented v1 limitations.
+ */
+function AutomationTab({ projectId, data }: { projectId: string; data: BoardData }) {
+  const [rules, setRules] = useState<AutomationRule[] | null>(null);
+  const [runsByRule, setRunsByRule] = useState<Record<string, Awaited<ReturnType<typeof listAutomationRunsFn>>>>({});
+  const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [triggerType, setTriggerType] = useState<keyof typeof TRIGGER_LABEL>("issue.transitioned");
+  const [actionType, setActionType] = useState<(typeof ACTION_TYPES)[number]>("add_label");
+  const [actionLabel, setActionLabel] = useState("");
+  const [actionText, setActionText] = useState("");
+  const [actionStatusId, setActionStatusId] = useState(data.columns[0]?.statusIds[0] ?? "");
+  const [actionAssigneeId, setActionAssigneeId] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function refresh() {
+    setRules(await listAutomationRulesFn({ data: projectId }));
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  async function createRule() {
+    if (!name.trim()) return;
+    const action =
+      actionType === "add_label"
+        ? { type: "add_label" as const, label: actionLabel }
+        : actionType === "comment"
+          ? { type: "comment" as const, text: actionText }
+          : actionType === "transition"
+            ? { type: "transition" as const, toStatusId: actionStatusId }
+            : { type: "assign" as const, assigneeId: actionAssigneeId || null };
+
+    setCreating(true);
+    try {
+      await createAutomationRuleFn({ data: { projectId, name: name.trim(), trigger: { type: triggerType }, actions: [action] } });
+      setName("");
+      setActionLabel("");
+      setActionText("");
+      await refresh();
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function toggleEnabled(ruleId: string, enabled: boolean) {
+    setBusy(true);
+    try {
+      await setAutomationRuleEnabledFn({ data: { ruleId, enabled } });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeRule(ruleId: string) {
+    setBusy(true);
+    try {
+      await deleteAutomationRuleFn({ data: ruleId });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleRuns(ruleId: string) {
+    if (expandedRuleId === ruleId) {
+      setExpandedRuleId(null);
+      return;
+    }
+    setExpandedRuleId(ruleId);
+    if (!runsByRule[ruleId]) {
+      const runs = await listAutomationRunsFn({ data: ruleId });
+      setRunsByRule((r) => ({ ...r, [ruleId]: runs }));
+    }
+  }
+
+  if (rules === null) return <p className="p-6 text-sm text-text-3">Memuat…</p>;
+
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <p className="mb-3 text-[13px] font-semibold">Aturan baru</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
+            Nama
+            <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
+          </label>
+          <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
+            Ketika
+            <select value={triggerType} onChange={(e) => setTriggerType(e.target.value as keyof typeof TRIGGER_LABEL)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+              {Object.entries(TRIGGER_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
+            Maka
+            <select value={actionType} onChange={(e) => setActionType(e.target.value as (typeof ACTION_TYPES)[number])} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+              {ACTION_TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {ACTION_LABEL[value]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {actionType === "add_label" && (
+            <input value={actionLabel} onChange={(e) => setActionLabel(e.target.value)} placeholder="nama label" className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
+          )}
+          {actionType === "comment" && (
+            <input value={actionText} onChange={(e) => setActionText(e.target.value)} placeholder="isi komentar" className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
+          )}
+          {actionType === "transition" && (
+            <select value={actionStatusId} onChange={(e) => setActionStatusId(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+              {data.columns.map((c) => (
+                <option key={c.id} value={c.statusIds[0] ?? ""}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {actionType === "assign" && (
+            <select value={actionAssigneeId} onChange={(e) => setActionAssigneeId(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+              <option value="">(kosongkan penugasan)</option>
+              {data.users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <Button variant="primary" className="text-[12.5px]" onClick={createRule} disabled={creating}>
+            + Aturan
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {rules.length === 0 && <p className="text-[12.5px] text-text-3">Belum ada aturan otomasi.</p>}
+        {rules.map((rule) => (
+          <div key={rule.id} className="rounded-xl border border-border bg-surface p-3.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-semibold">{rule.name}</span>
+              {rule.dryRun && <Badge>uji coba</Badge>}
+              <span className="text-[11.5px] text-text-3">
+                {TRIGGER_LABEL[(rule.trigger as { type: TriggerType }).type] ?? (rule.trigger as { type: string }).type}
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <button onClick={() => toggleRuns(rule.id)} className="text-[11.5px] text-text-3 hover:text-text">
+                  Riwayat
+                </button>
+                <label className="flex items-center gap-1.5 text-[11.5px] text-text-3">
+                  <input type="checkbox" checked={rule.enabled} disabled={busy} onChange={(e) => toggleEnabled(rule.id, e.target.checked)} />
+                  Aktif
+                </label>
+                <Button variant="outline" className="text-[11px]" onClick={() => removeRule(rule.id)} disabled={busy}>
+                  Hapus
+                </Button>
+              </div>
+            </div>
+            {expandedRuleId === rule.id && (
+              <div className="mt-2.5 border-t border-border pt-2.5">
+                {!runsByRule[rule.id] || runsByRule[rule.id]!.length === 0 ? (
+                  <p className="text-[11.5px] text-text-3">Belum ada riwayat berjalan.</p>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {runsByRule[rule.id]!.map((run) => (
+                      <div key={run.id} className="flex items-center gap-2 text-[11.5px] text-text-3">
+                        <span className="font-mono">{new Date(run.createdAt).toLocaleString("id-ID")}</span>
+                        <Badge>{run.status}</Badge>
+                        {run.error && <span className="text-accent">{run.error}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
