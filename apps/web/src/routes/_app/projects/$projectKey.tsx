@@ -124,7 +124,7 @@ function ProjectPage() {
       </div>
 
       {view === "board" && <BoardView data={data} />}
-      {view === "sprint" && <SprintTab projectId={data.project.id} boardId={data.board.id} />}
+      {view === "sprint" && <SprintTab projectId={data.project.id} boardId={data.board.id} boardData={data} />}
       {view === "table" && <TableView data={data} />}
       {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
@@ -206,7 +206,7 @@ type SprintDetail = Awaited<ReturnType<typeof getSprintDetailFn>>;
 
 const SPRINT_STATE_LABEL: Record<string, string> = { future: "Belum mulai", active: "Berjalan", closed: "Selesai" };
 
-function SprintTab({ projectId, boardId }: { projectId: string; boardId: string }) {
+function SprintTab({ projectId, boardId, boardData }: { projectId: string; boardId: string; boardData: BoardData }) {
   const [sprints, setSprints] = useState<SprintSummary[] | null>(null);
   const [backlog, setBacklog] = useState<BacklogIssue[] | null>(null);
   const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
@@ -431,8 +431,31 @@ function SprintTab({ projectId, boardId }: { projectId: string; boardId: string 
           ))}
         </div>
       </div>
+
+      {detail && detail.issues.length > 0 && (
+        <div className="col-span-2 rounded-xl border border-border bg-surface">
+          <p className="p-3 pb-0 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">Tinjauan sprint</p>
+          <SprintReviewTable boardData={boardData} sprintIssueIds={new Set(detail.issues.map((i) => i.id))} />
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * Reuses TableView verbatim (same grouping/sort/inline links, same
+ * project-level saved-view config) filtered down to just this sprint's
+ * issues — the plan's "sprint review = the sprint's view in table mode
+ * with grouping" ask, without a separate saved_view row per sprint (one
+ * project-level table preference is shared across the Tabel tab and
+ * every sprint's review here, a deliberate simplification). Cells are
+ * still read-only (linking out to the issue detail page to edit) — full
+ * inline-cell editing is a separate, larger gap that applies to the
+ * whole table view feature, not unique to sprint review.
+ */
+function SprintReviewTable({ boardData, sprintIssueIds }: { boardData: BoardData; sprintIssueIds: Set<string> }) {
+  const filtered: BoardData = { ...boardData, columns: boardData.columns.map((c) => ({ ...c, issues: c.issues.filter((i) => sprintIssueIds.has(i.id)) })) };
+  return <TableView data={filtered} />;
 }
 
 type RoadmapEpic = Awaited<ReturnType<typeof getRoadmapFn>>[number];
