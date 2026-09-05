@@ -36,6 +36,18 @@ describe("local storage driver", () => {
     expect(() => resolveLocalPath("issue-attachments/fine.png")).not.toThrow();
   });
 
+  it("putObject writes bytes directly to disk, readable back exactly", async () => {
+    const key = "issue-attachments/put-object-test.bin";
+    const bytes = Buffer.from("real file bytes, not a signed URL round-trip");
+    await driver.putObject(key, bytes, { contentType: "application/octet-stream" });
+
+    const { readFile } = await import("node:fs/promises");
+    const written = await readFile(resolveLocalPath(key));
+    expect(written).toEqual(bytes);
+
+    await driver.delete(key);
+  });
+
   it("delete actually removes the file from disk", async () => {
     const key = "issue-attachments/delete-me.txt";
     const path = resolveLocalPath(key);

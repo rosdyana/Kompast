@@ -36,5 +36,9 @@ export function createGcsDriver(): StorageDriver {
     async delete(key) {
       await bucket.file(key).delete({ ignoreNotFound: true });
     },
+
+    async putObject(key, data, { contentType }) {
+      await bucket.file(key).save(data, { contentType, resumable: false });
+    },
   };
 }

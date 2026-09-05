@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { loadEnv } from "@kompast/env";
 import type { StorageDriver, UploadUrlResult } from "./types";
@@ -79,6 +79,12 @@ export function createLocalDriver(): StorageDriver {
       // Server-initiated, unlike upload/download — no signed URL needed,
       // packages/storage can touch disk directly for this one operation.
       await rm(resolveLocalPath(key), { force: true });
+    },
+
+    async putObject(key, data) {
+      const path = resolveLocalPath(key);
+      await ensureLocalDir(path);
+      await writeFile(path, data);
     },
   };
 }
