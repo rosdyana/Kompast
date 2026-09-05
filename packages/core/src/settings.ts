@@ -34,20 +34,38 @@ export async function getMicrosoftAuthConfig(db: AnyDb) {
   };
 }
 
+export interface MicrosoftAuthSettingsView {
+  tenantId: string | null;
+  clientId: string | null;
+  hasClientSecret: boolean;
+}
+
+/** Masked view for the admin-gated re-edit form (see /settings) — never echoes the decrypted client secret back, same treatment as getAiSettings/getMailSettings. */
+export async function getMicrosoftAuthSettingsView(db: AnyDb): Promise<MicrosoftAuthSettingsView> {
+  const row = await getRow(db);
+  return {
+    tenantId: row?.microsoftTenantId ?? null,
+    clientId: row?.microsoftClientId ?? null,
+    hasClientSecret: Boolean(row?.microsoftClientSecretEncrypted),
+  };
+}
+
 export interface CompleteSetupInput {
   tenantId: string;
   clientId: string;
-  clientSecret: string;
+  /** Omit on a re-edit to keep the existing stored secret — same "blank means unchanged" convention as updateAiSettings/updateMailSettings. Required on the very first call (there's nothing to keep yet). */
+  clientSecret?: string;
   /** Optional because the very first call happens before any user exists — nobody to attribute it to yet. */
   updatedBy?: string;
 }
 
 /**
- * One-time bootstrap write. Callers (the /setup server function) must
- * check getSetupStatus() first and refuse to run this if already
- * configured — this function itself doesn't re-check, so it stays a plain
- * upsert usable for later re-editing by a real admin too (see
- * updateMicrosoftAuthConfig below, which is the same operation post-setup).
+ * Bootstrap write AND the later admin re-edit path — same function both
+ * times, per its own callers: /setup (which checks getSetupStatus() first
+ * and refuses to run this if already configured) and the admin-gated
+ * /settings re-edit form (apps/web/src/lib/server-fns/settings.ts's
+ * updateMicrosoftAuthFn, requireSystemAdmin-gated, always calls
+ * invalidateAuthCache() after).
  */
 export async function completeSetup(db: AnyDb, input: CompleteSetupInput) {
   if (!MICROSOFT_TENANT_GUID_RE.test(input.tenantId)) {
@@ -61,7 +79,7 @@ export async function completeSetup(db: AnyDb, input: CompleteSetupInput) {
       id: SYSTEM_SETTINGS_ID,
       microsoftTenantId: input.tenantId,
       microsoftClientId: input.clientId,
-      microsoftClientSecretEncrypted: encryptSecret(input.clientSecret),
+      microsoftClientSecretEncrypted: input.clientSecret ? encryptSecret(input.clientSecret) : null,
       updatedBy: input.updatedBy,
       updatedAt: new Date(),
     })
@@ -70,7 +88,7 @@ export async function completeSetup(db: AnyDb, input: CompleteSetupInput) {
       set: {
         microsoftTenantId: input.tenantId,
         microsoftClientId: input.clientId,
-        microsoftClientSecretEncrypted: encryptSecret(input.clientSecret),
+        ...(input.clientSecret ? { microsoftClientSecretEncrypted: encryptSecret(input.clientSecret) } : {}),
         updatedBy: input.updatedBy,
         updatedAt: new Date(),
       },

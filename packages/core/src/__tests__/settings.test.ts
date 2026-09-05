@@ -4,6 +4,7 @@ import { encryptSecret, decryptSecret } from "../crypto";
 import {
   getSetupStatus,
   getMicrosoftAuthConfig,
+  getMicrosoftAuthSettingsView,
   completeSetup,
   getAiSettings,
   updateAiSettings,
@@ -110,6 +111,19 @@ describe("system settings", () => {
     const cfg = await getMicrosoftAuthConfig(db);
     expect(cfg?.clientId).toBe("second");
     expect(cfg?.clientSecret).toBe("second-secret");
+  });
+
+  it("re-running completeSetup with no clientSecret keeps the previously stored one (the /settings re-edit path)", async () => {
+    await completeSetup(db, { tenantId: "11111111-1111-1111-1111-111111111111", clientId: "first", clientSecret: "keep-me-secret", updatedBy });
+    await completeSetup(db, { tenantId: "11111111-1111-1111-1111-111111111111", clientId: "renamed", updatedBy });
+
+    const cfg = await getMicrosoftAuthConfig(db);
+    expect(cfg?.clientId).toBe("renamed");
+    expect(cfg?.clientSecret).toBe("keep-me-secret");
+
+    const view = await getMicrosoftAuthSettingsView(db);
+    expect(view).toEqual({ tenantId: "11111111-1111-1111-1111-111111111111", clientId: "renamed", hasClientSecret: true });
+    expect(JSON.stringify(view)).not.toContain("keep-me-secret");
   });
 
   it("AI settings: hasApiKey reflects presence without ever exposing the key, update preserves key when omitted", async () => {

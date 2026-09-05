@@ -2,7 +2,7 @@ import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
-import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn } from "@/lib/server-fns/settings";
+import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn } from "@/lib/server-fns/settings";
 
 export const Route = createFileRoute("/_app/settings")({
   loader: async () => {
@@ -25,11 +25,85 @@ function SettingsPage() {
       <h1 className="mb-1 text-2xl font-semibold tracking-tight">Pengaturan workspace</h1>
       <p className="mb-8 text-sm text-text-2">Konfigurasi vendor AI dan email untuk seluruh deployment ini.</p>
 
-      <AiSection initial={data.ai} />
+      <EntraSection initial={data.entra} />
+      <div className="mt-8">
+        <AiSection initial={data.ai} />
+      </div>
       <div className="mt-8">
         <MailSection initial={data.mail} />
       </div>
     </div>
+  );
+}
+
+function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["entra"] }) {
+  const router = useRouter();
+  const [tenantId, setTenantId] = useState(initial.tenantId ?? "");
+  const [clientId, setClientId] = useState(initial.clientId ?? "");
+  const [clientSecret, setClientSecret] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await updateMicrosoftAuthFn({ data: { tenantId: tenantId.trim(), clientId: clientId.trim(), clientSecret: clientSecret || undefined } });
+      setClientSecret("");
+      setSaved(true);
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan konfigurasi Entra ID");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="mb-3 text-[13px] font-semibold">Microsoft Entra ID</h2>
+      <Card className="flex flex-col gap-4 p-4">
+        <p className="rounded-[7px] border border-dashed border-border-2 bg-surface-2 p-3 text-[12px] leading-relaxed text-text-2">
+          ⚠️ Sebuah Tenant ID yang salah (bukan salah format, tapi GUID yang valid namun keliru) membuat <strong>seluruh aplikasi</strong> gagal —
+          bukan hanya login Microsoft — karena setiap permintaan yang memeriksa sesi memicu penemuan OIDC langsung ke tenant tersebut. Periksa kembali
+          sebelum menyimpan.
+        </p>
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">Tenant ID</span>
+          <input
+            value={tenantId}
+            onChange={(e) => setTenantId(e.target.value)}
+            placeholder="11111111-1111-1111-1111-111111111111"
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">Client ID</span>
+          <input value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none" />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-medium text-text-2">
+            Client Secret {initial.hasClientSecret && <span className="text-text-3">(tersimpan — kosongkan untuk tidak mengubah)</span>}
+          </span>
+          <input
+            type="password"
+            value={clientSecret}
+            onChange={(e) => setClientSecret(e.target.value)}
+            placeholder={initial.hasClientSecret ? "••••••••" : ""}
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+          />
+        </label>
+        <div className="flex items-center gap-2.5">
+          <Button variant="primary" onClick={save} disabled={saving || !tenantId.trim() || !clientId.trim()}>
+            {saving ? "Menyimpan…" : "Simpan"}
+          </Button>
+          {saved && <span className="text-[12px] text-green">Tersimpan.</span>}
+          {error && <span className="text-[12px] text-red-500">{error}</span>}
+        </div>
+      </Card>
+    </section>
   );
 }
 
