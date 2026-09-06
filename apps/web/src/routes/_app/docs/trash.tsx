@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { PageContainer } from "@kompast/ui/PageContainer";
 import { PageHeader } from "@kompast/ui/PageHeader";
@@ -31,25 +32,25 @@ function TrashPage() {
 
   return (
     <PageContainer width="reading">
-      <Link to="/docs" className="mb-1 inline-block text-xs text-text-3 hover:text-text-2">
-        ← {t("docsBrand")}
+      <Link to="/docs" className="mb-1 inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-2">
+        <ArrowLeft size={13} strokeWidth={1.75} /> {t("docsBrand")}
       </Link>
       <PageHeader title={t("trash.trashHeading")} />
 
       {pages.length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-text-3">
+        <div className="rounded-xl border border-border bg-surface p-10 text-center type-body text-text-3">
           {t("trash.trashEmpty")}
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
           {pages.map((page) => (
-            <div key={page.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2.5 text-[13px]">
+            <div key={page.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2.5 type-body">
               <span>{page.icon || "▭"}</span>
               <span className="min-w-0 flex-1 truncate">{page.title || t("untitled")}</span>
-              <span className="flex-none text-[11px] text-text-3">
+              <span className="flex-none type-label text-text-3">
                 {page.archivedAt ? t("trash.archivedOn", { date: new Date(page.archivedAt).toLocaleDateString(intlLocale) }) : ""}
               </span>
-              <Button variant="outline" className="text-[11.5px]" onClick={() => restore(page.id)}>
+              <Button variant="outline" onClick={() => restore(page.id)}>
                 {t("restore")}
               </Button>
               <button

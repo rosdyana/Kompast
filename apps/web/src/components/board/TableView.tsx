@@ -1,5 +1,6 @@
 import { Fragment, useState } from "react";
 import { useRouter, Link } from "@tanstack/react-router";
+import { ArrowUp, ArrowDown } from "lucide-react";
 import { Avatar } from "@kompast/ui/Avatar";
 import type { TableViewConfig } from "@kompast/core";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
@@ -82,7 +83,7 @@ export function TableView({ data }: { data: BoardData }) {
           <select
             value={config.groupBy}
             onChange={(e) => updateConfig({ groupBy: e.target.value as typeof config.groupBy })}
-            className="kp-select rounded-[7px] border border-border bg-surface px-1.5 py-1 text-[12px]"
+            className="kp-select rounded-[7px] border border-border bg-surface px-1.5 py-1 text-[12.5px]"
           >
             <option value="column">{t("tableView.groupByColumn")}</option>
             <option value="assignee">{t("tableView.groupByAssignee")}</option>
@@ -94,7 +95,7 @@ export function TableView({ data }: { data: BoardData }) {
           <select
             value={config.sortBy}
             onChange={(e) => updateConfig({ sortBy: e.target.value as typeof config.sortBy })}
-            className="kp-select rounded-[7px] border border-border bg-surface px-1.5 py-1 text-[12px]"
+            className="kp-select rounded-[7px] border border-border bg-surface px-1.5 py-1 text-[12.5px]"
           >
             <option value="rank">{t("tableView.sortByRank")}</option>
             <option value="priority">{t("tableView.sortByPriority")}</option>
@@ -104,15 +105,15 @@ export function TableView({ data }: { data: BoardData }) {
           </select>
           <button
             onClick={() => updateConfig({ sortDir: config.sortDir === "asc" ? "desc" : "asc" })}
-            className="rounded-[7px] border border-border px-1.5 py-1 text-[12px] hover:bg-surface-3"
+            className="rounded-[7px] border border-border px-1.5 py-1 hover:bg-surface-3"
           >
-            {config.sortDir === "asc" ? "↑" : "↓"}
+            {config.sortDir === "asc" ? <ArrowUp size={14} strokeWidth={1.75} /> : <ArrowDown size={14} strokeWidth={1.75} />}
           </button>
         </label>
       </div>
 
       {error && (
-        <p className="mb-3 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>
+        <p className="mb-3 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>
       )}
 
       <div className="overflow-x-auto rounded-xl border border-border">
@@ -134,7 +135,7 @@ export function TableView({ data }: { data: BoardData }) {
               <Fragment key={group.label || `group-${i}`}>
                 {group.label && (
                   <tr className="bg-surface-2">
-                    <td colSpan={8} className="px-3 py-1.5 text-[11px] font-semibold text-text-2">
+                    <td colSpan={8} className="px-3 py-1.5 type-body font-semibold text-text-2">
                       {group.label} · {group.issues.length}
                     </td>
                   </tr>

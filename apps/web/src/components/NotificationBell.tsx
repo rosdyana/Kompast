@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { Bell } from "lucide-react";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { listNotificationsFn, markNotificationReadFn, markAllNotificationsReadFn } from "@/lib/server-fns/notifications";
 
@@ -51,9 +52,9 @@ export function NotificationBell() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative grid h-[29px] w-[29px] place-items-center rounded-[7px] border border-border bg-surface text-xs hover:bg-surface-3"
+        className="relative grid h-[29px] w-[29px] place-items-center rounded-[7px] border border-border bg-surface hover:bg-surface-3"
       >
-        🔔
+        <Bell size={15} strokeWidth={1.75} />
         {unreadCount > 0 && (
           <span className="absolute -right-1 -top-1 grid h-[15px] min-w-[15px] place-items-center rounded-full bg-danger px-1 text-[9px] font-bold text-white">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -64,14 +65,14 @@ export function NotificationBell() {
       {open && (
         <div className="absolute right-0 top-[36px] z-50 w-[320px] rounded-[10px] border border-border bg-surface shadow-kp">
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <span className="text-[12.5px] font-semibold">{t("bellTitle")}</span>
+            <span className="type-headline">{t("bellTitle")}</span>
             <button onClick={handleMarkAllRead} className="text-[11px] text-text-3 hover:text-text">
               {t("markAllRead")}
             </button>
           </div>
           <div className="max-h-[360px] overflow-y-auto">
             {!data || data.notifications.length === 0 ? (
-              <p className="p-4 text-center text-[12.5px] text-text-3">{t("noNotifications")}</p>
+              <p className="p-4 text-center type-body text-text-3">{t("noNotifications")}</p>
             ) : (
               data.notifications.map((n) => (
                 <button
@@ -82,7 +83,7 @@ export function NotificationBell() {
                 >
                   <span className="text-[12.5px] font-medium leading-snug">{n.title}</span>
                   {n.body && <span className="truncate text-[11.5px] text-text-3">{n.body}</span>}
-                  <span className="font-mono text-[10px] text-text-3">{new Date(n.createdAt).toLocaleString(intlLocale)}</span>
+                  <span className="type-label text-text-3">{new Date(n.createdAt).toLocaleString(intlLocale)}</span>
                 </button>
               ))
             )}

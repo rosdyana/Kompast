@@ -61,13 +61,13 @@ function TeamManagementPage() {
       <PageHeader title={t("manageTeamHeading")} subtitle={t("manageTeamSubtitle")} />
 
       <section className="mb-8">
-        <h2 className="mb-3 text-[13px] font-semibold">{t("addMemberHeading")}</h2>
+        <h2 className="mb-3 type-headline">{t("addMemberHeading")}</h2>
         <Card className="flex flex-col gap-3 p-4">
           <div className="flex gap-2">
             <select
               value={candidateUserId}
               onChange={(e) => setCandidateUserId(e.target.value)}
-              className="kp-select min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              className="kp-select min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
             >
               <option value="">{t("teamMemberSelectPlaceholder")}</option>
               {data.candidates.map((c) => (
@@ -81,14 +81,14 @@ function TeamManagementPage() {
             </Button>
           </div>
           {data.candidates.length === 0 && (
-            <p className="text-[12px] text-text-3">{t("allMembersAlready")}</p>
+            <p className="type-body text-text-3">{t("allMembersAlready")}</p>
           )}
-          {error && <p className="text-[12px] text-danger">{error}</p>}
+          {error && <p className="type-body text-danger">{error}</p>}
         </Card>
       </section>
 
       <section>
-        <h2 className="mb-3 text-[13px] font-semibold">{t("teamMembersHeading")}</h2>
+        <h2 className="mb-3 type-headline">{t("teamMembersHeading")}</h2>
         <div className="flex flex-col gap-1.5">
           {data.members.map((m) => (
             <div key={m.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2 text-[12.5px]">
@@ -99,7 +99,7 @@ function TeamManagementPage() {
                 onChange={(e) => setRole(m.userId, e.target.value as "admin" | "member")}
                 disabled={m.role === "admin" && adminCount <= 1}
                 title={m.role === "admin" && adminCount <= 1 ? t("needsAdminTitle") : undefined}
-                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
               >
                 <option value="member">{t("memberRoleLabel")}</option>
                 <option value="admin">{t("adminRoleLabel")}</option>

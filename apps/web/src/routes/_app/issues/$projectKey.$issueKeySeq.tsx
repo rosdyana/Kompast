@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { ArrowLeft, Paperclip, X } from "lucide-react";
 import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
@@ -141,29 +142,28 @@ function IssueDetailPage() {
       <Link
         to="/projects/$projectKey"
         params={{ projectKey: data.project.key }}
-        className="mb-4 inline-block text-xs text-text-3 hover:text-text-2"
+        className="mb-4 inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-2"
       >
-        ← {data.project.name}
+        <ArrowLeft size={13} strokeWidth={1.75} /> {data.project.name}
       </Link>
 
       <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_260px]">
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
-            <span className="font-mono text-[12px] text-text-3">
+            <span className="type-label text-text-3">
               {data.project.key}-{data.issue.keySeq}
             </span>
             {data.type && <Badge tone="indigo">{data.type.name}</Badge>}
             {data.status && <Badge tone="green">{data.status.name}</Badge>}
           </div>
-          <h1 className="mb-8 text-2xl font-semibold tracking-tight">{data.issue.title}</h1>
+          <h1 className="mb-8 type-title">{data.issue.title}</h1>
 
           <section className="mb-8">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-[13px] font-semibold">{t("descriptionHeading")}</h2>
+              <h2 className="type-headline">{t("descriptionHeading")}</h2>
               {!editingDescription && (
                 <Button
                   variant="outline"
-                  className="text-[12px]"
                   onClick={() => {
                     setDescriptionDraft(initialDescription);
                     setEditingDescription(true);
@@ -180,31 +180,31 @@ function IssueDetailPage() {
                   onChange={(e) => setDescriptionDraft(e.target.value)}
                   rows={6}
                   placeholder={t("descriptionPlaceholder")}
-                  className="w-full rounded-[7px] border border-border bg-surface p-3 text-[13px] outline-none focus:border-border-2"
+                  className="w-full rounded-[7px] border border-border bg-surface p-3 text-[12.5px] outline-none focus:border-border-2"
                 />
                 <div className="flex items-center gap-2">
-                  <Button variant="primary" className="text-[12px]" onClick={saveDescription} disabled={savingDescription}>
+                  <Button variant="primary" onClick={saveDescription} disabled={savingDescription}>
                     {savingDescription ? t("savingEllipsis") : t("save")}
                   </Button>
-                  <Button variant="outline" className="text-[12px]" onClick={() => setEditingDescription(false)} disabled={savingDescription}>
+                  <Button variant="outline" onClick={() => setEditingDescription(false)} disabled={savingDescription}>
                     {t("cancel")}
                   </Button>
-                  <Button variant="outline" className="text-[12px]" onClick={generateAiDescriptionDraft} disabled={aiDraftBusy}>
+                  <Button variant="outline" onClick={generateAiDescriptionDraft} disabled={aiDraftBusy}>
                     {aiDraftBusy ? t("aiDraftingEllipsis") : t("aiDraftButton")}
                   </Button>
                 </div>
               </div>
             ) : initialDescription ? (
-              <p className="whitespace-pre-wrap text-[13px] leading-snug text-text-2">{initialDescription}</p>
+              <p className="whitespace-pre-wrap type-body leading-snug text-text-2">{initialDescription}</p>
             ) : (
-              <p className="text-sm text-text-3">{t("noDescriptionYet")}</p>
+              <p className="type-body text-text-3">{t("noDescriptionYet")}</p>
             )}
           </section>
 
           <section className="mb-8">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-[13px] font-semibold">{t("attachmentsHeading")}</h2>
-              <Button variant="outline" className="text-[12px]" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              <h2 className="type-headline">{t("attachmentsHeading")}</h2>
+              <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                 {uploading ? t("uploadingEllipsis") : t("attachButton")}
               </Button>
               <input
@@ -218,26 +218,26 @@ function IssueDetailPage() {
               />
             </div>
             {data.attachments.length === 0 ? (
-              <p className="text-sm text-text-3">{t("noAttachmentsYet")}</p>
+              <p className="type-body text-text-3">{t("noAttachmentsYet")}</p>
             ) : (
               <div className="flex flex-col gap-1.5">
                 {data.attachments.map((a) => (
                   <div key={a.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2">
-                    <span className="text-[13px]">▭</span>
+                    <Paperclip size={14} strokeWidth={1.75} className="flex-none text-text-3" />
                     <a
                       href={a.downloadUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="min-w-0 flex-1 truncate text-[13px] text-accent hover:underline"
+                      className="min-w-0 flex-1 truncate type-body text-accent hover:underline"
                     >
                       {a.fileName}
                     </a>
-                    <span className="font-mono text-[10.5px] text-text-3">{(a.sizeBytes / 1024).toFixed(0)} KB</span>
+                    <span className="type-label text-text-3">{(a.sizeBytes / 1024).toFixed(0)} KB</span>
                     <button
                       onClick={() => removeAttachment(a.id)}
-                      className="rounded-[7px] px-1 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger"
+                      className="rounded-[7px] px-1 py-0.5 text-text-3 hover:bg-danger-soft hover:text-danger"
                     >
-                      ✕
+                      <X size={13} strokeWidth={1.75} />
                     </button>
                   </div>
                 ))}
@@ -247,9 +247,9 @@ function IssueDetailPage() {
 
           <div className="divide-y divide-border rounded-xl border border-border bg-surface">
             <section className="p-4">
-              <h2 className="mb-3 text-[13px] font-semibold">{t("commentsHeading")}</h2>
+              <h2 className="mb-3 type-headline">{t("commentsHeading")}</h2>
               <div className="mb-3 flex flex-col gap-3">
-                {data.comments.length === 0 && <p className="text-sm text-text-3">{t("noCommentsYet")}</p>}
+                {data.comments.length === 0 && <p className="type-body text-text-3">{t("noCommentsYet")}</p>}
                 {data.comments.map((c) => {
                   const author = usersById.get(c.authorId);
                   const body = c.bodyJson as { text?: string } | null;
@@ -259,9 +259,9 @@ function IssueDetailPage() {
                       <div className="min-w-0 flex-1 rounded-[9px] border border-border bg-surface-2 p-3">
                         <p className="mb-1 flex items-center gap-2 text-[11.5px]">
                           <strong>{author?.name ?? t("unknownAuthor")}</strong>
-                          <span className="text-text-3">{new Date(c.createdAt).toLocaleString(intlLocale)}</span>
+                          <span className="type-label text-text-3">{new Date(c.createdAt).toLocaleString(intlLocale)}</span>
                         </p>
-                        <p className="text-[13px] leading-snug">{body?.text ?? ""}</p>
+                        <p className="type-body leading-snug">{body?.text ?? ""}</p>
                       </div>
                     </div>
                   );
@@ -273,7 +273,7 @@ function IssueDetailPage() {
                   onChange={(e) => setComment(e.target.value)}
                   placeholder={t("commentPlaceholder")}
                   rows={2}
-                  className="min-w-0 flex-1 rounded-[7px] border border-border bg-surface p-3 text-[13px] outline-none focus:border-border-2"
+                  className="min-w-0 flex-1 rounded-[7px] border border-border bg-surface p-3 text-[12.5px] outline-none focus:border-border-2"
                 />
                 <Button variant="primary" onClick={submitComment} disabled={submitting || !comment.trim()}>
                   {t("send")}
@@ -282,9 +282,9 @@ function IssueDetailPage() {
             </section>
 
             <section className="p-4">
-              <h2 className="mb-3 text-[13px] font-semibold">{t("activityHeading")}</h2>
+              <h2 className="mb-3 type-headline">{t("activityHeading")}</h2>
               <div className="flex flex-col gap-2">
-                {data.history.length === 0 && <p className="text-sm text-text-3">{t("noActivityYet")}</p>}
+                {data.history.length === 0 && <p className="type-body text-text-3">{t("noActivityYet")}</p>}
                 {data.history.map((h) => (
                   <p key={h.id} className="text-[12px] text-text-2">
                     <span className="font-mono text-text-3">{new Date(h.createdAt).toLocaleString(intlLocale)}</span>{" "}
@@ -298,7 +298,7 @@ function IssueDetailPage() {
         </div>
 
         <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4 text-[12.5px]">
-          <Button variant={watching ? "primary" : "outline"} onClick={toggleWatch} className="w-full text-[12px]">
+          <Button variant={watching ? "primary" : "outline"} onClick={toggleWatch} className="w-full">
             {watching ? t("watching") : t("watch")}
           </Button>
 
@@ -342,7 +342,7 @@ function IssueDetailPage() {
             {data.issue.storyPoints != null && (
               <div>
                 <p className="mb-1 text-text-3">{t("pointsLabel")}</p>
-                {data.issue.storyPoints}
+                <span className="type-label">{data.issue.storyPoints}</span>
               </div>
             )}
           </div>
@@ -374,7 +374,7 @@ function CustomPropertiesSection({
   const { t } = useTranslation("issue");
   return (
     <div className="border-t border-border pt-4">
-      <p className="mb-3 text-[13px] font-semibold">{t("customPropertiesHeading")}</p>
+      <p className="mb-3 type-headline">{t("customPropertiesHeading")}</p>
       <div className="flex flex-col gap-4">
         {definitions.map((def) => (
           <CustomPropertyField key={def.id} def={def} value={customFields[def.key]} onChange={(v) => onChange(def.key, v)} />

@@ -25,11 +25,11 @@ function LoginPage() {
           <div className="grid h-[30px] w-[30px] place-items-center rounded-[9px] bg-accent">
             <div className="h-2 w-2 rotate-45 rounded-sm bg-white" />
           </div>
-          <span className="text-[17px] font-semibold tracking-tight">Kompast</span>
+          <span className="type-headline">Kompast</span>
         </div>
         <div className="relative max-w-[430px]">
-          <p className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-white/55">{t("tagline")}</p>
-          <h1 className="font-serif text-[52px] font-normal leading-[1.04] tracking-tight">{t("heroHeadline")}</h1>
+          <p className="mb-4 type-label-overline text-white/55">{t("tagline")}</p>
+          <h1 className="type-display">{t("heroHeadline")}</h1>
           <p className="mt-5 text-[15px] leading-relaxed text-white/72">{t("heroSubtext")}</p>
         </div>
         <div className="relative flex gap-7 text-[12.5px] text-white/60">
@@ -41,9 +41,9 @@ function LoginPage() {
 
       <div className="flex items-center justify-center p-12">
         <div className="w-full max-w-[352px]">
-          <h2 className="mb-2 text-[25px] font-semibold tracking-tight">{t("signInHeading")}</h2>
-          <p className="mb-7 text-sm leading-relaxed text-text-2">{t("signInSubtext")}</p>
-          <Button variant="dark" className="w-full py-3.5 text-[14.5px]" onClick={() => signInWithMicrosoft()}>
+          <h2 className="mb-2 type-title">{t("signInHeading")}</h2>
+          <p className="mb-7 type-body leading-relaxed text-text-2">{t("signInSubtext")}</p>
+          <Button variant="dark" className="w-full py-3.5" onClick={() => signInWithMicrosoft()}>
             <MicrosoftGlyph />
             {t("continueWithMicrosoft")}
           </Button>
@@ -52,10 +52,10 @@ function LoginPage() {
             <span className="text-[11.5px] text-text-3">{t("or")}</span>
             <div className="h-px flex-1 bg-border" />
           </div>
-          <Button variant="outline" className="w-full py-3 text-[14px]" onClick={() => signInWithMicrosoft()}>
+          <Button variant="outline" className="w-full py-3" onClick={() => signInWithMicrosoft()}>
             {t("signInWithEmailLink")}
           </Button>
-          <p className="mt-7 text-[12px] leading-relaxed text-text-3">
+          <p className="mt-7 type-body leading-relaxed text-text-3">
             {t("agreementPart1")}
             <a href="#">{t("termsOfService")}</a>
             {t("agreementPart2")}
@@ -64,7 +64,7 @@ function LoginPage() {
           </p>
           <div className="mt-[34px] flex items-start gap-2.5 rounded-[9px] border border-dashed border-border-2 bg-surface-2 p-3.5">
             <div className="mt-1.5 h-1.5 w-1.5 animate-[kp-blink_2.2s_infinite] rounded-full bg-green" />
-            <p className="text-[12px] leading-relaxed text-text-2">
+            <p className="type-body leading-relaxed text-text-2">
               {t("tenantDetectedPart1")}
               <strong className="text-text">asus.com</strong>
               {t("tenantDetectedPart2")}

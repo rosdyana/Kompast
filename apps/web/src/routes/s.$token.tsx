@@ -49,7 +49,7 @@ function SharedPage() {
   if (!meta) {
     return (
       <Centered>
-        <p className="text-sm text-text-3">{t("invalidLink")}</p>
+        <p className="type-body text-text-3">{t("invalidLink")}</p>
       </Centered>
     );
   }
@@ -59,16 +59,16 @@ function SharedPage() {
       <Centered>
         <div className="mb-4 text-3xl">{meta.icon || "▤"}</div>
         <h1 className="mb-1 text-lg font-semibold">{meta.title || t("untitled")}</h1>
-        <p className="mb-4 text-sm text-text-3">{t("passwordProtected")}</p>
+        <p className="mb-4 type-body text-text-3">{t("passwordProtected")}</p>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submitPassword()}
           placeholder={t("passwordPlaceholder")}
-          className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-[13px] outline-none focus:border-border-2"
+          className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] outline-none focus:border-border-2"
         />
-        {error && <p className="mb-2 text-[12px] text-danger">{error}</p>}
+        {error && <p className="mb-2 type-body text-danger">{error}</p>}
         <Button variant="primary" className="w-full" onClick={submitPassword} disabled={loading || !password}>
           {t("open")}
         </Button>
@@ -79,7 +79,7 @@ function SharedPage() {
   if (!content) {
     return (
       <Centered>
-        <p className="text-sm text-text-3">{t("loadingEllipsis")}</p>
+        <p className="type-body text-text-3">{t("loadingEllipsis")}</p>
       </Centered>
     );
   }
@@ -90,7 +90,7 @@ function SharedPage() {
         {t("sharedFooter")}
       </header>
       <div className="mx-auto max-w-[820px] px-8 py-12">
-        <h1 className="mb-6 flex items-center gap-2.5 text-3xl font-semibold tracking-tight">
+        <h1 className="mb-6 flex items-center gap-2.5 type-title">
           <span>{content.icon || "▤"}</span>
           {content.title || t("untitled")}
         </h1>

@@ -19,14 +19,14 @@ export function TeamsTab({
   return (
     <div>
       <div className="mb-4 flex items-baseline justify-between">
-        <p className="text-sm text-text-2">{t("overviewSubtitle")}</p>
-        <Link to="/teams/new" className="text-[13px] text-accent">
+        <p className="type-body text-text-2">{t("overviewSubtitle")}</p>
+        <Link to="/teams/new" className="type-body text-accent">
           {t("newTeamLink")}
         </Link>
       </div>
 
       <Card className="mb-8 overflow-hidden">
-        {teams.length === 0 && <p className="p-4 text-sm text-text-3">{t("noTeamsYet")}</p>}
+        {teams.length === 0 && <p className="p-4 type-body text-text-3">{t("noTeamsYet")}</p>}
         {teams.map((team) => (
           <Link
             key={team.id}
@@ -34,9 +34,9 @@ export function TeamsTab({
             params={{ teamId: team.id }}
             className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-2"
           >
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{team.name}</span>
-            <span className="font-mono text-[11px] text-text-3">{t("teamMemberCount", { count: team.memberCount })}</span>
-            <span className="font-mono text-[11px] text-text-3">{t("teamProjectCount", { count: team.projectCount })}</span>
+            <span className="min-w-0 flex-1 truncate type-body font-medium">{team.name}</span>
+            <span className="type-label text-text-3">{t("teamMemberCount", { count: team.memberCount })}</span>
+            <span className="type-label text-text-3">{t("teamProjectCount", { count: team.projectCount })}</span>
             {team.myRole === "admin" && <Badge tone="neutral">{t("adminBadge")}</Badge>}
           </Link>
         ))}
@@ -71,13 +71,13 @@ function TransferSuperAdmin({ members }: { members: Awaited<ReturnType<typeof li
 
   return (
     <section>
-      <h2 className="mb-3 text-[13px] font-semibold">{t("transferHeading")}</h2>
-      <p className="mb-3 text-[12px] text-text-2">{t("transferSubtitle")}</p>
+      <h2 className="mb-3 type-headline">{t("transferHeading")}</h2>
+      <p className="mb-3 type-body text-text-2">{t("transferSubtitle")}</p>
       <Card className="flex items-center gap-2 p-4">
         <select
           value={newHolderUserId}
           onChange={(e) => setNewHolderUserId(e.target.value)}
-          className="kp-select min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+          className="kp-select min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
         >
           <option value="">{t("transferMemberSelectPlaceholder")}</option>
           {members.map((m) => (
@@ -90,7 +90,7 @@ function TransferSuperAdmin({ members }: { members: Awaited<ReturnType<typeof li
           {transferring ? t("transferringEllipsis") : t("transfer")}
         </Button>
       </Card>
-      {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
+      {error && <p className="mt-2 type-body text-danger">{error}</p>}
     </section>
   );
 }

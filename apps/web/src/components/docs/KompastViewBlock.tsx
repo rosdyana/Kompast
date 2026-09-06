@@ -49,7 +49,7 @@ function ReadOnlyTable({ data }: { data: BoardData }) {
         </Link>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[12px]">
+        <table className="w-full border-collapse text-[12.5px]">
           <thead>
             <tr className="border-b border-border bg-surface-2 text-left text-text-3">
               <th className="px-3 py-1.5 font-medium">{t("tableView.colKey")}</th>

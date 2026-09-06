@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "@kompast/i18n";
 
 export interface DocsTreePage {
@@ -22,9 +23,9 @@ function TreeNode({ page, byParent, depth }: { page: DocsTreePage; byParent: Map
         {children.length > 0 ? (
           <button
             onClick={() => setExpanded((e) => !e)}
-            className="grid h-4 w-4 flex-none place-items-center text-[9px] text-text-3 hover:text-text"
+            className="grid h-4 w-4 flex-none place-items-center text-text-3 hover:text-text"
           >
-            {expanded ? "▾" : "▸"}
+            {expanded ? <ChevronDown size={13} strokeWidth={1.75} /> : <ChevronRight size={13} strokeWidth={1.75} />}
           </button>
         ) : (
           <span className="w-4 flex-none" />
@@ -32,7 +33,7 @@ function TreeNode({ page, byParent, depth }: { page: DocsTreePage; byParent: Map
         <Link
           to="/docs/$pageId"
           params={{ pageId: page.id }}
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] hover:bg-surface-3 [&.active]:bg-surface-3 [&.active]:font-semibold"
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 type-body hover:bg-surface-3 [&.active]:bg-surface-3 [&.active]:font-semibold"
         >
           <span className="flex-none">{page.icon || "▤"}</span>
           <span className="min-w-0 flex-1 truncate">{page.title || t("untitled")}</span>
@@ -53,7 +54,7 @@ export function DocsTree({ pages }: { pages: DocsTreePage[] }) {
   }
 
   const roots = byParent.get(null) ?? [];
-  if (roots.length === 0) return <p className="px-2 py-1.5 text-[12px] text-text-3">{t("docsTree.noPagesYet")}</p>;
+  if (roots.length === 0) return <p className="px-2 py-1.5 type-body text-text-3">{t("docsTree.noPagesYet")}</p>;
 
   return (
     <div className="flex flex-col gap-px">

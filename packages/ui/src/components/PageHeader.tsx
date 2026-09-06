@@ -18,10 +18,10 @@ export function PageHeader({ title, subtitle, actions, className }: PageHeaderPr
   return (
     <div className={clsx(subtitle ? "mb-8" : "mb-6", className)}>
       <div className={clsx("flex items-start justify-between gap-4", subtitle ? "mb-1" : "")}>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="type-title">{title}</h1>
         {actions}
       </div>
-      {subtitle && <p className="text-sm text-text-2">{subtitle}</p>}
+      {subtitle && <p className="type-body text-text-2">{subtitle}</p>}
     </div>
   );
 }

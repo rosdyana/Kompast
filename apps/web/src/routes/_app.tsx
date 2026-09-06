@@ -1,4 +1,21 @@
 import { createFileRoute, Outlet, Link, redirect, useRouter } from "@tanstack/react-router";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronsLeft,
+  Settings,
+  Plus,
+  FolderKanban,
+  Home,
+  Search,
+  Sparkles,
+  Trash2,
+  KeyRound,
+  BookOpen,
+  LogOut,
+  Moon,
+  Sun,
+} from "lucide-react";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
 import { SidebarShell, useSidebarCollapsed } from "@kompast/ui/SidebarShell";
@@ -104,19 +121,19 @@ function TeamNode({
       <div className="flex items-center gap-1.5 rounded-[7px] px-2 py-1 hover:bg-surface-3">
         <button
           onClick={() => setExpanded((e) => !e)}
-          className="grid h-4 w-4 flex-none place-items-center text-[9px] text-text-3"
+          className="grid h-4 w-4 flex-none place-items-center text-text-3"
         >
-          {expanded ? "▾" : "▸"}
+          {expanded ? <ChevronDown size={13} strokeWidth={1.75} /> : <ChevronRight size={13} strokeWidth={1.75} />}
         </button>
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{team.name}</span>
+        <span className="min-w-0 flex-1 truncate type-body font-medium">{team.name}</span>
         {canManageTeam && (
           <Link
             to="/teams/$teamId"
             params={{ teamId: team.id }}
             title={t("manageTeam")}
-            className="grid h-4 w-4 flex-none place-items-center text-[11px] text-text-3 hover:text-text"
+            className="grid h-4 w-4 flex-none place-items-center text-text-3 hover:text-text"
           >
-            ⚙
+            <Settings size={12} strokeWidth={1.75} />
           </Link>
         )}
         {canCreateProject && (
@@ -124,9 +141,9 @@ function TeamNode({
             to="/projects/new"
             search={{ teamId: isUnassigned ? undefined : team.id }}
             title={t("newProject")}
-            className="grid h-4 w-4 flex-none place-items-center text-[11px] text-text-3 hover:text-text"
+            className="grid h-4 w-4 flex-none place-items-center text-text-3 hover:text-text"
           >
-            +
+            <Plus size={12} strokeWidth={1.75} />
           </Link>
         )}
       </div>
@@ -138,11 +155,11 @@ function TeamNode({
               key={project.id}
               to="/projects/$projectKey"
               params={{ projectKey: project.key }}
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
             >
-              <span className="w-3.5 flex-none text-center text-[11px] text-text-3">◫</span>
+              <FolderKanban size={13} strokeWidth={1.75} className="w-3.5 flex-none text-text-3" />
               <span className="min-w-0 flex-1 truncate">{project.name}</span>
-              <span className="font-mono text-[10px] text-text-3">{project.key}</span>
+              <span className="type-label text-text-3">{project.key}</span>
             </Link>
           ))}
         </div>
@@ -188,16 +205,16 @@ function SidebarBody({
             <div className="h-1.5 w-1.5 rotate-45 rounded-sm bg-accent" />
           </div>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-semibold tracking-tight">{workspaceName}</span>
-            <span className="block text-[11px] text-text-3">{t("memberCount", { count: shell.memberCount })}</span>
+            <span className="block truncate type-body font-semibold tracking-tight">{workspaceName}</span>
+            <span className="block type-label text-text-3">{t("memberCount", { count: shell.memberCount })}</span>
           </span>
         </button>
         <button
           onClick={() => setCollapsed(true)}
           title={t("collapseSidebar")}
-          className="mr-1.5 grid h-[30px] w-[30px] flex-none place-items-center rounded-md text-xs text-text-3 hover:bg-surface-3 hover:text-text"
+          className="mr-1.5 grid h-[30px] w-[30px] flex-none place-items-center rounded-md text-text-3 hover:bg-surface-3 hover:text-text"
         >
-          «
+          <ChevronsLeft size={16} strokeWidth={1.75} />
         </button>
       </div>
 
@@ -206,45 +223,45 @@ function SidebarBody({
           <Link
             to="/"
             title={t("home")}
-            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13.5px] hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
+            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
           >
-            <span className="w-[15px] text-center text-xs text-text-3">◇</span>
+            <Home size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
             {t("home")}
           </Link>
           <button
             title={t("search")}
-            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13.5px] text-text-2 hover:bg-surface-3"
+            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body text-text-2 hover:bg-surface-3"
           >
-            <span className="w-[15px] text-center text-xs text-text-3">⌕</span>
+            <Search size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
             {t("search")}
-            <span className="ml-auto font-mono text-[10px] text-text-3">⌘K</span>
+            <span className="ml-auto type-label text-text-3">⌘K</span>
           </button>
           <Link
             to="/ask"
             title={t("askKompast")}
-            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13.5px] hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
+            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
           >
-            <span className="w-[15px] text-center text-xs text-text-3">✨</span>
+            <Sparkles size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
             {t("askKompast")}
           </Link>
         </div>
 
         <div className="flex items-center justify-between px-2 pb-1.5">
-          <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-text-3">{t("teams")}</span>
+          <span className="type-label-overline text-text-3">{t("teams")}</span>
           {shell.isSuperAdmin && (
             <Link
               to="/teams/new"
               title={t("newTeam")}
-              className="grid h-[19px] w-[19px] place-items-center rounded-md text-[10.5px] text-text-3 hover:bg-surface-3 hover:text-text"
+              className="grid h-[19px] w-[19px] place-items-center rounded-md text-text-3 hover:bg-surface-3 hover:text-text"
             >
-              +
+              <Plus size={12} strokeWidth={1.75} />
             </Link>
           )}
         </div>
 
         <div className="mb-4 flex flex-col gap-px">
           {shell.teams.length === 0 && (
-            <p className="px-2 py-1.5 text-[12px] text-text-3">
+            <p className="px-2 py-1.5 type-body text-text-3">
               {shell.isSuperAdmin ? t("noTeamsYetSuperAdmin") : t("noTeamsYetMember")}
             </p>
           )}
@@ -266,17 +283,17 @@ function SidebarBody({
         </div>
 
         <div className="flex items-center justify-between px-2 pb-1.5">
-          <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-text-3">{t("docs")}</span>
+          <span className="type-label-overline text-text-3">{t("docs")}</span>
           <div className="flex items-center gap-1">
             <Link
               to="/docs/trash"
               title={t("trash")}
-              className="grid h-[19px] w-[19px] place-items-center rounded-md text-[10.5px] text-text-3 hover:bg-surface-3 hover:text-text"
+              className="grid h-[19px] w-[19px] place-items-center rounded-md text-text-3 hover:bg-surface-3 hover:text-text"
             >
-              🗑
+              <Trash2 size={12} strokeWidth={1.75} />
             </Link>
-            <Button variant="outline" className="h-[19px] px-1.5 text-[10.5px]" onClick={newPage} disabled={creatingPage}>
-              +
+            <Button variant="outline" className="h-[19px] px-1.5" onClick={newPage} disabled={creatingPage}>
+              <Plus size={12} strokeWidth={1.75} />
             </Button>
           </div>
         </div>
@@ -288,18 +305,18 @@ function SidebarBody({
           <Link
             to="/settings"
             title={t("settings")}
-            className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13px] hover:bg-surface-3 [&.active]:bg-surface-3"
+            className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:bg-surface-3"
           >
-            <span className="w-[15px] text-center text-xs text-text-3">⚙</span>
+            <Settings size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
             {t("settings")}
           </Link>
         )}
         <Link
           to="/tokens"
           title={t("apiToken")}
-          className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13px] hover:bg-surface-3 [&.active]:bg-surface-3"
+          className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:bg-surface-3"
         >
-          <span className="w-[15px] text-center text-xs text-text-3">🔑</span>
+          <KeyRound size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
           {t("apiToken")}
         </Link>
         <a
@@ -307,22 +324,22 @@ function SidebarBody({
           target="_blank"
           rel="noreferrer"
           title={t("apiDocs")}
-          className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[13px] hover:bg-surface-3"
+          className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3"
         >
-          <span className="w-[15px] text-center text-xs text-text-3">📖</span>
+          <BookOpen size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
           {t("apiDocs")}
         </a>
         <div className="flex items-center gap-2.5 px-2 pb-0.5 pt-1.5">
           <Avatar initials={initialsOf(shell.user.name)} tone="violet" size={24} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-semibold">{shell.user.name}</span>
+            <span className="block truncate type-body font-semibold">{shell.user.name}</span>
           </span>
           <button
             onClick={handleSignOut}
             title={t("logOut")}
-            className="rounded-md px-1 py-0.5 text-[11px] text-text-3 hover:bg-surface-3 hover:text-text"
+            className="rounded-md px-1 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text"
           >
-            ⏏
+            <LogOut size={13} strokeWidth={1.75} />
           </button>
         </div>
       </div>
@@ -366,22 +383,22 @@ function SidebarRail({
         <Link
           to="/"
           title={t("home")}
-          className="grid h-9 w-10 place-items-center rounded-[10px] text-[13px] text-text-3 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
+          className="grid h-9 w-10 place-items-center rounded-[10px] text-text-3 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
         >
-          ◇
+          <Home size={16} strokeWidth={1.75} />
         </Link>
         <button
           title={t("search")}
-          className="grid h-9 w-10 place-items-center rounded-[10px] text-[13px] text-text-2 hover:bg-surface-3 hover:text-text"
+          className="grid h-9 w-10 place-items-center rounded-[10px] text-text-2 hover:bg-surface-3 hover:text-text"
         >
-          ⌕
+          <Search size={16} strokeWidth={1.75} />
         </button>
         <Link
           to="/ask"
           title={t("askKompast")}
-          className="grid h-9 w-10 place-items-center rounded-[10px] text-[13px] text-text-3 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
+          className="grid h-9 w-10 place-items-center rounded-[10px] text-text-3 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
         >
-          ✨
+          <Sparkles size={16} strokeWidth={1.75} />
         </Link>
       </div>
 
@@ -405,9 +422,9 @@ function SidebarRail({
         <Link
           to="/settings"
           title={t("settings")}
-          className="grid h-9 w-10 flex-none place-items-center rounded-[10px] text-[13px] text-text-3 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
+          className="grid h-9 w-10 flex-none place-items-center rounded-[10px] text-text-3 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
         >
-          ⚙
+          <Settings size={16} strokeWidth={1.75} />
         </Link>
       )}
       <button
@@ -426,7 +443,7 @@ function Topbar({ workspaceName }: { workspaceName: string }) {
   const { t } = useTranslation("nav");
   return (
     <header className="flex h-[47px] flex-none items-center gap-3.5 border-b border-border bg-surface-2 px-4">
-      <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-text-2">
+      <div className="flex min-w-0 items-center gap-1.5 type-body text-text-2">
         <span className="truncate font-semibold text-text">{workspaceName}</span>
       </div>
       <div className="ml-auto flex items-center gap-2">
@@ -436,9 +453,9 @@ function Topbar({ workspaceName }: { workspaceName: string }) {
         <button
           onClick={toggleTheme}
           title={theme === "dark" ? t("themeToLight") : t("themeToDark")}
-          className="grid h-[29px] w-[29px] place-items-center rounded-[7px] border border-border bg-surface text-xs hover:bg-surface-3"
+          className="grid h-[29px] w-[29px] place-items-center rounded-[7px] border border-border bg-surface hover:bg-surface-3"
         >
-          {theme === "dark" ? "☾" : "☀"}
+          {theme === "dark" ? <Moon size={15} strokeWidth={1.75} /> : <Sun size={15} strokeWidth={1.75} />}
         </button>
       </div>
     </header>

@@ -55,14 +55,14 @@ function TokensPage() {
         <Card className="mb-6 p-4 text-[12.5px]">
           <p className="mb-2 font-semibold text-text-2">{t("newTokenCreated")}</p>
           <code className="block break-all rounded-[7px] bg-surface-2 p-2.5 text-[12px]">{justCreated}</code>
-          <Button variant="outline" className="mt-2 text-[12px]" onClick={() => setJustCreated(null)}>
+          <Button variant="outline" className="mt-2" onClick={() => setJustCreated(null)}>
             {t("done")}
           </Button>
         </Card>
       )}
 
       <Card className="mb-8 p-4">
-        <h2 className="mb-3 text-[13px] font-semibold">{t("createNewTokenHeading")}</h2>
+        <h2 className="mb-3 type-headline">{t("createNewTokenHeading")}</h2>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -80,21 +80,21 @@ function TokensPage() {
             </label>
           ))}
         </div>
-        <Button variant="primary" className="text-[12.5px]" onClick={createToken} disabled={creating || !name.trim() || scopes.length === 0}>
+        <Button variant="primary" onClick={createToken} disabled={creating || !name.trim() || scopes.length === 0}>
           {t("createToken")}
         </Button>
       </Card>
 
-      <h2 className="mb-3 text-[13px] font-semibold">{t("activeTokensHeading")}</h2>
+      <h2 className="mb-3 type-headline">{t("activeTokensHeading")}</h2>
       {tokens.length === 0 ? (
-        <p className="text-sm text-text-3">{t("noTokensYet")}</p>
+        <p className="type-body text-text-3">{t("noTokensYet")}</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {tokens.map((tok) => (
             <div key={tok.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2.5 text-[12.5px]">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{tok.name || t("untitledToken")}</p>
-                <p className="truncate text-[11px] text-text-3">
+                <p className="truncate type-label text-text-3">
                   {tok.start}… · {Object.entries(tok.permissions ?? {}).flatMap(([r, actions]) => actions.map((a) => `${r}:${a}`)).join(", ") || t("noScope")}
                   {tok.expiresAt && t("expiresOn", { date: new Date(tok.expiresAt).toLocaleDateString(intlLocale) })}
                 </p>

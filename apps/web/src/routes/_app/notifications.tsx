@@ -29,7 +29,7 @@ function NotificationsPage() {
       <div className="flex flex-col gap-3">
         {prefs.map((pref) => (
           <Card key={pref.eventType} className="p-4">
-            <p className="mb-3 text-[13px] font-semibold">{pref.label}</p>
+            <p className="mb-3 type-headline">{pref.label}</p>
             <div className="flex flex-wrap items-center gap-4 text-[12.5px]">
               <label className="flex items-center gap-1.5">
                 <input type="checkbox" checked={pref.inApp} onChange={(e) => updatePref(pref.eventType, { inApp: e.target.checked })} />
@@ -44,7 +44,7 @@ function NotificationsPage() {
                 <select
                   value={pref.digest}
                   onChange={(e) => updatePref(pref.eventType, { digest: e.target.value as "instant" | "hourly" | "daily" | "off" })}
-                  className="kp-select rounded-[7px] border border-border bg-surface px-2 py-1 text-[12px]"
+                  className="kp-select rounded-[7px] border border-border bg-surface px-2 py-1 text-[12.5px]"
                 >
                   {DIGEST_VALUES.map((value) => (
                     <option key={value} value={value}>
@@ -55,7 +55,7 @@ function NotificationsPage() {
               </label>
             </div>
             {pref.digest !== "instant" && pref.digest !== "off" && (
-              <p className="mt-2 text-[11px] text-text-3">{t("digestNote")}</p>
+              <p className="mt-2 type-body text-text-3">{t("digestNote")}</p>
             )}
           </Card>
         ))}

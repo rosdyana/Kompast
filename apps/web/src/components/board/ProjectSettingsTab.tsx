@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Tabs } from "@kompast/ui/Tabs";
 import { Badge } from "@kompast/ui/Badge";
 import { Button } from "@kompast/ui/Button";
@@ -143,20 +144,20 @@ function ColumnsSettings({ data }: { data: BoardData }) {
   return (
     <div>
       <h2 className="mb-1 text-lg font-semibold">{t("settingsTab.columnsHeading")}</h2>
-      <p className="mb-4 text-[13px] text-text-2">
+      <p className="mb-4 type-body text-text-2">
         {t("settingsTab.columnsDescPart1")}
         <strong className="text-text">{t("settingsTab.columnsDescBold")}</strong>
         {t("settingsTab.columnsDescPart2")}
       </p>
-      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>}
+      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
       {flowText && (
-        <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-dashed border-border-2 px-3 py-2.5 text-[12.5px] text-text-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-3">{t("settingsTab.flowLabel")}</span>
+        <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-dashed border-border-2 px-3 py-2.5 type-body text-text-2">
+          <span className="type-label-overline text-text-3">{t("settingsTab.flowLabel")}</span>
           <span className="font-medium">{flowText}</span>
         </div>
       )}
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border bg-surface-2 px-3 py-2 text-[11px] font-semibold text-text-2">
+        <div className="border-b border-border bg-surface-2 px-3 py-2 type-body font-semibold text-text-2">
           {t("settingsTab.columnsCountSummary", { count: columns.length })}
         </div>
         {columns.map((col, i) => (
@@ -168,7 +169,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
                 onBlur={(e) => e.target.value.trim() && e.target.value !== col.name && rename(col.id, e.target.value.trim())}
                 className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
               />
-              <span className="font-mono text-[10px] text-text-3">{col.issues.length}</span>
+              <span className="type-label text-text-3">{col.issues.length}</span>
               {col.isBacklog && <Badge>{t("fixedBadge")}</Badge>}
             </span>
             <span className="flex items-center gap-1">
@@ -186,7 +187,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
               defaultValue={col.wipLimit ?? ""}
               placeholder="∞"
               onBlur={(e) => setWip(col.id, e.target.value)}
-              className="w-[52px] rounded-[7px] border border-border-2 bg-surface px-2 py-1 font-mono text-[12px] outline-none"
+              className="w-[52px] rounded-[7px] border border-border-2 bg-surface px-2 py-1 font-mono text-[12.5px] outline-none"
             />
             {!col.isBacklog && (
               <span className="flex gap-0.5">
@@ -194,17 +195,17 @@ function ColumnsSettings({ data }: { data: BoardData }) {
                   onClick={() => move(col.id, "left")}
                   disabled={i <= 1}
                   title={t("settingsTab.moveLeftTitle")}
-                  className="rounded-[7px] px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
+                  className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
                 >
-                  ←
+                  <ChevronLeft size={13} strokeWidth={1.75} />
                 </button>
                 <button
                   onClick={() => move(col.id, "right")}
                   disabled={i === columns.length - 1}
                   title={t("settingsTab.moveRightTitle")}
-                  className="rounded-[7px] px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
+                  className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
                 >
-                  →
+                  <ChevronRight size={13} strokeWidth={1.75} />
                 </button>
                 <button
                   onClick={() => handleDeleteClick(col.id)}
@@ -212,7 +213,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
                   className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
                   style={isArmed(col.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
                 >
-                  {isArmed(col.id) ? t("clickAgainToDelete") : "✕"}
+                  {isArmed(col.id) ? t("clickAgainToDelete") : <X size={13} strokeWidth={1.75} />}
                 </button>
               </span>
             )}
@@ -231,7 +232,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
           </Button>
         </div>
       </div>
-      <p className="mt-3 text-[11.5px] text-text-3">{t("settingsTab.columnsFooterNote")}</p>
+      <p className="mt-3 type-body text-text-3">{t("settingsTab.columnsFooterNote")}</p>
     </div>
   );
 }
@@ -324,13 +325,13 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
   return (
     <div>
       <h2 className="mb-1 text-lg font-semibold">{t("settingsTab.propertiesHeading")}</h2>
-      <p className="mb-4 text-[13px] text-text-2">
+      <p className="mb-4 type-body text-text-2">
         {t("settingsTab.propertiesDescPart1")}
         <strong className="text-text">{t("settingsTab.propertiesDescBold", { count: visCount })}</strong>
       </p>
-      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>}
+      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border bg-surface-2 px-3 py-2 text-[11px] font-semibold text-text-2">
+        <div className="border-b border-border bg-surface-2 px-3 py-2 type-body font-semibold text-text-2">
           {t("settingsTab.propertiesCountSummary", { visible: visCount, total: definitions.length })}
         </div>
         {definitions.map((p) => (
@@ -348,7 +349,7 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
               <select
                 value={p.type}
                 onChange={(e) => retype(p.id, e.target.value as (typeof ISSUE_PROPERTY_TYPES)[number])}
-                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
               >
                 {ISSUE_PROPERTY_TYPES.map((ty) => (
                   <option key={ty} value={ty}>
@@ -368,7 +369,7 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
                 className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
                 style={isArmed(p.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
               >
-                {isArmed(p.id) ? t("clickAgainToDelete") : "✕"}
+                {isArmed(p.id) ? t("clickAgainToDelete") : <X size={13} strokeWidth={1.75} />}
               </button>
             )}
           </div>
@@ -397,7 +398,7 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
           </Button>
         </div>
       </div>
-      <p className="mt-3 text-[11.5px] text-text-3">{t("settingsTab.propertiesFooterNote")}</p>
+      <p className="mt-3 type-body text-text-3">{t("settingsTab.propertiesFooterNote")}</p>
     </div>
   );
 }

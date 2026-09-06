@@ -46,10 +46,10 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
 
   return (
     <div>
-      <p className="mb-6 text-sm text-text-2">{t("members.subtitle")}</p>
+      <p className="mb-6 type-body text-text-2">{t("members.subtitle")}</p>
 
       <section className="mb-8">
-        <h2 className="mb-3 text-[13px] font-semibold">{t("members.inviteHeading")}</h2>
+        <h2 className="mb-3 type-headline">{t("members.inviteHeading")}</h2>
         <Card className="flex flex-col gap-3 p-4">
           <div className="flex gap-2">
             <input
@@ -57,12 +57,12 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && invite()}
               placeholder={t("members.emailPlaceholder")}
-              className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
             />
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as typeof role)}
-              className="kp-select rounded-[7px] border border-border-2 bg-surface px-2.5 py-2 text-[13px] outline-none"
+              className="kp-select rounded-[7px] border border-border-2 bg-surface px-2.5 py-2 text-[12.5px] outline-none"
             >
               <option value="member">{t("members.memberRoleLabel")}</option>
               <option value="admin">{t("members.adminRoleLabel")}</option>
@@ -71,13 +71,13 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
               {inviting ? t("members.invitingEllipsis") : t("members.invite")}
             </Button>
           </div>
-          {error && <p className="text-[12px] text-danger">{error}</p>}
+          {error && <p className="type-body text-danger">{error}</p>}
         </Card>
       </section>
 
       {data.invitations.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 text-[13px] font-semibold">{t("members.pendingInvitesHeading")}</h2>
+          <h2 className="mb-3 type-headline">{t("members.pendingInvitesHeading")}</h2>
           <div className="flex flex-col gap-1.5">
             {data.invitations.map((inv) => (
               <div key={inv.id} className="flex items-center justify-between rounded-[9px] border border-border bg-surface px-3 py-2 text-[12.5px]">
@@ -94,7 +94,7 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
       )}
 
       <section>
-        <h2 className="mb-3 text-[13px] font-semibold">{t("members.currentMembersHeading")}</h2>
+        <h2 className="mb-3 type-headline">{t("members.currentMembersHeading")}</h2>
         <div className="flex flex-col gap-1.5">
           {data.members.map((m) => (
             <div key={m.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2 text-[12.5px]">

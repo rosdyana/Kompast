@@ -61,20 +61,20 @@ export function GlobalSearch() {
       />
       {open && (
         <div className="absolute right-0 top-[calc(100%+6px)] z-20 max-h-[360px] w-[320px] overflow-y-auto rounded-[9px] border border-border bg-surface shadow-kp">
-          {loading && <p className="px-3 py-3 text-[12px] text-text-3">{t("searching")}</p>}
-          {!loading && !hasResults && <p className="px-3 py-3 text-[12px] text-text-3">{t("noResults")}</p>}
+          {loading && <p className="px-3 py-3 type-body text-text-3">{t("searching")}</p>}
+          {!loading && !hasResults && <p className="px-3 py-3 type-body text-text-3">{t("noResults")}</p>}
           {!loading && result && result.issues.length > 0 && (
             <div className="border-b border-border py-1.5">
-              <p className="px-3 pb-1 font-mono text-[9.5px] uppercase tracking-[0.1em] text-text-3">{t("issuesHeading")}</p>
+              <p className="px-3 pb-1 type-label-overline text-text-3">{t("issuesHeading")}</p>
               {result.issues.map((issue) => (
                 <Link
                   key={issue.id}
                   to="/issues/$projectKey/$issueKeySeq"
                   params={{ projectKey: issue.projectKey, issueKeySeq: String(issue.keySeq) }}
                   onClick={() => setOpen(false)}
-                  className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] hover:bg-surface-2"
+                  className="flex items-center gap-2 px-3 py-1.5 type-body hover:bg-surface-2"
                 >
-                  <span className="font-mono text-[10.5px] text-text-3">
+                  <span className="type-label text-text-3">
                     {issue.projectKey}-{issue.keySeq}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{issue.title}</span>
@@ -85,9 +85,9 @@ export function GlobalSearch() {
           )}
           {!loading && result && result.people.length > 0 && (
             <div className="py-1.5">
-              <p className="px-3 pb-1 font-mono text-[9.5px] uppercase tracking-[0.1em] text-text-3">{t("peopleHeading")}</p>
+              <p className="px-3 pb-1 type-label-overline text-text-3">{t("peopleHeading")}</p>
               {result.people.map((person) => (
-                <div key={person.id} className="flex items-center gap-2 px-3 py-1.5 text-[12.5px]">
+                <div key={person.id} className="flex items-center gap-2 px-3 py-1.5 type-body">
                   <span className="min-w-0 flex-1 truncate">{person.name}</span>
                   <span className="flex-none truncate text-[10.5px] text-text-3">{person.email}</span>
                 </div>

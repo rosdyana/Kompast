@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { useTranslation } from "@kompast/i18n";
 import { listThreadsFn, listMessagesFn } from "@/lib/server-fns/ask";
@@ -69,7 +70,7 @@ function AskPage() {
         <div className="w-[220px] flex-none border-r border-border p-3">
           <Button
             variant="outline"
-            className="mb-3 w-full text-[12.5px]"
+            className="mb-3 w-full"
             onClick={() => {
               setSelectedThreadId(null);
               setMessages([]);
@@ -82,12 +83,12 @@ function AskPage() {
               <button
                 key={th.id}
                 onClick={() => setSelectedThreadId(th.id)}
-                className={`truncate rounded-[9px] px-2.5 py-1.5 text-left text-[12.5px] hover:bg-surface-2 ${selectedThreadId === th.id ? "bg-surface-2 font-medium" : "text-text-2"}`}
+                className={`truncate rounded-[9px] px-2.5 py-1.5 text-left type-body hover:bg-surface-2 ${selectedThreadId === th.id ? "bg-surface-2 font-medium" : "text-text-2"}`}
               >
                 {th.title || t("untitledThread")}
               </button>
             ))}
-            {threads.length === 0 && <p className="px-2.5 text-[12px] text-text-3">{t("noConversationsYet")}</p>}
+            {threads.length === 0 && <p className="px-2.5 type-body text-text-3">{t("noConversationsYet")}</p>}
           </div>
         </div>
       )}
@@ -97,16 +98,16 @@ function AskPage() {
           <button
             onClick={() => setThreadListOpen((v) => !v)}
             title={threadListOpen ? t("hideConversationsTitle") : t("showConversationsTitle")}
-            className="rounded-[7px] px-2 py-1 text-[11px] text-text-3 hover:bg-surface-2 hover:text-text"
+            className="rounded-[7px] px-2 py-1 text-text-3 hover:bg-surface-2 hover:text-text"
           >
-            {threadListOpen ? "◧" : "▭"}
+            {threadListOpen ? <PanelLeftClose size={15} strokeWidth={1.75} /> : <PanelLeftOpen size={15} strokeWidth={1.75} />}
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-8 py-6">
           {messages.length === 0 && (
             <div className="mx-auto max-w-[560px] pt-16 text-center">
-              <h1 className="mb-2 text-xl font-semibold tracking-tight">{t("askHeading")}</h1>
-              <p className="text-sm text-text-2">{t("askSubtitle")}</p>
+              <h1 className="mb-2 type-display">{t("askHeading")}</h1>
+              <p className="type-body text-text-2">{t("askSubtitle")}</p>
             </div>
           )}
           <div className="mx-auto flex max-w-[720px] flex-col gap-3">
@@ -115,13 +116,13 @@ function AskPage() {
                 key={m.id}
                 className={`${m.role === "user" ? "self-end" : "self-start"} ${m.role === "user" && i > 0 ? "mt-3" : ""}`}
               >
-                <div className={`max-w-[560px] rounded-xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${m.role === "user" ? "bg-accent text-white" : "border border-border bg-surface"}`}>
+                <div className={`max-w-[560px] rounded-xl px-3.5 py-2.5 type-body leading-relaxed ${m.role === "user" ? "bg-accent text-white" : "border border-border bg-surface"}`}>
                   <p className="whitespace-pre-wrap">{m.content || "…"}</p>
                 </div>
                 {m.citations && m.citations.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {m.citations.map((c, i) => (
-                      <span key={i} className="rounded-full bg-surface-2 px-2 py-0.5 text-[10.5px] text-text-3">
+                      <span key={i} className="rounded-full bg-surface-2 px-2 py-0.5 type-label text-text-3">
                         {c.entityType} · {c.entityId.slice(0, 12)}…
                       </span>
                     ))}
@@ -130,7 +131,7 @@ function AskPage() {
               </div>
             ))}
           </div>
-          {error && <p className="mx-auto mt-3 max-w-[720px] text-[12.5px] text-danger">{error}</p>}
+          {error && <p className="mx-auto mt-3 max-w-[720px] type-body text-danger">{error}</p>}
         </div>
 
         <div className="border-t border-border p-4">
@@ -140,7 +141,7 @@ function AskPage() {
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && ask()}
               placeholder={t("inputPlaceholder")}
-              className="min-w-0 flex-1 rounded-[7px] border border-border bg-surface px-3 py-2.5 text-[13.5px] outline-none focus:border-border-2"
+              className="min-w-0 flex-1 rounded-[7px] border border-border bg-surface px-3 py-2.5 text-[12.5px] outline-none focus:border-border-2"
             />
             <Button variant="primary" onClick={ask} disabled={busy || !question.trim()}>
               {busy ? t("sendingEllipsis") : t("send")}

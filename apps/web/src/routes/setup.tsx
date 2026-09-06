@@ -42,11 +42,11 @@ function SetupPage() {
           <div className="grid h-[30px] w-[30px] place-items-center rounded-[9px] bg-accent">
             <div className="h-2 w-2 rotate-45 rounded-sm bg-white" />
           </div>
-          <span className="text-[17px] font-semibold tracking-tight">Kompast</span>
+          <span className="type-headline">Kompast</span>
         </div>
 
-        <h1 className="mb-2 text-2xl font-semibold tracking-tight">{t("setupTitle")}</h1>
-        <p className="mb-7 text-sm leading-relaxed text-text-2">{t("setupSubtitle")}</p>
+        <h1 className="mb-2 type-title">{t("setupTitle")}</h1>
+        <p className="mb-7 type-body leading-relaxed text-text-2">{t("setupSubtitle")}</p>
 
         <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
           <Field label={t("tenantIdLabel")} value={tenantId} onChange={setTenantId} placeholder="00000000-0000-0000-0000-000000000000" />
@@ -59,7 +59,7 @@ function SetupPage() {
             type="password"
           />
 
-          {error && <p className="text-[12.5px] text-danger">{error}</p>}
+          {error && <p className="type-body text-danger">{error}</p>}
 
           <Button
             variant="primary"
@@ -71,7 +71,7 @@ function SetupPage() {
           </Button>
         </div>
 
-        <p className="mt-5 text-[12px] leading-relaxed text-text-3">
+        <p className="mt-5 type-body leading-relaxed text-text-3">
           {t("redirectUriNote")}{" "}
           <code className="rounded bg-surface-3 px-1 py-0.5">{"<APP_URL>"}/api/auth/callback/microsoft-entra-id</code>
         </p>
@@ -101,7 +101,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none focus:border-text-3"
+        className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none focus:border-text-3"
       />
     </label>
   );

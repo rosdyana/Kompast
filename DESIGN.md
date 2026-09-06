@@ -36,6 +36,12 @@ typography:
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "-0.01em"
+  headline:
+    fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "16px"
+    fontWeight: 600
+    lineHeight: 1.3
+    letterSpacing: "-0.01em"
   body:
     fontFamily: "Instrument Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "13px"
@@ -100,7 +106,7 @@ components:
 
 **Creative North Star: "The Compass Ledger"**
 
-Kompast reads like a precise paper instrument, not a glossy SaaS dashboard: a warm, off-white ledger page (`--bg`) holds dense rows of small, exact type, with a single cobalt-blue mark — sampled straight from the compass logo — as the only loud color anywhere in the system. The compass mark itself (a rotated white square inside a rounded-square cobalt tile) recurs as the system's one recognizable shape; everything else is quiet geometry — hairline borders, small pills, a diamond of negative space — never an icon library.
+Kompast reads like a precise paper instrument, not a glossy SaaS dashboard: a warm, off-white ledger page (`--bg`) holds dense rows of small, exact type, with a single cobalt-blue mark — sampled straight from the compass logo — as the only loud color anywhere in the system. The compass mark itself (a rotated white square inside a rounded-square cobalt tile) recurs as the system's one recognizable shape; everything else is quiet geometry — hairline borders, small pills, a diamond of negative space, and a single consistent stroke-icon set (see Icons) that stays monochrome and never competes with the one loud accent.
 
 The system is calm, precise, and unshowy on purpose. It explicitly rejects two easy defaults: it is not a playful, illustrated Notion clone, and it is not a loud, high-contrast dark-mode developer tool. Depth comes from borders and tonal surface steps, not shadow; personality comes from one restrained accent color and a serif/mono contrast in the type, not from decoration. A full dark theme exists (`[data-theme="dark"]`) as a disciplined token swap — same roles, same contrast relationships, inverted lightness — never a second, separately-art-directed look.
 
@@ -109,7 +115,7 @@ The system is calm, precise, and unshowy on purpose. It explicitly rejects two e
 - Editorial serif reserved for display headlines only; every other piece of text is small, sans-serif, and dense.
 - Mono, uppercase, wide-tracked type marks anything machine-scoped: issue keys, counts, timestamps, section overlines.
 - Flat by default — hairline borders separate surfaces; a single soft shadow token appears only on floating overlays.
-- No icon library. Every glyph (the compass mark, the blinking status dot, the Microsoft tile) is hand-drawn from primitive shapes.
+- One stroke-icon library (Lucide), themed to inherit text color, never full-color emoji standing in for chrome. The compass mark, the blinking status dot, and the Microsoft tile stay hand-drawn from primitive shapes — they're brand/vendor marks, not generic UI affordances.
 
 ## Colors
 
@@ -151,9 +157,11 @@ The palette is warm-neutral paper with one saturated accent; every other hue (in
 ### Hierarchy
 - **Display** (400, 40–52px, line-height 1.04, tight tracking): hero/landing headlines only (login hero, empty-state welcome) — Instrument Serif, never used for UI chrome.
 - **Title** (600, 20–25px, tight tracking): page/section headings (e.g. "Sign in to Kompast").
-- **Headline** (600, 15–17px): component and card headers, the wordmark, sidebar section titles.
+- **Headline** (600, 16px, tight tracking): component and card headers, the wordmark, sidebar section titles.
 - **Body** (400–500, 12.5–15px, relaxed leading for paragraphs): the overwhelming majority of UI text — buttons, inputs, table cells, descriptions.
 - **Label** (500, 9.5–11.5px, wide tracking (~0.1em) + uppercase for overlines): badges, avatar initials, section overlines, and — in mono — issue keys, counts, timestamps, story points.
+
+All five roles are implemented as single Tailwind utilities in `packages/ui/src/theme.css` (`type-display`, `type-title`, `type-headline`, `type-body`, `type-label`, `type-label-overline` — the last two are split rather than composed with `uppercase`/`normal-case` since Tailwind's generated utility order can't be relied on to let a caller's override win). Reach for these instead of a raw `text-[Npx]` arbitrary value. The `Badge`/`Avatar` components are deliberate, documented exceptions to the generic Label size/weight (see their own entries under Components) — don't force them onto `type-label`.
 
 ### Named Rules
 **The Serif-Is-Rare Rule.** Instrument Serif appears only on true display headlines (login hero, empty-state welcome). If a component needs emphasis anywhere else, reach for sans-serif weight/size, never the serif.
@@ -209,7 +217,10 @@ Radius is fine-tuned to custom pixel values rather than a generic Tailwind defau
 The one structural chrome component: a fixed-width `<aside>` that is either 62px (icon-only "rail," the default) or 252px ("tree," expanded), with the width transition gated behind mount so the very first render never animates — only a user-triggered toggle slides. Collapse state persists to `localStorage`. This rail/tree split, not a hamburger menu or an always-expanded sidebar, is how Kompast handles navigation density.
 
 ### Compass Mark (signature component)
-The brand glyph: a `30×30px`, 9px-radius Cobalt Focus square containing a small (`8×8px`) white square rotated 45° (a diamond), centered. This exact construction — never a bitmap logo file in-app — is the only recurring "icon" the system treats as sacred; every other glyph is drawn ad hoc from the same primitive-shapes philosophy (e.g. the blinking status dot, the four-tile Microsoft glyph) but only the compass mark is brand-load-bearing.
+The brand glyph: a `30×30px`, 9px-radius Cobalt Focus square containing a small (`8×8px`) white square rotated 45° (a diamond), centered. This exact construction — never a bitmap logo file in-app — is the only recurring mark the system treats as sacred. The blinking status dot and the four-tile Microsoft glyph are drawn the same ad-hoc, primitive-shapes way (they're reproducing a vendor mark / a live-status affordance, not a generic UI action), but only the compass mark is brand-load-bearing.
+
+### Icons
+Every generic UI affordance (nav items, tabs, search, notifications, theme toggle, disclosure chevrons, remove/close, sort direction, etc.) is a [Lucide](https://lucide.dev) icon, not a hand-drawn shape and never a Unicode/emoji character — emoji render in full, uncontrollable color on most platforms and immediately clash with the One Loud Color Rule. Convention: 15px, `strokeWidth={1.75}`, no explicit color (Lucide's SVGs default to `stroke="currentColor"`, so an icon always matches the surrounding text color/opacity for free, including in disabled/hover states and dark mode). Exceptions that stay hand-drawn, not Lucide: the Compass Mark, the blinking status dot, and the four-tile Microsoft glyph (see above) — all brand/vendor marks, not swappable UI icons. Also out of scope: a doc/page's own custom icon (the emoji a user picks for a page, e.g. `page.icon`) — that's user content, not chrome, and keeps accepting arbitrary emoji.
 
 ## Do's and Don'ts
 
@@ -223,5 +234,6 @@ The brand glyph: a `30×30px`, 9px-radius Cobalt Focus square containing a small
 ### Don't:
 - **Don't** use Instrument Serif outside true display headlines — it must stay rare to keep its impact.
 - **Don't** add a shadow to anything resting in normal document flow (cards, sidebars, table rows) — that's the Overlay-Only Shadow Rule.
-- **Don't** pull in an icon library (Lucide, Heroicons, etc.) — every glyph in this system is hand-drawn from primitive shapes; an imported icon set would visually clash immediately.
+- **Don't** render a UI affordance as a raw Unicode/emoji character (⚡🔑📖🔔) — emoji carry their own uncontrollable color and inconsistent weight across platforms. Use the Lucide icon set (see Icons) instead.
+- **Don't** pull in a second icon library alongside Lucide, or hand-roll a one-off SVG for something Lucide already covers — one library, one stroke weight, one size convention.
 - **Don't** let the destructive/danger color drift back toward sharing a value with the brand accent.

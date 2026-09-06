@@ -55,15 +55,14 @@ function DocsIndexPage() {
 
       {data.templates.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 text-[13px] font-semibold">{t("index.templatesHeading")}</h2>
+          <h2 className="mb-3 type-headline">{t("index.templatesHeading")}</h2>
           <div className="flex flex-col gap-1.5">
             {data.templates.map((tpl) => (
-              <div key={tpl.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2 text-[13px]">
+              <div key={tpl.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2 type-body">
                 <span>{tpl.icon || "▭"}</span>
                 <span className="min-w-0 flex-1 truncate">{tpl.title || t("untitled")}</span>
                 <Button
                   variant="outline"
-                  className="text-[11.5px]"
                   onClick={() => useTemplate(tpl.id)}
                   disabled={usingTemplateId !== null}
                 >
@@ -76,7 +75,7 @@ function DocsIndexPage() {
       )}
 
       {data.pages.length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-text-3">
+        <div className="rounded-xl border border-border bg-surface p-10 text-center type-body text-text-3">
           {t("index.emptyStateText")}
         </div>
       ) : (

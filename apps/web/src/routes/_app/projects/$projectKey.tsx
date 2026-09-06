@@ -1,5 +1,6 @@
 import { createFileRoute, useRouter, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Kanban, Flag, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search } from "lucide-react";
 import {
   DndContext,
   useDraggable,
@@ -49,16 +50,19 @@ function ProjectPage() {
   const router = useRouter();
   const [view, setView] = useState("board");
 
+  const iconProps = { size: 14, strokeWidth: 1.75 };
   const VIEW_TABS = [
-    { key: "board", label: t("tabs.board"), icon: "◫" },
-    { key: "sprint", label: t("tabs.sprint"), icon: "⚑" },
-    { key: "table", label: t("tabs.table"), icon: "▤" },
-    { key: "roadmap", label: t("tabs.roadmap"), icon: "▬" },
-    { key: "docs", label: t("tabs.docs"), icon: "▭" },
-    { key: "automation", label: t("tabs.automation"), icon: "⚡" },
-    { key: "import", label: t("tabs.import"), icon: "⇩" },
+    { key: "board", label: t("tabs.board"), icon: <Kanban {...iconProps} /> },
+    { key: "sprint", label: t("tabs.sprint"), icon: <Flag {...iconProps} /> },
+    { key: "table", label: t("tabs.table"), icon: <Table2 {...iconProps} /> },
+    { key: "roadmap", label: t("tabs.roadmap"), icon: <MapIcon {...iconProps} /> },
+    { key: "docs", label: t("tabs.docs"), icon: <FileText {...iconProps} /> },
+    { key: "automation", label: t("tabs.automation"), icon: <Zap {...iconProps} /> },
+    { key: "import", label: t("tabs.import"), icon: <Download {...iconProps} /> },
   ];
-  const viewTabs = data.canManageProject ? [...VIEW_TABS, { key: "settings", label: t("tabs.settings"), icon: "⚙" }] : VIEW_TABS;
+  const viewTabs = data.canManageProject
+    ? [...VIEW_TABS, { key: "settings", label: t("tabs.settings"), icon: <Settings {...iconProps} /> }]
+    : VIEW_TABS;
   const [addingIssue, setAddingIssue] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
@@ -98,8 +102,8 @@ function ProjectPage() {
             {data.project.key.slice(0, 1)}
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="mb-1 text-xl font-semibold tracking-tight">{data.project.name}</h1>
-            <p className="text-xs text-text-2">
+            <h1 className="mb-1 type-title">{data.project.name}</h1>
+            <p className="type-label text-text-2">
               {data.project.key} · {t("header.ticketCount", { count: data.columns.reduce((n, c) => n + c.issues.length, 0) })}
             </p>
           </div>
@@ -117,15 +121,15 @@ function ProjectPage() {
                   placeholder={t("header.newIssuePlaceholder")}
                   className="rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
                 />
-                <Button variant="primary" className="text-[12.5px]" onClick={submitNewIssue} disabled={creating}>
+                <Button variant="primary" onClick={submitNewIssue} disabled={creating}>
                   {t("save")}
                 </Button>
-                <Button variant="outline" className="text-[12.5px]" onClick={() => setAddingIssue(false)}>
+                <Button variant="outline" onClick={() => setAddingIssue(false)}>
                   {t("cancel")}
                 </Button>
               </>
             ) : (
-              <Button variant="primary" className="text-[12.5px]" onClick={() => setAddingIssue(true)}>
+              <Button variant="primary" onClick={() => setAddingIssue(true)}>
                 {t("header.newIssueButton")}
               </Button>
             )}
@@ -133,7 +137,7 @@ function ProjectPage() {
         </div>
         <Tabs items={viewTabs} active={view} onChange={setView} className="mt-4" />
         {newIssueError && (
-          <p className="mb-4 mt-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{newIssueError}</p>
+          <p className="mb-4 mt-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{newIssueError}</p>
         )}
       </div>
 
@@ -146,7 +150,7 @@ function ProjectPage() {
       {view === "import" && <ImportTab projectId={data.project.id} boardId={data.board.id} />}
       {view === "settings" && data.canManageProject && <ProjectSettingsTab data={data} />}
       {![...VIEW_TABS.map((tb) => tb.key), "settings"].includes(view) && (
-        <div className="p-10 text-center text-sm text-text-3">
+        <div className="p-10 text-center type-body text-text-3">
           {t("header.viewNotBuilt", { label: viewTabs.find((tb) => tb.key === view)?.label })}
         </div>
       )}
@@ -190,9 +194,9 @@ function EmptyStatePanel({ overline, heading, subtext }: { overline: string; hea
       <div className="mx-auto mb-5 flex h-[42px] w-[42px] items-center justify-center rounded-[12px] bg-accent">
         <div className="h-[11px] w-[11px] rotate-45 rounded-sm bg-white" />
       </div>
-      <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-3">{overline}</p>
-      <p className="mx-auto max-w-[380px] text-[20px] font-semibold tracking-tight text-text">{heading}</p>
-      {subtext && <p className="mx-auto mt-2 max-w-[380px] text-[12.5px] leading-relaxed text-text-2">{subtext}</p>}
+      <p className="mb-1.5 type-label-overline text-text-3">{overline}</p>
+      <p className="mx-auto max-w-[380px] type-display text-text">{heading}</p>
+      {subtext && <p className="mx-auto mt-2 max-w-[380px] type-body leading-relaxed text-text-2">{subtext}</p>}
     </div>
   );
 }
@@ -224,14 +228,14 @@ function ProjectDocsTab({ projectId }: { projectId: string }) {
   return (
     <div className="px-6 py-5">
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-[12.5px] text-text-3">{t("docsTab.subtitle")}</p>
-        <Button variant="primary" className="text-[12.5px]" onClick={newPage} disabled={creating}>
+        <p className="type-body text-text-3">{t("docsTab.subtitle")}</p>
+        <Button variant="primary" onClick={newPage} disabled={creating}>
           {t("docsTab.newPageButton")}
         </Button>
       </div>
-      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>}
+      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
       {pages === null ? (
-        <p className="text-sm text-text-3">{t("loadingEllipsis")}</p>
+        <p className="type-body text-text-3">{t("loadingEllipsis")}</p>
       ) : pages.length === 0 ? (
         <EmptyStatePanel overline={t("tabs.docs")} heading={t("docsTab.emptyState")} />
       ) : (
@@ -380,7 +384,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
   }
 
   if (sprints === null || backlog === null) {
-    return <p className="p-6 text-sm text-text-3">{t("loadingEllipsis")}</p>;
+    return <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>;
   }
 
   const sprint = detail?.sprint;
@@ -409,19 +413,19 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
           placeholder={t("sprint.newNamePlaceholder")}
           className="flex-1 rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
         />
-        <Button variant="outline" className="text-[12.5px]" onClick={createSprint} disabled={creating}>
+        <Button variant="outline" onClick={createSprint} disabled={creating}>
           {t("sprint.addButton")}
         </Button>
 
         {sprint && (
           <div className="ml-auto flex items-center gap-2">
             {sprint.state === "future" && (
-              <Button variant="primary" className="text-[12.5px]" onClick={handleStart} disabled={busy}>
+              <Button variant="primary" onClick={handleStart} disabled={busy}>
                 {t("sprint.start")}
               </Button>
             )}
             {sprint.state === "active" && (
-              <Button variant="primary" className="text-[12.5px]" onClick={handleComplete} disabled={busy}>
+              <Button variant="primary" onClick={handleComplete} disabled={busy}>
                 {t("sprint.complete")}
               </Button>
             )}
@@ -430,11 +434,11 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
       </div>
 
       {error && (
-        <p className="col-span-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>
+        <p className="col-span-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>
       )}
 
       {sprint && detail && (
-        <div className="col-span-2 flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-[12px] text-text-2">
+        <div className="col-span-2 flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-2.5 type-body text-text-2">
           <span>
             {t("sprint.scopeLabel")} <strong>{detail.report.scopeIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.scopePoints}</strong> {t("sprint.pointsUnit")}
           </span>
@@ -450,26 +454,25 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
       {sprint && detail && (
         <div className="col-span-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
           <div className="flex items-center justify-between">
-            <p className="text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("sprint.aiSummaryHeading")}</p>
-            <Button variant="outline" className="text-[11px]" onClick={generateAiSummary} disabled={aiBusy}>
+            <p className="type-label-overline text-text-3">{t("sprint.aiSummaryHeading")}</p>
+            <Button variant="outline" onClick={generateAiSummary} disabled={aiBusy}>
               {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
             </Button>
           </div>
-          {aiError && <p className="text-[12px] text-danger">{aiError}</p>}
-          {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap text-[12.5px] text-text-2">{aiSummary || "…"}</p>}
+          {aiError && <p className="type-body text-danger">{aiError}</p>}
+          {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap type-body text-text-2">{aiSummary || "…"}</p>}
         </div>
       )}
 
       <div className="rounded-xl border border-border bg-surface p-3">
-        <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("sprint.backlogHeading")}</p>
+        <p className="mb-2 type-label-overline text-text-3">{t("sprint.backlogHeading")}</p>
         <div className="flex flex-col gap-1.5">
-          {backlog.length === 0 && <p className="text-[12.5px] text-text-3">{t("sprint.backlogEmpty")}</p>}
+          {backlog.length === 0 && <p className="type-body text-text-3">{t("sprint.backlogEmpty")}</p>}
           {backlog.map((issue) => (
             <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
-              <span className="truncate text-[12.5px]">{issue.title}</span>
+              <span className="truncate type-body">{issue.title}</span>
               <Button
                 variant="outline"
-                className="text-[11px]"
                 disabled={!selectedSprintId || sprint?.state === "closed" || busy}
                 onClick={() => addToSprint(issue.id)}
               >
@@ -481,13 +484,13 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
       </div>
 
       <div className="rounded-xl border border-border bg-surface p-3">
-        <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("sprint.contentsHeading")}</p>
+        <p className="mb-2 type-label-overline text-text-3">{t("sprint.contentsHeading")}</p>
         <div className="flex flex-col gap-1.5">
-          {(!detail || detail.issues.length === 0) && <p className="text-[12.5px] text-text-3">{t("sprint.noIssuesInSprint")}</p>}
+          {(!detail || detail.issues.length === 0) && <p className="type-body text-text-3">{t("sprint.noIssuesInSprint")}</p>}
           {detail?.issues.map((issue) => (
             <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
-              <span className="truncate text-[12.5px]">{issue.title}</span>
-              <Button variant="outline" className="text-[11px]" disabled={busy} onClick={() => removeFromSprint(issue.id)}>
+              <span className="truncate type-body">{issue.title}</span>
+              <Button variant="outline" disabled={busy} onClick={() => removeFromSprint(issue.id)}>
                 {t("sprint.removeButton")}
               </Button>
             </div>
@@ -497,7 +500,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
 
       {detail && detail.issues.length > 0 && (
         <div className="col-span-2 rounded-xl border border-border bg-surface">
-          <p className="p-3 pb-0 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("sprint.reviewHeading")}</p>
+          <p className="p-3 pb-0 type-label-overline text-text-3">{t("sprint.reviewHeading")}</p>
           <SprintReviewTable boardData={boardData} sprintIssueIds={new Set(detail.issues.map((i) => i.id))} />
         </div>
       )}
@@ -532,7 +535,7 @@ function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: 
     getRoadmapFn({ data: projectId }).then(setEpics);
   }, [projectId]);
 
-  if (epics === null) return <p className="p-6 text-sm text-text-3">{t("loadingEllipsis")}</p>;
+  if (epics === null) return <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>;
 
   if (epics.length === 0) {
     return (
@@ -552,8 +555,8 @@ function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: 
               <span className="font-mono text-[10.5px] text-text-3">
                 {projectKey}-{epic.keySeq}
               </span>
-              <span className="text-[13px] font-semibold tracking-tight">{epic.title}</span>
-              <span className="ml-auto text-[11.5px] text-text-3">
+              <span className="type-body font-semibold tracking-tight">{epic.title}</span>
+              <span className="ml-auto type-label text-text-3">
                 {epic.startDate ? new Date(epic.startDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" }) : "?"} –{" "}
                 {epic.dueDate ? new Date(epic.dueDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" }) : "?"}
               </span>
@@ -561,7 +564,7 @@ function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: 
             <div className="h-2 overflow-hidden rounded-full bg-surface-3">
               <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--violet)" }} />
             </div>
-            <p className="mt-1 text-[11px] text-text-3">
+            <p className="mt-1 type-body text-text-3">
               {t("roadmap.progressSummary", { done: epic.doneCount, total: epic.childCount, pct })}
             </p>
           </div>
@@ -704,12 +707,12 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
     }
   }
 
-  if (rules === null) return <p className="p-6 text-sm text-text-3">{t("loadingEllipsis")}</p>;
+  if (rules === null) return <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>;
 
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="rounded-xl border border-border bg-surface p-4">
-        <p className="mb-3 text-[13px] font-semibold">{t("automation.newRuleHeading")}</p>
+        <p className="mb-3 type-headline">{t("automation.newRuleHeading")}</p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
             {t("automation.nameLabel")}
@@ -777,19 +780,19 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
               />
             </>
           )}
-          <Button variant="primary" className="text-[12.5px]" onClick={createRule} disabled={creating || !name.trim()}>
+          <Button variant="primary" onClick={createRule} disabled={creating || !name.trim()}>
             {t("automation.addRuleButton")}
           </Button>
         </div>
-        {error && <p className="mt-2.5 text-[12.5px] text-danger">{error}</p>}
+        {error && <p className="mt-2.5 type-body text-danger">{error}</p>}
       </div>
 
       <div className="flex flex-col gap-2">
-        {rules.length === 0 && <p className="text-[12.5px] text-text-3">{t("automation.noRulesYet")}</p>}
+        {rules.length === 0 && <p className="type-body text-text-3">{t("automation.noRulesYet")}</p>}
         {rules.map((rule) => (
           <div key={rule.id} className="rounded-xl border border-border bg-surface p-3.5">
             <div className="flex items-center gap-2">
-              <span className="text-[13px] font-semibold">{rule.name}</span>
+              <span className="type-body font-semibold">{rule.name}</span>
               {rule.dryRun && <Badge>{t("automation.dryRunBadge")}</Badge>}
               <span className="text-[11.5px] text-text-3">
                 {TRIGGER_LABEL[(rule.trigger as { type: TriggerType }).type] ?? (rule.trigger as { type: string }).type}
@@ -804,7 +807,6 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
                 </label>
                 <Button
                   variant="outline"
-                  className="text-[11px]"
                   style={isArmed(rule.id) ? { color: "var(--danger)", borderColor: "var(--danger)" } : undefined}
                   title={isArmed(rule.id) ? t("automation.deleteRuleConfirm") : undefined}
                   onClick={() => handleDeleteClick(rule.id)}
@@ -817,11 +819,11 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
             {expandedRuleId === rule.id && (
               <div className="mt-2.5 border-t border-border pt-2.5">
                 {!runsByRule[rule.id] || runsByRule[rule.id]!.length === 0 ? (
-                  <p className="text-[11.5px] text-text-3">{t("automation.noRunsYet")}</p>
+                  <p className="type-body text-text-3">{t("automation.noRunsYet")}</p>
                 ) : (
                   <div className="flex flex-col gap-1">
                     {runsByRule[rule.id]!.map((run) => (
-                      <div key={run.id} className="flex items-center gap-2 text-[11.5px] text-text-3">
+                      <div key={run.id} className="flex items-center gap-2 type-label text-text-3">
                         <span className="font-mono">{new Date(run.createdAt).toLocaleString()}</span>
                         <Badge>{run.status}</Badge>
                         {run.error && <span className="text-danger">{run.error}</span>}
@@ -894,12 +896,12 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
     }
   }
 
-  if (runs === null) return <p className="p-6 text-sm text-text-3">{t("loadingEllipsis")}</p>;
+  if (runs === null) return <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>;
 
   return (
     <div className="grid grid-cols-2 gap-4 p-6">
       <div className="rounded-xl border border-border bg-surface p-4">
-        <p className="mb-3 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("importTab.heading")}</p>
+        <p className="mb-3 type-label-overline text-text-3">{t("importTab.heading")}</p>
         <div className="flex flex-col gap-2.5">
           <label className="block">
             <span className="mb-1 block text-[12px] text-text-2">{t("importTab.baseUrlLabel")}</span>
@@ -930,13 +932,13 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
             <input type="checkbox" checked={fetchAttachments} onChange={(e) => setFetchAttachments(e.target.checked)} />
             {t("importTab.fetchAttachmentsLabel")}
           </label>
-          <Button variant="primary" className="text-[12.5px]" onClick={runImport} disabled={running}>
+          <Button variant="primary" onClick={runImport} disabled={running}>
             {running ? t("importTab.importingEllipsis") : t("importTab.runButton")}
           </Button>
-          {runError && <p className="text-[12px] text-danger">{runError}</p>}
-          {lastResult?.error && <p className="text-[12px] text-danger">{lastResult.error}</p>}
+          {runError && <p className="type-body text-danger">{runError}</p>}
+          {lastResult?.error && <p className="type-body text-danger">{lastResult.error}</p>}
           {lastResult?.report && (
-            <div className="rounded-[9px] border border-border bg-surface-2 p-3 text-[12px] text-text-2">
+            <div className="rounded-[9px] border border-border bg-surface-2 p-3 type-body text-text-2">
               <p>
                 {t("importTab.resultCreated")} <strong>{lastResult.report.counts.issuesCreated}</strong> · {t("importTab.resultSkipped")} <strong>{lastResult.report.counts.issuesSkipped}</strong> · {t("importTab.resultNewStatuses")}{" "}
                 <strong>{lastResult.report.counts.statusesCreated}</strong> · {t("importTab.resultNewTypes")} <strong>{lastResult.report.counts.typesCreated}</strong>
@@ -948,11 +950,11 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
       </div>
 
       <div className="rounded-xl border border-border bg-surface p-4">
-        <p className="mb-3 text-[11.5px] font-semibold uppercase tracking-wide text-text-3">{t("importTab.historyHeading")}</p>
+        <p className="mb-3 type-label-overline text-text-3">{t("importTab.historyHeading")}</p>
         <div className="flex flex-col gap-2">
-          {runs.length === 0 && <p className="text-[12.5px] text-text-3">{t("importTab.noImportsYet")}</p>}
+          {runs.length === 0 && <p className="type-body text-text-3">{t("importTab.noImportsYet")}</p>}
           {runs.map((run) => (
-            <div key={run.id} className="rounded-[9px] border border-border px-3 py-2 text-[12px]">
+            <div key={run.id} className="rounded-[9px] border border-border px-3 py-2 type-body">
               <div className="flex items-center justify-between">
                 <span className="font-medium">
                   {run.source.toUpperCase()} · {IMPORT_RUN_STATUS_LABEL[run.status] ?? run.status}
@@ -1008,6 +1010,40 @@ function BoardView({ data }: { data: BoardData }) {
         ),
       }))
     : data.columns;
+
+  // Releasing a drag leaves a trailing native click on the dragged card. dnd-kit
+  // already swallows it, but with a document-level capture listener that only calls
+  // stopPropagation() — enough to keep it away from React (so no handler on the card
+  // itself can ever see that click), yet a cancelled-propagation event still runs its
+  // default action, and the card is a real <a href>. So the browser navigates on its
+  // own and the issue the user only meant to move opens. Capture on `window` runs
+  // ahead of dnd-kit's document listener, making this the last point where that
+  // default can still be cancelled. Armed by onDragStart, which the sensor's 4px
+  // activation distance means only ever fires for a genuine drag, never a click.
+  const suppressClickRef = useRef(false);
+
+  function handleDragStart() {
+    suppressClickRef.current = true;
+  }
+
+  useEffect(() => {
+    // A drag that ends without a trailing click would otherwise leave the flag
+    // armed and eat the next real click, so every fresh press disarms it.
+    function disarm() {
+      suppressClickRef.current = false;
+    }
+    function cancelClickAfterDrag(e: Event) {
+      if (!suppressClickRef.current) return;
+      suppressClickRef.current = false;
+      e.preventDefault();
+    }
+    window.addEventListener("pointerdown", disarm, true);
+    window.addEventListener("click", cancelClickAfterDrag, true);
+    return () => {
+      window.removeEventListener("pointerdown", disarm, true);
+      window.removeEventListener("click", cancelClickAfterDrag, true);
+    };
+  }, []);
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -1080,11 +1116,11 @@ function BoardView({ data }: { data: BoardData }) {
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div>
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-2.5">
           <div className="flex w-[190px] items-center gap-1.5 rounded-[7px] border border-border bg-surface px-2 py-1.5">
-            <span className="text-[11px] text-text-3">⌕</span>
+            <Search size={14} strokeWidth={1.75} className="flex-none text-text-3" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -1092,7 +1128,7 @@ function BoardView({ data }: { data: BoardData }) {
               className="min-w-0 flex-1 border-none bg-transparent text-[12.5px] outline-none placeholder:text-text-3"
             />
           </div>
-          <div className="ml-auto flex items-center gap-2 text-[11.5px]" aria-live="polite">
+          <div className="ml-auto flex items-center gap-2 type-body" aria-live="polite">
             {pending && <span className="text-text-3">{t("savingEllipsis")}</span>}
             {!pending && error && <span className="text-danger">{error}</span>}
             {!pending && !error && announcement && <span className="text-text-3">{announcement}</span>}
@@ -1152,11 +1188,11 @@ function Column({
     <div className="flex w-[274px] flex-none flex-col gap-2">
       <div className="flex items-center gap-2 px-0.5">
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: column.color }} />
-        <span className="text-[12.5px] font-semibold tracking-tight">{column.name}</span>
-        <span className="font-mono text-[10.5px] text-text-3">{column.issues.length}</span>
+        <span className="type-body font-semibold tracking-tight">{column.name}</span>
+        <span className="type-label text-text-3">{column.issues.length}</span>
         {column.isBacklog && <Badge>{t("fixedBadge")}</Badge>}
         {column.wipLimit != null && column.issues.length > column.wipLimit && (
-          <span className="ml-auto text-[10px] font-semibold text-amber">
+          <span className="ml-auto type-label font-semibold text-amber">
             {column.issues.length}/{column.wipLimit}
           </span>
         )}
@@ -1168,7 +1204,7 @@ function Column({
         style={isOver ? { background: "var(--surface-3)" } : undefined}
       >
         {column.issues.length === 0 && (
-          <p className="rounded-[9px] border border-dashed border-border px-2.5 py-3 text-center text-[11px] text-text-3">
+          <p className="rounded-[9px] border border-dashed border-border px-2.5 py-3 text-center type-body text-text-3">
             {t("boardView.columnEmpty")}
           </p>
         )}
@@ -1261,7 +1297,7 @@ function Card({
       }}
     >
       <div className="mb-1.5 flex items-center gap-1.5">
-        <span className="font-mono text-[10px] font-medium text-text-3">
+        <span className="type-label text-text-3">
           {projectKey}-{issue.keySeq}
         </span>
         {type && (
@@ -1273,7 +1309,7 @@ function Card({
           </span>
         )}
       </div>
-      <p className="mb-2 line-clamp-2 text-[13px] font-medium leading-snug tracking-tight">{issue.title}</p>
+      <p className="mb-2 line-clamp-2 type-body font-medium leading-snug tracking-tight">{issue.title}</p>
       {issue.labels.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {issue.labels.slice(0, 3).map((label) => (
@@ -1316,12 +1352,12 @@ function Card({
         </span>
         {assignee && <Avatar initials={initialsOf(assignee.name)} />}
         {issue.dueDate && (
-          <span className="font-mono text-[10px] text-text-3">
+          <span className="type-label text-text-3">
             {new Date(issue.dueDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" })}
           </span>
         )}
         {issue.storyPoints != null && (
-          <span className="ml-auto rounded bg-surface-3 px-1 py-px font-mono text-[10.5px] font-semibold text-text-3">
+          <span className="ml-auto rounded bg-surface-3 px-1 py-px type-label font-semibold text-text-3">
             {issue.storyPoints}
           </span>
         )}

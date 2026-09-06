@@ -15,15 +15,15 @@ export function RolesTab() {
   const { t } = useTranslation("settings");
   return (
     <div>
-      <p className="mb-6 text-sm text-text-2">{t("roles.intro")}</p>
+      <p className="mb-6 type-body text-text-2">{t("roles.intro")}</p>
       <Card className="overflow-hidden">
         {ROLE_KEYS.map((key) => (
           <div key={key} className="border-b border-border px-4 py-3 last:border-b-0">
             <div className="mb-1 flex items-center gap-2">
-              <span className="text-[13px] font-semibold">{t(`roles.${key}.name`)}</span>
+              <span className="type-body font-semibold">{t(`roles.${key}.name`)}</span>
               <Badge tone="neutral">{t(`roles.${key}.scope`)}</Badge>
             </div>
-            <p className="text-[12px] leading-relaxed text-text-2">{t(`roles.${key}.desc`)}</p>
+            <p className="type-body leading-relaxed text-text-2">{t(`roles.${key}.desc`)}</p>
           </div>
         ))}
       </Card>

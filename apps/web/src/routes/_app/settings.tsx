@@ -55,7 +55,7 @@ function SettingsPage() {
       {active === "members" && <MembersTab data={data.members} />}
       {active === "teams" && data.integrations.isSuperAdmin && <TeamsTab teams={data.teams} members={data.members.members} />}
       {active === "teams" && !data.integrations.isSuperAdmin && (
-        <p className="text-sm text-text-3">{t("teamsNonAdminNote")}</p>
+        <p className="type-body text-text-3">{t("teamsNonAdminNote")}</p>
       )}
       {active === "roles" && <RolesTab />}
       {active === "integrations" && <IntegrationsTab data={data.integrations} />}
@@ -67,7 +67,7 @@ function IntegrationsTab({ data }: { data: Awaited<ReturnType<typeof getIntegrat
   const { t } = useTranslation("settings");
   return (
     <div>
-      <p className="mb-6 text-sm text-text-2">{t("integrations.subtitle")}</p>
+      <p className="mb-6 type-body text-text-2">{t("integrations.subtitle")}</p>
       <Card className="divide-y divide-border overflow-hidden">
         <EntraSection initial={data.entra} />
         <AiSection initial={data.ai} />
@@ -116,10 +116,10 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
 
   return (
     <div className="p-4">
-      <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.embedding.heading")}</h2>
-      <p className="mb-3 text-[12px] text-text-2">{t("integrations.embedding.description")}</p>
+      <h2 className="mb-3 type-headline">{t("integrations.embedding.heading")}</h2>
+      <p className="mb-3 type-body text-text-2">{t("integrations.embedding.description")}</p>
       <div className="flex flex-col gap-4">
-        <label className="flex items-center gap-2 text-[13px]">
+        <label className="flex items-center gap-2 type-body">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           {t("integrations.embedding.enable")}
         </label>
@@ -129,7 +129,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value as typeof provider)}
-            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
           >
             <option value="azure-openai">Azure OpenAI</option>
             <option value="openai-compatible">OpenAI-compatible</option>
@@ -145,7 +145,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder={initial.hasApiKey ? "••••••••" : "sk-…"}
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
           />
         </label>
 
@@ -156,7 +156,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
               <input
                 value={azureEndpoint}
                 onChange={(e) => setAzureEndpoint(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
               />
             </label>
             <label className="block">
@@ -164,7 +164,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
               <input
                 value={azureDeployment}
                 onChange={(e) => setAzureDeployment(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
               />
             </label>
           </>
@@ -175,7 +175,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
               <input
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
               />
             </label>
             <label className="block">
@@ -184,7 +184,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 placeholder="text-embedding-3-small"
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
               />
             </label>
           </>
@@ -194,7 +194,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
           <Button variant="primary" onClick={save} disabled={saving}>
             {saving ? t("integrations.embedding.savingEllipsis") : t("integrations.embedding.save")}
           </Button>
-          {saved && <span className="text-[12px] text-green">{t("integrations.embedding.saved")}</span>}
+          {saved && <span className="type-body text-green">{t("integrations.embedding.saved")}</span>}
         </div>
       </div>
     </div>
@@ -229,9 +229,9 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
 
   return (
     <div className="p-4">
-      <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.entra.heading")}</h2>
+      <h2 className="mb-3 type-headline">{t("integrations.entra.heading")}</h2>
       <div className="flex flex-col gap-4">
-        <p className="rounded-[7px] border border-dashed border-border-2 bg-surface-2 p-3 text-[12px] leading-relaxed text-text-2">
+        <p className="rounded-[7px] border border-dashed border-border-2 bg-surface-2 p-3 type-body leading-relaxed text-text-2">
           {t("integrations.entra.warningPart1")}
           <strong>{t("integrations.entra.warningBold")}</strong>
           {t("integrations.entra.warningPart2")}
@@ -242,12 +242,12 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
             value={tenantId}
             onChange={(e) => setTenantId(e.target.value)}
             placeholder="11111111-1111-1111-1111-111111111111"
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
           />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.entra.clientIdLabel")}</span>
-          <input value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none" />
+          <input value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none" />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[12px] font-medium text-text-2">
@@ -258,15 +258,15 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
             value={clientSecret}
             onChange={(e) => setClientSecret(e.target.value)}
             placeholder={initial.hasClientSecret ? "••••••••" : ""}
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
           />
         </label>
         <div className="flex items-center gap-2.5">
           <Button variant="primary" onClick={save} disabled={saving || !tenantId.trim() || !clientId.trim()}>
             {saving ? t("integrations.entra.savingEllipsis") : t("integrations.entra.save")}
           </Button>
-          {saved && <span className="text-[12px] text-green">{t("integrations.entra.saved")}</span>}
-          {error && <span className="text-[12px] text-danger">{error}</span>}
+          {saved && <span className="type-body text-green">{t("integrations.entra.saved")}</span>}
+          {error && <span className="type-body text-danger">{error}</span>}
         </div>
       </div>
     </div>
@@ -311,9 +311,9 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
 
   return (
     <div className="p-4">
-      <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.ai.heading")}</h2>
+      <h2 className="mb-3 type-headline">{t("integrations.ai.heading")}</h2>
       <div className="flex flex-col gap-4">
-        <label className="flex items-center gap-2 text-[13px]">
+        <label className="flex items-center gap-2 type-body">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           {t("integrations.ai.enable")}
         </label>
@@ -323,7 +323,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value as typeof provider)}
-            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
           >
             <option value="anthropic">Anthropic</option>
             <option value="azure-openai">Azure OpenAI</option>
@@ -340,7 +340,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder={initial.hasApiKey ? "••••••••" : "sk-…"}
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
           />
         </label>
 
@@ -353,7 +353,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder={provider === "anthropic" ? "claude-sonnet-5" : t("integrations.ai.modelPlaceholderOther")}
-              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
             />
           </label>
         )}
@@ -365,7 +365,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
               <input
                 value={azureEndpoint}
                 onChange={(e) => setAzureEndpoint(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
               />
             </label>
             <label className="block">
@@ -373,7 +373,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
               <input
                 value={azureDeployment}
                 onChange={(e) => setAzureDeployment(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
               />
             </label>
           </>
@@ -385,7 +385,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
             <input
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
-              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
             />
           </label>
         )}
@@ -394,7 +394,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
           <Button variant="primary" onClick={save} disabled={saving}>
             {saving ? t("integrations.ai.savingEllipsis") : t("integrations.ai.save")}
           </Button>
-          {saved && <span className="text-[12px] text-green">{t("integrations.ai.saved")}</span>}
+          {saved && <span className="type-body text-green">{t("integrations.ai.saved")}</span>}
         </div>
       </div>
     </div>
@@ -429,14 +429,14 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
 
   return (
     <div className="p-4">
-      <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.mail.heading")}</h2>
+      <h2 className="mb-3 type-headline">{t("integrations.mail.heading")}</h2>
       <div className="flex flex-col gap-4">
         <label className="block">
           <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.mail.driverLabel")}</span>
           <select
             value={driver}
             onChange={(e) => setDriver(e.target.value as typeof driver)}
-            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
           >
             <option value="resend">Resend</option>
             <option value="brevo">Brevo</option>
@@ -451,7 +451,7 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
             value={from}
             onChange={(e) => setFrom(e.target.value)}
             placeholder="noreply@example.com"
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
           />
         </label>
 
@@ -465,7 +465,7 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
               value={smtpUrl}
               onChange={(e) => setSmtpUrl(e.target.value)}
               placeholder="smtp://user:pass@host:587"
-              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
             />
           </label>
         ) : (
@@ -478,7 +478,7 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="••••••••"
-              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
             />
           </label>
         )}
@@ -487,7 +487,7 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
           <Button variant="primary" onClick={save} disabled={saving}>
             {saving ? t("integrations.mail.savingEllipsis") : t("integrations.mail.save")}
           </Button>
-          {saved && <span className="text-[12px] text-green">{t("integrations.mail.saved")}</span>}
+          {saved && <span className="type-body text-green">{t("integrations.mail.saved")}</span>}
         </div>
       </div>
     </div>

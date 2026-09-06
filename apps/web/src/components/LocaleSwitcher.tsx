@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
+import { Check } from "lucide-react";
 import { useTranslation, SUPPORTED_LOCALES, LOCALE_LABELS, type SupportedLocale } from "@kompast/i18n";
 import { setLocaleFn } from "@/lib/server-fns/locale";
 
@@ -47,7 +48,7 @@ export function LocaleSwitcher() {
               className="flex w-full items-center justify-between px-3 py-2 text-left text-[12.5px] hover:bg-surface-3"
             >
               {LOCALE_LABELS[locale]}
-              {locale === current && <span className="text-accent">✓</span>}
+              {locale === current && <Check size={14} strokeWidth={1.75} className="text-accent" />}
             </button>
           ))}
         </div>

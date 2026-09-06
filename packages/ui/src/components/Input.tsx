@@ -1,5 +1,6 @@
 import { type InputHTMLAttributes, forwardRef } from "react";
 import clsx from "clsx";
+import { Search } from "lucide-react";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
@@ -26,7 +27,7 @@ export function SearchField({
         className,
       )}
     >
-      <span className="text-[11px] text-text-3">⌕</span>
+      <Search size={15} strokeWidth={1.75} className="flex-none text-text-3" />
       <Input {...props} />
     </div>
   );

@@ -47,10 +47,10 @@ function NewProjectPage() {
   if (eligibleTeams.length === 0) {
     return (
       <div className="mx-auto max-w-[520px] px-8 pb-16 pt-9">
-        <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
+        <h1 className="mb-1 type-title">{t("pageTitle")}</h1>
         <Card className="flex flex-col items-start gap-3 p-4">
-          <h2 className="text-[15px] font-semibold">{t("noEligibleTeamTitle")}</h2>
-          <p className="text-sm text-text-2">
+          <h2 className="type-headline">{t("noEligibleTeamTitle")}</h2>
+          <p className="type-body text-text-2">
             {shell.isSuperAdmin ? t("noEligibleTeamSuperAdmin") : t("noEligibleTeamMember")}
           </p>
           {shell.isSuperAdmin && (
@@ -68,14 +68,14 @@ function NewProjectPage() {
 
   return (
     <div className="mx-auto max-w-[520px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
-      <p className="mb-8 text-sm text-text-2">{t("pageSubtitle")}</p>
+      <h1 className="mb-1 type-title">{t("pageTitle")}</h1>
+      <p className="mb-8 type-body text-text-2">{t("pageSubtitle")}</p>
 
       <Card className="flex flex-col gap-3 p-4">
         <select
           value={teamId}
           onChange={(e) => setTeamId(e.target.value)}
-          className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-2 text-[13px] outline-none"
+          className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-2 text-[12.5px] outline-none"
         >
           {eligibleTeams.map((tm) => (
             <option key={tm.id} value={tm.id}>
@@ -88,7 +88,7 @@ function NewProjectPage() {
           onChange={(e) => setName(e.target.value)}
           placeholder={t("namePlaceholder")}
           autoFocus
-          className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+          className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
         />
         <input
           value={key}
@@ -96,9 +96,9 @@ function NewProjectPage() {
           onKeyDown={(e) => e.key === "Enter" && create()}
           placeholder={t("keyPlaceholder")}
           maxLength={10}
-          className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 font-mono text-[13px] outline-none"
+          className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 font-mono text-[12.5px] outline-none"
         />
-        {error && <p className="text-[12px] text-danger">{error}</p>}
+        {error && <p className="type-body text-danger">{error}</p>}
         <Button variant="primary" onClick={create} disabled={creating || !key.trim() || !name.trim()} className="self-start">
           {creating ? t("creatingEllipsis") : t("createProject")}
         </Button>

@@ -52,9 +52,9 @@ function NewTeamPage() {
           onKeyDown={(e) => e.key === "Enter" && create()}
           placeholder={t("teamNamePlaceholder")}
           autoFocus
-          className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+          className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
         />
-        {error && <p className="text-[12px] text-danger">{error}</p>}
+        {error && <p className="type-body text-danger">{error}</p>}
         <Button variant="primary" onClick={create} disabled={creating || !name.trim()} className="self-start">
           {creating ? t("creatingEllipsis") : t("createTeam")}
         </Button>
