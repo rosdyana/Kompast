@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
+import { PageContainer } from "@kompast/ui/PageContainer";
+import { PageHeader } from "@kompast/ui/PageHeader";
 import { useTranslation } from "@kompast/i18n";
 import { listPageTreeFn, createPageFn, listTemplatePagesFn, createPageFromTemplateFn } from "@/lib/server-fns/pages";
 import { DocsTree } from "@/components/docs/DocsTree";
@@ -41,21 +43,23 @@ function DocsIndexPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[820px] px-8 pb-16 pt-9">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">{t("docsBrand")}</h1>
-        <Button variant="primary" onClick={newPage} disabled={creating}>
-          {t("index.newPageButton")}
-        </Button>
-      </div>
+    <PageContainer width="reading">
+      <PageHeader
+        title={t("docsBrand")}
+        actions={
+          <Button variant="primary" onClick={newPage} disabled={creating}>
+            {t("index.newPageButton")}
+          </Button>
+        }
+      />
 
       {data.templates.length > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-[13px] font-semibold">{t("index.templatesHeading")}</h2>
           <div className="flex flex-col gap-1.5">
             {data.templates.map((tpl) => (
-              <div key={tpl.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 text-[13px]">
-                <span>{tpl.icon || "▤"}</span>
+              <div key={tpl.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2 text-[13px]">
+                <span>{tpl.icon || "▭"}</span>
                 <span className="min-w-0 flex-1 truncate">{tpl.title || t("untitled")}</span>
                 <Button
                   variant="outline"
@@ -80,6 +84,6 @@ function DocsIndexPage() {
           <DocsTree pages={data.pages} />
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

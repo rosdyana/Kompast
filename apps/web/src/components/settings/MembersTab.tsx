@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
+import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
 import { useTranslation } from "@kompast/i18n";
 import { inviteMemberFn, cancelInvitationFn, type listMembersFn } from "@/lib/server-fns/members";
@@ -61,7 +62,7 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as typeof role)}
-              className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-2 text-[13px] outline-none"
+              className="kp-select rounded-[7px] border border-border-2 bg-surface px-2.5 py-2 text-[13px] outline-none"
             >
               <option value="member">{t("members.memberRoleLabel")}</option>
               <option value="admin">{t("members.adminRoleLabel")}</option>
@@ -79,11 +80,11 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
           <h2 className="mb-3 text-[13px] font-semibold">{t("members.pendingInvitesHeading")}</h2>
           <div className="flex flex-col gap-1.5">
             {data.invitations.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px]">
+              <div key={inv.id} className="flex items-center justify-between rounded-[9px] border border-border bg-surface px-3 py-2 text-[12.5px]">
                 <span>
                   {inv.email} <span className="text-text-3">· {inv.role}</span>
                 </span>
-                <button onClick={() => cancel(inv.id)} className="rounded px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger">
+                <button onClick={() => cancel(inv.id)} className="rounded-[7px] px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger">
                   {t("members.cancel")}
                 </button>
               </div>
@@ -96,11 +97,11 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
         <h2 className="mb-3 text-[13px] font-semibold">{t("members.currentMembersHeading")}</h2>
         <div className="flex flex-col gap-1.5">
           {data.members.map((m) => (
-            <div key={m.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px]">
+            <div key={m.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2 text-[12.5px]">
               <Avatar initials={initialsOf(m.name)} size={22} />
               <span className="min-w-0 flex-1 truncate">{m.name}</span>
               <span className="text-text-3">{m.email}</span>
-              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-text-2">{m.role}</span>
+              <Badge tone="neutral">{m.role}</Badge>
             </div>
           ))}
         </div>

@@ -4,3 +4,6 @@ export * from "./Avatar";
 export * from "./Input";
 export * from "./Card";
 export * from "./Tabs";
+export * from "./SidebarShell";
+export * from "./PageContainer";
+export * from "./PageHeader";

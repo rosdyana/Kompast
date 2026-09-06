@@ -425,7 +425,7 @@ function Topbar({ workspaceName }: { workspaceName: string }) {
   const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation("nav");
   return (
-    <header className="flex h-[47px] flex-none items-center gap-3.5 border-b border-border bg-surface-2 px-[18px]">
+    <header className="flex h-[47px] flex-none items-center gap-3.5 border-b border-border bg-surface-2 px-4">
       <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-text-2">
         <span className="truncate font-semibold text-text">{workspaceName}</span>
       </div>

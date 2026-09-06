@@ -7,5 +7,7 @@
   "inputPlaceholder": "Tanyakan sesuatu…",
   "sendingEllipsis": "Mengirim…",
   "send": "Kirim",
-  "askFailed": "Ask Kompast gagal"
+  "askFailed": "Ask Kompast gagal",
+  "hideConversationsTitle": "Sembunyikan percakapan",
+  "showConversationsTitle": "Tampilkan percakapan"
 }

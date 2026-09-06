@@ -2,6 +2,8 @@ import { createFileRoute, redirect, useLoaderData, useRouter } from "@tanstack/r
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
+import { PageContainer } from "@kompast/ui/PageContainer";
+import { PageHeader } from "@kompast/ui/PageHeader";
 import { useTranslation } from "@kompast/i18n";
 import { createTeamFn } from "@/lib/server-fns/teams";
 
@@ -40,9 +42,8 @@ function NewTeamPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[520px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("newTeamPageTitle")}</h1>
-      <p className="mb-8 text-sm text-text-2">{t("newTeamPageSubtitle")}</p>
+    <PageContainer width="narrow">
+      <PageHeader title={t("newTeamPageTitle")} subtitle={t("newTeamPageSubtitle")} />
 
       <Card className="flex flex-col gap-3 p-4">
         <input
@@ -58,6 +59,6 @@ function NewTeamPage() {
           {creating ? t("creatingEllipsis") : t("createTeam")}
         </Button>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

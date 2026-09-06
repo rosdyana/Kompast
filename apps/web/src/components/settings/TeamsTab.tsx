@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useRouter } from "@tanstack/react-router";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
+import { Badge } from "@kompast/ui/Badge";
 import { useTranslation } from "@kompast/i18n";
 import { transferSuperAdminFn, type listTeamsFn } from "@/lib/server-fns/teams";
 import type { listMembersFn } from "@/lib/server-fns/members";
@@ -36,9 +37,7 @@ export function TeamsTab({
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{team.name}</span>
             <span className="font-mono text-[11px] text-text-3">{t("teamMemberCount", { count: team.memberCount })}</span>
             <span className="font-mono text-[11px] text-text-3">{t("teamProjectCount", { count: team.projectCount })}</span>
-            {team.myRole === "admin" && (
-              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-text-2">{t("adminBadge")}</span>
-            )}
+            {team.myRole === "admin" && <Badge tone="neutral">{t("adminBadge")}</Badge>}
           </Link>
         ))}
       </Card>
@@ -78,7 +77,7 @@ function TransferSuperAdmin({ members }: { members: Awaited<ReturnType<typeof li
         <select
           value={newHolderUserId}
           onChange={(e) => setNewHolderUserId(e.target.value)}
-          className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+          className="kp-select min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
         >
           <option value="">{t("transferMemberSelectPlaceholder")}</option>
           {members.map((m) => (

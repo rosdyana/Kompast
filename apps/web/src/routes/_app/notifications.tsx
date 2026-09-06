@@ -1,4 +1,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { PageContainer } from "@kompast/ui/PageContainer";
+import { PageHeader } from "@kompast/ui/PageHeader";
+import { Card } from "@kompast/ui/Card";
 import { useTranslation } from "@kompast/i18n";
 import { listNotificationPrefsFn, setNotificationPrefFn } from "@/lib/server-fns/notifications";
 
@@ -20,13 +23,12 @@ function NotificationsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[640px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
-      <p className="mb-8 text-sm text-text-2">{t("pageSubtitle")}</p>
+    <PageContainer width="standard">
+      <PageHeader title={t("pageTitle")} subtitle={t("pageSubtitle")} />
 
       <div className="flex flex-col gap-3">
         {prefs.map((pref) => (
-          <div key={pref.eventType} className="rounded-xl border border-border bg-surface p-4">
+          <Card key={pref.eventType} className="p-4">
             <p className="mb-3 text-[13px] font-semibold">{pref.label}</p>
             <div className="flex flex-wrap items-center gap-4 text-[12.5px]">
               <label className="flex items-center gap-1.5">
@@ -42,7 +44,7 @@ function NotificationsPage() {
                 <select
                   value={pref.digest}
                   onChange={(e) => updatePref(pref.eventType, { digest: e.target.value as "instant" | "hourly" | "daily" | "off" })}
-                  className="rounded-md border border-border bg-surface px-1.5 py-1 text-[12px]"
+                  className="kp-select rounded-[7px] border border-border bg-surface px-2 py-1 text-[12px]"
                 >
                   {DIGEST_VALUES.map((value) => (
                     <option key={value} value={value}>
@@ -55,9 +57,9 @@ function NotificationsPage() {
             {pref.digest !== "instant" && pref.digest !== "off" && (
               <p className="mt-2 text-[11px] text-text-3">{t("digestNote")}</p>
             )}
-          </div>
+          </Card>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }

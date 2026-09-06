@@ -1,6 +1,9 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
+import { Card } from "@kompast/ui/Card";
+import { PageContainer } from "@kompast/ui/PageContainer";
+import { PageHeader } from "@kompast/ui/PageHeader";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { listTokensFn, createTokenFn, revokeTokenFn, TOKEN_SCOPES } from "@/lib/server-fns/tokens";
 
@@ -45,33 +48,32 @@ function TokensPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[640px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
-      <p className="mb-8 text-sm text-text-2">{t("pageSubtitle")}</p>
+    <PageContainer width="standard">
+      <PageHeader title={t("pageTitle")} subtitle={t("pageSubtitle")} />
 
       {justCreated && (
-        <div className="mb-6 rounded-xl border border-border bg-surface p-4 text-[12.5px]">
+        <Card className="mb-6 p-4 text-[12.5px]">
           <p className="mb-2 font-semibold text-text-2">{t("newTokenCreated")}</p>
-          <code className="block break-all rounded-md bg-surface-2 p-2.5 text-[12px]">{justCreated}</code>
+          <code className="block break-all rounded-[7px] bg-surface-2 p-2.5 text-[12px]">{justCreated}</code>
           <Button variant="outline" className="mt-2 text-[12px]" onClick={() => setJustCreated(null)}>
             {t("done")}
           </Button>
-        </div>
+        </Card>
       )}
 
-      <div className="mb-8 rounded-xl border border-border bg-surface p-4">
+      <Card className="mb-8 p-4">
         <h2 className="mb-3 text-[13px] font-semibold">{t("createNewTokenHeading")}</h2>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t("tokenNamePlaceholder")}
-          className="mb-3 w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12.5px] outline-none focus:border-border-2"
+          className="mb-3 w-full rounded-[7px] border border-border bg-surface px-2.5 py-1.5 text-[12.5px] outline-none focus:border-border-2"
         />
         <div className="mb-3 flex flex-wrap gap-2">
           {TOKEN_SCOPES.map((scope) => (
             <label
               key={scope}
-              className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[11.5px] has-[:checked]:border-accent has-[:checked]:text-accent"
+              className="flex items-center gap-1.5 rounded-[7px] border border-border px-2 py-1 text-[11.5px] has-[:checked]:border-accent has-[:checked]:text-accent"
             >
               <input type="checkbox" checked={scopes.includes(scope)} onChange={() => toggleScope(scope)} />
               {scope}
@@ -81,7 +83,7 @@ function TokensPage() {
         <Button variant="primary" className="text-[12.5px]" onClick={createToken} disabled={creating || !name.trim() || scopes.length === 0}>
           {t("createToken")}
         </Button>
-      </div>
+      </Card>
 
       <h2 className="mb-3 text-[13px] font-semibold">{t("activeTokensHeading")}</h2>
       {tokens.length === 0 ? (
@@ -89,7 +91,7 @@ function TokensPage() {
       ) : (
         <div className="flex flex-col gap-1.5">
           {tokens.map((tok) => (
-            <div key={tok.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 text-[12.5px]">
+            <div key={tok.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2.5 text-[12.5px]">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{tok.name || t("untitledToken")}</p>
                 <p className="truncate text-[11px] text-text-3">
@@ -97,13 +99,13 @@ function TokensPage() {
                   {tok.expiresAt && t("expiresOn", { date: new Date(tok.expiresAt).toLocaleDateString(intlLocale) })}
                 </p>
               </div>
-              <button onClick={() => revoke(tok.id)} className="flex-none rounded-md px-2 py-1 text-[11.5px] text-text-3 hover:bg-danger-soft hover:text-danger">
+              <button onClick={() => revoke(tok.id)} className="flex-none rounded-[7px] px-2 py-1 text-[11.5px] text-text-3 hover:bg-danger-soft hover:text-danger">
                 {t("revoke")}
               </button>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

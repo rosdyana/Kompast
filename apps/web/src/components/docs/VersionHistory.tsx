@@ -71,7 +71,7 @@ export function VersionHistory({ pageId, editor }: { pageId: string; editor: Rep
                   <button
                     onClick={() => restore(v.id)}
                     disabled={restoringId !== null}
-                    className="flex-none rounded-md border border-border px-2 py-1 text-[11px] hover:bg-surface-3 disabled:opacity-50"
+                    className="flex-none rounded-[7px] border border-border px-2 py-1 text-[11px] hover:bg-surface-3 disabled:opacity-50"
                   >
                     {restoringId === v.id ? "…" : t("restore")}
                   </button>

@@ -1,5 +1,7 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { Button } from "@kompast/ui/Button";
+import { PageContainer } from "@kompast/ui/PageContainer";
+import { PageHeader } from "@kompast/ui/PageHeader";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { listTrashFn, restorePageFn, permanentlyDeletePageFn } from "@/lib/server-fns/pages";
 
@@ -28,15 +30,11 @@ function TrashPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[820px] px-8 pb-16 pt-9">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <Link to="/docs" className="mb-1 inline-block text-xs text-text-3 hover:text-text-2">
-            ← {t("docsBrand")}
-          </Link>
-          <h1 className="text-2xl font-semibold tracking-tight">{t("trash.trashHeading")}</h1>
-        </div>
-      </div>
+    <PageContainer width="reading">
+      <Link to="/docs" className="mb-1 inline-block text-xs text-text-3 hover:text-text-2">
+        ← {t("docsBrand")}
+      </Link>
+      <PageHeader title={t("trash.trashHeading")} />
 
       {pages.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-text-3">
@@ -45,8 +43,8 @@ function TrashPage() {
       ) : (
         <div className="flex flex-col gap-1.5">
           {pages.map((page) => (
-            <div key={page.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px]">
-              <span>{page.icon || "▤"}</span>
+            <div key={page.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2.5 text-[13px]">
+              <span>{page.icon || "▭"}</span>
               <span className="min-w-0 flex-1 truncate">{page.title || t("untitled")}</span>
               <span className="flex-none text-[11px] text-text-3">
                 {page.archivedAt ? t("trash.archivedOn", { date: new Date(page.archivedAt).toLocaleDateString(intlLocale) }) : ""}
@@ -56,7 +54,7 @@ function TrashPage() {
               </Button>
               <button
                 onClick={() => deleteForever(page.id, page.title)}
-                className="rounded-md px-2 py-1 text-[11.5px] text-text-3 hover:bg-danger-soft hover:text-danger"
+                className="rounded-[7px] px-2 py-1 text-[11.5px] text-text-3 hover:bg-danger-soft hover:text-danger"
               >
                 {t("trash.deletePermanently")}
               </button>
@@ -64,6 +62,6 @@ function TrashPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

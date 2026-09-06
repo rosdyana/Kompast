@@ -119,7 +119,7 @@ export function DocEditor({
   return (
     <div>
       {canEdit && (
-        <div className="mb-2 flex justify-end">
+        <div className="sticky top-[88px] z-10 mb-2 flex justify-end">
           <VersionHistory pageId={pageId} editor={editor} />
         </div>
       )}
@@ -161,7 +161,7 @@ export function DocEditor({
               .map((p) => ({
                 title: p.title || t("untitled"),
                 subtext: undefined,
-                icon: <span>{p.icon || "▤"}</span>,
+                icon: <span>{p.icon || "▭"}</span>,
                 onItemClick: () => {
                   editor.insertInlineContent([
                     { type: "mention", props: { pageId: p.id, title: p.title || t("untitled"), icon: p.icon ?? "" } },

@@ -54,7 +54,7 @@ function ProjectPage() {
     { key: "sprint", label: t("tabs.sprint"), icon: "⚑" },
     { key: "table", label: t("tabs.table"), icon: "▤" },
     { key: "roadmap", label: t("tabs.roadmap"), icon: "▬" },
-    { key: "docs", label: t("tabs.docs"), icon: "▤" },
+    { key: "docs", label: t("tabs.docs"), icon: "▭" },
     { key: "automation", label: t("tabs.automation"), icon: "⚡" },
     { key: "import", label: t("tabs.import"), icon: "⇩" },
   ];
@@ -115,7 +115,7 @@ function ProjectPage() {
                     if (e.key === "Escape") setAddingIssue(false);
                   }}
                   placeholder={t("header.newIssuePlaceholder")}
-                  className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+                  className="rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
                 />
                 <Button variant="primary" className="text-[12.5px]" onClick={submitNewIssue} disabled={creating}>
                   {t("save")}
@@ -391,7 +391,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
         <select
           value={selectedSprintId ?? ""}
           onChange={(e) => setSelectedSprintId(e.target.value || null)}
-          className="kp-select rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+          className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
         >
           <option value="" disabled>
             {t("sprint.selectPlaceholder")}
@@ -407,7 +407,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
           onChange={(e) => setNewSprintName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && createSprint()}
           placeholder={t("sprint.newNamePlaceholder")}
-          className="flex-1 rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+          className="flex-1 rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
         />
         <Button variant="outline" className="text-[12.5px]" onClick={createSprint} disabled={creating}>
           {t("sprint.addButton")}
@@ -465,7 +465,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
         <div className="flex flex-col gap-1.5">
           {backlog.length === 0 && <p className="text-[12.5px] text-text-3">{t("sprint.backlogEmpty")}</p>}
           {backlog.map((issue) => (
-            <div key={issue.id} className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5">
+            <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
               <span className="truncate text-[12.5px]">{issue.title}</span>
               <Button
                 variant="outline"
@@ -485,7 +485,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
         <div className="flex flex-col gap-1.5">
           {(!detail || detail.issues.length === 0) && <p className="text-[12.5px] text-text-3">{t("sprint.noIssuesInSprint")}</p>}
           {detail?.issues.map((issue) => (
-            <div key={issue.id} className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5">
+            <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
               <span className="truncate text-[12.5px]">{issue.title}</span>
               <Button variant="outline" className="text-[11px]" disabled={busy} onClick={() => removeFromSprint(issue.id)}>
                 {t("sprint.removeButton")}
@@ -907,20 +907,20 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
               value={jiraBaseUrl}
               onChange={(e) => setJiraBaseUrl(e.target.value)}
               placeholder={t("importTab.baseUrlPlaceholder")}
-              className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+              className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
             />
           </label>
           <label className="block">
             <span className="mb-1 block text-[12px] text-text-2">{t("importTab.emailLabel")}</span>
-            <input value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none" />
+            <input value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none" />
           </label>
           <label className="block">
             <span className="mb-1 block text-[12px] text-text-2">{t("importTab.apiTokenLabel")}</span>
-            <input type="password" value={jiraApiToken} onChange={(e) => setJiraApiToken(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none" />
+            <input type="password" value={jiraApiToken} onChange={(e) => setJiraApiToken(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none" />
           </label>
           <label className="block">
             <span className="mb-1 block text-[12px] text-text-2">{t("importTab.jqlLabel")}</span>
-            <input value={jql} onChange={(e) => setJql(e.target.value)} placeholder='project = "DEMO"' className="w-full rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none" />
+            <input value={jql} onChange={(e) => setJql(e.target.value)} placeholder='project = "DEMO"' className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none" />
           </label>
           <label className="flex items-center gap-1.5 text-[12px] text-text-2">
             <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
@@ -936,7 +936,7 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
           {runError && <p className="text-[12px] text-danger">{runError}</p>}
           {lastResult?.error && <p className="text-[12px] text-danger">{lastResult.error}</p>}
           {lastResult?.report && (
-            <div className="rounded-lg border border-border bg-surface-2 p-2.5 text-[12px] text-text-2">
+            <div className="rounded-[9px] border border-border bg-surface-2 p-3 text-[12px] text-text-2">
               <p>
                 {t("importTab.resultCreated")} <strong>{lastResult.report.counts.issuesCreated}</strong> · {t("importTab.resultSkipped")} <strong>{lastResult.report.counts.issuesSkipped}</strong> · {t("importTab.resultNewStatuses")}{" "}
                 <strong>{lastResult.report.counts.statusesCreated}</strong> · {t("importTab.resultNewTypes")} <strong>{lastResult.report.counts.typesCreated}</strong>
@@ -952,7 +952,7 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
         <div className="flex flex-col gap-2">
           {runs.length === 0 && <p className="text-[12.5px] text-text-3">{t("importTab.noImportsYet")}</p>}
           {runs.map((run) => (
-            <div key={run.id} className="rounded-lg border border-border px-2.5 py-2 text-[12px]">
+            <div key={run.id} className="rounded-[9px] border border-border px-3 py-2 text-[12px]">
               <div className="flex items-center justify-between">
                 <span className="font-medium">
                   {run.source.toUpperCase()} · {IMPORT_RUN_STATUS_LABEL[run.status] ?? run.status}
@@ -1083,7 +1083,7 @@ function BoardView({ data }: { data: BoardData }) {
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <div>
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-2.5">
-          <div className="flex w-[190px] items-center gap-1.5 rounded-[7px] border border-border bg-surface px-2.5 py-1.5">
+          <div className="flex w-[190px] items-center gap-1.5 rounded-[7px] border border-border bg-surface px-2 py-1.5">
             <span className="text-[11px] text-text-3">⌕</span>
             <input
               value={search}
@@ -1104,7 +1104,7 @@ function BoardView({ data }: { data: BoardData }) {
         </p>
 
         <div
-          className="flex min-h-[calc(100vh-200px)] items-start gap-3.5 overflow-x-auto px-6 pb-7 pt-4"
+          className="flex min-h-[calc(100vh-200px)] items-start gap-4 overflow-x-auto px-6 pb-7 pt-4"
           style={{
             backgroundImage: "radial-gradient(var(--grid) 1px, transparent 1px)",
             backgroundSize: "22px 22px",
@@ -1149,7 +1149,7 @@ function Column({
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
   return (
-    <div className="flex w-[274px] flex-none flex-col gap-2.5">
+    <div className="flex w-[274px] flex-none flex-col gap-2">
       <div className="flex items-center gap-2 px-0.5">
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: column.color }} />
         <span className="text-[12.5px] font-semibold tracking-tight">{column.name}</span>
@@ -1164,9 +1164,14 @@ function Column({
 
       <div
         ref={setNodeRef}
-        className="flex min-h-[40px] flex-col gap-2 rounded-lg"
+        className="flex min-h-[40px] flex-col gap-1.5 rounded-[9px]"
         style={isOver ? { background: "var(--surface-3)" } : undefined}
       >
+        {column.issues.length === 0 && (
+          <p className="rounded-[9px] border border-dashed border-border px-2.5 py-3 text-center text-[11px] text-text-3">
+            {t("boardView.columnEmpty")}
+          </p>
+        )}
         {column.issues.map((issue) => (
           <Card
             key={issue.id}
@@ -1249,7 +1254,7 @@ function Card({
       onKeyDown={handleKeyDown}
       aria-describedby="kanban-keyboard-hint"
       aria-keyshortcuts="ArrowLeft ArrowRight"
-      className="block w-full rounded-[10px] border border-border bg-surface p-2.5 text-left hover:border-border-2 hover:shadow-kp"
+      className="block w-full rounded-[10px] border border-border bg-surface p-3 text-left hover:border-border-2"
       style={{
         opacity: isDragging ? 0.4 : 1,
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
@@ -1268,19 +1273,24 @@ function Card({
           </span>
         )}
       </div>
-      <p className="mb-2 text-[13px] font-medium leading-snug tracking-tight">{issue.title}</p>
+      <p className="mb-2 line-clamp-2 text-[13px] font-medium leading-snug tracking-tight">{issue.title}</p>
       {issue.labels.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
-          {issue.labels.map((label) => (
+          {issue.labels.slice(0, 3).map((label) => (
             <span key={label} className="rounded bg-surface-3 px-1.5 py-0.5 text-[10.5px] font-medium text-text-2">
               {label}
             </span>
           ))}
+          {issue.labels.length > 3 && (
+            <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10.5px] font-medium text-text-3">
+              +{issue.labels.length - 3}
+            </span>
+          )}
         </div>
       )}
       {propertyChips.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
-          {propertyChips.map(({ def, text }) => (
+          {propertyChips.slice(0, 3).map(({ def, text }) => (
             <span
               key={def.id}
               title={def.name}
@@ -1289,6 +1299,11 @@ function Card({
               {def.name}: {text}
             </span>
           ))}
+          {propertyChips.length > 3 && (
+            <span className="rounded bg-indigo-soft px-1.5 py-0.5 text-[10.5px] font-medium text-indigo">
+              +{propertyChips.length - 3}
+            </span>
+          )}
         </div>
       )}
       <div className="flex items-center gap-1.5">

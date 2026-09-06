@@ -2,6 +2,8 @@ import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Card } from "@kompast/ui/Card";
 import { Button } from "@kompast/ui/Button";
+import { PageContainer } from "@kompast/ui/PageContainer";
+import { PageHeader } from "@kompast/ui/PageHeader";
 import { useTranslation } from "@kompast/i18n";
 import { getTeamManagementFn, addTeamMemberFn, removeTeamMemberFn, setTeamMemberRoleFn } from "@/lib/server-fns/teams";
 
@@ -55,9 +57,8 @@ function TeamManagementPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[640px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("manageTeamHeading")}</h1>
-      <p className="mb-8 text-sm text-text-2">{t("manageTeamSubtitle")}</p>
+    <PageContainer width="standard">
+      <PageHeader title={t("manageTeamHeading")} subtitle={t("manageTeamSubtitle")} />
 
       <section className="mb-8">
         <h2 className="mb-3 text-[13px] font-semibold">{t("addMemberHeading")}</h2>
@@ -66,7 +67,7 @@ function TeamManagementPage() {
             <select
               value={candidateUserId}
               onChange={(e) => setCandidateUserId(e.target.value)}
-              className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+              className="kp-select min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
             >
               <option value="">{t("teamMemberSelectPlaceholder")}</option>
               {data.candidates.map((c) => (
@@ -90,7 +91,7 @@ function TeamManagementPage() {
         <h2 className="mb-3 text-[13px] font-semibold">{t("teamMembersHeading")}</h2>
         <div className="flex flex-col gap-1.5">
           {data.members.map((m) => (
-            <div key={m.id} className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px]">
+            <div key={m.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2 text-[12.5px]">
               <span className="min-w-0 flex-1 truncate">{m.name}</span>
               <span className="text-text-3">{m.email}</span>
               <select
@@ -98,7 +99,7 @@ function TeamManagementPage() {
                 onChange={(e) => setRole(m.userId, e.target.value as "admin" | "member")}
                 disabled={m.role === "admin" && adminCount <= 1}
                 title={m.role === "admin" && adminCount <= 1 ? t("needsAdminTitle") : undefined}
-                className="rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
               >
                 <option value="member">{t("memberRoleLabel")}</option>
                 <option value="admin">{t("adminRoleLabel")}</option>
@@ -107,7 +108,7 @@ function TeamManagementPage() {
                 onClick={() => remove(m.userId)}
                 disabled={m.role === "admin" && adminCount <= 1}
                 title={m.role === "admin" && adminCount <= 1 ? t("needsAdminTitle") : undefined}
-                className="rounded px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger disabled:pointer-events-none disabled:opacity-40"
+                className="rounded-[7px] px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger disabled:pointer-events-none disabled:opacity-40"
               >
                 {t("remove")}
               </button>
@@ -115,6 +116,6 @@ function TeamManagementPage() {
           ))}
         </div>
       </section>
-    </div>
+    </PageContainer>
   );
 }

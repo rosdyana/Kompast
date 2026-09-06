@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
 import { Tabs } from "@kompast/ui/Tabs";
+import { PageContainer } from "@kompast/ui/PageContainer";
+import { PageHeader } from "@kompast/ui/PageHeader";
 import { useTranslation } from "@kompast/i18n";
 import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn } from "@/lib/server-fns/settings";
 import { listMembersFn } from "@/lib/server-fns/members";
@@ -46,8 +48,8 @@ function SettingsPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[760px] px-8 pb-16 pt-9">
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
+    <PageContainer width="wide">
+      <PageHeader title={t("pageTitle")} />
       <Tabs items={items} active={active} onChange={(key) => navigate({ search: { tab: key as TabKey } })} className="mb-6 border-b border-border" />
 
       {active === "members" && <MembersTab data={data.members} />}
@@ -57,7 +59,7 @@ function SettingsPage() {
       )}
       {active === "roles" && <RolesTab />}
       {active === "integrations" && <IntegrationsTab data={data.integrations} />}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -65,17 +67,13 @@ function IntegrationsTab({ data }: { data: Awaited<ReturnType<typeof getIntegrat
   const { t } = useTranslation("settings");
   return (
     <div>
-      <p className="mb-8 text-sm text-text-2">{t("integrations.subtitle")}</p>
-      <EntraSection initial={data.entra} />
-      <div className="mt-8">
+      <p className="mb-6 text-sm text-text-2">{t("integrations.subtitle")}</p>
+      <Card className="divide-y divide-border overflow-hidden">
+        <EntraSection initial={data.entra} />
         <AiSection initial={data.ai} />
-      </div>
-      <div className="mt-8">
         <EmbeddingSection initial={data.embedding} />
-      </div>
-      <div className="mt-8">
         <MailSection initial={data.mail} />
-      </div>
+      </Card>
     </div>
   );
 }
@@ -117,10 +115,10 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
   }
 
   return (
-    <section>
+    <div className="p-4">
       <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.embedding.heading")}</h2>
       <p className="mb-3 text-[12px] text-text-2">{t("integrations.embedding.description")}</p>
-      <Card className="flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-4">
         <label className="flex items-center gap-2 text-[13px]">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           {t("integrations.embedding.enable")}
@@ -131,7 +129,7 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value as typeof provider)}
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
           >
             <option value="azure-openai">Azure OpenAI</option>
             <option value="openai-compatible">OpenAI-compatible</option>
@@ -198,8 +196,8 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
           </Button>
           {saved && <span className="text-[12px] text-green">{t("integrations.embedding.saved")}</span>}
         </div>
-      </Card>
-    </section>
+      </div>
+    </div>
   );
 }
 
@@ -230,9 +228,9 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
   }
 
   return (
-    <section>
+    <div className="p-4">
       <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.entra.heading")}</h2>
-      <Card className="flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-4">
         <p className="rounded-[7px] border border-dashed border-border-2 bg-surface-2 p-3 text-[12px] leading-relaxed text-text-2">
           {t("integrations.entra.warningPart1")}
           <strong>{t("integrations.entra.warningBold")}</strong>
@@ -270,8 +268,8 @@ function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getInteg
           {saved && <span className="text-[12px] text-green">{t("integrations.entra.saved")}</span>}
           {error && <span className="text-[12px] text-danger">{error}</span>}
         </div>
-      </Card>
-    </section>
+      </div>
+    </div>
   );
 }
 
@@ -312,9 +310,9 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
   }
 
   return (
-    <section>
+    <div className="p-4">
       <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.ai.heading")}</h2>
-      <Card className="flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-4">
         <label className="flex items-center gap-2 text-[13px]">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           {t("integrations.ai.enable")}
@@ -325,7 +323,7 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value as typeof provider)}
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
           >
             <option value="anthropic">Anthropic</option>
             <option value="azure-openai">Azure OpenAI</option>
@@ -398,8 +396,8 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
           </Button>
           {saved && <span className="text-[12px] text-green">{t("integrations.ai.saved")}</span>}
         </div>
-      </Card>
-    </section>
+      </div>
+    </div>
   );
 }
 
@@ -430,15 +428,15 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
   }
 
   return (
-    <section>
+    <div className="p-4">
       <h2 className="mb-3 text-[13px] font-semibold">{t("integrations.mail.heading")}</h2>
-      <Card className="flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-4">
         <label className="block">
           <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.mail.driverLabel")}</span>
           <select
             value={driver}
             onChange={(e) => setDriver(e.target.value as typeof driver)}
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
+            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[13px] outline-none"
           >
             <option value="resend">Resend</option>
             <option value="brevo">Brevo</option>
@@ -491,7 +489,7 @@ function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegr
           </Button>
           {saved && <span className="text-[12px] text-green">{t("integrations.mail.saved")}</span>}
         </div>
-      </Card>
-    </section>
+      </div>
+    </div>
   );
 }

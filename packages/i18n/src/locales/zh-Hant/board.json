@@ -106,7 +106,8 @@
   "boardView": {
     "searchPlaceholder": "搜尋看板",
     "movedToColumn": "已移至 {{column}}",
-    "keyboardHint": "聚焦於卡片後，按左右方向鍵可將其移至相鄰欄位。"
+    "keyboardHint": "聚焦於卡片後，按左右方向鍵可將其移至相鄰欄位。",
+    "columnEmpty": "沒有議題"
   },
   "settingsTab": {
     "columnsHeading": "看板欄位",

@@ -150,17 +150,17 @@ function ColumnsSettings({ data }: { data: BoardData }) {
       </p>
       {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>}
       {flowText && (
-        <div className="mb-4 flex items-center gap-2 rounded-[11px] border border-dashed border-border-2 px-3.5 py-2.5 text-[12.5px] text-text-2">
+        <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-dashed border-border-2 px-3 py-2.5 text-[12.5px] text-text-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-3">{t("settingsTab.flowLabel")}</span>
           <span className="font-medium">{flowText}</span>
         </div>
       )}
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border bg-surface-2 px-3.5 py-2 text-[11px] font-semibold text-text-2">
+        <div className="border-b border-border bg-surface-2 px-3 py-2 text-[11px] font-semibold text-text-2">
           {t("settingsTab.columnsCountSummary", { count: columns.length })}
         </div>
         {columns.map((col, i) => (
-          <div key={col.id} className="flex flex-wrap items-center gap-2.5 border-b border-border px-3.5 py-2 last:border-b-0">
+          <div key={col.id} className="flex flex-wrap items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0">
             <span className="flex min-w-[190px] flex-1 items-center gap-2">
               <span className="h-2 w-2 flex-none rounded-full" style={{ background: col.color }} />
               <input
@@ -194,7 +194,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
                   onClick={() => move(col.id, "left")}
                   disabled={i <= 1}
                   title={t("settingsTab.moveLeftTitle")}
-                  className="rounded px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
+                  className="rounded-[7px] px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
                 >
                   ←
                 </button>
@@ -202,14 +202,14 @@ function ColumnsSettings({ data }: { data: BoardData }) {
                   onClick={() => move(col.id, "right")}
                   disabled={i === columns.length - 1}
                   title={t("settingsTab.moveRightTitle")}
-                  className="rounded px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
+                  className="rounded-[7px] px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
                 >
                   →
                 </button>
                 <button
                   onClick={() => handleDeleteClick(col.id)}
                   title={isArmed(col.id) ? t("settingsTab.deleteColumnConfirm") : t("settingsTab.deleteColumnTitle")}
-                  className="rounded px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
+                  className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
                   style={isArmed(col.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
                 >
                   {isArmed(col.id) ? t("clickAgainToDelete") : "✕"}
@@ -218,7 +218,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
             )}
           </div>
         ))}
-        <div className="flex items-center gap-2 px-3.5 py-2.5">
+        <div className="flex items-center gap-2 px-3 py-2.5">
           <input
             value={newColName}
             onChange={(e) => setNewColName(e.target.value)}
@@ -330,11 +330,11 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
       </p>
       {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>}
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border bg-surface-2 px-3.5 py-2 text-[11px] font-semibold text-text-2">
+        <div className="border-b border-border bg-surface-2 px-3 py-2 text-[11px] font-semibold text-text-2">
           {t("settingsTab.propertiesCountSummary", { visible: visCount, total: definitions.length })}
         </div>
         {definitions.map((p) => (
-          <div key={p.id} className="flex flex-wrap items-center gap-2.5 border-b border-border px-3.5 py-2 last:border-b-0">
+          <div key={p.id} className="flex flex-wrap items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0">
             <span className="flex min-w-[190px] flex-1 items-center gap-1.5">
               <input
                 defaultValue={p.name}
@@ -365,7 +365,7 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
               <button
                 onClick={() => handleDeleteClick(p.id)}
                 title={isArmed(p.id) ? t("settingsTab.deletePropertyConfirm") : t("settingsTab.deletePropertyTitle")}
-                className="rounded px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
+                className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
                 style={isArmed(p.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
               >
                 {isArmed(p.id) ? t("clickAgainToDelete") : "✕"}
@@ -373,7 +373,7 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
             )}
           </div>
         ))}
-        <div className="flex items-center gap-2 px-3.5 py-2.5">
+        <div className="flex items-center gap-2 px-3 py-2.5">
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}

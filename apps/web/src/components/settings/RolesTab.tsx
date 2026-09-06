@@ -1,4 +1,5 @@
 import { Card } from "@kompast/ui/Card";
+import { Badge } from "@kompast/ui/Badge";
 import { useTranslation } from "@kompast/i18n";
 
 /**
@@ -20,7 +21,7 @@ export function RolesTab() {
           <div key={key} className="border-b border-border px-4 py-3 last:border-b-0">
             <div className="mb-1 flex items-center gap-2">
               <span className="text-[13px] font-semibold">{t(`roles.${key}.name`)}</span>
-              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10.5px] text-text-3">{t(`roles.${key}.scope`)}</span>
+              <Badge tone="neutral">{t(`roles.${key}.scope`)}</Badge>
             </div>
             <p className="text-[12px] leading-relaxed text-text-2">{t(`roles.${key}.desc`)}</p>
           </div>

@@ -2,6 +2,7 @@ import { createFileRoute, ClientOnly, Link, useRouter, useLoaderData } from "@ta
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Avatar } from "@kompast/ui/Avatar";
+import { PageContainer } from "@kompast/ui/PageContainer";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import {
   getPageDetailFn,
@@ -129,10 +130,20 @@ function DocPage() {
   const projectsById = new Map(data.linkedProjects.map((p) => [p.id, p]));
 
   return (
-    <div className="mx-auto max-w-[820px] px-8 pb-16 pt-9">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-2xl">{data.page.icon || "▤"}</span>
-        <div className="flex items-center gap-1.5">
+    <PageContainer width="reading">
+      <div className="sticky top-0 z-10 -mx-8 mb-6 bg-bg px-8 pb-3 pt-1">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="text-2xl">{data.page.icon || "▭"}</span>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={saveTitle}
+            placeholder={t("untitled")}
+            disabled={!data.canEdit}
+            className="min-w-0 flex-1 border-none bg-transparent text-3xl font-semibold tracking-tight outline-none placeholder:text-text-3"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button variant="outline" className="text-[12px]" onClick={toggleFavorite}>
             {favorited ? t("pageDetail.favoriteOn") : t("pageDetail.favoriteOff")}
           </Button>
@@ -152,15 +163,6 @@ function DocPage() {
         </div>
       </div>
 
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        onBlur={saveTitle}
-        placeholder={t("untitled")}
-        disabled={!data.canEdit}
-        className="mb-6 w-full border-none bg-transparent text-3xl font-semibold tracking-tight outline-none placeholder:text-text-3"
-      />
-
       {shareOpen && (
         <div className="mb-6 rounded-xl border border-border bg-surface p-4 text-[12.5px]">
           <div className="mb-2 flex items-center justify-between">
@@ -174,7 +176,7 @@ function DocPage() {
           ) : (
             <div className="flex flex-col gap-1.5">
               {data.shareLinks.map((link) => (
-                <div key={link.id} className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
+                <div key={link.id} className="flex items-center gap-2 rounded-[9px] border border-border px-2.5 py-1.5">
                   <span className="text-text-3">{link.scope === "view" ? t("pageDetail.viewOnly") : t("pageDetail.canComment")}</span>
                   {link.hasPassword && <span className="text-text-3">{t("pageDetail.withPassword")}</span>}
                   {link.revokedAt ? (
@@ -202,131 +204,133 @@ function DocPage() {
         />
       </ClientOnly>
 
-      {data.children.length > 0 && (
-        <section className="mb-8 mt-8">
-          <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.subPagesHeading")}</h2>
-          <div className="flex flex-col gap-1.5">
-            {data.children.map((child) => (
-              <Link
-                key={child.id}
-                to="/docs/$pageId"
-                params={{ pageId: child.id }}
-                className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] hover:border-border-2"
-              >
-                <span>{child.icon || "▤"}</span>
-                {child.title || t("untitled")}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {data.canEdit && (
-        <div className="mb-8">
-          <Button variant="outline" className="text-[12px]" onClick={addChildPage} disabled={addingChild}>
-            {t("pageDetail.addSubPage")}
-          </Button>
-        </div>
-      )}
-
-      {data.canEdit && (
-        <section className="mb-8">
-          <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.linkedIssuesHeading")}</h2>
-          {data.linkedIssues.length > 0 && (
-            <div className="mb-2 flex flex-col gap-1.5">
-              {data.linkedIssues.map((issue) => {
-                const project = projectsById.get(issue.projectId);
-                return (
-                  <div key={issue.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px]">
-                    {project ? (
-                      <Link
-                        to="/issues/$projectKey/$issueKeySeq"
-                        params={{ projectKey: project.key, issueKeySeq: String(issue.keySeq) }}
-                        className="font-mono text-text-3 hover:text-accent"
-                      >
-                        {project.key}-{issue.keySeq}
-                      </Link>
-                    ) : (
-                      <span className="font-mono text-text-3">#{issue.keySeq}</span>
-                    )}
-                    <span className="min-w-0 flex-1 truncate">{issue.title}</span>
-                    <button onClick={() => unlinkIssue(issue.id)} className="text-text-3 hover:text-danger">
-                      ✕
-                    </button>
-                  </div>
-                );
-              })}
+      <div className="mt-8 divide-y divide-border rounded-xl border border-border bg-surface">
+        {data.children.length > 0 && (
+          <section className="p-4">
+            <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.subPagesHeading")}</h2>
+            <div className="flex flex-col gap-1.5">
+              {data.children.map((child) => (
+                <Link
+                  key={child.id}
+                  to="/docs/$pageId"
+                  params={{ pageId: child.id }}
+                  className="flex items-center gap-2 rounded-[9px] border border-border bg-surface-2 px-3 py-2 text-[13px] hover:border-border-2"
+                >
+                  <span>{child.icon || "▭"}</span>
+                  {child.title || t("untitled")}
+                </Link>
+              ))}
             </div>
-          )}
-          <div className="flex gap-2">
-            <input
-              value={issueKeyInput}
-              onChange={(e) => setIssueKeyInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && linkIssue()}
-              placeholder="KPT-12"
-              className="w-[140px] rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] outline-none focus:border-border-2"
-            />
-            <Button variant="outline" className="text-[12px]" onClick={linkIssue} disabled={linkingIssue || !issueKeyInput.trim()}>
-              {t("pageDetail.linkIssueButton")}
+          </section>
+        )}
+
+        {data.canEdit && (
+          <section className="p-4">
+            <Button variant="outline" className="text-[12px]" onClick={addChildPage} disabled={addingChild}>
+              {t("pageDetail.addSubPage")}
             </Button>
-            {linkIssueError && <span className="self-center text-[11.5px] text-danger">{linkIssueError}</span>}
-          </div>
-        </section>
-      )}
+          </section>
+        )}
 
-      {data.backlinkPages.length > 0 && (
-        <section className="mb-8">
-          <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.mentionedInHeading")}</h2>
-          <div className="flex flex-col gap-1.5">
-            {data.backlinkPages.map((p) => (
-              <Link
-                key={p.id}
-                to="/docs/$pageId"
-                params={{ pageId: p.id }}
-                className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] hover:border-border-2"
-              >
-                <span>{p.icon || "▤"}</span>
-                {p.title || t("untitled")}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section>
-        <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.commentsHeading")}</h2>
-        <div className="mb-3 flex flex-col gap-3">
-          {data.comments.length === 0 && <p className="text-sm text-text-3">{t("pageDetail.noCommentsYet")}</p>}
-          {data.comments.map((c) => {
-            const author = usersById.get(c.authorId);
-            const body = c.bodyJson as { text?: string } | null;
-            return (
-              <div key={c.id} className="flex gap-2.5">
-                <Avatar initials={author ? initialsOf(author.name) : "?"} size={24} />
-                <div className="min-w-0 flex-1 rounded-lg border border-border bg-surface p-2.5">
-                  <p className="mb-1 flex items-center gap-2 text-[11.5px]">
-                    <strong>{author?.name ?? t("versionHistory.unknownAuthor")}</strong>
-                    <span className="text-text-3">{new Date(c.createdAt).toLocaleString(intlLocale)}</span>
-                  </p>
-                  <p className="text-[13px] leading-snug">{body?.text ?? ""}</p>
-                </div>
+        {data.canEdit && (
+          <section className="p-4">
+            <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.linkedIssuesHeading")}</h2>
+            {data.linkedIssues.length > 0 && (
+              <div className="mb-2 flex flex-col gap-1.5">
+                {data.linkedIssues.map((issue) => {
+                  const project = projectsById.get(issue.projectId);
+                  return (
+                    <div key={issue.id} className="flex items-center gap-2 rounded-[9px] border border-border bg-surface-2 px-3 py-2 text-[13px]">
+                      {project ? (
+                        <Link
+                          to="/issues/$projectKey/$issueKeySeq"
+                          params={{ projectKey: project.key, issueKeySeq: String(issue.keySeq) }}
+                          className="font-mono text-text-3 hover:text-accent"
+                        >
+                          {project.key}-{issue.keySeq}
+                        </Link>
+                      ) : (
+                        <span className="font-mono text-text-3">#{issue.keySeq}</span>
+                      )}
+                      <span className="min-w-0 flex-1 truncate">{issue.title}</span>
+                      <button onClick={() => unlinkIssue(issue.id)} className="text-text-3 hover:text-danger">
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-        <div className="flex gap-2">
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder={t("pageDetail.commentPlaceholder")}
-            rows={2}
-            className="min-w-0 flex-1 rounded-lg border border-border bg-surface p-2.5 text-[13px] outline-none focus:border-border-2"
-          />
-          <Button variant="primary" onClick={submitComment} disabled={!comment.trim()}>
-            {t("send")}
-          </Button>
-        </div>
-      </section>
-    </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <input
+                value={issueKeyInput}
+                onChange={(e) => setIssueKeyInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && linkIssue()}
+                placeholder="KPT-12"
+                className="w-[140px] rounded-[7px] border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] outline-none focus:border-border-2"
+              />
+              <Button variant="outline" className="text-[12px]" onClick={linkIssue} disabled={linkingIssue || !issueKeyInput.trim()}>
+                {t("pageDetail.linkIssueButton")}
+              </Button>
+              {linkIssueError && <span className="self-center text-[11.5px] text-danger">{linkIssueError}</span>}
+            </div>
+          </section>
+        )}
+
+        {data.backlinkPages.length > 0 && (
+          <section className="p-4">
+            <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.mentionedInHeading")}</h2>
+            <div className="flex flex-col gap-1.5">
+              {data.backlinkPages.map((p) => (
+                <Link
+                  key={p.id}
+                  to="/docs/$pageId"
+                  params={{ pageId: p.id }}
+                  className="flex items-center gap-2 rounded-[9px] border border-border bg-surface-2 px-3 py-2 text-[13px] hover:border-border-2"
+                >
+                  <span>{p.icon || "▭"}</span>
+                  {p.title || t("untitled")}
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className="p-4">
+          <h2 className="mb-3 text-[13px] font-semibold">{t("pageDetail.commentsHeading")}</h2>
+          <div className="mb-3 flex flex-col gap-3">
+            {data.comments.length === 0 && <p className="text-sm text-text-3">{t("pageDetail.noCommentsYet")}</p>}
+            {data.comments.map((c) => {
+              const author = usersById.get(c.authorId);
+              const body = c.bodyJson as { text?: string } | null;
+              return (
+                <div key={c.id} className="flex gap-2.5">
+                  <Avatar initials={author ? initialsOf(author.name) : "?"} size={24} />
+                  <div className="min-w-0 flex-1 rounded-[9px] border border-border bg-surface-2 p-3">
+                    <p className="mb-1 flex items-center gap-2 text-[11.5px]">
+                      <strong>{author?.name ?? t("versionHistory.unknownAuthor")}</strong>
+                      <span className="text-text-3">{new Date(c.createdAt).toLocaleString(intlLocale)}</span>
+                    </p>
+                    <p className="text-[13px] leading-snug">{body?.text ?? ""}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex gap-2">
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder={t("pageDetail.commentPlaceholder")}
+              rows={2}
+              className="min-w-0 flex-1 rounded-[7px] border border-border bg-surface p-3 text-[13px] outline-none focus:border-border-2"
+            />
+            <Button variant="primary" onClick={submitComment} disabled={!comment.trim()}>
+              {t("send")}
+            </Button>
+          </div>
+        </section>
+      </div>
+    </PageContainer>
   );
 }

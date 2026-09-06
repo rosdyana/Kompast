@@ -7,5 +7,7 @@
   "inputPlaceholder": "Ask something…",
   "sendingEllipsis": "Sending…",
   "send": "Send",
-  "askFailed": "Ask Kompast failed"
+  "askFailed": "Ask Kompast failed",
+  "hideConversationsTitle": "Hide conversations",
+  "showConversationsTitle": "Show conversations"
 }

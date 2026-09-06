@@ -106,7 +106,8 @@
   "boardView": {
     "searchPlaceholder": "Cari di board",
     "movedToColumn": "Dipindahkan ke {{column}}",
-    "keyboardHint": "Fokuskan kartu, lalu tekan tombol panah kiri atau kanan untuk memindahkannya ke kolom sebelah."
+    "keyboardHint": "Fokuskan kartu, lalu tekan tombol panah kiri atau kanan untuk memindahkannya ke kolom sebelah.",
+    "columnEmpty": "Tidak ada issue"
   },
   "settingsTab": {
     "columnsHeading": "Kolom kanban",

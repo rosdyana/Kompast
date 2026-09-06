@@ -154,7 +154,9 @@ export function TableView({ data }: { data: BoardData }) {
                         </Link>
                       </td>
                       <td className="px-3 py-2 text-text-2">{type?.name ?? "—"}</td>
-                      <td className="px-3 py-2">{issue.title}</td>
+                      <td className="max-w-[360px] truncate px-3 py-2" title={issue.title}>
+                        {issue.title}
+                      </td>
                       <td className="px-3 py-2">
                         <span className="inline-flex items-center gap-1.5">
                           <span className="h-1.5 w-1.5 rounded-full" style={{ background: issue.columnColor }} />
