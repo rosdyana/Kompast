@@ -5,6 +5,8 @@
   "savingEllipsis": "Menyimpan…",
   "save": "Simpan",
   "cancel": "Batal",
+  "genericError": "Terjadi kesalahan. Silakan coba lagi.",
+  "clickAgainToDelete": "Klik sekali lagi untuk menghapus",
   "header": {
     "ticketCount": "{{count}} tiket",
     "newIssuePlaceholder": "Judul tiket…",
@@ -43,7 +45,8 @@
     "reviewHeading": "Tinjauan sprint"
   },
   "roadmap": {
-    "noEpicsYet": "Belum ada epic. Buat tiket bertipe \"Epic\" lalu tautkan tiket lain ke epic tersebut untuk melihat roadmap.",
+    "noEpicsHeading": "Belum ada epic.",
+    "noEpicsSubtext": "Buat tiket bertipe \"Epic\" lalu tautkan tiket lain ke epic tersebut untuk melihat roadmap.",
     "progressSummary": "{{done}}/{{total}} tiket selesai ({{pct}}%)"
   },
   "automation": {
@@ -66,6 +69,7 @@
     "clearAssignmentOption": "(kosongkan penugasan)",
     "subtaskTitlePlaceholder": "judul subtask (tetap, tidak berbasis judul tiket induk)",
     "addRuleButton": "+ Aturan",
+    "deleteRuleConfirm": "Hapus aturan ini? Tindakan ini tidak bisa dibatalkan.",
     "noRulesYet": "Belum ada aturan otomasi.",
     "dryRunBadge": "uji coba",
     "historyToggle": "Riwayat",
@@ -99,7 +103,11 @@
     "realTag": "nyata",
     "errorCount": "{{count}} error"
   },
-  "boardView": { "searchPlaceholder": "Cari di board" },
+  "boardView": {
+    "searchPlaceholder": "Cari di board",
+    "movedToColumn": "Dipindahkan ke {{column}}",
+    "keyboardHint": "Fokuskan kartu, lalu tekan tombol panah kiri atau kanan untuk memindahkannya ke kolom sebelah."
+  },
   "settingsTab": {
     "columnsHeading": "Kolom kanban",
     "propertiesHeading": "Properti tiket",
@@ -122,6 +130,7 @@
     "typeLabel": "Tipe",
     "onCardLabel": "Di kartu",
     "deletePropertyTitle": "Hapus properti",
+    "deletePropertyConfirm": "Hapus properti ini? Properti akan dihapus dari semua tiket.",
     "newPropertyPlaceholder": "Nama properti baru",
     "addPropertyButton": "+ Tambah properti",
     "propertiesFooterNote": "Properti inti tetap bisa diganti nama dan disembunyikan, tapi tidak bisa dihapus."

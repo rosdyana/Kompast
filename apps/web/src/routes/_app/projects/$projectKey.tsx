@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   DndContext,
   useDraggable,
@@ -14,6 +14,7 @@ import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
 import { Tabs } from "@kompast/ui/Tabs";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
+import { useConfirmArm } from "@/lib/use-confirm-arm";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
 import { listProjectPagesFn, createPageFn } from "@/lib/server-fns/pages";
@@ -61,6 +62,7 @@ function ProjectPage() {
   const [addingIssue, setAddingIssue] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
+  const [newIssueError, setNewIssueError] = useState<string | null>(null);
 
   const defaultType = data.issueTypes.find((tp) => !tp.isSubtask);
   const backlogColumn = data.columns.find((c) => c.isBacklog) ?? data.columns[0];
@@ -68,6 +70,7 @@ function ProjectPage() {
   async function submitNewIssue() {
     if (!newTitle.trim() || !defaultType || !backlogColumn?.statusIds[0]) return;
     setCreating(true);
+    setNewIssueError(null);
     try {
       await createIssueFn({
         data: {
@@ -80,6 +83,8 @@ function ProjectPage() {
       setNewTitle("");
       setAddingIssue(false);
       await router.invalidate();
+    } catch (err) {
+      setNewIssueError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setCreating(false);
     }
@@ -127,6 +132,9 @@ function ProjectPage() {
           </div>
         </div>
         <Tabs items={viewTabs} active={view} onChange={setView} className="mt-4" />
+        {newIssueError && (
+          <p className="mb-4 mt-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{newIssueError}</p>
+        )}
       </div>
 
       {view === "board" && <BoardView data={data} />}
@@ -165,11 +173,36 @@ function initialsOf(name: string) {
     .toUpperCase();
 }
 
+/**
+ * The system's one full "peak" moment reused here at a deliberately larger
+ * scale for the two full-panel empty states on this page (Docs, Roadmap):
+ * the Compass Mark's own tile+diamond construction (never a large fill —
+ * still a small mark, so the One Loud Color Rule holds), the board's own
+ * grid-dot texture (already used behind the kanban columns), and a mono
+ * overline — all devices this page already owns, just turned up here.
+ */
+function EmptyStatePanel({ overline, heading, subtext }: { overline: string; heading: string; subtext?: string }) {
+  return (
+    <div
+      className="overflow-hidden rounded-xl border border-border bg-surface px-10 py-16 text-center"
+      style={{ backgroundImage: "radial-gradient(var(--grid) 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+    >
+      <div className="mx-auto mb-5 flex h-[42px] w-[42px] items-center justify-center rounded-[12px] bg-accent">
+        <div className="h-[11px] w-[11px] rotate-45 rounded-sm bg-white" />
+      </div>
+      <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-text-3">{overline}</p>
+      <p className="mx-auto max-w-[380px] text-[20px] font-semibold tracking-tight text-text">{heading}</p>
+      {subtext && <p className="mx-auto mt-2 max-w-[380px] text-[12.5px] leading-relaxed text-text-2">{subtext}</p>}
+    </div>
+  );
+}
+
 function ProjectDocsTab({ projectId }: { projectId: string }) {
   const { t } = useTranslation("board");
   const navigate = useNavigate();
   const [pages, setPages] = useState<Awaited<ReturnType<typeof listProjectPagesFn>> | null>(null);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     listProjectPagesFn({ data: projectId }).then(setPages);
@@ -177,9 +210,12 @@ function ProjectDocsTab({ projectId }: { projectId: string }) {
 
   async function newPage() {
     setCreating(true);
+    setError(null);
     try {
       const page = await createPageFn({ data: { projectId } });
       await navigate({ to: "/docs/$pageId", params: { pageId: page.id } });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setCreating(false);
     }
@@ -193,12 +229,11 @@ function ProjectDocsTab({ projectId }: { projectId: string }) {
           {t("docsTab.newPageButton")}
         </Button>
       </div>
+      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>}
       {pages === null ? (
         <p className="text-sm text-text-3">{t("loadingEllipsis")}</p>
       ) : pages.length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-text-3">
-          {t("docsTab.emptyState")}
-        </div>
+        <EmptyStatePanel overline={t("tabs.docs")} heading={t("docsTab.emptyState")} />
       ) : (
         <div className="rounded-xl border border-border bg-surface p-2">
           <DocsTree pages={pages} />
@@ -222,6 +257,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
   const [newSprintName, setNewSprintName] = useState("");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
@@ -275,11 +311,14 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
   async function createSprint() {
     if (!newSprintName.trim()) return;
     setCreating(true);
+    setError(null);
     try {
       const { sprintId } = await createSprintFn({ data: { boardId, name: newSprintName.trim(), cycle: "2w" } });
       setNewSprintName("");
       await refreshSprints();
       setSelectedSprintId(sprintId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setCreating(false);
     }
@@ -288,9 +327,12 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
   async function handleStart() {
     if (!selectedSprintId) return;
     setBusy(true);
+    setError(null);
     try {
       await startSprintFn({ data: selectedSprintId });
       await refreshAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setBusy(false);
     }
@@ -299,9 +341,12 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
   async function handleComplete() {
     if (!selectedSprintId) return;
     setBusy(true);
+    setError(null);
     try {
       await completeSprintFn({ data: { sprintId: selectedSprintId } });
       await refreshAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setBusy(false);
     }
@@ -310,9 +355,12 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
   async function addToSprint(issueId: string) {
     if (!selectedSprintId) return;
     setBusy(true);
+    setError(null);
     try {
       await addIssueToSprintFn({ data: { sprintId: selectedSprintId, issueId } });
       await refreshAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setBusy(false);
     }
@@ -320,9 +368,12 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
 
   async function removeFromSprint(issueId: string) {
     setBusy(true);
+    setError(null);
     try {
       await removeIssueFromSprintFn({ data: issueId });
       await refreshAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setBusy(false);
     }
@@ -340,7 +391,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
         <select
           value={selectedSprintId ?? ""}
           onChange={(e) => setSelectedSprintId(e.target.value || null)}
-          className="rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+          className="kp-select rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
         >
           <option value="" disabled>
             {t("sprint.selectPlaceholder")}
@@ -378,6 +429,10 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
         )}
       </div>
 
+      {error && (
+        <p className="col-span-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>
+      )}
+
       {sprint && detail && (
         <div className="col-span-2 flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-[12px] text-text-2">
           <span>
@@ -400,7 +455,7 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
               {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
             </Button>
           </div>
-          {aiError && <p className="text-[12px] text-red-500">{aiError}</p>}
+          {aiError && <p className="text-[12px] text-danger">{aiError}</p>}
           {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap text-[12.5px] text-text-2">{aiSummary || "…"}</p>}
         </div>
       )}
@@ -482,9 +537,7 @@ function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: 
   if (epics.length === 0) {
     return (
       <div className="p-6">
-        <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-text-3">
-          {t("roadmap.noEpicsYet")}
-        </div>
+        <EmptyStatePanel overline={t("tabs.roadmap")} heading={t("roadmap.noEpicsHeading")} subtext={t("roadmap.noEpicsSubtext")} />
       </div>
     );
   }
@@ -563,6 +616,8 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
   const [actionSubtaskTitle, setActionSubtaskTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { isArmed, arm, disarm } = useConfirmArm();
 
   async function refresh() {
     setRules(await listAutomationRulesFn({ data: projectId }));
@@ -587,6 +642,7 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
               : { type: "create_subtask" as const, typeId: actionSubtaskTypeId, title: actionSubtaskTitle };
 
     setCreating(true);
+    setError(null);
     try {
       await createAutomationRuleFn({ data: { projectId, name: name.trim(), trigger: { type: triggerType }, actions: [action] } });
       setName("");
@@ -594,6 +650,8 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
       setActionText("");
       setActionSubtaskTitle("");
       await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setCreating(false);
     }
@@ -601,9 +659,12 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
 
   async function toggleEnabled(ruleId: string, enabled: boolean) {
     setBusy(true);
+    setError(null);
     try {
       await setAutomationRuleEnabledFn({ data: { ruleId, enabled } });
       await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setBusy(false);
     }
@@ -611,12 +672,24 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
 
   async function removeRule(ruleId: string) {
     setBusy(true);
+    setError(null);
     try {
       await deleteAutomationRuleFn({ data: ruleId });
       await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleDeleteClick(ruleId: string) {
+    if (!isArmed(ruleId)) {
+      arm(ruleId);
+      return;
+    }
+    disarm();
+    removeRule(ruleId);
   }
 
   async function toggleRuns(ruleId: string) {
@@ -640,11 +713,11 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
             {t("automation.nameLabel")}
-            <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
+            <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
           </label>
           <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
             {t("automation.whenLabel")}
-            <select value={triggerType} onChange={(e) => setTriggerType(e.target.value as keyof typeof TRIGGER_LABEL)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+            <select value={triggerType} onChange={(e) => setTriggerType(e.target.value as keyof typeof TRIGGER_LABEL)} className="kp-select rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[12.5px]">
               {Object.entries(TRIGGER_LABEL).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
@@ -654,7 +727,7 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
           </label>
           <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
             {t("automation.thenLabel")}
-            <select value={actionType} onChange={(e) => setActionType(e.target.value as (typeof ACTION_TYPES)[number])} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+            <select value={actionType} onChange={(e) => setActionType(e.target.value as (typeof ACTION_TYPES)[number])} className="kp-select rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[12.5px]">
               {ACTION_TYPES.map((value) => (
                 <option key={value} value={value}>
                   {ACTION_LABEL[value]}
@@ -663,13 +736,13 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
             </select>
           </label>
           {actionType === "add_label" && (
-            <input value={actionLabel} onChange={(e) => setActionLabel(e.target.value)} placeholder={t("automation.labelNamePlaceholder")} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
+            <input value={actionLabel} onChange={(e) => setActionLabel(e.target.value)} placeholder={t("automation.labelNamePlaceholder")} className="rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
           )}
           {actionType === "comment" && (
-            <input value={actionText} onChange={(e) => setActionText(e.target.value)} placeholder={t("automation.commentBodyPlaceholder")} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
+            <input value={actionText} onChange={(e) => setActionText(e.target.value)} placeholder={t("automation.commentBodyPlaceholder")} className="rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[12.5px]" />
           )}
           {actionType === "transition" && (
-            <select value={actionStatusId} onChange={(e) => setActionStatusId(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+            <select value={actionStatusId} onChange={(e) => setActionStatusId(e.target.value)} className="kp-select rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[12.5px]">
               {data.columns.map((c) => (
                 <option key={c.id} value={c.statusIds[0] ?? ""}>
                   {c.name}
@@ -678,7 +751,7 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
             </select>
           )}
           {actionType === "assign" && (
-            <select value={actionAssigneeId} onChange={(e) => setActionAssigneeId(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+            <select value={actionAssigneeId} onChange={(e) => setActionAssigneeId(e.target.value)} className="kp-select rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[12.5px]">
               <option value="">{t("automation.clearAssignmentOption")}</option>
               {data.users.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -689,7 +762,7 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
           )}
           {actionType === "create_subtask" && (
             <>
-              <select value={actionSubtaskTypeId} onChange={(e) => setActionSubtaskTypeId(e.target.value)} className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]">
+              <select value={actionSubtaskTypeId} onChange={(e) => setActionSubtaskTypeId(e.target.value)} className="kp-select rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[12.5px]">
                 {data.issueTypes.map((tp) => (
                   <option key={tp.id} value={tp.id}>
                     {tp.name}
@@ -700,14 +773,15 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
                 value={actionSubtaskTitle}
                 onChange={(e) => setActionSubtaskTitle(e.target.value)}
                 placeholder={t("automation.subtaskTitlePlaceholder")}
-                className="rounded-md border border-border bg-surface px-2 py-1.5 text-[12.5px]"
+                className="rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[12.5px]"
               />
             </>
           )}
-          <Button variant="primary" className="text-[12.5px]" onClick={createRule} disabled={creating}>
+          <Button variant="primary" className="text-[12.5px]" onClick={createRule} disabled={creating || !name.trim()}>
             {t("automation.addRuleButton")}
           </Button>
         </div>
+        {error && <p className="mt-2.5 text-[12.5px] text-danger">{error}</p>}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -728,8 +802,15 @@ function AutomationTab({ projectId, data }: { projectId: string; data: BoardData
                   <input type="checkbox" checked={rule.enabled} disabled={busy} onChange={(e) => toggleEnabled(rule.id, e.target.checked)} />
                   {t("automation.activeLabel")}
                 </label>
-                <Button variant="outline" className="text-[11px]" onClick={() => removeRule(rule.id)} disabled={busy}>
-                  {t("automation.deleteButton")}
+                <Button
+                  variant="outline"
+                  className="text-[11px]"
+                  style={isArmed(rule.id) ? { color: "var(--danger)", borderColor: "var(--danger)" } : undefined}
+                  title={isArmed(rule.id) ? t("automation.deleteRuleConfirm") : undefined}
+                  onClick={() => handleDeleteClick(rule.id)}
+                  disabled={busy}
+                >
+                  {isArmed(rule.id) ? t("clickAgainToDelete") : t("automation.deleteButton")}
                 </Button>
               </div>
             </div>
@@ -782,6 +863,7 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
   const [dryRun, setDryRun] = useState(true);
   const [fetchAttachments, setFetchAttachments] = useState(false);
   const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<Awaited<ReturnType<typeof startJiraImportFn>> | null>(null);
 
   async function refresh() {
@@ -797,6 +879,7 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
     if (!jiraBaseUrl.trim() || !jiraEmail.trim() || !jiraApiToken.trim() || !jql.trim()) return;
     setRunning(true);
     setLastResult(null);
+    setRunError(null);
     try {
       const result = await startJiraImportFn({
         data: { projectId, boardId, jiraBaseUrl: jiraBaseUrl.trim(), jiraEmail: jiraEmail.trim(), jiraApiToken, jql: jql.trim(), dryRun, fetchAttachments },
@@ -804,6 +887,8 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
       setLastResult(result);
       setJiraApiToken("");
       await refresh();
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setRunning(false);
     }
@@ -848,14 +933,15 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
           <Button variant="primary" className="text-[12.5px]" onClick={runImport} disabled={running}>
             {running ? t("importTab.importingEllipsis") : t("importTab.runButton")}
           </Button>
-          {lastResult?.error && <p className="text-[12px] text-red-500">{lastResult.error}</p>}
+          {runError && <p className="text-[12px] text-danger">{runError}</p>}
+          {lastResult?.error && <p className="text-[12px] text-danger">{lastResult.error}</p>}
           {lastResult?.report && (
             <div className="rounded-lg border border-border bg-surface-2 p-2.5 text-[12px] text-text-2">
               <p>
                 {t("importTab.resultCreated")} <strong>{lastResult.report.counts.issuesCreated}</strong> · {t("importTab.resultSkipped")} <strong>{lastResult.report.counts.issuesSkipped}</strong> · {t("importTab.resultNewStatuses")}{" "}
                 <strong>{lastResult.report.counts.statusesCreated}</strong> · {t("importTab.resultNewTypes")} <strong>{lastResult.report.counts.typesCreated}</strong>
               </p>
-              {lastResult.report.errors.length > 0 && <p className="mt-1 text-red-500">{t("importTab.resultErrorsNote", { count: lastResult.report.errors.length })}</p>}
+              {lastResult.report.errors.length > 0 && <p className="mt-1 text-danger">{t("importTab.resultErrorsNote", { count: lastResult.report.errors.length })}</p>}
             </div>
           )}
         </div>
@@ -874,7 +960,7 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
                 <span className="text-text-3">{run.dryRun ? t("importTab.dryRunTag") : t("importTab.realTag")}</span>
               </div>
               {run.counts != null && <p className="mt-1 text-text-2">{JSON.stringify(run.counts)}</p>}
-              {Array.isArray(run.errors) && run.errors.length > 0 && <p className="mt-1 text-red-500">{t("importTab.errorCount", { count: run.errors.length })}</p>}
+              {Array.isArray(run.errors) && run.errors.length > 0 && <p className="mt-1 text-danger">{t("importTab.errorCount", { count: run.errors.length })}</p>}
             </div>
           ))}
         </div>
@@ -888,9 +974,30 @@ function BoardView({ data }: { data: BoardData }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const usersById = new Map(data.users.map((u) => [u.id, u]));
   const issueTypesById = new Map(data.issueTypes.map((tp) => [tp.id, tp]));
+
+  // A keyboard-moved card unmounts from its old column and remounts under a
+  // new one once `data` refreshes — React can't preserve focus across that.
+  // Track the moved issue's DOM node by id and refocus it once the new data
+  // (and the new Card instance) lands, so a multi-hop move stays keyboard-navigable.
+  const cardRefs = useRef(new Map<string, HTMLAnchorElement>());
+  const pendingFocusId = useRef<string | null>(null);
+
+  function registerCardRef(issueId: string, el: HTMLAnchorElement | null) {
+    if (el) cardRefs.current.set(issueId, el);
+    else cardRefs.current.delete(issueId);
+  }
+
+  useEffect(() => {
+    if (pendingFocusId.current) {
+      cardRefs.current.get(pendingFocusId.current)?.focus();
+      pendingFocusId.current = null;
+    }
+  }, [data]);
 
   const needle = search.trim().toLowerCase();
   const columns = needle
@@ -933,9 +1040,40 @@ function BoardView({ data }: { data: BoardData }) {
     if (!toStatusId) return;
 
     setPending(true);
+    setError(null);
+    setAnnouncement(null);
     try {
       await moveIssueFn({ data: { issueId: activeId, toStatusId, beforeIssueId, afterIssueId } });
       await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  // Keyboard alternative to pointer drag-and-drop: rather than wiring up
+  // dnd-kit's own KeyboardSensor (whose default coordinate getter nudges by
+  // a fixed pixel step — clumsy for jumping between ~274px-wide columns),
+  // a focused card's own Left/Right arrow keys move it deterministically to
+  // the adjacent column. Simpler, and just as accessible.
+  async function moveToAdjacentColumn(issueId: string, fromColumnId: string, direction: "prev" | "next") {
+    const idx = data.columns.findIndex((c) => c.id === fromColumnId);
+    const target = data.columns[direction === "prev" ? idx - 1 : idx + 1];
+    if (!target) return;
+    const toStatusId = target.statusIds[0];
+    if (!toStatusId) return;
+
+    setPending(true);
+    setError(null);
+    setAnnouncement(null);
+    try {
+      await moveIssueFn({ data: { issueId, toStatusId, afterIssueId: target.issues.at(-1)?.id } });
+      pendingFocusId.current = issueId;
+      await router.invalidate();
+      setAnnouncement(t("boardView.movedToColumn", { column: target.name }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setPending(false);
     }
@@ -954,10 +1092,16 @@ function BoardView({ data }: { data: BoardData }) {
               className="min-w-0 flex-1 border-none bg-transparent text-[12.5px] outline-none placeholder:text-text-3"
             />
           </div>
-          <div className="ml-auto flex items-center gap-2 text-[11.5px] text-text-3">
-            {pending ? t("savingEllipsis") : null}
+          <div className="ml-auto flex items-center gap-2 text-[11.5px]" aria-live="polite">
+            {pending && <span className="text-text-3">{t("savingEllipsis")}</span>}
+            {!pending && error && <span className="text-danger">{error}</span>}
+            {!pending && !error && announcement && <span className="text-text-3">{announcement}</span>}
           </div>
         </div>
+
+        <p id="kanban-keyboard-hint" className="sr-only">
+          {t("boardView.keyboardHint")}
+        </p>
 
         <div
           className="flex min-h-[calc(100vh-200px)] items-start gap-3.5 overflow-x-auto px-6 pb-7 pt-4"
@@ -974,6 +1118,8 @@ function BoardView({ data }: { data: BoardData }) {
               issueTypesById={issueTypesById}
               usersById={usersById}
               visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
+              onMoveToAdjacentColumn={moveToAdjacentColumn}
+              registerCardRef={registerCardRef}
             />
           ))}
         </div>
@@ -988,12 +1134,16 @@ function Column({
   issueTypesById,
   usersById,
   visibleProperties,
+  onMoveToAdjacentColumn,
+  registerCardRef,
 }: {
   column: BoardData["columns"][number];
   projectKey: string;
   issueTypesById: Map<string, BoardData["issueTypes"][number]>;
   usersById: Map<string, BoardData["users"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
+  onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next") => void;
+  registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
 }) {
   const { t } = useTranslation("board");
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
@@ -1022,9 +1172,12 @@ function Column({
             key={issue.id}
             issue={issue}
             projectKey={projectKey}
+            columnId={column.id}
             issueTypesById={issueTypesById}
             usersById={usersById}
             visibleProperties={visibleProperties}
+            onMoveToAdjacentColumn={onMoveToAdjacentColumn}
+            registerCardRef={registerCardRef}
           />
         ))}
       </div>
@@ -1046,19 +1199,30 @@ function formatPropertyValue(type: string, value: unknown, intlLocale: string): 
 function Card({
   issue,
   projectKey,
+  columnId,
   issueTypesById,
   usersById,
   visibleProperties,
+  onMoveToAdjacentColumn,
+  registerCardRef,
 }: {
   issue: BoardData["columns"][number]["issues"][number];
   projectKey: string;
+  columnId: string;
   issueTypesById: Map<string, BoardData["issueTypes"][number]>;
   usersById: Map<string, BoardData["users"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
+  onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next") => void;
+  registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
 }) {
   const { i18n } = useTranslation("board");
   const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: issue.id });
+  const { listeners, setNodeRef, transform, isDragging } = useDraggable({ id: issue.id });
+
+  function setRefs(el: HTMLAnchorElement | null) {
+    setNodeRef(el);
+    registerCardRef(issue.id, el);
+  }
   const type = issueTypesById.get(issue.typeId);
   const assignee = issue.assigneeId ? usersById.get(issue.assigneeId) : undefined;
   const customFields = (issue.customFields ?? {}) as Record<string, unknown>;
@@ -1066,13 +1230,25 @@ function Card({
     .map((p) => ({ def: p, text: formatPropertyValue(p.type, customFields[p.key], intlLocale) }))
     .filter((c): c is { def: (typeof visibleProperties)[number]; text: string } => c.text !== null);
 
+  function handleKeyDown(e: KeyboardEvent<HTMLAnchorElement>) {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      onMoveToAdjacentColumn(issue.id, columnId, "prev");
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      onMoveToAdjacentColumn(issue.id, columnId, "next");
+    }
+  }
+
   return (
     <Link
       to="/issues/$projectKey/$issueKeySeq"
       params={{ projectKey, issueKeySeq: String(issue.keySeq) }}
-      ref={setNodeRef}
+      ref={setRefs}
       {...listeners}
-      {...attributes}
+      onKeyDown={handleKeyDown}
+      aria-describedby="kanban-keyboard-hint"
+      aria-keyshortcuts="ArrowLeft ArrowRight"
       className="block w-full rounded-[10px] border border-border bg-surface p-2.5 text-left hover:border-border-2 hover:shadow-kp"
       style={{
         opacity: isDragging ? 0.4 : 1,
@@ -1115,10 +1291,17 @@ function Card({
           ))}
         </div>
       )}
-      <div className="flex items-center gap-2">
-        {assignee && <Avatar initials={initialsOf(assignee.name)} size={21} className="text-[9px]" />}
+      <div className="flex items-center gap-1.5">
+        <span
+          className="inline-flex flex-none items-center gap-1 text-[10px] font-medium capitalize"
+          style={{ color: PRIORITY_COLOR[issue.priority] }}
+        >
+          <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: PRIORITY_COLOR[issue.priority] }} />
+          {issue.priority}
+        </span>
+        {assignee && <Avatar initials={initialsOf(assignee.name)} />}
         {issue.dueDate && (
-          <span className="font-mono text-[10px]" style={{ color: PRIORITY_COLOR[issue.priority] }}>
+          <span className="font-mono text-[10px] text-text-3">
             {new Date(issue.dueDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" })}
           </span>
         )}

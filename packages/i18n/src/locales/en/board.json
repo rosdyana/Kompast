@@ -5,6 +5,8 @@
   "savingEllipsis": "Saving…",
   "save": "Save",
   "cancel": "Cancel",
+  "genericError": "Something went wrong. Please try again.",
+  "clickAgainToDelete": "Click again to delete",
   "header": {
     "ticketCount": "{{count}} issues",
     "newIssuePlaceholder": "Issue title…",
@@ -43,7 +45,8 @@
     "reviewHeading": "Sprint review"
   },
   "roadmap": {
-    "noEpicsYet": "No epics yet. Create an issue of type \"Epic\" and link other issues to it to see the roadmap.",
+    "noEpicsHeading": "No epics yet.",
+    "noEpicsSubtext": "Create an issue of type \"Epic\" and link other issues to it to see the roadmap.",
     "progressSummary": "{{done}}/{{total}} issues done ({{pct}}%)"
   },
   "automation": {
@@ -66,6 +69,7 @@
     "clearAssignmentOption": "(clear assignment)",
     "subtaskTitlePlaceholder": "subtask title (fixed, not based on the parent issue's title)",
     "addRuleButton": "+ Rule",
+    "deleteRuleConfirm": "Delete this rule? This can't be undone.",
     "noRulesYet": "No automation rules yet.",
     "dryRunBadge": "dry run",
     "historyToggle": "History",
@@ -99,7 +103,11 @@
     "realTag": "live",
     "errorCount": "{{count}} errors"
   },
-  "boardView": { "searchPlaceholder": "Search the board" },
+  "boardView": {
+    "searchPlaceholder": "Search the board",
+    "movedToColumn": "Moved to {{column}}",
+    "keyboardHint": "Focus a card, then press the left or right arrow key to move it to an adjacent column."
+  },
   "settingsTab": {
     "columnsHeading": "Kanban columns",
     "propertiesHeading": "Issue properties",
@@ -122,6 +130,7 @@
     "typeLabel": "Type",
     "onCardLabel": "On card",
     "deletePropertyTitle": "Delete property",
+    "deletePropertyConfirm": "Delete this property? It will be removed from every issue.",
     "newPropertyPlaceholder": "New property name",
     "addPropertyButton": "+ Add property",
     "propertiesFooterNote": "Core properties can still be renamed and hidden, but not deleted."

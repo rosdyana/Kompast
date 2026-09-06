@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "instrument sans",
+        "createdAt": "2026-09-05T23:24:32.766Z",
+        "reason": "pre-existing app-wide design-system font (packages/ui/theme + this Google Fonts link), not introduced by this change; not the user's call to swap unilaterally"
+      }
+    ]
+  }
+}

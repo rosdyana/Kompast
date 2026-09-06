@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { useRouter, Link } from "@tanstack/react-router";
 import { Avatar } from "@kompast/ui/Avatar";
 import type { TableViewConfig } from "@kompast/core";
@@ -38,6 +38,7 @@ export function TableView({ data }: { data: BoardData }) {
   const { t, i18n } = useTranslation("board");
   const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
   const config = data.tableView.config as unknown as TableViewConfig;
   const usersById = new Map(data.users.map((u) => [u.id, u]));
   const issueTypesById = new Map(data.issueTypes.map((tp) => [tp.id, tp]));
@@ -64,8 +65,13 @@ export function TableView({ data }: { data: BoardData }) {
 
   async function updateConfig(patch: Partial<typeof config>) {
     const next = { ...config, ...patch };
-    await updateTableViewFn({ data: { viewId: data.tableView.id, ...next } });
-    await router.invalidate();
+    setError(null);
+    try {
+      await updateTableViewFn({ data: { viewId: data.tableView.id, ...next } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
   }
 
   return (
@@ -76,7 +82,7 @@ export function TableView({ data }: { data: BoardData }) {
           <select
             value={config.groupBy}
             onChange={(e) => updateConfig({ groupBy: e.target.value as typeof config.groupBy })}
-            className="rounded-md border border-border bg-surface px-1.5 py-1 text-[12px]"
+            className="kp-select rounded-[7px] border border-border bg-surface px-1.5 py-1 text-[12px]"
           >
             <option value="column">{t("tableView.groupByColumn")}</option>
             <option value="assignee">{t("tableView.groupByAssignee")}</option>
@@ -88,7 +94,7 @@ export function TableView({ data }: { data: BoardData }) {
           <select
             value={config.sortBy}
             onChange={(e) => updateConfig({ sortBy: e.target.value as typeof config.sortBy })}
-            className="rounded-md border border-border bg-surface px-1.5 py-1 text-[12px]"
+            className="kp-select rounded-[7px] border border-border bg-surface px-1.5 py-1 text-[12px]"
           >
             <option value="rank">{t("tableView.sortByRank")}</option>
             <option value="priority">{t("tableView.sortByPriority")}</option>
@@ -98,12 +104,16 @@ export function TableView({ data }: { data: BoardData }) {
           </select>
           <button
             onClick={() => updateConfig({ sortDir: config.sortDir === "asc" ? "desc" : "asc" })}
-            className="rounded-md border border-border px-1.5 py-1 text-[12px] hover:bg-surface-3"
+            className="rounded-[7px] border border-border px-1.5 py-1 text-[12px] hover:bg-surface-3"
           >
             {config.sortDir === "asc" ? "↑" : "↓"}
           </button>
         </label>
       </div>
+
+      {error && (
+        <p className="mb-3 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full border-collapse text-[12.5px]">
@@ -154,7 +164,7 @@ export function TableView({ data }: { data: BoardData }) {
                       <td className="px-3 py-2">
                         {assignee ? (
                           <span className="inline-flex items-center gap-1.5">
-                            <Avatar initials={initialsOf(assignee.name)} size={18} />
+                            <Avatar initials={initialsOf(assignee.name)} />
                             {assignee.name}
                           </span>
                         ) : (

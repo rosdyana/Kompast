@@ -5,6 +5,8 @@
   "savingEllipsis": "儲存中…",
   "save": "儲存",
   "cancel": "取消",
+  "genericError": "發生錯誤，請再試一次。",
+  "clickAgainToDelete": "再次點擊以刪除",
   "header": {
     "ticketCount": "{{count}} 張工單",
     "newIssuePlaceholder": "工單標題…",
@@ -43,7 +45,8 @@
     "reviewHeading": "衝刺回顧"
   },
   "roadmap": {
-    "noEpicsYet": "尚無史詩任務。建立一個類型為「Epic」的工單，並將其他工單連結至它以檢視路線圖。",
+    "noEpicsHeading": "尚無史詩任務。",
+    "noEpicsSubtext": "建立一個類型為「Epic」的工單，並將其他工單連結至它以檢視路線圖。",
     "progressSummary": "{{done}}/{{total}} 項工單已完成（{{pct}}%）"
   },
   "automation": {
@@ -66,6 +69,7 @@
     "clearAssignmentOption": "（清除指派）",
     "subtaskTitlePlaceholder": "子任務標題（固定文字，不依父工單標題產生）",
     "addRuleButton": "+ 規則",
+    "deleteRuleConfirm": "刪除此規則？此動作無法復原。",
     "noRulesYet": "尚無自動化規則。",
     "dryRunBadge": "試跑",
     "historyToggle": "歷史紀錄",
@@ -99,7 +103,11 @@
     "realTag": "正式",
     "errorCount": "{{count}} 個錯誤"
   },
-  "boardView": { "searchPlaceholder": "搜尋看板" },
+  "boardView": {
+    "searchPlaceholder": "搜尋看板",
+    "movedToColumn": "已移至 {{column}}",
+    "keyboardHint": "聚焦於卡片後，按左右方向鍵可將其移至相鄰欄位。"
+  },
   "settingsTab": {
     "columnsHeading": "看板欄位",
     "propertiesHeading": "工單屬性",
@@ -122,6 +130,7 @@
     "typeLabel": "類型",
     "onCardLabel": "顯示於卡片",
     "deletePropertyTitle": "刪除屬性",
+    "deletePropertyConfirm": "刪除此屬性？此屬性將從所有工單中移除。",
     "newPropertyPlaceholder": "新屬性名稱",
     "addPropertyButton": "+ 新增屬性",
     "propertiesFooterNote": "核心屬性仍可重新命名與隱藏，但無法刪除。"

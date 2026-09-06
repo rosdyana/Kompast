@@ -5,5 +5,9 @@
   "keyPlaceholder": "Kode proyek, mis. KPT",
   "creatingEllipsis": "Membuat…",
   "createProject": "Buat proyek",
-  "createFailed": "Gagal membuat proyek"
+  "createFailed": "Gagal membuat proyek",
+  "noEligibleTeamTitle": "Anda memerlukan tim terlebih dahulu",
+  "noEligibleTeamSuperAdmin": "Setiap proyek termasuk dalam sebuah tim, dan Anda belum menjadi admin tim mana pun. Buat tim pertama.",
+  "noEligibleTeamMember": "Setiap proyek termasuk dalam sebuah tim, dan Anda belum menjadi admin tim mana pun. Minta admin workspace menjadikan Anda admin tim.",
+  "createTeam": "Buat tim"
 }

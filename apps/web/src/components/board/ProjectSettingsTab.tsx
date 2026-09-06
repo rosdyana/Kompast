@@ -4,6 +4,7 @@ import { Tabs } from "@kompast/ui/Tabs";
 import { Badge } from "@kompast/ui/Badge";
 import { Button } from "@kompast/ui/Button";
 import { useTranslation } from "@kompast/i18n";
+import { useConfirmArm } from "@/lib/use-confirm-arm";
 import type { getProjectBoardFn } from "@/lib/server-fns/projects";
 import {
   createBoardColumnFn,
@@ -50,6 +51,8 @@ function ColumnsSettings({ data }: { data: BoardData }) {
   const [flowText, setFlowText] = useState<string | null>(null);
   const [newColName, setNewColName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { isArmed, arm, disarm } = useConfirmArm();
 
   useEffect(() => {
     listWorkflowStatusesFn({ data: data.project.id }).then((statuses) => setFlowText(statuses.map((s) => s.name).join(" → ")));
@@ -60,29 +63,47 @@ function ColumnsSettings({ data }: { data: BoardData }) {
   async function addColumn() {
     if (!newColName.trim()) return;
     setCreating(true);
+    setError(null);
     try {
       await createBoardColumnFn({ data: { projectId: data.project.id, boardId: data.board.id, name: newColName.trim() } });
       setNewColName("");
       await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setCreating(false);
     }
   }
 
   async function rename(columnId: string, name: string) {
-    await updateBoardColumnFn({ data: { projectId: data.project.id, columnId, name } });
-    await router.invalidate();
+    setError(null);
+    try {
+      await updateBoardColumnFn({ data: { projectId: data.project.id, columnId, name } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
   }
 
   async function recolor(columnId: string, color: string) {
-    await updateBoardColumnFn({ data: { projectId: data.project.id, columnId, color } });
-    await router.invalidate();
+    setError(null);
+    try {
+      await updateBoardColumnFn({ data: { projectId: data.project.id, columnId, color } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
   }
 
   async function setWip(columnId: string, raw: string) {
     const wipLimit = raw.trim() === "" ? null : Number(raw);
-    await updateBoardColumnFn({ data: { projectId: data.project.id, columnId, wipLimit } });
-    await router.invalidate();
+    setError(null);
+    try {
+      await updateBoardColumnFn({ data: { projectId: data.project.id, columnId, wipLimit } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
   }
 
   async function move(columnId: string, direction: "left" | "right") {
@@ -91,14 +112,32 @@ function ColumnsSettings({ data }: { data: BoardData }) {
     const j = direction === "left" ? i - 1 : i + 1;
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j]!, ids[i]!];
-    await reorderBoardColumnsFn({ data: { projectId: data.project.id, boardId: data.board.id, orderedColumnIds: ids } });
-    await router.invalidate();
+    setError(null);
+    try {
+      await reorderBoardColumnsFn({ data: { projectId: data.project.id, boardId: data.board.id, orderedColumnIds: ids } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
   }
 
   async function remove(columnId: string) {
-    if (!window.confirm(t("settingsTab.deleteColumnConfirm"))) return;
-    await deleteBoardColumnFn({ data: { projectId: data.project.id, columnId } });
-    await router.invalidate();
+    setError(null);
+    try {
+      await deleteBoardColumnFn({ data: { projectId: data.project.id, columnId } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
+  function handleDeleteClick(columnId: string) {
+    if (!isArmed(columnId)) {
+      arm(columnId);
+      return;
+    }
+    disarm();
+    remove(columnId);
   }
 
   return (
@@ -109,6 +148,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
         <strong className="text-text">{t("settingsTab.columnsDescBold")}</strong>
         {t("settingsTab.columnsDescPart2")}
       </p>
+      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>}
       {flowText && (
         <div className="mb-4 flex items-center gap-2 rounded-[11px] border border-dashed border-border-2 px-3.5 py-2.5 text-[12.5px] text-text-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-3">{t("settingsTab.flowLabel")}</span>
@@ -126,7 +166,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
               <input
                 defaultValue={col.name}
                 onBlur={(e) => e.target.value.trim() && e.target.value !== col.name && rename(col.id, e.target.value.trim())}
-                className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
+                className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
               />
               <span className="font-mono text-[10px] text-text-3">{col.issues.length}</span>
               {col.isBacklog && <Badge>{t("fixedBadge")}</Badge>}
@@ -146,7 +186,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
               defaultValue={col.wipLimit ?? ""}
               placeholder="∞"
               onBlur={(e) => setWip(col.id, e.target.value)}
-              className="w-[52px] rounded-md border border-border-2 bg-surface px-2 py-1 font-mono text-[12px] outline-none"
+              className="w-[52px] rounded-[7px] border border-border-2 bg-surface px-2 py-1 font-mono text-[12px] outline-none"
             />
             {!col.isBacklog && (
               <span className="flex gap-0.5">
@@ -166,8 +206,13 @@ function ColumnsSettings({ data }: { data: BoardData }) {
                 >
                   →
                 </button>
-                <button onClick={() => remove(col.id)} title={t("settingsTab.deleteColumnTitle")} className="rounded px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger">
-                  ✕
+                <button
+                  onClick={() => handleDeleteClick(col.id)}
+                  title={isArmed(col.id) ? t("settingsTab.deleteColumnConfirm") : t("settingsTab.deleteColumnTitle")}
+                  className="rounded px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
+                  style={isArmed(col.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
+                >
+                  {isArmed(col.id) ? t("clickAgainToDelete") : "✕"}
                 </button>
               </span>
             )}
@@ -179,7 +224,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
             onChange={(e) => setNewColName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addColumn()}
             placeholder={t("settingsTab.newColumnPlaceholder")}
-            className="min-w-0 flex-1 rounded-md border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+            className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
           />
           <Button variant="outline" onClick={addColumn} disabled={creating || !newColName.trim()}>
             {t("settingsTab.addColumnButton")}
@@ -197,6 +242,8 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<(typeof ISSUE_PROPERTY_TYPES)[number]>("text");
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { isArmed, arm, disarm } = useConfirmArm();
 
   async function refresh() {
     setDefinitions(await listIssuePropertyDefinitionsFn({ data: projectId }));
@@ -210,33 +257,65 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
   async function addProperty() {
     if (!newName.trim()) return;
     setCreating(true);
+    setError(null);
     try {
       await createIssuePropertyDefinitionFn({ data: { projectId, name: newName.trim(), type: newType } });
       setNewName("");
       await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
       setCreating(false);
     }
   }
 
   async function rename(definitionId: string, name: string) {
-    await updateIssuePropertyDefinitionFn({ data: { projectId, definitionId, name } });
-    await refresh();
+    setError(null);
+    try {
+      await updateIssuePropertyDefinitionFn({ data: { projectId, definitionId, name } });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
   }
 
   async function retype(definitionId: string, type: (typeof ISSUE_PROPERTY_TYPES)[number]) {
-    await updateIssuePropertyDefinitionFn({ data: { projectId, definitionId, type } });
-    await refresh();
+    setError(null);
+    try {
+      await updateIssuePropertyDefinitionFn({ data: { projectId, definitionId, type } });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
   }
 
   async function toggleVisible(definitionId: string, visibleOnCard: boolean) {
-    await updateIssuePropertyDefinitionFn({ data: { projectId, definitionId, visibleOnCard } });
-    await refresh();
+    setError(null);
+    try {
+      await updateIssuePropertyDefinitionFn({ data: { projectId, definitionId, visibleOnCard } });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
   }
 
   async function remove(definitionId: string) {
-    await deleteIssuePropertyDefinitionFn({ data: { projectId, definitionId } });
-    await refresh();
+    setError(null);
+    try {
+      await deleteIssuePropertyDefinitionFn({ data: { projectId, definitionId } });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
+  function handleDeleteClick(definitionId: string) {
+    if (!isArmed(definitionId)) {
+      arm(definitionId);
+      return;
+    }
+    disarm();
+    remove(definitionId);
   }
 
   if (!definitions) return null;
@@ -249,6 +328,7 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
         {t("settingsTab.propertiesDescPart1")}
         <strong className="text-text">{t("settingsTab.propertiesDescBold", { count: visCount })}</strong>
       </p>
+      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</p>}
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="border-b border-border bg-surface-2 px-3.5 py-2 text-[11px] font-semibold text-text-2">
           {t("settingsTab.propertiesCountSummary", { visible: visCount, total: definitions.length })}
@@ -259,7 +339,7 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
               <input
                 defaultValue={p.name}
                 onBlur={(e) => e.target.value.trim() && e.target.value !== p.name && rename(p.id, e.target.value.trim())}
-                className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
+                className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
               />
               {p.isCore && <Badge>{t("settingsTab.coreBadge")}</Badge>}
             </span>
@@ -268,7 +348,7 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
               <select
                 value={p.type}
                 onChange={(e) => retype(p.id, e.target.value as (typeof ISSUE_PROPERTY_TYPES)[number])}
-                className="rounded-md border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
               >
                 {ISSUE_PROPERTY_TYPES.map((ty) => (
                   <option key={ty} value={ty}>
@@ -282,8 +362,13 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
               <input type="checkbox" checked={p.visibleOnCard} onChange={(e) => toggleVisible(p.id, e.target.checked)} />
             </label>
             {!p.isCore && (
-              <button onClick={() => remove(p.id)} title={t("settingsTab.deletePropertyTitle")} className="rounded px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger">
-                ✕
+              <button
+                onClick={() => handleDeleteClick(p.id)}
+                title={isArmed(p.id) ? t("settingsTab.deletePropertyConfirm") : t("settingsTab.deletePropertyTitle")}
+                className="rounded px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
+                style={isArmed(p.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
+              >
+                {isArmed(p.id) ? t("clickAgainToDelete") : "✕"}
               </button>
             )}
           </div>
@@ -294,12 +379,12 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addProperty()}
             placeholder={t("settingsTab.newPropertyPlaceholder")}
-            className="min-w-0 flex-1 rounded-md border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+            className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
           />
           <select
             value={newType}
             onChange={(e) => setNewType(e.target.value as (typeof ISSUE_PROPERTY_TYPES)[number])}
-            className="rounded-md border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+            className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
           >
             {ISSUE_PROPERTY_TYPES.map((ty) => (
               <option key={ty} value={ty}>

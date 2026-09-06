@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useLoaderData, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useLoaderData, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
@@ -26,13 +26,6 @@ function NewProjectPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sidebar/home only ever show a "+ project" affordance when at least one
-  // eligible team exists — someone can still type the URL directly.
-  // createProjectFn re-checks requireTeamAdmin server-side regardless.
-  if (eligibleTeams.length === 0) {
-    throw redirect({ to: "/" });
-  }
-
   async function create() {
     if (!key.trim() || !name.trim() || !teamId) return;
     setCreating(true);
@@ -46,6 +39,31 @@ function NewProjectPage() {
     } finally {
       setCreating(false);
     }
+  }
+
+  // Sidebar/home only ever show a "+ project" affordance when at least one
+  // eligible team exists — someone can still type the URL directly.
+  // createProjectFn re-checks requireTeamAdmin server-side regardless.
+  if (eligibleTeams.length === 0) {
+    return (
+      <div className="mx-auto max-w-[520px] px-8 pb-16 pt-9">
+        <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
+        <Card className="flex flex-col items-start gap-3 p-4">
+          <h2 className="text-[15px] font-semibold">{t("noEligibleTeamTitle")}</h2>
+          <p className="text-sm text-text-2">
+            {shell.isSuperAdmin ? t("noEligibleTeamSuperAdmin") : t("noEligibleTeamMember")}
+          </p>
+          {shell.isSuperAdmin && (
+            <Link
+              to="/teams/new"
+              className="inline-flex items-center justify-center gap-2 rounded-[7px] bg-accent px-3 py-1.5 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              {t("createTeam")}
+            </Link>
+          )}
+        </Card>
+      </div>
+    );
   }
 
   return (

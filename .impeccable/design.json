@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-05T23:08:18Z",
+  "title": "Design System: Kompast",
+  "extensions": {
+    "colorMeta": {
+      "bg": { "role": "neutral", "displayName": "Warm Paper", "canonical": "#f6f4ef", "tonalRamp": ["#191713", "#2e2a24", "#47413a", "#6b6459", "#948c7e", "#bdb6a8", "#ded8cd", "#f6f4ef"] },
+      "surface": { "role": "neutral", "displayName": "Surface White", "canonical": "#ffffff" },
+      "surface-2": { "role": "neutral", "displayName": "Surface Cream", "canonical": "#fbf9f5" },
+      "surface-3": { "role": "neutral", "displayName": "Surface Tan", "canonical": "#efece4" },
+      "text": { "role": "neutral", "displayName": "Ink Black", "canonical": "#191a1d", "tonalRamp": ["#191a1d", "#2b2d31", "#45484d", "#63666c", "#85888e", "#a9acb1", "#cdd0d3", "#eceef0"] },
+      "text-2": { "role": "neutral", "displayName": "Ink Gray", "canonical": "#5b5d63" },
+      "text-3": { "role": "neutral", "displayName": "Ink Mist", "canonical": "#8f9198" },
+      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "#e4e0d8" },
+      "border-2": { "role": "neutral", "displayName": "Hairline Deep", "canonical": "#d3cec3" },
+      "accent": { "role": "primary", "displayName": "Cobalt Focus", "canonical": "#2f6fea", "tonalRamp": ["#0a1f4a", "#12326e", "#1a4590", "#2258b5", "#2f6fea", "#5f92f0", "#9bbdf7", "#d6e6fc"] },
+      "accent-soft": { "role": "primary", "displayName": "Cobalt Focus Soft", "canonical": "#e8f0fe" },
+      "indigo": { "role": "secondary", "displayName": "Deep Navy", "canonical": "#1b3a6b", "tonalRamp": ["#0a1526", "#11213d", "#1b3a6b", "#2c5490", "#4570b3", "#7098cf", "#a7c1e6", "#dbe7f5"] },
+      "indigo-soft": { "role": "secondary", "displayName": "Deep Navy Soft", "canonical": "#e7eaf3" },
+      "green": { "role": "tertiary", "displayName": "Ledger Green", "canonical": "#1c7a54", "tonalRamp": ["#0a2e20", "#113f2c", "#1c7a54", "#2a9b6c", "#4fb98a", "#82d1ad", "#b8e6cf", "#e3f5ec"] },
+      "green-soft": { "role": "tertiary", "displayName": "Ledger Green Soft", "canonical": "#dff0e8" },
+      "amber": { "role": "tertiary", "displayName": "Ledger Amber", "canonical": "#9a6410", "tonalRamp": ["#2e1e05", "#4a3008", "#6f480c", "#9a6410", "#c1841f", "#dba852", "#edc98d", "#f9e6c4"] },
+      "amber-soft": { "role": "tertiary", "displayName": "Ledger Amber Soft", "canonical": "#faedd4" },
+      "violet": { "role": "tertiary", "displayName": "Ledger Violet", "canonical": "#584a86", "tonalRamp": ["#1c1730", "#2c2450", "#423670", "#584a86", "#7565a3", "#9c8fc0", "#c3badd", "#e6e1f2"] },
+      "violet-soft": { "role": "tertiary", "displayName": "Ledger Violet Soft", "canonical": "#ebe7f6" },
+      "danger": { "role": "danger", "displayName": "Ledger Danger", "canonical": "#c9432a", "tonalRamp": ["#3a0f07", "#591808", "#7d240d", "#a53318", "#c9432a", "#dd7057", "#eda491", "#f8d9d0"] },
+      "danger-soft": { "role": "danger", "displayName": "Ledger Danger Soft", "canonical": "#fae9e4" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display (Instrument Serif)", "purpose": "Hero/landing headlines only — login hero, empty-state welcome. Never used for UI chrome." },
+      "title": { "displayName": "Title", "purpose": "Page/section headings, e.g. \"Sign in to Kompast\"." },
+      "body": { "displayName": "Body", "purpose": "The overwhelming majority of UI text — buttons, inputs, table cells, descriptions." },
+      "label": { "displayName": "Label / Mono Metadata", "purpose": "Badges, avatar initials, section overlines, and — in JetBrains Mono — issue keys, counts, timestamps, story points." }
+    },
+    "shadows": [
+      { "name": "ambient-overlay", "value": "0 1px 2px rgba(25,26,29,0.06), 0 8px 20px -10px rgba(25,26,29,0.16)", "purpose": "The only shadow in the system. Floating/overlay surfaces only: dropdowns, popovers, notification panel, version history. Dark theme: 0 1px 2px rgba(0,0,0,0.5), 0 10px 28px -12px rgba(0,0,0,0.7)." }
+    ],
+    "motion": [
+      { "name": "opacity-hover", "value": "transition-opacity, hover:opacity-90", "purpose": "Default button hover — an opacity dip, never a color or position shift." },
+      { "name": "sidebar-width", "value": "transition: width 200ms ease-out (gated behind mount)", "purpose": "Sidebar rail/tree collapse toggle — only animates on a user-triggered change, never on initial render." },
+      { "name": "kp-blink", "value": "@keyframes kp-blink { 0%,100% { opacity:1 } 50% { opacity:.25 } } 2.2s infinite", "purpose": "Status/presence dot pulse (e.g. tenant-detected indicator on login)." },
+      { "name": "kp-rise", "value": "@keyframes kp-rise { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }", "purpose": "Entrance animation for newly-appearing content blocks (e.g. AI-streamed responses)." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Button — Primary",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Highest-frequency call-to-action. Cobalt Focus fill, white semibold text.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Save changes</button>",
+      "css": ".ds-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius:7px; font-size:13px; font-weight:500; padding:6px 12px; border:none; cursor:pointer; transition:opacity .15s; } .ds-btn:disabled { opacity:.5; pointer-events:none; } .ds-btn-primary { background:var(--accent,#2f6fea); color:#fff; font-weight:600; } .ds-btn-primary:hover { opacity:.9; }"
+    },
+    {
+      "name": "Button — Dark",
+      "kind": "button",
+      "refersTo": "button-dark",
+      "description": "The single highest-emphasis action per screen (e.g. \"Continue with Microsoft\").",
+      "html": "<button class=\"ds-btn ds-btn-dark\">Continue with Microsoft</button>",
+      "css": ".ds-btn-dark { background:var(--text,#191a1d); color:var(--bg,#f6f4ef); font-weight:600; border-radius:7px; font-size:14.5px; padding:14px 12px; border:none; cursor:pointer; transition:opacity .15s; } .ds-btn-dark:hover { opacity:.9; }"
+    },
+    {
+      "name": "Button — Outline",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action — hairline border, fills to the tertiary surface on hover.",
+      "html": "<button class=\"ds-btn ds-btn-outline\">Cancel</button>",
+      "css": ".ds-btn-outline { background:var(--surface,#fff); color:var(--text-2,#5b5d63); border:1px solid var(--border-2,#d3cec3); border-radius:7px; font-size:13px; font-weight:500; padding:6px 12px; cursor:pointer; transition:background .15s; } .ds-btn-outline:hover { background:var(--surface-3,#efece4); } .ds-btn-outline:focus-visible { outline:2px solid var(--accent,#2f6fea); outline-offset:1px; }"
+    },
+    {
+      "name": "Badge — Accent",
+      "kind": "chip",
+      "refersTo": "badge-accent",
+      "description": "Full-pill status/role tag. Six tones share this shape; only the color pair changes.",
+      "html": "<span class=\"ds-badge ds-badge-accent\">In Progress</span>",
+      "css": ".ds-badge { display:inline-flex; align-items:center; border-radius:9999px; padding:2px 8px; font-size:10.5px; font-weight:600; } .ds-badge-accent { background:var(--accent-soft,#e8f0fe); color:var(--accent,#2f6fea); }"
+    },
+    {
+      "name": "Avatar",
+      "kind": "custom",
+      "refersTo": "avatar",
+      "description": "Identity chip — reuses the badge tone system as a circle with bold initials instead of a pill with a label.",
+      "html": "<div class=\"ds-avatar\" title=\"Rosdyana Kusuma\">RK</div>",
+      "css": ".ds-avatar { display:grid; place-items:center; width:22px; height:22px; border-radius:9999px; background:var(--violet-soft,#ebe7f6); color:var(--violet,#584a86); font-size:9.5px; font-weight:700; flex:none; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Primary container. No shadow at rest — a hairline border is the only separation.",
+      "html": "<div class=\"ds-card\"><p class=\"ds-card-title\">Sprint 14</p><p class=\"ds-card-body\">8 issues · 21 points</p></div>",
+      "css": ".ds-card { background:var(--surface,#fff); border:1px solid var(--border,#e4e0d8); border-radius:12px; padding:16px; } .ds-card-title { font-size:15px; font-weight:600; color:var(--text,#191a1d); margin:0 0 4px; } .ds-card-body { font-size:13px; color:var(--text-2,#5b5d63); margin:0; font-family:'JetBrains Mono',monospace; }"
+    },
+    {
+      "name": "Tabs",
+      "kind": "nav",
+      "refersTo": "tabs",
+      "description": "Underline tabs — a 2px bottom border is the only active-state signal. No pill or fill style.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-tab-active\">Board</button><button class=\"ds-tab\">Sprint</button><button class=\"ds-tab\">Docs</button></div>",
+      "css": ".ds-tabs { display:flex; gap:2px; } .ds-tab { background:none; border:none; border-bottom:2px solid transparent; padding:8px 12px; font-size:13px; font-weight:500; color:var(--text-2,#5b5d63); cursor:pointer; transition:color .15s; } .ds-tab:hover { color:var(--text,#191a1d); } .ds-tab-active { border-bottom-color:var(--text,#191a1d); color:var(--text,#191a1d); font-weight:600; }"
+    },
+    {
+      "name": "Compass Mark",
+      "kind": "custom",
+      "refersTo": "compass-mark",
+      "description": "The brand glyph — a rotated white diamond inside a rounded Cobalt Focus square. The one recurring icon the system treats as sacred; never a bitmap logo file in-app.",
+      "html": "<div class=\"ds-compass\"><div class=\"ds-compass-diamond\"></div></div>",
+      "css": ".ds-compass { display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background:var(--accent,#2f6fea); } .ds-compass-diamond { width:8px; height:8px; border-radius:2px; background:#fff; transform:rotate(45deg); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Compass Ledger",
+    "overview": "Kompast reads like a precise paper instrument, not a glossy SaaS dashboard: a warm, off-white ledger page (--bg) holds dense rows of small, exact type, with a single cobalt-blue mark — sampled straight from the compass logo — as the only loud color anywhere in the system. The compass mark itself (a rotated white square inside a rounded-square cobalt tile) recurs as the system's one recognizable shape; everything else is quiet geometry — hairline borders, small pills, a diamond of negative space — never an icon library.\n\nThe system is calm, precise, and unshowy on purpose. It explicitly rejects two easy defaults: it is not a playful, illustrated Notion clone, and it is not a loud, high-contrast dark-mode developer tool. Depth comes from borders and tonal surface steps, not shadow; personality comes from one restrained accent color and a serif/mono contrast in the type, not from decoration. A full dark theme exists ([data-theme=\"dark\"]) as a disciplined token swap — same roles, same contrast relationships, inverted lightness — never a second, separately-art-directed look.",
+    "keyCharacteristics": [
+      "Warm-paper neutral base with exactly one loud accent color (Cobalt Focus), used sparingly.",
+      "Editorial serif reserved for display headlines only; every other piece of text is small, sans-serif, and dense.",
+      "Mono, uppercase, wide-tracked type marks anything machine-scoped: issue keys, counts, timestamps, section overlines.",
+      "Flat by default — hairline borders separate surfaces; a single soft shadow token appears only on floating overlays.",
+      "No icon library. Every glyph (the compass mark, the blinking status dot, the Microsoft tile) is hand-drawn from primitive shapes."
+    ],
+    "rules": [
+      { "name": "The One Loud Color Rule", "body": "Cobalt Focus is the only saturated, attention-getting color in the system. Every other hue (indigo, green, amber, violet, danger) is muted and only ever appears in small doses — badges, avatar initials, status dots — never as a large fill.", "section": "colors" },
+      { "name": "The Danger Independence Rule", "body": "Danger/destructive red must never be derived from or share a value with the brand accent again — they were split apart deliberately so a rebrand of one can't accidentally soften the other.", "section": "colors" },
+      { "name": "The Serif-Is-Rare Rule", "body": "Instrument Serif appears only on true display headlines (login hero, empty-state welcome). If a component needs emphasis anywhere else, reach for sans-serif weight/size, never the serif.", "section": "typography" },
+      { "name": "The Mono Metadata Rule", "body": "Any value that is machine-scoped rather than authored prose — an issue key, a count, a timestamp, story points, a section overline — renders in JetBrains Mono, small, and usually in Ink Mist. This is how the system visually distinguishes \"data\" from \"content\" without adding an icon or a label.", "section": "typography" },
+      { "name": "The Overlay-Only Shadow Rule", "body": "If an element sits in normal document flow, it gets a border, not a shadow. Shadow is reserved for anything that visually floats above the page.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep Cobalt Focus rare — one primary action per view, not a wash of blue across the screen.",
+      "Do render machine-scoped values (keys, counts, timestamps, points) in JetBrains Mono per the Mono Metadata Rule, even in a brand-new component.",
+      "Do use a border for anything at rest and reserve shadow-kp strictly for floating overlays.",
+      "Do reuse the existing custom radius scale (7 / 9 / 10 / 12px / full) instead of Tailwind's stock rounded-md/rounded-lg defaults.",
+      "Do treat light/dark as one token swap — never author dark mode as a separately art-directed theme."
+    ],
+    "donts": [
+      "Don't use Instrument Serif outside true display headlines — it must stay rare to keep its impact.",
+      "Don't add a shadow to anything resting in normal document flow (cards, sidebars, table rows) — that's the Overlay-Only Shadow Rule.",
+      "Don't pull in an icon library (Lucide, Heroicons, etc.) — every glyph in this system is hand-drawn from primitive shapes; an imported icon set would visually clash immediately.",
+      "Don't let the destructive/danger color drift back toward sharing a value with the brand accent."
+    ]
+  }
+}
