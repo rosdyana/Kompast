@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { organization } from "./auth";
 import { board } from "./board";
 import { issue } from "./issue";
@@ -20,6 +20,7 @@ export const sprint = pgTable(
     boardId: text("board_id")
       .notNull()
       .references(() => board.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
     name: text("name").notNull(),
     goal: text("goal"),
     state: text("state", { enum: ["future", "active", "closed"] }).notNull().default("future"),
@@ -29,7 +30,11 @@ export const sprint = pgTable(
     capacityPoints: integer("capacity_points"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
-  (t) => [index("sprint_board_idx").on(t.boardId), index("sprint_org_idx").on(t.organizationId)],
+  (t) => [
+    index("sprint_board_idx").on(t.boardId),
+    index("sprint_org_idx").on(t.organizationId),
+    uniqueIndex("sprint_board_number_uq").on(t.boardId, t.number),
+  ],
 );
 
 /**
