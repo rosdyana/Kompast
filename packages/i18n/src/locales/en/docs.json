@@ -10,6 +10,8 @@
     "aiFailedPrefix": "AI failed: {{message}}",
     "unknownError": "unknown error",
     "kanbanTableSlashItem": "Kanban board",
+    "createIssueSlashItem": "Create issue from this line",
+    "creatingIssueEllipsis": "Creating issue…",
     "aiContinue": "AI: Continue writing",
     "aiImprove": "AI: Improve writing",
     "aiShorten": "AI: Shorten",

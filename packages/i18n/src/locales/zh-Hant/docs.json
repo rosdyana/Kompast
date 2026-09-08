@@ -10,6 +10,8 @@
     "aiFailedPrefix": "AI 失敗：{{message}}",
     "unknownError": "未知錯誤",
     "kanbanTableSlashItem": "看板表格",
+    "createIssueSlashItem": "從此行建立 issue",
+    "creatingIssueEllipsis": "建立 issue 中…",
     "aiContinue": "AI：繼續寫作",
     "aiImprove": "AI：潤飾文字",
     "aiShorten": "AI：精簡",

@@ -12,7 +12,8 @@ import { useTranslation } from "@kompast/i18n";
 import { VersionHistory } from "./VersionHistory";
 import { kompastViewBlockSpec } from "./KompastViewBlock";
 import { mentionInlineSpec } from "./MentionInlineContent";
-import { listPageTreeFn, linkPageMentionFn } from "@/lib/server-fns/pages";
+import { issueMentionInlineSpec } from "./IssueMentionInlineContent";
+import { listPageTreeFn, linkPageMentionFn, createIssueFromDocLineFn } from "@/lib/server-fns/pages";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 
 type DocAiMode = "continue" | "improve" | "shorten" | "expand" | "summarize" | "translate";
@@ -75,8 +76,13 @@ function colorForUser(userId: string) {
 // mixed-shape BlockSpecs records rejects this merge even though it's exactly BlockNote's own documented pattern.
 const schema = BlockNoteSchema.create({
   blockSpecs: { ...defaultBlockSpecs, kompastView: kompastViewBlockSpec() as any },
-  inlineContentSpecs: { ...defaultInlineContentSpecs, mention: mentionInlineSpec as any },
+  inlineContentSpecs: { ...defaultInlineContentSpecs, mention: mentionInlineSpec as any, issueMention: issueMentionInlineSpec as any },
 });
+
+function blockPlainText(block: { content?: unknown }): string {
+  const content = Array.isArray(block.content) ? block.content : [];
+  return content.map((c: any) => (c.type === "text" ? c.text : "")).join("").trim();
+}
 
 export function DocEditor({
   pageId,
@@ -137,6 +143,25 @@ export function DocEditor({
                     editor.insertBlocks([{ type: "kompastView" }], currentBlock, "after");
                   },
                   aliases: ["kanban", "board", "tabel", "table", "view"],
+                  group: "Kompast",
+                },
+                {
+                  title: t("editor.createIssueSlashItem"),
+                  onItemClick: async () => {
+                    const currentBlock = editor.getTextCursorPosition().block;
+                    const title = blockPlainText(currentBlock);
+                    if (!title) return;
+                    editor.updateBlock(currentBlock.id, { content: t("editor.creatingIssueEllipsis") } as any);
+                    try {
+                      const created = await createIssueFromDocLineFn({ data: { pageId, title } });
+                      editor.updateBlock(currentBlock.id, {
+                        content: [{ type: "issueMention", props: { issueId: created.issueId, projectKey: created.projectKey, keySeq: created.keySeq, title } }],
+                      } as any);
+                    } catch (err) {
+                      editor.updateBlock(currentBlock.id, { content: t("editor.aiFailedPrefix", { message: err instanceof Error ? err.message : t("editor.unknownError") }) } as any);
+                    }
+                  },
+                  aliases: ["issue", "task", "tugas", "buatissue"],
                   group: "Kompast",
                 },
                 ...aiSlashItems(t).map((item) => ({
