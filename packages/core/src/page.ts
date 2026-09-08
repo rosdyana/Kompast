@@ -6,6 +6,7 @@ import { rankBetween } from "./rank";
 export interface CreatePageInput {
   organizationId: string;
   projectId?: string | null;
+  sprintId?: string | null;
   parentPageId?: string | null;
   title?: string;
   icon?: string;
@@ -37,6 +38,7 @@ export async function createPage(tx: Tx, input: CreatePageInput) {
     id: pageId,
     organizationId: input.organizationId,
     projectId,
+    sprintId: input.sprintId ?? null,
     parentPageId,
     title: input.title ?? "",
     icon: input.icon,
@@ -53,6 +55,12 @@ export async function getPage(tx: Tx, pageId: string) {
   const [page] = await tx.select().from(schema.page).where(eq(schema.page.id, pageId));
   if (!page) throw new Error(`Page ${pageId} not found`);
   return page;
+}
+
+/** The sprint's linked meeting-minutes doc, if one exists — null if the sprint has none (no template was set when it was created, or none was ever created). */
+export async function getSprintMinutesPage(tx: Tx, sprintId: string) {
+  const [page] = await tx.select().from(schema.page).where(eq(schema.page.sprintId, sprintId));
+  return page ?? null;
 }
 
 /**
@@ -176,7 +184,7 @@ export async function restorePage(tx: Tx, pageId: string) {
 export async function duplicatePage(
   tx: Tx,
   pageId: string,
-  opts: { actorUserId: string; projectId?: string | null; parentPageId?: string | null; titleSuffix?: string },
+  opts: { actorUserId: string; projectId?: string | null; sprintId?: string | null; parentPageId?: string | null; titleSuffix?: string },
 ) {
   const source = await getPage(tx, pageId);
   const projectId = opts.projectId !== undefined ? opts.projectId : source.projectId;
@@ -185,6 +193,7 @@ export async function duplicatePage(
   const created = await createPage(tx, {
     organizationId: source.organizationId,
     projectId,
+    sprintId: opts.sprintId,
     parentPageId,
     title: `${source.title}${opts.titleSuffix ?? ""}`,
     icon: source.icon ?? undefined,
