@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
+import { duplicatePage, updatePageMeta } from "./page";
 
 const CYCLE_DAYS: Record<string, number> = { "1w": 7, "2w": 14, "3w": 21, "4w": 28 };
 
@@ -14,6 +15,8 @@ export interface CreateSprintInput {
   startAt?: Date;
   endAt?: Date;
   capacityPoints?: number;
+  /** When given, and the board's project has a Sprint Minutes Template page, a linked minutes doc is created too. Omit (as every pre-existing caller does) to skip that — sprint creation never depends on it. */
+  actorUserId?: string;
 }
 
 async function nextSprintNumber(tx: Tx, boardId: string): Promise<number> {
@@ -22,6 +25,19 @@ async function nextSprintNumber(tx: Tx, boardId: string): Promise<number> {
     .from(schema.sprint)
     .where(eq(schema.sprint.boardId, boardId));
   return (row?.maxNumber ?? 0) + 1;
+}
+
+async function createLinkedMinutesPage(tx: Tx, input: { boardId: string; sprintId: string; number: number; actorUserId: string }): Promise<void> {
+  const [board] = await tx.select({ projectId: schema.board.projectId }).from(schema.board).where(eq(schema.board.id, input.boardId));
+  if (!board) return;
+  const [project] = await tx.select({ sprintMinutesTemplatePageId: schema.project.sprintMinutesTemplatePageId }).from(schema.project).where(eq(schema.project.id, board.projectId));
+  const templateId = project?.sprintMinutesTemplatePageId;
+  if (!templateId) return;
+  const [templateExists] = await tx.select({ id: schema.page.id }).from(schema.page).where(eq(schema.page.id, templateId));
+  if (!templateExists) return;
+
+  const minutesPage = await duplicatePage(tx, templateId, { actorUserId: input.actorUserId, sprintId: input.sprintId, titleSuffix: "" });
+  await updatePageMeta(tx, minutesPage.id, { title: `Sprint ${input.number} — Meeting Minutes` });
 }
 
 /**
@@ -48,6 +64,11 @@ export async function createSprint(tx: Tx, input: CreateSprintInput) {
     endAt: input.endAt,
     capacityPoints: input.capacityPoints,
   });
+
+  if (input.actorUserId) {
+    await createLinkedMinutesPage(tx, { boardId: input.boardId, sprintId, number, actorUserId: input.actorUserId });
+  }
+
   return { sprintId, number };
 }
 
