@@ -3,6 +3,8 @@ import * as z from "zod";
 import { and, db, eq, inArray, schema } from "@kompast/db";
 import {
   createProject,
+  createPage,
+  setSprintMinutesTemplate,
   ForbiddenError,
   getBoard,
   getOrCreateDefaultTableView,
@@ -14,6 +16,7 @@ import {
   updateSavedViewConfig,
   withAuthorizedTenant,
 } from "@kompast/core";
+import { seedPageContentFromMarkdown } from "../seed-page-content";
 import { requireAuthContext } from "../session";
 
 export const listProjectsFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -44,16 +47,28 @@ export const createProjectFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     await requireTeamAdmin(db, { ...ctx, teamId: data.teamId });
-    return withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, {
+    return withAuthorizedTenant(ctx, async (tx) => {
+      const created = await createProject(tx, {
         organizationId: ctx.organizationId,
         teamId: data.teamId,
         key: data.key,
         name: data.name,
         icon: data.icon,
         actorUserId: ctx.userId,
-      }),
-    );
+      });
+
+      const templatePage = await createPage(tx, {
+        organizationId: ctx.organizationId,
+        projectId: created.projectId,
+        title: "Sprint Minutes Template",
+        type: "template",
+        actorUserId: ctx.userId,
+      });
+      await seedPageContentFromMarkdown(tx, templatePage.id, "# Planning\n\n# Review\n\n# Retro\n");
+      await setSprintMinutesTemplate(tx, created.projectId, templatePage.id);
+
+      return created;
+    });
   });
 
 export const getProjectBoardFn = createServerFn({ method: "GET" })
