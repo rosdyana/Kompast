@@ -166,7 +166,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
       tool(ctx, "issues:read", () =>
         withAuthorizedTenant(ctx, async (tx) => {
           const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
-          return tx.select({ id: schema.board.id, name: schema.board.name, type: schema.board.type }).from(schema.board).where(eq(schema.board.projectId, project.id));
+          return tx.select({ id: schema.board.id, name: schema.board.name }).from(schema.board).where(eq(schema.board.projectId, project.id));
         }),
       )(),
   );
