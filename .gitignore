@@ -21,3 +21,7 @@ coverage/
 # GCS service-account key mounted into web/worker by infra/docker-compose.yml —
 # real one is a secret; local-only stub is still not something to track.
 /infra/secrets/
+
+# Superpowers skill scratch state (brainstorm visual-companion sessions,
+# subagent-driven-development ledgers/briefs/reports) — never source.
+.superpowers/
