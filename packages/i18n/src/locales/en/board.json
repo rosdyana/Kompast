@@ -63,6 +63,7 @@
     "createSprintButton": "+ Create sprint",
     "noFutureSprints": "No upcoming sprints yet.",
     "renameHint": "Click to rename",
+    "moveToColumnPlaceholder": "Move to column…",
     "boardEmptyHeading": "No active sprint",
     "boardEmptySubtext": "Start a sprint from the Backlog tab to see work here."
   },

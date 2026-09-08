@@ -63,6 +63,7 @@
     "createSprintButton": "+ 建立衝刺",
     "noFutureSprints": "尚無即將到來的衝刺。",
     "renameHint": "點擊以重新命名",
+    "moveToColumnPlaceholder": "移至欄位…",
     "boardEmptyHeading": "沒有進行中的衝刺",
     "boardEmptySubtext": "從待辦清單頁籤開始一個衝刺，即可在此查看工作項目。"
   },

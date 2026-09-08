@@ -63,6 +63,7 @@
     "createSprintButton": "+ Buat sprint",
     "noFutureSprints": "Belum ada sprint mendatang.",
     "renameHint": "Klik untuk mengubah nama",
+    "moveToColumnPlaceholder": "Pindah ke kolom…",
     "boardEmptyHeading": "Tidak ada sprint aktif",
     "boardEmptySubtext": "Mulai sprint dari tab Backlog untuk melihat pekerjaan di sini."
   },

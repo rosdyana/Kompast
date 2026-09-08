@@ -112,6 +112,16 @@ export interface DeleteBoardColumnInput {
   columnId: string;
 }
 
+/**
+ * "todo" is deliberately NOT in this set, even though the spec's own
+ * wording ("any of the three required categories") might suggest it
+ * should be: the Backlog column permanently covers "todo" by design (it
+ * can never be deleted, see the isBacklog check below) and is the only
+ * thing that needs to. Adding "todo" here would make the "other columns"
+ * check below (which deliberately excludes Backlog — see its own comment)
+ * incorrectly block deleting any OTHER, ordinary "todo"-category column
+ * (e.g. the default seed's "To Do"), which must stay freely deletable.
+ */
 const REQUIRED_CATEGORIES = new Set(["in_progress", "done"]);
 
 /**

@@ -145,11 +145,11 @@ function ProjectPage() {
       {view === "board" && (
         data.hasAnySprint
           ? <BoardView data={data} />
-          : <SprintSetupWizard boardId={data.board.id} onCreated={() => { router.invalidate(); setView("backlog"); }} />
+          : <SprintSetupWizard boardId={data.board.id} onCreated={async () => { await router.invalidate(); setView("backlog"); }} />
       )}
       {view === "backlog" && (
         data.hasAnySprint
-          ? <BacklogTab projectId={data.project.id} boardId={data.board.id} />
+          ? <BacklogTab projectId={data.project.id} boardId={data.board.id} columns={data.columns} />
           : <SprintSetupWizard boardId={data.board.id} onCreated={() => router.invalidate()} />
       )}
       {view === "table" && <TableView data={data} />}
@@ -260,8 +260,174 @@ type SprintSummary = Awaited<ReturnType<typeof listSprintsFn>>[number];
 type BacklogIssue = Awaited<ReturnType<typeof listBacklogFn>>[number];
 type SprintDetail = Awaited<ReturnType<typeof getSprintDetailFn>>;
 
-function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string }) {
+function SprintHeading({
+  sprint,
+  isRenaming,
+  renameValue,
+  onRenameValueChange,
+  onStartRename,
+  onSaveRename,
+  onCancelRename,
+  t,
+}: {
+  sprint: SprintSummary;
+  isRenaming: boolean;
+  renameValue: string;
+  onRenameValueChange: (value: string) => void;
+  onStartRename: (sprint: SprintSummary) => void;
+  onSaveRename: () => void;
+  onCancelRename: () => void;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  if (isRenaming) {
+    return (
+      <input
+        autoFocus
+        value={renameValue}
+        onChange={(e) => onRenameValueChange(e.target.value)}
+        onBlur={onSaveRename}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSaveRename();
+          if (e.key === "Escape") onCancelRename();
+        }}
+        className="rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[13px] outline-none"
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onStartRename(sprint)}
+      className="type-label-overline text-text-3 hover:text-text-2"
+      title={t("sprint.renameHint")}
+    >
+      {sprint.name}
+    </button>
+  );
+}
+
+function SprintSection({
+  sprint,
+  detail,
+  busy,
+  renamingId,
+  renameValue,
+  onRenameValueChange,
+  onStartRename,
+  onSaveRename,
+  onCancelRename,
+  onStart,
+  onComplete,
+  onRemoveFromSprint,
+  onMoveToColumn,
+  nonBacklogColumns,
+  aiBusy,
+  aiError,
+  aiSummary,
+  onGenerateAiSummary,
+  t,
+}: {
+  sprint: SprintSummary;
+  detail: SprintDetail | undefined;
+  busy: boolean;
+  renamingId: string | null;
+  renameValue: string;
+  onRenameValueChange: (value: string) => void;
+  onStartRename: (sprint: SprintSummary) => void;
+  onSaveRename: () => void;
+  onCancelRename: () => void;
+  onStart: (sprintId: string) => void;
+  onComplete: (sprintId: string) => void;
+  onRemoveFromSprint: (issueId: string) => void;
+  onMoveToColumn: (issueId: string, toStatusId: string) => void;
+  nonBacklogColumns: { id: string; name: string; statusIds: string[] }[];
+  aiBusy: boolean;
+  aiError: string | null;
+  aiSummary: string | null;
+  onGenerateAiSummary: (sprintId: string) => void;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <SprintHeading
+          sprint={sprint}
+          isRenaming={renamingId === sprint.id}
+          renameValue={renameValue}
+          onRenameValueChange={onRenameValueChange}
+          onStartRename={onStartRename}
+          onSaveRename={onSaveRename}
+          onCancelRename={onCancelRename}
+          t={t}
+        />
+        {sprint.state === "future" && (
+          <Button variant="outline" disabled={busy} onClick={() => onStart(sprint.id)}>
+            {t("sprint.start")}
+          </Button>
+        )}
+        {sprint.state === "active" && (
+          <Button variant="outline" disabled={busy} onClick={() => onComplete(sprint.id)}>
+            {t("sprint.complete")}
+          </Button>
+        )}
+      </div>
+      {detail && (
+        <p className="mb-2 type-body text-text-2">
+          {t("sprint.scopeLabel")} <strong>{detail.report.scopeIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.scopePoints}</strong> {t("sprint.pointsUnit")}
+          {" · "}
+          {t("sprint.completedLabel")} <strong>{detail.report.completedIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.completedPoints}</strong> {t("sprint.pointsUnit")}
+        </p>
+      )}
+      <div className="flex flex-col gap-1.5">
+        {(!detail || detail.issues.length === 0) && <p className="type-body text-text-3">{t("sprint.noIssuesInSprint")}</p>}
+        {detail?.issues.map((issue) => (
+          <div key={issue.id} className="flex items-center justify-between gap-2 rounded-[9px] border border-border px-2 py-1.5">
+            <span className="truncate type-body">{issue.title}</span>
+            <div className="flex flex-none items-center gap-1.5">
+              <select
+                disabled={busy}
+                value={nonBacklogColumns.find((c) => c.statusIds.includes(issue.statusId))?.id ?? ""}
+                onChange={(e) => {
+                  const col = nonBacklogColumns.find((c) => c.id === e.target.value);
+                  if (col?.statusIds[0]) onMoveToColumn(issue.id, col.statusIds[0]);
+                }}
+                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+              >
+                <option value="" disabled>
+                  {t("sprint.moveToColumnPlaceholder")}
+                </option>
+                {nonBacklogColumns.map((col) => (
+                  <option key={col.id} value={col.id}>
+                    {col.name}
+                  </option>
+                ))}
+              </select>
+              <Button variant="outline" disabled={busy} onClick={() => onRemoveFromSprint(issue.id)}>
+                {t("sprint.removeButton")}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {sprint.state === "active" && (
+        <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+          <div className="flex items-center justify-between">
+            <p className="type-label-overline text-text-3">{t("sprint.aiSummaryHeading")}</p>
+            <Button variant="outline" onClick={() => onGenerateAiSummary(sprint.id)} disabled={aiBusy}>
+              {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
+            </Button>
+          </div>
+          {aiError && <p className="type-body text-danger">{aiError}</p>}
+          {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap type-body text-text-2">{aiSummary || "…"}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BacklogTab({ projectId, boardId, columns }: { projectId: string; boardId: string; columns: BoardData["columns"] }) {
   const { t } = useTranslation("board");
+  const router = useRouter();
   const [sprints, setSprints] = useState<SprintSummary[] | null>(null);
   const [backlog, setBacklog] = useState<BacklogIssue[] | null>(null);
   const [details, setDetails] = useState<Record<string, SprintDetail>>({});
@@ -272,6 +438,8 @@ function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+
+  const nonBacklogColumns = columns.filter((c) => !c.isBacklog);
 
   async function refresh() {
     const [list, backlogList] = await Promise.all([listSprintsFn({ data: boardId }), listBacklogFn({ data: projectId })]);
@@ -295,6 +463,7 @@ function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string
     try {
       await fn();
       await refresh();
+      await router.invalidate();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("genericError"));
     } finally {
@@ -307,8 +476,10 @@ function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string
   const handleComplete = (sprintId: string) => withBusy(async () => { await completeSprintFn({ data: { sprintId } }); });
   const addToSprint = (sprintId: string, issueId: string) => withBusy(async () => { await addIssueToSprintFn({ data: { sprintId, issueId } }); });
   const removeFromSprint = (issueId: string) => withBusy(async () => { await removeIssueFromSprintFn({ data: issueId }); });
+  const moveToColumn = (issueId: string, toStatusId: string) => withBusy(async () => { await moveIssueFn({ data: { issueId, toStatusId } }); });
 
   async function saveRename(sprintId: string) {
+    if (renamingId !== sprintId) return;
     const trimmed = renameValue.trim();
     setRenamingId(null);
     if (!trimmed) return;
@@ -337,85 +508,6 @@ function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string
   const activeSprint = sprints.find((s) => s.state === "active") ?? null;
   const futureSprints = sprints.filter((s) => s.state === "future").sort((a, b) => a.number - b.number);
 
-  function SprintHeading({ sprint }: { sprint: SprintSummary }) {
-    if (renamingId === sprint.id) {
-      return (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={(e) => setRenameValue(e.target.value)}
-          onBlur={() => saveRename(sprint.id)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") saveRename(sprint.id);
-            if (e.key === "Escape") setRenamingId(null);
-          }}
-          className="rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[13px] outline-none"
-        />
-      );
-    }
-    return (
-      <button
-        type="button"
-        onClick={() => { setRenamingId(sprint.id); setRenameValue(sprint.name); }}
-        className="type-label-overline text-text-3 hover:text-text-2"
-        title={t("sprint.renameHint")}
-      >
-        {sprint.name}
-      </button>
-    );
-  }
-
-  function SprintSection({ sprint }: { sprint: SprintSummary }) {
-    const detail = details[sprint.id];
-    return (
-      <div className="rounded-xl border border-border bg-surface p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <SprintHeading sprint={sprint} />
-          {sprint.state === "future" && (
-            <Button variant="outline" disabled={busy} onClick={() => handleStart(sprint.id)}>
-              {t("sprint.start")}
-            </Button>
-          )}
-          {sprint.state === "active" && (
-            <Button variant="outline" disabled={busy} onClick={() => handleComplete(sprint.id)}>
-              {t("sprint.complete")}
-            </Button>
-          )}
-        </div>
-        {detail && (
-          <p className="mb-2 type-body text-text-2">
-            {t("sprint.scopeLabel")} <strong>{detail.report.scopeIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.scopePoints}</strong> {t("sprint.pointsUnit")}
-            {" · "}
-            {t("sprint.completedLabel")} <strong>{detail.report.completedIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.completedPoints}</strong> {t("sprint.pointsUnit")}
-          </p>
-        )}
-        <div className="flex flex-col gap-1.5">
-          {(!detail || detail.issues.length === 0) && <p className="type-body text-text-3">{t("sprint.noIssuesInSprint")}</p>}
-          {detail?.issues.map((issue) => (
-            <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
-              <span className="truncate type-body">{issue.title}</span>
-              <Button variant="outline" disabled={busy} onClick={() => removeFromSprint(issue.id)}>
-                {t("sprint.removeButton")}
-              </Button>
-            </div>
-          ))}
-        </div>
-        {sprint.state === "active" && (
-          <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-            <div className="flex items-center justify-between">
-              <p className="type-label-overline text-text-3">{t("sprint.aiSummaryHeading")}</p>
-              <Button variant="outline" onClick={() => generateAiSummary(sprint.id)} disabled={aiBusy}>
-                {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
-              </Button>
-            </div>
-            {aiError && <p className="type-body text-danger">{aiError}</p>}
-            {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap type-body text-text-2">{aiSummary || "…"}</p>}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-4 p-6">
       {error && <p className="rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
@@ -423,7 +515,27 @@ function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string
       {activeSprint && (
         <div>
           <p className="mb-2 type-label-overline text-text-3">{t("sprint.activeSectionHeading")}</p>
-          <SprintSection sprint={activeSprint} />
+          <SprintSection
+            sprint={activeSprint}
+            detail={details[activeSprint.id]}
+            busy={busy}
+            renamingId={renamingId}
+            renameValue={renameValue}
+            onRenameValueChange={setRenameValue}
+            onStartRename={(s) => { setRenamingId(s.id); setRenameValue(s.name); }}
+            onSaveRename={() => saveRename(activeSprint.id)}
+            onCancelRename={() => setRenamingId(null)}
+            onStart={handleStart}
+            onComplete={handleComplete}
+            onRemoveFromSprint={removeFromSprint}
+            onMoveToColumn={moveToColumn}
+            nonBacklogColumns={nonBacklogColumns}
+            aiBusy={aiBusy}
+            aiError={aiError}
+            aiSummary={aiSummary}
+            onGenerateAiSummary={generateAiSummary}
+            t={t}
+          />
         </div>
       )}
 
@@ -437,7 +549,28 @@ function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string
         <div className="flex flex-col gap-3">
           {futureSprints.length === 0 && <p className="type-body text-text-3">{t("sprint.noFutureSprints")}</p>}
           {futureSprints.map((s) => (
-            <SprintSection key={s.id} sprint={s} />
+            <SprintSection
+              key={s.id}
+              sprint={s}
+              detail={details[s.id]}
+              busy={busy}
+              renamingId={renamingId}
+              renameValue={renameValue}
+              onRenameValueChange={setRenameValue}
+              onStartRename={(sp) => { setRenamingId(sp.id); setRenameValue(sp.name); }}
+              onSaveRename={() => saveRename(s.id)}
+              onCancelRename={() => setRenamingId(null)}
+              onStart={handleStart}
+              onComplete={handleComplete}
+              onRemoveFromSprint={removeFromSprint}
+              onMoveToColumn={moveToColumn}
+              nonBacklogColumns={nonBacklogColumns}
+              aiBusy={aiBusy}
+              aiError={aiError}
+              aiSummary={aiSummary}
+              onGenerateAiSummary={generateAiSummary}
+              t={t}
+            />
           ))}
         </div>
       </div>
@@ -447,27 +580,47 @@ function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string
         <div className="flex flex-col gap-1.5">
           {backlog.length === 0 && <p className="type-body text-text-3">{t("sprint.backlogEmpty")}</p>}
           {backlog.map((issue) => (
-            <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
+            <div key={issue.id} className="flex items-center justify-between gap-2 rounded-[9px] border border-border px-2 py-1.5">
               <span className="truncate type-body">{issue.title}</span>
-              <select
-                disabled={busy || (!activeSprint && futureSprints.length === 0)}
-                defaultValue=""
-                onChange={(e) => {
-                  if (e.target.value) addToSprint(e.target.value, issue.id);
-                  e.target.value = "";
-                }}
-                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
-              >
-                <option value="" disabled>
-                  {t("sprint.addToSprintButton")}
-                </option>
-                {activeSprint && <option value={activeSprint.id}>{activeSprint.name}</option>}
-                {futureSprints.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
+              <div className="flex flex-none items-center gap-1.5">
+                <select
+                  disabled={busy}
+                  value={nonBacklogColumns.find((c) => c.statusIds.includes(issue.statusId))?.id ?? ""}
+                  onChange={(e) => {
+                    const col = nonBacklogColumns.find((c) => c.id === e.target.value);
+                    if (col?.statusIds[0]) moveToColumn(issue.id, col.statusIds[0]);
+                  }}
+                  className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+                >
+                  <option value="" disabled>
+                    {t("sprint.moveToColumnPlaceholder")}
                   </option>
-                ))}
-              </select>
+                  {nonBacklogColumns.map((col) => (
+                    <option key={col.id} value={col.id}>
+                      {col.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  disabled={busy || (!activeSprint && futureSprints.length === 0)}
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (e.target.value) addToSprint(e.target.value, issue.id);
+                    e.target.value = "";
+                  }}
+                  className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+                >
+                  <option value="" disabled>
+                    {t("sprint.addToSprintButton")}
+                  </option>
+                  {activeSprint && <option value={activeSprint.id}>{activeSprint.name}</option>}
+                  {futureSprints.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           ))}
         </div>
@@ -486,6 +639,9 @@ function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string
  * still read-only (linking out to the issue detail page to edit) — full
  * inline-cell editing is a separate, larger gap that applies to the
  * whole table view feature, not unique to sprint review.
+ *
+ * Currently unreferenced — a later pass wires this into a sprint-scoped
+ * Table tab. Kept defined (not deleted) so that pass can just call it.
  */
 function SprintReviewTable({ boardData, sprintIssueIds }: { boardData: BoardData; sprintIssueIds: Set<string> }) {
   const filtered: BoardData = { ...boardData, columns: boardData.columns.map((c) => ({ ...c, issues: c.issues.filter((i) => sprintIssueIds.has(i.id)) })) };
@@ -1138,8 +1294,8 @@ function BoardView({ data }: { data: BoardData }) {
     // Dropping onto a column's empty area moves to the end of that column;
     // dropping onto a specific card inserts before it. Both are encoded as
     // droppable ids so a single handler covers both without extra state.
-    const overColumn = data.columns.find((c) => c.id === overId);
-    const overIsCard = data.columns.some((c) => c.issues.some((i) => i.id === overId));
+    const overColumn = columns.find((c) => c.id === overId);
+    const overIsCard = columns.some((c) => c.issues.some((i) => i.id === overId));
 
     let toStatusId: string | undefined;
     let beforeIssueId: string | undefined;
@@ -1149,7 +1305,7 @@ function BoardView({ data }: { data: BoardData }) {
       toStatusId = overColumn.statusIds[0];
       afterIssueId = overColumn.issues.at(-1)?.id;
     } else if (overIsCard) {
-      const targetColumn = data.columns.find((c) => c.issues.some((i) => i.id === overId))!;
+      const targetColumn = columns.find((c) => c.issues.some((i) => i.id === overId))!;
       toStatusId = targetColumn.statusIds[0];
       beforeIssueId = overId;
     } else {
@@ -1176,8 +1332,8 @@ function BoardView({ data }: { data: BoardData }) {
   // a focused card's own Left/Right arrow keys move it deterministically to
   // the adjacent column. Simpler, and just as accessible.
   async function moveToAdjacentColumn(issueId: string, fromColumnId: string, direction: "prev" | "next") {
-    const idx = data.columns.findIndex((c) => c.id === fromColumnId);
-    const target = data.columns[direction === "prev" ? idx - 1 : idx + 1];
+    const idx = columns.findIndex((c) => c.id === fromColumnId);
+    const target = columns[direction === "prev" ? idx - 1 : idx + 1];
     if (!target) return;
     const toStatusId = target.statusIds[0];
     if (!toStatusId) return;

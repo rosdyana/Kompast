@@ -1,3 +1,5 @@
+ALTER TABLE "sprint" DISABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "sprint" ADD COLUMN "number" integer;
 --> statement-breakpoint
 UPDATE "sprint" AS s
