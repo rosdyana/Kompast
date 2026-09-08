@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Kanban, Flag, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search } from "lucide-react";
+import { Kanban, Flag, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search, Inbox } from "lucide-react";
 import {
   DndContext,
   useDraggable,
@@ -26,6 +26,7 @@ import {
   listBacklogFn,
   getSprintDetailFn,
   createSprintFn,
+  updateSprintFn,
   startSprintFn,
   completeSprintFn,
   addIssueToSprintFn,
@@ -48,12 +49,12 @@ function ProjectPage() {
   const { t } = useTranslation("board");
   const data = Route.useLoaderData();
   const router = useRouter();
-  const [view, setView] = useState("board");
+  const [view, setView] = useState("backlog");
 
   const iconProps = { size: 14, strokeWidth: 1.75 };
   const VIEW_TABS = [
+    { key: "backlog", label: t("tabs.backlog"), icon: <Inbox {...iconProps} /> },
     { key: "board", label: t("tabs.board"), icon: <Kanban {...iconProps} /> },
-    { key: "sprint", label: t("tabs.sprint"), icon: <Flag {...iconProps} /> },
     { key: "table", label: t("tabs.table"), icon: <Table2 {...iconProps} /> },
     { key: "roadmap", label: t("tabs.roadmap"), icon: <MapIcon {...iconProps} /> },
     { key: "docs", label: t("tabs.docs"), icon: <FileText {...iconProps} /> },
@@ -142,7 +143,7 @@ function ProjectPage() {
       </div>
 
       {view === "board" && <BoardView data={data} />}
-      {view === "sprint" && <SprintTab projectId={data.project.id} boardId={data.board.id} boardData={data} />}
+      {view === "backlog" && <BacklogTab projectId={data.project.id} boardId={data.board.id} />}
       {view === "table" && <TableView data={data} />}
       {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
@@ -251,53 +252,67 @@ type SprintSummary = Awaited<ReturnType<typeof listSprintsFn>>[number];
 type BacklogIssue = Awaited<ReturnType<typeof listBacklogFn>>[number];
 type SprintDetail = Awaited<ReturnType<typeof getSprintDetailFn>>;
 
-function SprintTab({ projectId, boardId, boardData }: { projectId: string; boardId: string; boardData: BoardData }) {
+function BacklogTab({ projectId, boardId }: { projectId: string; boardId: string }) {
   const { t } = useTranslation("board");
-  const SPRINT_STATE_LABEL: Record<string, string> = { future: t("sprint.stateFuture"), active: t("sprint.stateActive"), closed: t("sprint.stateClosed") };
   const [sprints, setSprints] = useState<SprintSummary[] | null>(null);
   const [backlog, setBacklog] = useState<BacklogIssue[] | null>(null);
-  const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<SprintDetail | null>(null);
-  const [newSprintName, setNewSprintName] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [details, setDetails] = useState<Record<string, SprintDetail>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
 
-  async function refreshSprints() {
-    const list = await listSprintsFn({ data: boardId });
+  async function refresh() {
+    const [list, backlogList] = await Promise.all([listSprintsFn({ data: boardId }), listBacklogFn({ data: projectId })]);
     setSprints(list);
-    return list;
+    setBacklog(backlogList);
+    const relevant = list.filter((s) => s.state !== "closed");
+    const detailEntries = await Promise.all(relevant.map((s) => getSprintDetailFn({ data: s.id }).then((d) => [s.id, d] as const)));
+    setDetails(Object.fromEntries(detailEntries));
   }
 
   useEffect(() => {
-    refreshSprints().then((list) => {
-      const active = list.find((s) => s.state === "active");
-      setSelectedSprintId((current) => current ?? active?.id ?? list[0]?.id ?? null);
-    });
-    listBacklogFn({ data: projectId }).then(setBacklog);
+    refresh();
+    setAiSummary(null);
+    setAiError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, boardId]);
 
-  useEffect(() => {
-    setAiSummary(null);
-    setAiError(null);
-    if (!selectedSprintId) {
-      setDetail(null);
-      return;
+  async function withBusy(fn: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    } finally {
+      setBusy(false);
     }
-    getSprintDetailFn({ data: selectedSprintId }).then(setDetail);
-  }, [selectedSprintId]);
+  }
 
-  async function generateAiSummary() {
-    if (!selectedSprintId) return;
+  const createFutureSprint = () => withBusy(async () => { await createSprintFn({ data: { boardId } }); });
+  const handleStart = (sprintId: string) => withBusy(async () => { await startSprintFn({ data: sprintId }); });
+  const handleComplete = (sprintId: string) => withBusy(async () => { await completeSprintFn({ data: { sprintId } }); });
+  const addToSprint = (sprintId: string, issueId: string) => withBusy(async () => { await addIssueToSprintFn({ data: { sprintId, issueId } }); });
+  const removeFromSprint = (issueId: string) => withBusy(async () => { await removeIssueFromSprintFn({ data: issueId }); });
+
+  async function saveRename(sprintId: string) {
+    const trimmed = renameValue.trim();
+    setRenamingId(null);
+    if (!trimmed) return;
+    await withBusy(async () => { await updateSprintFn({ data: { sprintId, name: trimmed } }); });
+  }
+
+  async function generateAiSummary(sprintId: string) {
     setAiBusy(true);
     setAiError(null);
     setAiSummary("");
     try {
-      await streamAiCompletion({ feature: "sprint-summary", sprintId: selectedSprintId }, (delta) => {
+      await streamAiCompletion({ feature: "sprint-summary", sprintId }, (delta) => {
         setAiSummary((prev) => (prev ?? "") + delta);
       });
     } catch (err) {
@@ -307,184 +322,65 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
     }
   }
 
-  async function refreshAll() {
-    await Promise.all([refreshSprints(), listBacklogFn({ data: projectId }).then(setBacklog)]);
-    if (selectedSprintId) setDetail(await getSprintDetailFn({ data: selectedSprintId }));
-  }
-
-  async function createSprint() {
-    if (!newSprintName.trim()) return;
-    setCreating(true);
-    setError(null);
-    try {
-      const { sprintId } = await createSprintFn({ data: { boardId, name: newSprintName.trim(), cycle: "2w" } });
-      setNewSprintName("");
-      await refreshSprints();
-      setSelectedSprintId(sprintId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function handleStart() {
-    if (!selectedSprintId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await startSprintFn({ data: selectedSprintId });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleComplete() {
-    if (!selectedSprintId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await completeSprintFn({ data: { sprintId: selectedSprintId } });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addToSprint(issueId: string) {
-    if (!selectedSprintId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await addIssueToSprintFn({ data: { sprintId: selectedSprintId, issueId } });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeFromSprint(issueId: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      await removeIssueFromSprintFn({ data: issueId });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (sprints === null || backlog === null) {
     return <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>;
   }
 
-  const sprint = detail?.sprint;
+  const activeSprint = sprints.find((s) => s.state === "active") ?? null;
+  const futureSprints = sprints.filter((s) => s.state === "future").sort((a, b) => a.number - b.number);
 
-  return (
-    <div className="grid grid-cols-2 gap-4 p-6">
-      <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-3">
-        <select
-          value={selectedSprintId ?? ""}
-          onChange={(e) => setSelectedSprintId(e.target.value || null)}
-          className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
-        >
-          <option value="" disabled>
-            {t("sprint.selectPlaceholder")}
-          </option>
-          {sprints.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name} · {SPRINT_STATE_LABEL[s.state]}
-            </option>
-          ))}
-        </select>
+  function SprintHeading({ sprint }: { sprint: SprintSummary }) {
+    if (renamingId === sprint.id) {
+      return (
         <input
-          value={newSprintName}
-          onChange={(e) => setNewSprintName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && createSprint()}
-          placeholder={t("sprint.newNamePlaceholder")}
-          className="flex-1 rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+          autoFocus
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onBlur={() => saveRename(sprint.id)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveRename(sprint.id);
+            if (e.key === "Escape") setRenamingId(null);
+          }}
+          className="rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[13px] outline-none"
         />
-        <Button variant="outline" onClick={createSprint} disabled={creating}>
-          {t("sprint.addButton")}
-        </Button>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => { setRenamingId(sprint.id); setRenameValue(sprint.name); }}
+        className="type-label-overline text-text-3 hover:text-text-2"
+        title={t("sprint.renameHint")}
+      >
+        {sprint.name}
+      </button>
+    );
+  }
 
-        {sprint && (
-          <div className="ml-auto flex items-center gap-2">
-            {sprint.state === "future" && (
-              <Button variant="primary" onClick={handleStart} disabled={busy}>
-                {t("sprint.start")}
-              </Button>
-            )}
-            {sprint.state === "active" && (
-              <Button variant="primary" onClick={handleComplete} disabled={busy}>
-                {t("sprint.complete")}
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {error && (
-        <p className="col-span-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>
-      )}
-
-      {sprint && detail && (
-        <div className="col-span-2 flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-2.5 type-body text-text-2">
-          <span>
-            {t("sprint.scopeLabel")} <strong>{detail.report.scopeIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.scopePoints}</strong> {t("sprint.pointsUnit")}
-          </span>
-          <span>
-            {t("sprint.completedLabel")} <strong>{detail.report.completedIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.completedPoints}</strong> {t("sprint.pointsUnit")}
-          </span>
-          <span>
-            {t("sprint.remainingLabel")} <strong>{detail.report.remainingPoints}</strong> {t("sprint.pointsUnit")}
-          </span>
-        </div>
-      )}
-
-      {sprint && detail && (
-        <div className="col-span-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
-          <div className="flex items-center justify-between">
-            <p className="type-label-overline text-text-3">{t("sprint.aiSummaryHeading")}</p>
-            <Button variant="outline" onClick={generateAiSummary} disabled={aiBusy}>
-              {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
+  function SprintSection({ sprint }: { sprint: SprintSummary }) {
+    const detail = details[sprint.id];
+    return (
+      <div className="rounded-xl border border-border bg-surface p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <SprintHeading sprint={sprint} />
+          {sprint.state === "future" && (
+            <Button variant="outline" disabled={busy} onClick={() => handleStart(sprint.id)}>
+              {t("sprint.start")}
             </Button>
-          </div>
-          {aiError && <p className="type-body text-danger">{aiError}</p>}
-          {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap type-body text-text-2">{aiSummary || "…"}</p>}
+          )}
+          {sprint.state === "active" && (
+            <Button variant="outline" disabled={busy} onClick={() => handleComplete(sprint.id)}>
+              {t("sprint.complete")}
+            </Button>
+          )}
         </div>
-      )}
-
-      <div className="rounded-xl border border-border bg-surface p-3">
-        <p className="mb-2 type-label-overline text-text-3">{t("sprint.backlogHeading")}</p>
-        <div className="flex flex-col gap-1.5">
-          {backlog.length === 0 && <p className="type-body text-text-3">{t("sprint.backlogEmpty")}</p>}
-          {backlog.map((issue) => (
-            <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
-              <span className="truncate type-body">{issue.title}</span>
-              <Button
-                variant="outline"
-                disabled={!selectedSprintId || sprint?.state === "closed" || busy}
-                onClick={() => addToSprint(issue.id)}
-              >
-                {t("sprint.addToSprintButton")}
-              </Button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-border bg-surface p-3">
-        <p className="mb-2 type-label-overline text-text-3">{t("sprint.contentsHeading")}</p>
+        {detail && (
+          <p className="mb-2 type-body text-text-2">
+            {t("sprint.scopeLabel")} <strong>{detail.report.scopeIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.scopePoints}</strong> {t("sprint.pointsUnit")}
+            {" · "}
+            {t("sprint.completedLabel")} <strong>{detail.report.completedIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.completedPoints}</strong> {t("sprint.pointsUnit")}
+          </p>
+        )}
         <div className="flex flex-col gap-1.5">
           {(!detail || detail.issues.length === 0) && <p className="type-body text-text-3">{t("sprint.noIssuesInSprint")}</p>}
           {detail?.issues.map((issue) => (
@@ -496,14 +392,78 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
             </div>
           ))}
         </div>
+        {sprint.state === "active" && (
+          <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+            <div className="flex items-center justify-between">
+              <p className="type-label-overline text-text-3">{t("sprint.aiSummaryHeading")}</p>
+              <Button variant="outline" onClick={() => generateAiSummary(sprint.id)} disabled={aiBusy}>
+                {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
+              </Button>
+            </div>
+            {aiError && <p className="type-body text-danger">{aiError}</p>}
+            {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap type-body text-text-2">{aiSummary || "…"}</p>}
+          </div>
+        )}
       </div>
+    );
+  }
 
-      {detail && detail.issues.length > 0 && (
-        <div className="col-span-2 rounded-xl border border-border bg-surface">
-          <p className="p-3 pb-0 type-label-overline text-text-3">{t("sprint.reviewHeading")}</p>
-          <SprintReviewTable boardData={boardData} sprintIssueIds={new Set(detail.issues.map((i) => i.id))} />
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      {error && <p className="rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
+
+      {activeSprint && (
+        <div>
+          <p className="mb-2 type-label-overline text-text-3">{t("sprint.activeSectionHeading")}</p>
+          <SprintSection sprint={activeSprint} />
         </div>
       )}
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="type-label-overline text-text-3">{t("sprint.futureSectionHeading")}</p>
+          <Button variant="outline" disabled={busy} onClick={createFutureSprint}>
+            {t("sprint.createSprintButton")}
+          </Button>
+        </div>
+        <div className="flex flex-col gap-3">
+          {futureSprints.length === 0 && <p className="type-body text-text-3">{t("sprint.noFutureSprints")}</p>}
+          {futureSprints.map((s) => (
+            <SprintSection key={s.id} sprint={s} />
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-3">
+        <p className="mb-2 type-label-overline text-text-3">{t("sprint.backlogHeading")}</p>
+        <div className="flex flex-col gap-1.5">
+          {backlog.length === 0 && <p className="type-body text-text-3">{t("sprint.backlogEmpty")}</p>}
+          {backlog.map((issue) => (
+            <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
+              <span className="truncate type-body">{issue.title}</span>
+              <select
+                disabled={busy || (!activeSprint && futureSprints.length === 0)}
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value) addToSprint(e.target.value, issue.id);
+                  e.target.value = "";
+                }}
+                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+              >
+                <option value="" disabled>
+                  {t("sprint.addToSprintButton")}
+                </option>
+                {activeSprint && <option value={activeSprint.id}>{activeSprint.name}</option>}
+                {futureSprints.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
