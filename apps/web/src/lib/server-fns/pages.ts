@@ -152,6 +152,26 @@ export const getPageDetailFn = createServerFn({ method: "GET" })
     });
   });
 
+/**
+ * Lightweight sibling of getPageDetailFn: just enough to embed <DocEditor>
+ * inline somewhere that isn't the full /docs/$pageId page (the Table tab's
+ * minutes split-view) — skips comments/backlinks/children/share-links,
+ * which that context doesn't render.
+ */
+export const getPageEditorAccessFn = createServerFn({ method: "GET" })
+  .validator((pageId: string) => pageId)
+  .handler(async ({ data: pageId }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      const page = await getPage(tx, pageId);
+      const allowed = await canAccessPage(tx, pageId, ctx, "view");
+      if (!allowed) throw new ForbiddenError(`No access to page ${pageId}`);
+      const canEdit = await canAccessPage(tx, pageId, ctx, "edit");
+      const collabToken = signCollabToken({ userId: ctx.userId, organizationId: ctx.organizationId, pageId, role: canEdit ? "edit" : "view" });
+      return { page, canEdit, collabToken, collabWsUrl: loadEnv().COLLAB_WS_URL };
+    });
+  });
+
 const updatePageMetaSchema = z.object({ pageId: z.string(), title: z.string().optional(), icon: z.string().nullable().optional() });
 
 export const updatePageMetaFn = createServerFn({ method: "POST" })
