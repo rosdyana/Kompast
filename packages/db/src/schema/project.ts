@@ -14,6 +14,8 @@ export const project = pgTable(
     name: text("name").notNull(),
     icon: text("icon"),
     leadId: text("lead_id").references(() => user.id),
+    /** The project's one "Sprint Minutes Template" page — bare id, no FK (page.ts imports this file, so a FK back would cycle). Null until createProjectFn seeds it. */
+    sprintMinutesTemplatePageId: text("sprint_minutes_template_page_id"),
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
