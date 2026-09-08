@@ -57,9 +57,12 @@ export async function getPage(tx: Tx, pageId: string) {
   return page;
 }
 
-/** The sprint's linked meeting-minutes doc, if one exists — null if the sprint has none (no template was set when it was created, or none was ever created). */
+/** The sprint's linked meeting-minutes doc, if one exists — null if the sprint has none (it was created without an actor, so none was ever created) or it's since been archived. */
 export async function getSprintMinutesPage(tx: Tx, sprintId: string) {
-  const [page] = await tx.select().from(schema.page).where(eq(schema.page.sprintId, sprintId));
+  const [page] = await tx
+    .select()
+    .from(schema.page)
+    .where(and(eq(schema.page.sprintId, sprintId), isNull(schema.page.archivedAt)));
   return page ?? null;
 }
 

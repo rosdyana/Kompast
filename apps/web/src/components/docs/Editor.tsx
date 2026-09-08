@@ -151,6 +151,7 @@ export function DocEditor({
                     const currentBlock = editor.getTextCursorPosition().block;
                     const title = blockPlainText(currentBlock);
                     if (!title) return;
+                    const originalContent = currentBlock.content;
                     editor.updateBlock(currentBlock.id, { content: t("editor.creatingIssueEllipsis") } as any);
                     try {
                       const created = await createIssueFromDocLineFn({ data: { pageId, title } });
@@ -158,7 +159,12 @@ export function DocEditor({
                         content: [{ type: "issueMention", props: { issueId: created.issueId, projectKey: created.projectKey, keySeq: created.keySeq, title } }],
                       } as any);
                     } catch (err) {
-                      editor.updateBlock(currentBlock.id, { content: t("editor.aiFailedPrefix", { message: err instanceof Error ? err.message : t("editor.unknownError") }) } as any);
+                      editor.updateBlock(currentBlock.id, { content: originalContent } as any);
+                      editor.insertBlocks(
+                        [{ type: "paragraph", content: t("editor.createIssueFailedPrefix", { message: err instanceof Error ? err.message : t("editor.unknownError") }) }] as any,
+                        currentBlock,
+                        "after",
+                      );
                     }
                   },
                   aliases: ["issue", "task", "tugas", "buatissue"],

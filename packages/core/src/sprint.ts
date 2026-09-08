@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
-import { duplicatePage, updatePageMeta } from "./page";
+import { createPage, duplicatePage, updatePageMeta } from "./page";
 
 const CYCLE_DAYS: Record<string, number> = { "1w": 7, "2w": 14, "3w": 21, "4w": 28 };
 
@@ -15,7 +15,7 @@ export interface CreateSprintInput {
   startAt?: Date;
   endAt?: Date;
   capacityPoints?: number;
-  /** When given, and the board's project has a Sprint Minutes Template page, a linked minutes doc is created too. Omit (as every pre-existing caller does) to skip that — sprint creation never depends on it. */
+  /** When given, a linked minutes doc is created too — duplicated from the board's project's Sprint Minutes Template page if it has one, otherwise a blank page. Omit (as every pre-existing caller does) to skip that — sprint creation never depends on it. */
   actorUserId?: string;
 }
 
@@ -27,17 +27,39 @@ async function nextSprintNumber(tx: Tx, boardId: string): Promise<number> {
   return (row?.maxNumber ?? 0) + 1;
 }
 
-async function createLinkedMinutesPage(tx: Tx, input: { boardId: string; sprintId: string; number: number; actorUserId: string }): Promise<void> {
+async function createLinkedMinutesPage(
+  tx: Tx,
+  input: { organizationId: string; boardId: string; sprintId: string; number: number; actorUserId: string },
+): Promise<void> {
   const [board] = await tx.select({ projectId: schema.board.projectId }).from(schema.board).where(eq(schema.board.id, input.boardId));
   if (!board) return;
+
+  const title = `Sprint ${input.number} — Meeting Minutes`;
+
   const [project] = await tx.select({ sprintMinutesTemplatePageId: schema.project.sprintMinutesTemplatePageId }).from(schema.project).where(eq(schema.project.id, board.projectId));
   const templateId = project?.sprintMinutesTemplatePageId;
-  if (!templateId) return;
-  const [templateExists] = await tx.select({ id: schema.page.id }).from(schema.page).where(eq(schema.page.id, templateId));
-  if (!templateExists) return;
+  const [templateExists] = templateId
+    ? await tx.select({ id: schema.page.id }).from(schema.page).where(eq(schema.page.id, templateId))
+    : [];
 
-  const minutesPage = await duplicatePage(tx, templateId, { actorUserId: input.actorUserId, sprintId: input.sprintId, titleSuffix: "" });
-  await updatePageMeta(tx, minutesPage.id, { title: `Sprint ${input.number} — Meeting Minutes` });
+  if (templateId && templateExists) {
+    const minutesPage = await duplicatePage(tx, templateId, { actorUserId: input.actorUserId, sprintId: input.sprintId, titleSuffix: "" });
+    await updatePageMeta(tx, minutesPage.id, { title });
+    return;
+  }
+
+  // No template configured (or it's since been deleted) — still guarantee
+  // every sprint gets a minutes doc; it just starts blank instead of
+  // pre-seeded with Planning/Review/Retro headings. No BlockNote/Yjs
+  // involved here (createPage never touches ydoc_state), so this keeps
+  // packages/core free of that dependency, same as the template path above.
+  await createPage(tx, {
+    organizationId: input.organizationId,
+    projectId: board.projectId,
+    sprintId: input.sprintId,
+    title,
+    actorUserId: input.actorUserId,
+  });
 }
 
 /**
@@ -66,7 +88,13 @@ export async function createSprint(tx: Tx, input: CreateSprintInput) {
   });
 
   if (input.actorUserId) {
-    await createLinkedMinutesPage(tx, { boardId: input.boardId, sprintId, number, actorUserId: input.actorUserId });
+    await createLinkedMinutesPage(tx, {
+      organizationId: input.organizationId,
+      boardId: input.boardId,
+      sprintId,
+      number,
+      actorUserId: input.actorUserId,
+    });
   }
 
   return { sprintId, number };

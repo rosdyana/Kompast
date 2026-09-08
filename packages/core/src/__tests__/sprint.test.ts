@@ -241,15 +241,29 @@ describe("sprint lifecycle", () => {
     expect(minutes!.title).toBe(`Sprint ${number} — Meeting Minutes`);
   });
 
-  it("creates no minutes page when the project has no template, or actorUserId is omitted", async () => {
+  it("falls back to a blank minutes page when the project has no template (actorUserId given); creates none at all when actorUserId is omitted", async () => {
     const { boardId: boardWithoutTemplate } = await seedProject();
-    const { sprintId: s1 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId: boardWithoutTemplate, actorUserId: userId }));
-    expect(await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, s1))).toBeNull();
+    const { sprintId: s1, number: n1 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId: boardWithoutTemplate, actorUserId: userId }));
+    const minutes1 = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, s1));
+    expect(minutes1).not.toBeNull();
+    expect(minutes1!.sprintId).toBe(s1);
+    expect(minutes1!.title).toBe(`Sprint ${n1} — Meeting Minutes`);
 
     const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "sprg", name: "Sprint Test G", actorUserId: userId }));
     const template = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, projectId, title: "Sprint Minutes Template", type: "template", actorUserId: userId }));
     await withAuthorizedTenant(ctx, (tx) => setSprintMinutesTemplate(tx, projectId, template.id));
     const { sprintId: s2 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId })); // no actorUserId
     expect(await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, s2))).toBeNull();
+  });
+
+  it("falls back to a blank minutes page when the configured template page no longer exists", async () => {
+    const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "sprh", name: "Sprint Test H", actorUserId: userId }));
+    await withAuthorizedTenant(ctx, (tx) => setSprintMinutesTemplate(tx, projectId, "nonexistent-template-page-id"));
+
+    const { sprintId, number } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, actorUserId: userId }));
+
+    const minutes = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, sprintId));
+    expect(minutes).not.toBeNull();
+    expect(minutes!.title).toBe(`Sprint ${number} — Meeting Minutes`);
   });
 });

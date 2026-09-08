@@ -709,7 +709,9 @@ function TableTab({ boardId, data }: { boardId: string; data: BoardData }) {
         </div>
         <div className="rounded-xl border border-border bg-surface p-3">
           <p className="mb-2 type-label-overline text-text-3">{t("sprint.minutesHeading")}</p>
-          {access ? (
+          {detail && !detail.minutesPageId ? (
+            <p className="type-body text-text-3">{t("sprint.minutesUnavailable")}</p>
+          ) : access ? (
             <ClientOnly fallback={<div className="min-h-[40vh] rounded-[9px] border border-border" />}>
               <DocEditor
                 pageId={access.page.id}
@@ -721,7 +723,7 @@ function TableTab({ boardId, data }: { boardId: string; data: BoardData }) {
               />
             </ClientOnly>
           ) : (
-            <p className="type-body text-text-3">{t("sprint.minutesUnavailable")}</p>
+            <div className="min-h-[40vh] rounded-[9px] border border-border" />
           )}
         </div>
       </div>

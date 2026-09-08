@@ -12,6 +12,7 @@
     "kanbanTableSlashItem": "Kanban board",
     "createIssueSlashItem": "Create issue from this line",
     "creatingIssueEllipsis": "Creating issue…",
+    "createIssueFailedPrefix": "Create issue failed: {{message}}",
     "aiContinue": "AI: Continue writing",
     "aiImprove": "AI: Improve writing",
     "aiShorten": "AI: Shorten",

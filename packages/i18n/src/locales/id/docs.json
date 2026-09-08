@@ -12,6 +12,7 @@
     "kanbanTableSlashItem": "Tabel Kanban",
     "createIssueSlashItem": "Buat issue dari baris ini",
     "creatingIssueEllipsis": "Membuat issue…",
+    "createIssueFailedPrefix": "Gagal membuat issue: {{message}}",
     "aiContinue": "AI: Lanjutkan menulis",
     "aiImprove": "AI: Perbaiki tulisan",
     "aiShorten": "AI: Perpendek",

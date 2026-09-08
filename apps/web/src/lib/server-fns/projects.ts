@@ -57,15 +57,24 @@ export const createProjectFn = createServerFn({ method: "POST" })
         actorUserId: ctx.userId,
       });
 
-      const templatePage = await createPage(tx, {
-        organizationId: ctx.organizationId,
-        projectId: created.projectId,
-        title: "Sprint Minutes Template",
-        type: "template",
-        actorUserId: ctx.userId,
-      });
-      await seedPageContentFromMarkdown(tx, templatePage.id, "# Planning\n\n# Review\n\n# Retro\n");
-      await setSprintMinutesTemplate(tx, created.projectId, templatePage.id);
+      // Best-effort: a docs-side failure here (e.g. a BlockNote/jsdom
+      // construction error) must never block project creation itself —
+      // same principle createLinkedMinutesPage (packages/core/src/sprint.ts)
+      // already applies one layer down. A project with no template just
+      // means its sprints get blank minutes docs instead of pre-seeded ones.
+      try {
+        const templatePage = await createPage(tx, {
+          organizationId: ctx.organizationId,
+          projectId: created.projectId,
+          title: "Sprint Minutes Template",
+          type: "template",
+          actorUserId: ctx.userId,
+        });
+        await seedPageContentFromMarkdown(tx, templatePage.id, "# Planning\n\n# Review\n\n# Retro\n");
+        await setSprintMinutesTemplate(tx, created.projectId, templatePage.id);
+      } catch (err) {
+        console.error(`Failed to seed Sprint Minutes Template for project ${created.projectId}:`, err);
+      }
 
       return created;
     });
