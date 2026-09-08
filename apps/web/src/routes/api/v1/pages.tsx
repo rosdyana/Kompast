@@ -1,13 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import * as Y from "yjs";
-import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { and, eq, isNull, schema } from "@kompast/db";
 import { createPage, filterAccessiblePages, listPageTree, withAuthorizedTenant, withIdempotency } from "@kompast/core";
 import { requireApiAuth } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
 import { resolveProject } from "@/lib/api-resolvers";
-import { createServerSchema } from "@/lib/blocknote-schema";
+import { seedPageContentFromMarkdown } from "@/lib/seed-page-content";
 
 function serializePage(page: typeof schema.page.$inferSelect) {
   return {
@@ -76,10 +74,7 @@ export const Route = createFileRoute("/api/v1/pages")({
               // page's content (see PATCH, deliberately not implemented for
               // that reason — see api-resolvers.ts / plan notes).
               if (body.content) {
-                const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
-                const blocks = await editor.tryParseMarkdownToBlocks(body.content);
-                const ydoc = editor.blocksToYDoc(blocks, "document-store");
-                await tx.insert(schema.ydocState).values({ pageId: page.id, state: Buffer.from(Y.encodeStateAsUpdate(ydoc)) });
+                await seedPageContentFromMarkdown(tx, page.id, body.content);
               }
 
               return serializePage(page);
