@@ -25,3 +25,6 @@ coverage/
 # Superpowers skill scratch state (brainstorm visual-companion sessions,
 # subagent-driven-development ledgers/briefs/reports) — never source.
 .superpowers/
+
+# Brainstorming specs/plans — working material for this session, local only.
+docs/superpowers/
