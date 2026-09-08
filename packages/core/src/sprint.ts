@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, schema } from "@kompast/db";
+import { and, asc, desc, eq, inArray, isNull, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 
@@ -7,7 +7,8 @@ const CYCLE_DAYS: Record<string, number> = { "1w": 7, "2w": 14, "3w": 21, "4w": 
 export interface CreateSprintInput {
   organizationId: string;
   boardId: string;
-  name: string;
+  name?: string;
+  number?: number;
   goal?: string;
   cycle?: "1w" | "2w" | "3w" | "4w" | "custom";
   startAt?: Date;
@@ -15,20 +16,39 @@ export interface CreateSprintInput {
   capacityPoints?: number;
 }
 
+async function nextSprintNumber(tx: Tx, boardId: string): Promise<number> {
+  const [row] = await tx
+    .select({ maxNumber: sql<number | null>`max(${schema.sprint.number})` })
+    .from(schema.sprint)
+    .where(eq(schema.sprint.boardId, boardId));
+  return (row?.maxNumber ?? 0) + 1;
+}
+
+/**
+ * `number` is the auto-incrementing per-board sprint number: pass it
+ * explicitly only for a board's very first sprint (the setup wizard's
+ * "continue numbering from JIRA" input) — every later sprint on that board
+ * omits it and gets `max(existing) + 1` automatically. `name` defaults to
+ * "Sprint {number}" (renamable afterward via `updateSprint`) so callers
+ * never have to invent a name just to create a sprint.
+ */
 export async function createSprint(tx: Tx, input: CreateSprintInput) {
   const sprintId = id("sprint");
+  const number = input.number ?? (await nextSprintNumber(tx, input.boardId));
+  const name = input.name ?? `Sprint ${number}`;
   await tx.insert(schema.sprint).values({
     id: sprintId,
     organizationId: input.organizationId,
     boardId: input.boardId,
-    name: input.name,
+    number,
+    name,
     goal: input.goal,
     cycle: input.cycle ?? "2w",
     startAt: input.startAt,
     endAt: input.endAt,
     capacityPoints: input.capacityPoints,
   });
-  return { sprintId };
+  return { sprintId, number };
 }
 
 export async function listSprints(tx: Tx, boardId: string) {
@@ -238,4 +258,16 @@ export async function getSprintReport(tx: Tx, sprintId: string) {
     completedPoints,
     remainingPoints: scopePoints - completedPoints,
   };
+}
+
+export interface UpdateSprintInput {
+  sprintId: string;
+  name: string;
+}
+
+/** Renaming is the only sprint edit exposed so far — number/dates/cycle are fixed at creation. */
+export async function updateSprint(tx: Tx, input: UpdateSprintInput): Promise<void> {
+  const trimmed = input.name.trim();
+  if (!trimmed) throw new Error("Sprint name cannot be empty");
+  await tx.update(schema.sprint).set({ name: trimmed }).where(eq(schema.sprint.id, input.sprintId));
 }

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, schema } from "@kompast/db";
+import { and, asc, eq, inArray, ne, schema } from "@kompast/db";
 import type { Tx } from "./types";
 
 /**
@@ -113,6 +113,18 @@ export interface DeleteBoardColumnInput {
 }
 
 /**
+ * "todo" is deliberately NOT in this set, even though the spec's own
+ * wording ("any of the three required categories") might suggest it
+ * should be: the Backlog column permanently covers "todo" by design (it
+ * can never be deleted, see the isBacklog check below) and is the only
+ * thing that needs to. Adding "todo" here would make the "other columns"
+ * check below (which deliberately excludes Backlog — see its own comment)
+ * incorrectly block deleting any OTHER, ordinary "todo"-category column
+ * (e.g. the default seed's "To Do"), which must stay freely deletable.
+ */
+const REQUIRED_CATEGORIES = new Set(["in_progress", "done"]);
+
+/**
  * Never touches an issue row (matches this file's own getBoard comment:
  * "reordering or renaming a column never touches an issue row"). "Tickets
  * return to Backlog" is implemented by repointing board_column_status rows
@@ -129,6 +141,56 @@ export async function deleteBoardColumn(tx: Tx, input: DeleteBoardColumnInput): 
     .limit(1);
   if (!column) throw new Error(`Column ${input.columnId} not found in project ${input.projectId}`);
   if (column.isBacklog) throw new Error("The Backlog column cannot be deleted");
+
+  const thisColumnStatusRows = await tx
+    .select({ workflowStatusId: schema.boardColumnStatus.workflowStatusId })
+    .from(schema.boardColumnStatus)
+    .where(eq(schema.boardColumnStatus.boardColumnId, input.columnId));
+
+  if (thisColumnStatusRows.length > 0) {
+    const thisStatuses = await tx
+      .select({ category: schema.workflowStatus.category })
+      .from(schema.workflowStatus)
+      .where(inArray(schema.workflowStatus.id, thisColumnStatusRows.map((r) => r.workflowStatusId)));
+    const categoriesHere = [...new Set(thisStatuses.map((s) => s.category))].filter((c) => REQUIRED_CATEGORIES.has(c));
+
+    if (categoriesHere.length > 0) {
+      // Backlog is deliberately excluded from "other" coverage: it's the
+      // fallback/orphan bucket for the todo category (this same function's
+      // own reassignment step folds a deleted column's statuses onto it),
+      // and must never silently satisfy a DIFFERENT required category's
+      // presence — the user asked for backlog/in_progress/done as three
+      // distinct, always-present columns, not one that can absorb another.
+      const otherColumnStatusRows = await tx
+        .select({ workflowStatusId: schema.boardColumnStatus.workflowStatusId })
+        .from(schema.boardColumnStatus)
+        .innerJoin(schema.boardColumn, eq(schema.boardColumn.id, schema.boardColumnStatus.boardColumnId))
+        .where(
+          and(
+            eq(schema.boardColumn.boardId, column.boardId),
+            ne(schema.boardColumnStatus.boardColumnId, input.columnId),
+            eq(schema.boardColumn.isBacklog, false),
+          ),
+        );
+      const otherCategories =
+        otherColumnStatusRows.length > 0
+          ? new Set(
+              (
+                await tx
+                  .select({ category: schema.workflowStatus.category })
+                  .from(schema.workflowStatus)
+                  .where(inArray(schema.workflowStatus.id, otherColumnStatusRows.map((r) => r.workflowStatusId)))
+              ).map((s) => s.category),
+            )
+          : new Set<string>();
+
+      for (const category of categoriesHere) {
+        if (!otherCategories.has(category)) {
+          throw new Error(`Cannot delete the last column mapped to the "${category}" category`);
+        }
+      }
+    }
+  }
 
   const [backlog] = await tx
     .select({ id: schema.boardColumn.id })

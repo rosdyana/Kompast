@@ -87,7 +87,6 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
     id: boardId,
     projectId,
     name: "Board utama",
-    type: "kanban",
   });
 
   for (const [index, status] of statusRows.entries()) {

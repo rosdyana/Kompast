@@ -10,7 +10,6 @@ export const board = pgTable("board", {
     .notNull()
     .references(() => project.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  type: text("type", { enum: ["kanban", "scrum"] }).notNull().default("kanban"),
   swimlaneBy: text("swimlane_by", { enum: ["none", "assignee", "epic", "priority"] })
     .notNull()
     .default("none"),

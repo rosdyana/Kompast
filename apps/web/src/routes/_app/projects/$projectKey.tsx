@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Kanban, Flag, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search } from "lucide-react";
+import { Kanban, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search, Inbox } from "lucide-react";
 import {
   DndContext,
   useDraggable,
@@ -26,6 +26,7 @@ import {
   listBacklogFn,
   getSprintDetailFn,
   createSprintFn,
+  updateSprintFn,
   startSprintFn,
   completeSprintFn,
   addIssueToSprintFn,
@@ -48,12 +49,12 @@ function ProjectPage() {
   const { t } = useTranslation("board");
   const data = Route.useLoaderData();
   const router = useRouter();
-  const [view, setView] = useState("board");
+  const [view, setView] = useState("backlog");
 
   const iconProps = { size: 14, strokeWidth: 1.75 };
   const VIEW_TABS = [
+    { key: "backlog", label: t("tabs.backlog"), icon: <Inbox {...iconProps} /> },
     { key: "board", label: t("tabs.board"), icon: <Kanban {...iconProps} /> },
-    { key: "sprint", label: t("tabs.sprint"), icon: <Flag {...iconProps} /> },
     { key: "table", label: t("tabs.table"), icon: <Table2 {...iconProps} /> },
     { key: "roadmap", label: t("tabs.roadmap"), icon: <MapIcon {...iconProps} /> },
     { key: "docs", label: t("tabs.docs"), icon: <FileText {...iconProps} /> },
@@ -141,8 +142,16 @@ function ProjectPage() {
         )}
       </div>
 
-      {view === "board" && <BoardView data={data} />}
-      {view === "sprint" && <SprintTab projectId={data.project.id} boardId={data.board.id} boardData={data} />}
+      {view === "board" && (
+        data.hasAnySprint
+          ? <BoardView data={data} />
+          : <SprintSetupWizard boardId={data.board.id} onCreated={async () => { await router.invalidate(); setView("backlog"); }} />
+      )}
+      {view === "backlog" && (
+        data.hasAnySprint
+          ? <BacklogTab projectId={data.project.id} boardId={data.board.id} columns={data.columns} />
+          : <SprintSetupWizard boardId={data.board.id} onCreated={() => router.invalidate()} />
+      )}
       {view === "table" && <TableView data={data} />}
       {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
@@ -251,53 +260,238 @@ type SprintSummary = Awaited<ReturnType<typeof listSprintsFn>>[number];
 type BacklogIssue = Awaited<ReturnType<typeof listBacklogFn>>[number];
 type SprintDetail = Awaited<ReturnType<typeof getSprintDetailFn>>;
 
-function SprintTab({ projectId, boardId, boardData }: { projectId: string; boardId: string; boardData: BoardData }) {
+function SprintHeading({
+  sprint,
+  isRenaming,
+  renameValue,
+  onRenameValueChange,
+  onStartRename,
+  onSaveRename,
+  onCancelRename,
+  t,
+}: {
+  sprint: SprintSummary;
+  isRenaming: boolean;
+  renameValue: string;
+  onRenameValueChange: (value: string) => void;
+  onStartRename: (sprint: SprintSummary) => void;
+  onSaveRename: () => void;
+  onCancelRename: () => void;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  if (isRenaming) {
+    return (
+      <input
+        autoFocus
+        value={renameValue}
+        onChange={(e) => onRenameValueChange(e.target.value)}
+        onBlur={onSaveRename}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSaveRename();
+          if (e.key === "Escape") onCancelRename();
+        }}
+        className="rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[13px] outline-none"
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onStartRename(sprint)}
+      className="type-label-overline text-text-3 hover:text-text-2"
+      title={t("sprint.renameHint")}
+    >
+      {sprint.name}
+    </button>
+  );
+}
+
+function SprintSection({
+  sprint,
+  detail,
+  busy,
+  renamingId,
+  renameValue,
+  onRenameValueChange,
+  onStartRename,
+  onSaveRename,
+  onCancelRename,
+  onStart,
+  onComplete,
+  onRemoveFromSprint,
+  onMoveToColumn,
+  nonBacklogColumns,
+  aiBusy,
+  aiError,
+  aiSummary,
+  onGenerateAiSummary,
+  t,
+}: {
+  sprint: SprintSummary;
+  detail: SprintDetail | undefined;
+  busy: boolean;
+  renamingId: string | null;
+  renameValue: string;
+  onRenameValueChange: (value: string) => void;
+  onStartRename: (sprint: SprintSummary) => void;
+  onSaveRename: () => void;
+  onCancelRename: () => void;
+  onStart: (sprintId: string) => void;
+  onComplete: (sprintId: string) => void;
+  onRemoveFromSprint: (issueId: string) => void;
+  onMoveToColumn: (issueId: string, toStatusId: string) => void;
+  nonBacklogColumns: { id: string; name: string; statusIds: string[] }[];
+  aiBusy: boolean;
+  aiError: string | null;
+  aiSummary: string | null;
+  onGenerateAiSummary: (sprintId: string) => void;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <SprintHeading
+          sprint={sprint}
+          isRenaming={renamingId === sprint.id}
+          renameValue={renameValue}
+          onRenameValueChange={onRenameValueChange}
+          onStartRename={onStartRename}
+          onSaveRename={onSaveRename}
+          onCancelRename={onCancelRename}
+          t={t}
+        />
+        {sprint.state === "future" && (
+          <Button variant="outline" disabled={busy} onClick={() => onStart(sprint.id)}>
+            {t("sprint.start")}
+          </Button>
+        )}
+        {sprint.state === "active" && (
+          <Button variant="outline" disabled={busy} onClick={() => onComplete(sprint.id)}>
+            {t("sprint.complete")}
+          </Button>
+        )}
+      </div>
+      {detail && (
+        <p className="mb-2 type-body text-text-2">
+          {t("sprint.scopeLabel")} <strong>{detail.report.scopeIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.scopePoints}</strong> {t("sprint.pointsUnit")}
+          {" · "}
+          {t("sprint.completedLabel")} <strong>{detail.report.completedIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.completedPoints}</strong> {t("sprint.pointsUnit")}
+        </p>
+      )}
+      <div className="flex flex-col gap-1.5">
+        {(!detail || detail.issues.length === 0) && <p className="type-body text-text-3">{t("sprint.noIssuesInSprint")}</p>}
+        {detail?.issues.map((issue) => (
+          <div key={issue.id} className="flex items-center justify-between gap-2 rounded-[9px] border border-border px-2 py-1.5">
+            <span className="truncate type-body">{issue.title}</span>
+            <div className="flex flex-none items-center gap-1.5">
+              <select
+                disabled={busy}
+                value={nonBacklogColumns.find((c) => c.statusIds.includes(issue.statusId))?.id ?? ""}
+                onChange={(e) => {
+                  const col = nonBacklogColumns.find((c) => c.id === e.target.value);
+                  if (col?.statusIds[0]) onMoveToColumn(issue.id, col.statusIds[0]);
+                }}
+                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+              >
+                <option value="" disabled>
+                  {t("sprint.moveToColumnPlaceholder")}
+                </option>
+                {nonBacklogColumns.map((col) => (
+                  <option key={col.id} value={col.id}>
+                    {col.name}
+                  </option>
+                ))}
+              </select>
+              <Button variant="outline" disabled={busy} onClick={() => onRemoveFromSprint(issue.id)}>
+                {t("sprint.removeButton")}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {sprint.state === "active" && (
+        <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+          <div className="flex items-center justify-between">
+            <p className="type-label-overline text-text-3">{t("sprint.aiSummaryHeading")}</p>
+            <Button variant="outline" onClick={() => onGenerateAiSummary(sprint.id)} disabled={aiBusy}>
+              {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
+            </Button>
+          </div>
+          {aiError && <p className="type-body text-danger">{aiError}</p>}
+          {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap type-body text-text-2">{aiSummary || "…"}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BacklogTab({ projectId, boardId, columns }: { projectId: string; boardId: string; columns: BoardData["columns"] }) {
   const { t } = useTranslation("board");
-  const SPRINT_STATE_LABEL: Record<string, string> = { future: t("sprint.stateFuture"), active: t("sprint.stateActive"), closed: t("sprint.stateClosed") };
+  const router = useRouter();
   const [sprints, setSprints] = useState<SprintSummary[] | null>(null);
   const [backlog, setBacklog] = useState<BacklogIssue[] | null>(null);
-  const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<SprintDetail | null>(null);
-  const [newSprintName, setNewSprintName] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [details, setDetails] = useState<Record<string, SprintDetail>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
 
-  async function refreshSprints() {
-    const list = await listSprintsFn({ data: boardId });
+  const nonBacklogColumns = columns.filter((c) => !c.isBacklog);
+
+  async function refresh() {
+    const [list, backlogList] = await Promise.all([listSprintsFn({ data: boardId }), listBacklogFn({ data: projectId })]);
     setSprints(list);
-    return list;
+    setBacklog(backlogList);
+    const relevant = list.filter((s) => s.state !== "closed");
+    const detailEntries = await Promise.all(relevant.map((s) => getSprintDetailFn({ data: s.id }).then((d) => [s.id, d] as const)));
+    setDetails(Object.fromEntries(detailEntries));
   }
 
   useEffect(() => {
-    refreshSprints().then((list) => {
-      const active = list.find((s) => s.state === "active");
-      setSelectedSprintId((current) => current ?? active?.id ?? list[0]?.id ?? null);
-    });
-    listBacklogFn({ data: projectId }).then(setBacklog);
+    refresh();
+    setAiSummary(null);
+    setAiError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, boardId]);
 
-  useEffect(() => {
-    setAiSummary(null);
-    setAiError(null);
-    if (!selectedSprintId) {
-      setDetail(null);
-      return;
+  async function withBusy(fn: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      await refresh();
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    } finally {
+      setBusy(false);
     }
-    getSprintDetailFn({ data: selectedSprintId }).then(setDetail);
-  }, [selectedSprintId]);
+  }
 
-  async function generateAiSummary() {
-    if (!selectedSprintId) return;
+  const createFutureSprint = () => withBusy(async () => { await createSprintFn({ data: { boardId } }); });
+  const handleStart = (sprintId: string) => withBusy(async () => { await startSprintFn({ data: sprintId }); });
+  const handleComplete = (sprintId: string) => withBusy(async () => { await completeSprintFn({ data: { sprintId } }); });
+  const addToSprint = (sprintId: string, issueId: string) => withBusy(async () => { await addIssueToSprintFn({ data: { sprintId, issueId } }); });
+  const removeFromSprint = (issueId: string) => withBusy(async () => { await removeIssueFromSprintFn({ data: issueId }); });
+  const moveToColumn = (issueId: string, toStatusId: string) => withBusy(async () => { await moveIssueFn({ data: { issueId, toStatusId } }); });
+
+  async function saveRename(sprintId: string) {
+    if (renamingId !== sprintId) return;
+    const trimmed = renameValue.trim();
+    setRenamingId(null);
+    if (!trimmed) return;
+    await withBusy(async () => { await updateSprintFn({ data: { sprintId, name: trimmed } }); });
+  }
+
+  async function generateAiSummary(sprintId: string) {
     setAiBusy(true);
     setAiError(null);
     setAiSummary("");
     try {
-      await streamAiCompletion({ feature: "sprint-summary", sprintId: selectedSprintId }, (delta) => {
+      await streamAiCompletion({ feature: "sprint-summary", sprintId }, (delta) => {
         setAiSummary((prev) => (prev ?? "") + delta);
       });
     } catch (err) {
@@ -307,203 +501,130 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
     }
   }
 
-  async function refreshAll() {
-    await Promise.all([refreshSprints(), listBacklogFn({ data: projectId }).then(setBacklog)]);
-    if (selectedSprintId) setDetail(await getSprintDetailFn({ data: selectedSprintId }));
-  }
-
-  async function createSprint() {
-    if (!newSprintName.trim()) return;
-    setCreating(true);
-    setError(null);
-    try {
-      const { sprintId } = await createSprintFn({ data: { boardId, name: newSprintName.trim(), cycle: "2w" } });
-      setNewSprintName("");
-      await refreshSprints();
-      setSelectedSprintId(sprintId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function handleStart() {
-    if (!selectedSprintId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await startSprintFn({ data: selectedSprintId });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleComplete() {
-    if (!selectedSprintId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await completeSprintFn({ data: { sprintId: selectedSprintId } });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addToSprint(issueId: string) {
-    if (!selectedSprintId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await addIssueToSprintFn({ data: { sprintId: selectedSprintId, issueId } });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeFromSprint(issueId: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      await removeIssueFromSprintFn({ data: issueId });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("genericError"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (sprints === null || backlog === null) {
     return <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>;
   }
 
-  const sprint = detail?.sprint;
+  const activeSprint = sprints.find((s) => s.state === "active") ?? null;
+  const futureSprints = sprints.filter((s) => s.state === "future").sort((a, b) => a.number - b.number);
 
   return (
-    <div className="grid grid-cols-2 gap-4 p-6">
-      <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-3">
-        <select
-          value={selectedSprintId ?? ""}
-          onChange={(e) => setSelectedSprintId(e.target.value || null)}
-          className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
-        >
-          <option value="" disabled>
-            {t("sprint.selectPlaceholder")}
-          </option>
-          {sprints.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name} · {SPRINT_STATE_LABEL[s.state]}
-            </option>
+    <div className="flex flex-col gap-4 p-6">
+      {error && <p className="rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
+
+      {activeSprint && (
+        <div>
+          <p className="mb-2 type-label-overline text-text-3">{t("sprint.activeSectionHeading")}</p>
+          <SprintSection
+            sprint={activeSprint}
+            detail={details[activeSprint.id]}
+            busy={busy}
+            renamingId={renamingId}
+            renameValue={renameValue}
+            onRenameValueChange={setRenameValue}
+            onStartRename={(s) => { setRenamingId(s.id); setRenameValue(s.name); }}
+            onSaveRename={() => saveRename(activeSprint.id)}
+            onCancelRename={() => setRenamingId(null)}
+            onStart={handleStart}
+            onComplete={handleComplete}
+            onRemoveFromSprint={removeFromSprint}
+            onMoveToColumn={moveToColumn}
+            nonBacklogColumns={nonBacklogColumns}
+            aiBusy={aiBusy}
+            aiError={aiError}
+            aiSummary={aiSummary}
+            onGenerateAiSummary={generateAiSummary}
+            t={t}
+          />
+        </div>
+      )}
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="type-label-overline text-text-3">{t("sprint.futureSectionHeading")}</p>
+          <Button variant="outline" disabled={busy} onClick={createFutureSprint}>
+            {t("sprint.createSprintButton")}
+          </Button>
+        </div>
+        <div className="flex flex-col gap-3">
+          {futureSprints.length === 0 && <p className="type-body text-text-3">{t("sprint.noFutureSprints")}</p>}
+          {futureSprints.map((s) => (
+            <SprintSection
+              key={s.id}
+              sprint={s}
+              detail={details[s.id]}
+              busy={busy}
+              renamingId={renamingId}
+              renameValue={renameValue}
+              onRenameValueChange={setRenameValue}
+              onStartRename={(sp) => { setRenamingId(sp.id); setRenameValue(sp.name); }}
+              onSaveRename={() => saveRename(s.id)}
+              onCancelRename={() => setRenamingId(null)}
+              onStart={handleStart}
+              onComplete={handleComplete}
+              onRemoveFromSprint={removeFromSprint}
+              onMoveToColumn={moveToColumn}
+              nonBacklogColumns={nonBacklogColumns}
+              aiBusy={aiBusy}
+              aiError={aiError}
+              aiSummary={aiSummary}
+              onGenerateAiSummary={generateAiSummary}
+              t={t}
+            />
           ))}
-        </select>
-        <input
-          value={newSprintName}
-          onChange={(e) => setNewSprintName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && createSprint()}
-          placeholder={t("sprint.newNamePlaceholder")}
-          className="flex-1 rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
-        />
-        <Button variant="outline" onClick={createSprint} disabled={creating}>
-          {t("sprint.addButton")}
-        </Button>
-
-        {sprint && (
-          <div className="ml-auto flex items-center gap-2">
-            {sprint.state === "future" && (
-              <Button variant="primary" onClick={handleStart} disabled={busy}>
-                {t("sprint.start")}
-              </Button>
-            )}
-            {sprint.state === "active" && (
-              <Button variant="primary" onClick={handleComplete} disabled={busy}>
-                {t("sprint.complete")}
-              </Button>
-            )}
-          </div>
-        )}
+        </div>
       </div>
-
-      {error && (
-        <p className="col-span-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>
-      )}
-
-      {sprint && detail && (
-        <div className="col-span-2 flex items-center gap-4 rounded-xl border border-border bg-surface-2 px-4 py-2.5 type-body text-text-2">
-          <span>
-            {t("sprint.scopeLabel")} <strong>{detail.report.scopeIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.scopePoints}</strong> {t("sprint.pointsUnit")}
-          </span>
-          <span>
-            {t("sprint.completedLabel")} <strong>{detail.report.completedIssueCount}</strong> {t("sprint.issuesUnit")} / <strong>{detail.report.completedPoints}</strong> {t("sprint.pointsUnit")}
-          </span>
-          <span>
-            {t("sprint.remainingLabel")} <strong>{detail.report.remainingPoints}</strong> {t("sprint.pointsUnit")}
-          </span>
-        </div>
-      )}
-
-      {sprint && detail && (
-        <div className="col-span-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
-          <div className="flex items-center justify-between">
-            <p className="type-label-overline text-text-3">{t("sprint.aiSummaryHeading")}</p>
-            <Button variant="outline" onClick={generateAiSummary} disabled={aiBusy}>
-              {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
-            </Button>
-          </div>
-          {aiError && <p className="type-body text-danger">{aiError}</p>}
-          {aiSummary !== null && !aiError && <p className="whitespace-pre-wrap type-body text-text-2">{aiSummary || "…"}</p>}
-        </div>
-      )}
 
       <div className="rounded-xl border border-border bg-surface p-3">
         <p className="mb-2 type-label-overline text-text-3">{t("sprint.backlogHeading")}</p>
         <div className="flex flex-col gap-1.5">
           {backlog.length === 0 && <p className="type-body text-text-3">{t("sprint.backlogEmpty")}</p>}
           {backlog.map((issue) => (
-            <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
+            <div key={issue.id} className="flex items-center justify-between gap-2 rounded-[9px] border border-border px-2 py-1.5">
               <span className="truncate type-body">{issue.title}</span>
-              <Button
-                variant="outline"
-                disabled={!selectedSprintId || sprint?.state === "closed" || busy}
-                onClick={() => addToSprint(issue.id)}
-              >
-                {t("sprint.addToSprintButton")}
-              </Button>
+              <div className="flex flex-none items-center gap-1.5">
+                <select
+                  disabled={busy}
+                  value={nonBacklogColumns.find((c) => c.statusIds.includes(issue.statusId))?.id ?? ""}
+                  onChange={(e) => {
+                    const col = nonBacklogColumns.find((c) => c.id === e.target.value);
+                    if (col?.statusIds[0]) moveToColumn(issue.id, col.statusIds[0]);
+                  }}
+                  className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+                >
+                  <option value="" disabled>
+                    {t("sprint.moveToColumnPlaceholder")}
+                  </option>
+                  {nonBacklogColumns.map((col) => (
+                    <option key={col.id} value={col.id}>
+                      {col.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  disabled={busy || (!activeSprint && futureSprints.length === 0)}
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (e.target.value) addToSprint(e.target.value, issue.id);
+                    e.target.value = "";
+                  }}
+                  className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12px] outline-none"
+                >
+                  <option value="" disabled>
+                    {t("sprint.addToSprintButton")}
+                  </option>
+                  {activeSprint && <option value={activeSprint.id}>{activeSprint.name}</option>}
+                  {futureSprints.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           ))}
         </div>
       </div>
-
-      <div className="rounded-xl border border-border bg-surface p-3">
-        <p className="mb-2 type-label-overline text-text-3">{t("sprint.contentsHeading")}</p>
-        <div className="flex flex-col gap-1.5">
-          {(!detail || detail.issues.length === 0) && <p className="type-body text-text-3">{t("sprint.noIssuesInSprint")}</p>}
-          {detail?.issues.map((issue) => (
-            <div key={issue.id} className="flex items-center justify-between rounded-[9px] border border-border px-2 py-1.5">
-              <span className="truncate type-body">{issue.title}</span>
-              <Button variant="outline" disabled={busy} onClick={() => removeFromSprint(issue.id)}>
-                {t("sprint.removeButton")}
-              </Button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {detail && detail.issues.length > 0 && (
-        <div className="col-span-2 rounded-xl border border-border bg-surface">
-          <p className="p-3 pb-0 type-label-overline text-text-3">{t("sprint.reviewHeading")}</p>
-          <SprintReviewTable boardData={boardData} sprintIssueIds={new Set(detail.issues.map((i) => i.id))} />
-        </div>
-      )}
     </div>
   );
 }
@@ -518,6 +639,9 @@ function SprintTab({ projectId, boardId, boardData }: { projectId: string; board
  * still read-only (linking out to the issue detail page to edit) — full
  * inline-cell editing is a separate, larger gap that applies to the
  * whole table view feature, not unique to sprint review.
+ *
+ * Currently unreferenced — a later pass wires this into a sprint-scoped
+ * Table tab. Kept defined (not deleted) so that pass can just call it.
  */
 function SprintReviewTable({ boardData, sprintIssueIds }: { boardData: BoardData; sprintIssueIds: Set<string> }) {
   const filtered: BoardData = { ...boardData, columns: boardData.columns.map((c) => ({ ...c, issues: c.issues.filter((i) => sprintIssueIds.has(i.id)) })) };
@@ -971,6 +1095,119 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
   );
 }
 
+const CYCLE_OPTIONS: Array<{ value: "1w" | "2w" | "3w" | "4w" | "custom"; labelKey: string }> = [
+  { value: "1w", labelKey: "sprint.cycle1w" },
+  { value: "2w", labelKey: "sprint.cycle2w" },
+  { value: "3w", labelKey: "sprint.cycle3w" },
+  { value: "4w", labelKey: "sprint.cycle4w" },
+  { value: "custom", labelKey: "sprint.wizardCycleCustom" },
+];
+
+function SprintSetupWizard({ boardId, onCreated }: { boardId: string; onCreated: () => void }) {
+  const { t } = useTranslation("board");
+  const [cycle, setCycle] = useState<"1w" | "2w" | "3w" | "4w" | "custom">("2w");
+  const [startingNumber, setStartingNumber] = useState("1");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    const number = Number.parseInt(startingNumber, 10);
+    if (!Number.isInteger(number) || number < 1) {
+      setError(t("sprint.wizardInvalidNumber"));
+      return;
+    }
+    if (cycle === "custom" && (!customStart || !customEnd)) {
+      setError(t("sprint.wizardCustomDatesRequired"));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await createSprintFn({
+        data: {
+          boardId,
+          number,
+          cycle,
+          startAt: cycle === "custom" ? new Date(customStart) : undefined,
+          endAt: cycle === "custom" ? new Date(customEnd) : undefined,
+        },
+      });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="p-6">
+      <div className="mx-auto max-w-[480px] rounded-xl border border-border bg-surface p-6">
+        <p className="mb-1 type-title">{t("sprint.wizardHeading")}</p>
+        <p className="mb-5 type-body text-text-2">{t("sprint.wizardSubtitle")}</p>
+
+        <label className="mb-4 block">
+          <span className="mb-1 block text-[12px] text-text-2">{t("sprint.wizardCycleLabel")}</span>
+          <select
+            value={cycle}
+            onChange={(e) => setCycle(e.target.value as typeof cycle)}
+            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+          >
+            {CYCLE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {t(opt.labelKey)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {cycle === "custom" && (
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1 block text-[12px] text-text-2">{t("sprint.wizardCustomStartLabel")}</span>
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[12px] text-text-2">{t("sprint.wizardCustomEndLabel")}</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+              />
+            </label>
+          </div>
+        )}
+
+        <label className="mb-5 block">
+          <span className="mb-1 block text-[12px] text-text-2">{t("sprint.wizardStartingNumberLabel")}</span>
+          <input
+            type="number"
+            min={1}
+            value={startingNumber}
+            onChange={(e) => setStartingNumber(e.target.value)}
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+          />
+          <span className="mt-1 block text-[11.5px] text-text-3">{t("sprint.wizardStartingNumberHint")}</span>
+        </label>
+
+        {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
+
+        <Button variant="primary" onClick={submit} disabled={busy}>
+          {t("sprint.wizardSubmitButton")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function BoardView({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
   const router = useRouter();
@@ -1001,15 +1238,16 @@ function BoardView({ data }: { data: BoardData }) {
     }
   }, [data]);
 
+  const activeSprintIssueIds = new Set(data.activeSprintIssueIds);
   const needle = search.trim().toLowerCase();
-  const columns = needle
-    ? data.columns.map((col) => ({
-        ...col,
-        issues: col.issues.filter(
-          (i) => i.title.toLowerCase().includes(needle) || `${data.project.key}-${i.keySeq}`.toLowerCase().includes(needle),
-        ),
-      }))
-    : data.columns;
+  const columns = data.columns
+    .filter((col) => !col.isBacklog)
+    .map((col) => ({ ...col, issues: col.issues.filter((i) => activeSprintIssueIds.has(i.id)) }))
+    .map((col) =>
+      needle
+        ? { ...col, issues: col.issues.filter((i) => i.title.toLowerCase().includes(needle) || `${data.project.key}-${i.keySeq}`.toLowerCase().includes(needle)) }
+        : col,
+    );
 
   // Releasing a drag leaves a trailing native click on the dragged card. dnd-kit
   // already swallows it, but with a document-level capture listener that only calls
@@ -1056,8 +1294,8 @@ function BoardView({ data }: { data: BoardData }) {
     // Dropping onto a column's empty area moves to the end of that column;
     // dropping onto a specific card inserts before it. Both are encoded as
     // droppable ids so a single handler covers both without extra state.
-    const overColumn = data.columns.find((c) => c.id === overId);
-    const overIsCard = data.columns.some((c) => c.issues.some((i) => i.id === overId));
+    const overColumn = columns.find((c) => c.id === overId);
+    const overIsCard = columns.some((c) => c.issues.some((i) => i.id === overId));
 
     let toStatusId: string | undefined;
     let beforeIssueId: string | undefined;
@@ -1067,7 +1305,7 @@ function BoardView({ data }: { data: BoardData }) {
       toStatusId = overColumn.statusIds[0];
       afterIssueId = overColumn.issues.at(-1)?.id;
     } else if (overIsCard) {
-      const targetColumn = data.columns.find((c) => c.issues.some((i) => i.id === overId))!;
+      const targetColumn = columns.find((c) => c.issues.some((i) => i.id === overId))!;
       toStatusId = targetColumn.statusIds[0];
       beforeIssueId = overId;
     } else {
@@ -1094,8 +1332,8 @@ function BoardView({ data }: { data: BoardData }) {
   // a focused card's own Left/Right arrow keys move it deterministically to
   // the adjacent column. Simpler, and just as accessible.
   async function moveToAdjacentColumn(issueId: string, fromColumnId: string, direction: "prev" | "next") {
-    const idx = data.columns.findIndex((c) => c.id === fromColumnId);
-    const target = data.columns[direction === "prev" ? idx - 1 : idx + 1];
+    const idx = columns.findIndex((c) => c.id === fromColumnId);
+    const target = columns[direction === "prev" ? idx - 1 : idx + 1];
     if (!target) return;
     const toStatusId = target.statusIds[0];
     if (!toStatusId) return;
@@ -1113,6 +1351,14 @@ function BoardView({ data }: { data: BoardData }) {
     } finally {
       setPending(false);
     }
+  }
+
+  if (!data.activeSprint) {
+    return (
+      <div className="p-6">
+        <EmptyStatePanel overline={t("tabs.board")} heading={t("sprint.boardEmptyHeading")} subtext={t("sprint.boardEmptySubtext")} />
+      </div>
+    );
   }
 
   return (

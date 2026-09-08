@@ -11,6 +11,7 @@ import {
   removeIssueFromSprint,
   startSprint,
   completeSprint,
+  updateSprint,
   withAuthorizedTenant,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
@@ -41,8 +42,11 @@ export const getSprintDetailFn = createServerFn({ method: "GET" })
 
 const createSprintSchema = z.object({
   boardId: z.string(),
-  name: z.string().min(1),
+  name: z.string().min(1).optional(),
+  number: z.number().int().min(1).optional(),
   cycle: z.enum(["1w", "2w", "3w", "4w", "custom"]).optional(),
+  startAt: z.coerce.date().optional(),
+  endAt: z.coerce.date().optional(),
 });
 
 export const createSprintFn = createServerFn({ method: "POST" })
@@ -50,7 +54,15 @@ export const createSprintFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, (tx) =>
-      createSprint(tx, { organizationId: ctx.organizationId, boardId: data.boardId, name: data.name, cycle: data.cycle }),
+      createSprint(tx, {
+        organizationId: ctx.organizationId,
+        boardId: data.boardId,
+        name: data.name,
+        number: data.number,
+        cycle: data.cycle,
+        startAt: data.startAt,
+        endAt: data.endAt,
+      }),
     );
   });
 
@@ -86,5 +98,15 @@ export const removeIssueFromSprintFn = createServerFn({ method: "POST" })
   .handler(async ({ data: issueId }) => {
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, (tx) => removeIssueFromSprint(tx, issueId));
+    return { ok: true } as const;
+  });
+
+const updateSprintSchema = z.object({ sprintId: z.string(), name: z.string().min(1) });
+
+export const updateSprintFn = createServerFn({ method: "POST" })
+  .validator(updateSprintSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => updateSprint(tx, { sprintId: data.sprintId, name: data.name }));
     return { ok: true } as const;
   });

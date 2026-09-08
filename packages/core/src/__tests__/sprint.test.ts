@@ -18,6 +18,7 @@ import {
   startSprint,
   completeSprint,
   getSprintReport,
+  updateSprint,
 } from "../sprint";
 
 describe("sprint lifecycle", () => {
@@ -69,6 +70,53 @@ describe("sprint lifecycle", () => {
     expect(sprints).toHaveLength(1);
     expect(sprints[0]!.id).toBe(sprintId);
     expect(sprints[0]!.state).toBe("future");
+  });
+
+  it("auto-numbers sprints sequentially per board, independent of other boards", async () => {
+    const { boardId } = await seedProject();
+    const { sprintId: s1, number: n1 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint A" }));
+    const { sprintId: s2, number: n2 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint B" }));
+    expect(n1).toBe(1);
+    expect(n2).toBe(2);
+    expect(s1).not.toBe(s2);
+
+    const { boardId: otherBoardId } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "spr2", name: "Sprint Test 2", actorUserId: userId }),
+    );
+    const { number: otherN1 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId: otherBoardId, name: "Other Sprint" }));
+    expect(otherN1).toBe(1);
+  });
+
+  it("an explicit starting number seeds the sequence for later auto-numbered sprints", async () => {
+    const { boardId } = await seedProject();
+    const { number: first } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, number: 42 }));
+    const { number: second } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId }));
+    expect(first).toBe(42);
+    expect(second).toBe(43);
+  });
+
+  it("defaults a sprint's name to 'Sprint {number}' when no name is given", async () => {
+    const { boardId } = await seedProject();
+    const { sprintId, number } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId }));
+    const sprint = await withAuthorizedTenant(ctx, (tx) => getSprint(tx, sprintId));
+    expect(sprint!.name).toBe(`Sprint ${number}`);
+  });
+
+  it("rejects an explicit number that collides with an existing sprint on the same board", async () => {
+    const { boardId } = await seedProject();
+    await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, number: 1 }));
+    await expect(withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, number: 1 }))).rejects.toThrow();
+  });
+
+  it("updateSprint renames a sprint, and rejects an empty name", async () => {
+    const { boardId } = await seedProject();
+    const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Original" }));
+
+    await withAuthorizedTenant(ctx, (tx) => updateSprint(tx, { sprintId, name: "Renamed" }));
+    const sprint = await withAuthorizedTenant(ctx, (tx) => getSprint(tx, sprintId));
+    expect(sprint!.name).toBe("Renamed");
+
+    await expect(withAuthorizedTenant(ctx, (tx) => updateSprint(tx, { sprintId, name: "   " }))).rejects.toThrow(/empty/i);
   });
 
   it("adds an issue to a sprint (out of the backlog) and back again", async () => {

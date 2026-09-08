@@ -7,6 +7,8 @@ import {
   getBoard,
   getOrCreateDefaultTableView,
   listIssuePropertyDefinitions,
+  listSprints,
+  listSprintIssues,
   requireProjectAdmin,
   requireTeamAdmin,
   updateSavedViewConfig,
@@ -76,12 +78,16 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
           throw err;
         });
 
-      const [issueTypes, boardData, tableView, propertyDefinitions] = await Promise.all([
+      const [issueTypes, boardData, tableView, propertyDefinitions, sprints] = await Promise.all([
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
         getBoard(tx, board.id),
         getOrCreateDefaultTableView(tx, board.id, ctx.userId),
         listIssuePropertyDefinitions(tx, project.id),
+        listSprints(tx, board.id),
       ]);
+
+      const activeSprint = sprints.find((s) => s.state === "active") ?? null;
+      const activeSprintIssueIds = activeSprint ? (await listSprintIssues(tx, activeSprint.id)).map((i) => i.id) : [];
 
       const assigneeIds = [
         ...new Set(
@@ -96,7 +102,19 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
               .where(inArray(schema.user.id, assigneeIds))
           : [];
 
-      return { project, board, issueTypes, users, tableView, canManageProject, propertyDefinitions, ...boardData };
+      return {
+        project,
+        board,
+        issueTypes,
+        users,
+        tableView,
+        canManageProject,
+        propertyDefinitions,
+        hasAnySprint: sprints.length > 0,
+        activeSprint,
+        activeSprintIssueIds,
+        ...boardData,
+      };
     });
   });
 
