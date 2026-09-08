@@ -971,6 +971,119 @@ function ImportTab({ projectId, boardId }: { projectId: string; boardId: string 
   );
 }
 
+const CYCLE_OPTIONS: Array<{ value: "1w" | "2w" | "3w" | "4w" | "custom"; labelKey: string }> = [
+  { value: "1w", labelKey: "sprint.cycle1w" },
+  { value: "2w", labelKey: "sprint.cycle2w" },
+  { value: "3w", labelKey: "sprint.cycle3w" },
+  { value: "4w", labelKey: "sprint.cycle4w" },
+  { value: "custom", labelKey: "sprint.wizardCycleCustom" },
+];
+
+function SprintSetupWizard({ boardId, onCreated }: { boardId: string; onCreated: () => void }) {
+  const { t } = useTranslation("board");
+  const [cycle, setCycle] = useState<"1w" | "2w" | "3w" | "4w" | "custom">("2w");
+  const [startingNumber, setStartingNumber] = useState("1");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    const number = Number.parseInt(startingNumber, 10);
+    if (!Number.isInteger(number) || number < 1) {
+      setError(t("sprint.wizardInvalidNumber"));
+      return;
+    }
+    if (cycle === "custom" && (!customStart || !customEnd)) {
+      setError(t("sprint.wizardCustomDatesRequired"));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await createSprintFn({
+        data: {
+          boardId,
+          number,
+          cycle,
+          startAt: cycle === "custom" ? new Date(customStart) : undefined,
+          endAt: cycle === "custom" ? new Date(customEnd) : undefined,
+        },
+      });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="p-6">
+      <div className="mx-auto max-w-[480px] rounded-xl border border-border bg-surface p-6">
+        <p className="mb-1 type-title">{t("sprint.wizardHeading")}</p>
+        <p className="mb-5 type-body text-text-2">{t("sprint.wizardSubtitle")}</p>
+
+        <label className="mb-4 block">
+          <span className="mb-1 block text-[12px] text-text-2">{t("sprint.wizardCycleLabel")}</span>
+          <select
+            value={cycle}
+            onChange={(e) => setCycle(e.target.value as typeof cycle)}
+            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+          >
+            {CYCLE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {t(opt.labelKey)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {cycle === "custom" && (
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1 block text-[12px] text-text-2">{t("sprint.wizardCustomStartLabel")}</span>
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[12px] text-text-2">{t("sprint.wizardCustomEndLabel")}</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+              />
+            </label>
+          </div>
+        )}
+
+        <label className="mb-5 block">
+          <span className="mb-1 block text-[12px] text-text-2">{t("sprint.wizardStartingNumberLabel")}</span>
+          <input
+            type="number"
+            min={1}
+            value={startingNumber}
+            onChange={(e) => setStartingNumber(e.target.value)}
+            className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+          />
+          <span className="mt-1 block text-[11.5px] text-text-3">{t("sprint.wizardStartingNumberHint")}</span>
+        </label>
+
+        {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
+
+        <Button variant="primary" onClick={submit} disabled={busy}>
+          {t("sprint.wizardSubmitButton")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function BoardView({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
   const router = useRouter();
