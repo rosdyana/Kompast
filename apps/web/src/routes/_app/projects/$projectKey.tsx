@@ -142,8 +142,16 @@ function ProjectPage() {
         )}
       </div>
 
-      {view === "board" && <BoardView data={data} />}
-      {view === "backlog" && <BacklogTab projectId={data.project.id} boardId={data.board.id} />}
+      {view === "board" && (
+        data.hasAnySprint
+          ? <BoardView data={data} />
+          : <SprintSetupWizard boardId={data.board.id} onCreated={() => { router.invalidate(); setView("backlog"); }} />
+      )}
+      {view === "backlog" && (
+        data.hasAnySprint
+          ? <BacklogTab projectId={data.project.id} boardId={data.board.id} />
+          : <SprintSetupWizard boardId={data.board.id} onCreated={() => router.invalidate()} />
+      )}
       {view === "table" && <TableView data={data} />}
       {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
@@ -1074,15 +1082,16 @@ function BoardView({ data }: { data: BoardData }) {
     }
   }, [data]);
 
+  const activeSprintIssueIds = new Set(data.activeSprintIssueIds);
   const needle = search.trim().toLowerCase();
-  const columns = needle
-    ? data.columns.map((col) => ({
-        ...col,
-        issues: col.issues.filter(
-          (i) => i.title.toLowerCase().includes(needle) || `${data.project.key}-${i.keySeq}`.toLowerCase().includes(needle),
-        ),
-      }))
-    : data.columns;
+  const columns = data.columns
+    .filter((col) => !col.isBacklog)
+    .map((col) => ({ ...col, issues: col.issues.filter((i) => activeSprintIssueIds.has(i.id)) }))
+    .map((col) =>
+      needle
+        ? { ...col, issues: col.issues.filter((i) => i.title.toLowerCase().includes(needle) || `${data.project.key}-${i.keySeq}`.toLowerCase().includes(needle)) }
+        : col,
+    );
 
   // Releasing a drag leaves a trailing native click on the dragged card. dnd-kit
   // already swallows it, but with a document-level capture listener that only calls
@@ -1186,6 +1195,14 @@ function BoardView({ data }: { data: BoardData }) {
     } finally {
       setPending(false);
     }
+  }
+
+  if (!data.activeSprint) {
+    return (
+      <div className="p-6">
+        <EmptyStatePanel overline={t("tabs.board")} heading={t("sprint.boardEmptyHeading")} subtext={t("sprint.boardEmptySubtext")} />
+      </div>
+    );
   }
 
   return (
