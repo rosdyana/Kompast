@@ -91,6 +91,29 @@ describe("board column settings", () => {
     expect(board.columns.find((c) => c.id === backlog.id)).toBeTruthy();
   });
 
+  it("deleteBoardColumn refuses to remove the last column covering the in_progress or done category", async () => {
+    const { boardId } = await seedProject("BSF");
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSF"));
+    const columns = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.boardId, boardId)).orderBy(asc(schema.boardColumn.order));
+    // DEFAULT_STATUSES seeds: Backlog(todo), To Do(todo), In Progress(in_progress), In Review(in_progress), Done(done)
+    const inProgress = columns.find((c) => c.name === "In Progress")!;
+    const inReview = columns.find((c) => c.name === "In Review")!;
+    const done = columns.find((c) => c.name === "Done")!;
+
+    // Two in_progress-category columns exist — deleting one is fine.
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => deleteBoardColumn(tx, { projectId: project!.id, columnId: inProgress.id }));
+
+    // Now only "In Review" covers in_progress — deleting it must be refused.
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => deleteBoardColumn(tx, { projectId: project!.id, columnId: inReview.id })),
+    ).rejects.toThrow(/in_progress/);
+
+    // "Done" is the only done-category column — deleting it must be refused too.
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => deleteBoardColumn(tx, { projectId: project!.id, columnId: done.id })),
+    ).rejects.toThrow(/done/);
+  });
+
   it("reorderBoardColumns keeps Backlog first and rejects an incomplete/mismatched set", async () => {
     const { boardId } = await seedProject("BSE");
     const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSE"));
