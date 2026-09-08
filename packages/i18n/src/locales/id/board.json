@@ -43,6 +43,8 @@
     "noIssuesInSprint": "Belum ada tiket di sprint ini.",
     "removeButton": "Keluarkan",
     "reviewHeading": "Tinjauan sprint",
+    "minutesHeading": "Catatan rapat",
+    "minutesUnavailable": "Belum ada catatan rapat untuk sprint ini.",
     "wizardHeading": "Siapkan sprint pertama",
     "wizardSubtitle": "Setiap board memerlukan minimal satu sprint sebelum dapat digunakan.",
     "wizardCycleLabel": "Durasi sprint",
