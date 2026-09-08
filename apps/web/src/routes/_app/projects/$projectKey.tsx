@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Kanban, Flag, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search, Inbox } from "lucide-react";
+import { Kanban, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search, Inbox } from "lucide-react";
 import {
   DndContext,
   useDraggable,
