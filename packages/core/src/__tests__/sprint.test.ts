@@ -3,8 +3,9 @@ import { schema, eq, and } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { createProject } from "../project";
+import { createProject, setSprintMinutesTemplate } from "../project";
 import { createIssue } from "../issue";
+import { createPage, getSprintMinutesPage } from "../page";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 import {
@@ -225,5 +226,44 @@ describe("sprint lifecycle", () => {
 
     const report = await withAuthorizedTenant(ctx, (tx) => getSprintReport(tx, sprintId));
     expect(report).toEqual({ scopeIssueCount: 2, scopePoints: 5, completedIssueCount: 1, completedPoints: 2, remainingPoints: 3 });
+  });
+
+  it("creates a linked, titled minutes page from the project's template when actorUserId is given", async () => {
+    const { projectId, boardId } = await seedProject();
+    const template = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, projectId, title: "Sprint Minutes Template", type: "template", actorUserId: userId }));
+    await withAuthorizedTenant(ctx, (tx) => setSprintMinutesTemplate(tx, projectId, template.id));
+
+    const { sprintId, number } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, actorUserId: userId }));
+
+    const minutes = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, sprintId));
+    expect(minutes).not.toBeNull();
+    expect(minutes!.sprintId).toBe(sprintId);
+    expect(minutes!.title).toBe(`Sprint ${number} — Meeting Minutes`);
+  });
+
+  it("falls back to a blank minutes page when the project has no template (actorUserId given); creates none at all when actorUserId is omitted", async () => {
+    const { boardId: boardWithoutTemplate } = await seedProject();
+    const { sprintId: s1, number: n1 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId: boardWithoutTemplate, actorUserId: userId }));
+    const minutes1 = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, s1));
+    expect(minutes1).not.toBeNull();
+    expect(minutes1!.sprintId).toBe(s1);
+    expect(minutes1!.title).toBe(`Sprint ${n1} — Meeting Minutes`);
+
+    const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "sprg", name: "Sprint Test G", actorUserId: userId }));
+    const template = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, projectId, title: "Sprint Minutes Template", type: "template", actorUserId: userId }));
+    await withAuthorizedTenant(ctx, (tx) => setSprintMinutesTemplate(tx, projectId, template.id));
+    const { sprintId: s2 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId })); // no actorUserId
+    expect(await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, s2))).toBeNull();
+  });
+
+  it("falls back to a blank minutes page when the configured template page no longer exists", async () => {
+    const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "sprh", name: "Sprint Test H", actorUserId: userId }));
+    await withAuthorizedTenant(ctx, (tx) => setSprintMinutesTemplate(tx, projectId, "nonexistent-template-page-id"));
+
+    const { sprintId, number } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, actorUserId: userId }));
+
+    const minutes = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, sprintId));
+    expect(minutes).not.toBeNull();
+    expect(minutes!.title).toBe(`Sprint ${number} — Meeting Minutes`);
   });
 });

@@ -1,6 +1,7 @@
 import { pgTable, text, timestamp, boolean, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth";
 import { project } from "./project";
+import { sprint } from "./sprint";
 import { rank, bytea, type Json } from "./_shared";
 
 /**
@@ -18,6 +19,8 @@ export const page = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     /** Null = workspace-level doc, not filed under a project. */
     projectId: text("project_id").references(() => project.id, { onDelete: "cascade" }),
+    /** Null = not a sprint's meeting-minutes doc. Set once, at creation, by createSprint. */
+    sprintId: text("sprint_id").references(() => sprint.id, { onDelete: "cascade" }),
     parentPageId: text("parent_page_id"),
     title: text("title").notNull().default(""),
     icon: text("icon"),
@@ -30,7 +33,11 @@ export const page = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (t) => [index("page_parent_idx").on(t.parentPageId), index("page_project_idx").on(t.projectId)],
+  (t) => [
+    index("page_parent_idx").on(t.parentPageId),
+    index("page_project_idx").on(t.projectId),
+    index("page_sprint_idx").on(t.sprintId),
+  ],
 );
 
 /**

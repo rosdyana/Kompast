@@ -113,6 +113,13 @@
       "when": 1788824269350,
       "tag": "0015_spooky_liz_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788870861968,
+      "tag": "0016_friendly_ghost_rider",
+      "breakpoints": true
     }
   ]
 }

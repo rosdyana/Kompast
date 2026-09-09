@@ -1,4 +1,4 @@
-import { eq, schema, sql } from "@kompast/db";
+import { and, eq, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 
@@ -107,6 +107,42 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
   }
 
   return { projectId, boardId, issueTypes: issueTypeRows, statuses: statusRows };
+}
+
+export async function setSprintMinutesTemplate(tx: Tx, projectId: string, pageId: string): Promise<void> {
+  await tx.update(schema.project).set({ sprintMinutesTemplatePageId: pageId }).where(eq(schema.project.id, projectId));
+}
+
+/**
+ * Same "first non-subtask type, board's Backlog column's status" default
+ * the project page's own "+ New issue" button already resolves client-side
+ * (see $projectKey.tsx's submitNewIssue) — centralized here so a second
+ * caller (the doc editor's "create issue from this line" action, which has
+ * no board data loaded to resolve it from) doesn't re-invent it.
+ */
+export async function resolveDefaultCreationTarget(tx: Tx, projectId: string): Promise<{ typeId: string; statusId: string }> {
+  const [defaultType] = await tx
+    .select({ id: schema.issueType.id })
+    .from(schema.issueType)
+    .where(and(eq(schema.issueType.projectId, projectId), eq(schema.issueType.isSubtask, false)));
+  if (!defaultType) throw new Error(`Project ${projectId} has no non-subtask issue type`);
+
+  const [board] = await tx.select({ id: schema.board.id }).from(schema.board).where(eq(schema.board.projectId, projectId));
+  if (!board) throw new Error(`Project ${projectId} has no board`);
+
+  const [backlogColumn] = await tx
+    .select({ id: schema.boardColumn.id })
+    .from(schema.boardColumn)
+    .where(and(eq(schema.boardColumn.boardId, board.id), eq(schema.boardColumn.isBacklog, true)));
+  if (!backlogColumn) throw new Error(`Board ${board.id} has no Backlog column`);
+
+  const [columnStatus] = await tx
+    .select({ workflowStatusId: schema.boardColumnStatus.workflowStatusId })
+    .from(schema.boardColumnStatus)
+    .where(eq(schema.boardColumnStatus.boardColumnId, backlogColumn.id));
+  if (!columnStatus) throw new Error(`Backlog column ${backlogColumn.id} has no mapped status`);
+
+  return { typeId: defaultType.id, statusId: columnStatus.workflowStatusId };
 }
 
 export interface CreateWorkflowStatusInput {

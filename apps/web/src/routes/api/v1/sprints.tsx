@@ -63,6 +63,7 @@ export const Route = createFileRoute("/api/v1/sprints")({
               startAt: body.startAt ? new Date(body.startAt) : undefined,
               endAt: body.endAt ? new Date(body.endAt) : undefined,
               capacityPoints: body.capacityPoints,
+              actorUserId: ctx.userId,
             });
             return jsonResponse({ id: sprintId }, 201);
           });

@@ -37,6 +37,7 @@ import {
   resolveSprint,
 } from "@/lib/api-resolvers";
 import { createServerSchema } from "@/lib/blocknote-schema";
+import { seedPageContentFromMarkdown } from "./seed-page-content";
 
 function hasScope(ctx: ApiAuthContext, scope: string): boolean {
   const [resource, action] = scope.split(":");
@@ -443,12 +444,9 @@ export function buildMcpServer(ctx: ApiAuthContext) {
               projectId,
               actorUserId: ctx.userId,
             });
-            // Safe only because this page is brand new — see pages.tsx (REST) for the full explanation.
+            // Safe only because this page is brand new — see seed-page-content.ts for the full explanation.
             if (args.content) {
-              const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
-              const blocks = await editor.tryParseMarkdownToBlocks(args.content);
-              const ydoc = editor.blocksToYDoc(blocks, "document-store");
-              await tx.insert(schema.ydocState).values({ pageId: page.id, state: Buffer.from(Y.encodeStateAsUpdate(ydoc)) });
+              await seedPageContentFromMarkdown(tx, page.id, args.content);
             }
             return serializePage(page);
           };

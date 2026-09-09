@@ -14,6 +14,7 @@ import {
   listArchivedPages,
   listTemplatePages,
   permanentlyDeletePage,
+  getSprintMinutesPage,
 } from "../page";
 import { canAccessPage, setPagePermission, filterAccessiblePages } from "../page-permission";
 import { withAuthorizedTenant } from "../permissions";
@@ -110,6 +111,29 @@ describe("pages", () => {
 
     const [state] = await admin.select().from(schema.ydocState).where(eq(schema.ydocState.pageId, copy.id));
     expect(state?.state.toString()).toBe("fake-yjs-state");
+  });
+
+  it("duplicatePage can set the new page's sprintId, and getSprintMinutesPage finds it", async () => {
+    const ctx = { userId: ownerId, organizationId: orgId };
+    const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Template", actorUserId: ownerId, type: "template" }));
+
+    // page.sprintId has a real FK to sprint(id) (see Task 1) — a minimal
+    // project/board/sprint row is inserted directly (bypassing packages/core,
+    // since this test is about page, not project/sprint lifecycle). All
+    // three cascade-delete from this file's own cleanup()'s organization
+    // delete, so no extra teardown is needed.
+    await admin.insert(schema.project).values({ id: "test-page-project-1", organizationId: orgId, key: "TPGP", name: "Page Sprint Test" });
+    await admin.insert(schema.board).values({ id: "test-page-board-1", projectId: "test-page-project-1", name: "Board" });
+    await admin.insert(schema.sprint).values({ id: "test-page-sprint-1", organizationId: orgId, boardId: "test-page-board-1", number: 1, name: "Test Sprint" });
+
+    const copy = await withAuthorizedTenant(ctx, (tx) => duplicatePage(tx, page.id, { actorUserId: ownerId, sprintId: "test-page-sprint-1", titleSuffix: "" }));
+    expect(copy.sprintId).toBe("test-page-sprint-1");
+
+    const found = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, "test-page-sprint-1"));
+    expect(found?.id).toBe(copy.id);
+
+    const notFound = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, "test-page-sprint-nonexistent"));
+    expect(notFound).toBeNull();
   });
 
   it("a page with no permission rows is open to any org member", async () => {
