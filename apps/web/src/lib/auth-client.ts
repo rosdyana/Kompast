@@ -19,3 +19,10 @@ export function signInWithMicrosoft(callbackURL = "/") {
     callbackURL,
   });
 }
+
+/** Dev-only bypass — see getDevAdminConfig (apps/web/src/lib/auth.ts) for the gate that makes this a no-op everywhere else. */
+export const DEV_ADMIN_EMAIL = "dev-admin@kompast.local";
+
+export function signInAsDevAdmin(password: string) {
+  return authClient.signIn.email({ email: DEV_ADMIN_EMAIL, password });
+}

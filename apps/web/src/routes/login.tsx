@@ -1,14 +1,39 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
+import { Badge } from "@kompast/ui/Badge";
 import { useTranslation } from "@kompast/i18n";
-import { signInWithMicrosoft } from "@/lib/auth-client";
+import { signInWithMicrosoft, signInAsDevAdmin } from "@/lib/auth-client";
+import { getDevLoginStatusFn } from "@/lib/server-fns/dev-login";
 
 export const Route = createFileRoute("/login")({
+  loader: () => getDevLoginStatusFn(),
   component: LoginPage,
 });
 
 function LoginPage() {
   const { t } = useTranslation("auth");
+  const { enabled: devLoginEnabled } = Route.useLoaderData();
+  const router = useRouter();
+  const [devPassword, setDevPassword] = useState("");
+  const [devLoginError, setDevLoginError] = useState<string | null>(null);
+  const [devLoginBusy, setDevLoginBusy] = useState(false);
+
+  async function submitDevLogin() {
+    if (!devPassword.trim()) return;
+    setDevLoginBusy(true);
+    setDevLoginError(null);
+    try {
+      const { error } = await signInAsDevAdmin(devPassword);
+      if (error) {
+        setDevLoginError(t("devLoginError"));
+        return;
+      }
+      await router.navigate({ to: "/" });
+    } finally {
+      setDevLoginBusy(false);
+    }
+  }
 
   return (
     <div className="grid min-h-screen grid-cols-[1.05fr_0.95fr] bg-bg">
@@ -55,6 +80,25 @@ function LoginPage() {
           <Button variant="outline" className="w-full py-3" onClick={() => signInWithMicrosoft()}>
             {t("signInWithEmailLink")}
           </Button>
+          {devLoginEnabled && (
+            <div className="mt-[22px] rounded-[9px] border border-dashed border-danger-soft px-3.5 py-3">
+              <Badge tone="amber">{t("devLoginBadge")}</Badge>
+              <div className="mt-2.5 flex gap-1.5">
+                <input
+                  type="password"
+                  value={devPassword}
+                  onChange={(e) => setDevPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submitDevLogin()}
+                  placeholder={t("devLoginPasswordPlaceholder")}
+                  className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+                />
+                <Button variant="outline" onClick={submitDevLogin} disabled={devLoginBusy || !devPassword.trim()}>
+                  {t("devLoginButton")}
+                </Button>
+              </div>
+              {devLoginError && <p className="mt-2 type-body text-danger">{devLoginError}</p>}
+            </div>
+          )}
           <p className="mt-7 type-body leading-relaxed text-text-3">
             {t("agreementPart1")}
             <a href="#">{t("termsOfService")}</a>

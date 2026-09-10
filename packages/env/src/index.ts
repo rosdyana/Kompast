@@ -53,6 +53,16 @@ const schema = z.object({
 
   COLLAB_WS_URL: z.url(),
   COLLAB_INTERNAL_PORT: z.coerce.number().int().positive().default(1234),
+
+  // Dev-only Microsoft-Entra bypass (apps/web/src/lib/auth.ts) — a fixed
+  // "dev-admin" account signed in with a password instead of a real Entra
+  // tenant, for local debugging where no Entra app is registered. Gated by
+  // BOTH this flag AND NODE_ENV !== "production" so a misconfigured/missing
+  // NODE_ENV alone can never expose it. DEV_ADMIN_PASSWORD is required only
+  // when this is actually turned on (enforced in auth.ts, not here, so this
+  // schema stays true to its own "deliberately minimal" boot-time contract).
+  ENABLE_DEV_LOGIN: z.enum(["true", "false"]).default("false"),
+  DEV_ADMIN_PASSWORD: z.string().min(8).optional(),
 });
 
 export type Env = z.infer<typeof schema>;

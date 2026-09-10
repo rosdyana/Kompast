@@ -132,7 +132,9 @@
     "searchPlaceholder": "Cari di board",
     "movedToColumn": "Dipindahkan ke {{column}}",
     "keyboardHint": "Fokuskan kartu, lalu tekan tombol panah kiri atau kanan untuk memindahkannya ke kolom sebelah.",
-    "columnEmpty": "Tidak ada issue"
+    "columnEmpty": "Tidak ada issue",
+    "addIssueButton": "Tambah issue",
+    "activeSprintBadge": "Sprint {{number}} — {{name}}"
   },
   "settingsTab": {
     "columnsHeading": "Kolom kanban",

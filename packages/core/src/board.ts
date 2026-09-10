@@ -71,6 +71,30 @@ export async function getBoard(tx: Tx, boardId: string) {
 }
 
 /**
+ * The status a backlog issue moves into when pulled into a sprint: the
+ * first non-backlog column on this board (board_column.order), and the
+ * first status mapped to it. Mirrors the UI's own `columns.find(c =>
+ * !c.isBacklog)` heuristic (apps/web's Board tab) so client and server
+ * never disagree about what "the active column" means.
+ */
+export async function getDefaultActiveStatusId(tx: Tx, boardId: string): Promise<string | null> {
+  const [column] = await tx
+    .select({ id: schema.boardColumn.id })
+    .from(schema.boardColumn)
+    .where(and(eq(schema.boardColumn.boardId, boardId), eq(schema.boardColumn.isBacklog, false)))
+    .orderBy(asc(schema.boardColumn.order))
+    .limit(1);
+  if (!column) return null;
+
+  const [status] = await tx
+    .select({ workflowStatusId: schema.boardColumnStatus.workflowStatusId })
+    .from(schema.boardColumnStatus)
+    .where(eq(schema.boardColumnStatus.boardColumnId, column.id))
+    .limit(1);
+  return status?.workflowStatusId ?? null;
+}
+
+/**
  * board/board_column/board_column_status have NO RLS (a pre-existing gap —
  * see packages/db/rls.sql, absent from its enable list). Every function
  * below does its own explicit ownership join (column -> board -> project)

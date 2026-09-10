@@ -18,9 +18,9 @@ import {
 import { requestAttachmentUploadFn, deleteAttachmentFn } from "@/lib/server-fns/attachments";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 
-export const Route = createFileRoute("/_app/issues/$projectKey/$issueKeySeq")({
+export const Route = createFileRoute("/_app/issues/$teamId/$projectKey/$issueKeySeq")({
   loader: ({ params }) =>
-    getIssueDetailFn({ data: { projectKey: params.projectKey, issueKeySeq: Number(params.issueKeySeq) } }),
+    getIssueDetailFn({ data: { teamId: params.teamId, projectKey: params.projectKey, issueKeySeq: Number(params.issueKeySeq) } }),
   component: IssueDetailPage,
 });
 
@@ -140,8 +140,8 @@ function IssueDetailPage() {
   return (
     <PageContainer width="dense">
       <Link
-        to="/projects/$projectKey"
-        params={{ projectKey: data.project.key }}
+        to="/projects/$teamId/$projectKey"
+        params={{ teamId: data.project.teamId ?? "none", projectKey: data.project.key }}
         className="mb-4 inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-2"
       >
         <ArrowLeft size={13} strokeWidth={1.75} /> {data.project.name}

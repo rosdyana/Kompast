@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
+import { getDefaultActiveStatusId } from "./board";
 import { createPage, duplicatePage, updatePageMeta } from "./page";
 
 const CYCLE_DAYS: Record<string, number> = { "1w": 7, "2w": 14, "3w": 21, "4w": 28 };
@@ -141,6 +142,15 @@ export async function listSprintIssues(tx: Tx, sprintId: string) {
  * hasn't started yet — an issue added while a sprint is already active is
  * scope added mid-sprint, which velocity/scope-creep reporting need to be
  * able to tell apart from what was originally planned.
+ *
+ * An issue still sitting in the board's Backlog column when it's added is
+ * also transitioned to the board's default active status (see
+ * getDefaultActiveStatusId) — otherwise it would join the sprint but never
+ * appear on the Board tab, which filters the Backlog column out entirely.
+ * An issue already past Backlog (In Progress, Done, ...) is left alone.
+ * Deliberately no issue_history row for this transition, matching this
+ * function's own style elsewhere (no attribution plumbing here today) —
+ * burndown/CFD won't see it as a discrete event.
  */
 export async function addIssueToSprint(tx: Tx, sprintId: string, issueId: string) {
   const sprint = await getSprint(tx, sprintId);
@@ -158,7 +168,21 @@ export async function addIssueToSprint(tx: Tx, sprintId: string, issueId: string
     issueId,
     plannedAtStart: sprint.state === "future",
   });
-  await tx.update(schema.issue).set({ sprintId, updatedAt: new Date() }).where(eq(schema.issue.id, issueId));
+
+  const updateValues: { sprintId: string; updatedAt: Date; statusId?: string } = { sprintId, updatedAt: new Date() };
+  const [current] = await tx.select({ statusId: schema.issue.statusId }).from(schema.issue).where(eq(schema.issue.id, issueId));
+  const backlogStatusRows = await tx
+    .select({ workflowStatusId: schema.boardColumnStatus.workflowStatusId })
+    .from(schema.boardColumnStatus)
+    .innerJoin(schema.boardColumn, eq(schema.boardColumn.id, schema.boardColumnStatus.boardColumnId))
+    .where(and(eq(schema.boardColumn.boardId, sprint.boardId), eq(schema.boardColumn.isBacklog, true)));
+  const isCurrentlyBacklog = current && backlogStatusRows.some((r) => r.workflowStatusId === current.statusId);
+  if (isCurrentlyBacklog) {
+    const targetStatusId = await getDefaultActiveStatusId(tx, sprint.boardId);
+    if (targetStatusId) updateValues.statusId = targetStatusId;
+  }
+
+  await tx.update(schema.issue).set(updateValues).where(eq(schema.issue.id, issueId));
 }
 
 /** Moves an issue back to the backlog (no sprint). */

@@ -41,6 +41,7 @@ async function notifyCommentParticipants(tx: Tx, issueId: string, authorId: stri
       assigneeId: schema.issue.assigneeId,
       reporterId: schema.issue.reporterId,
       projectKey: schema.project.key,
+      teamId: schema.project.teamId,
     })
     .from(schema.issue)
     .innerJoin(schema.project, eq(schema.project.id, schema.issue.projectId))
@@ -54,7 +55,7 @@ async function notifyCommentParticipants(tx: Tx, issueId: string, authorId: stri
   const emailByUserId = new Map(users.map((u) => [u.id, u.email]));
 
   const issueKey = `${row.projectKey}-${row.keySeq}`;
-  const actionUrl = `${loadEnv().APP_URL}/issues/${row.projectKey}/${row.keySeq}`;
+  const actionUrl = `${loadEnv().APP_URL}/issues/${row.teamId ?? "none"}/${row.projectKey}/${row.keySeq}`;
   for (const userId of recipients) {
     const email = emailByUserId.get(userId);
     await notify(tx, {

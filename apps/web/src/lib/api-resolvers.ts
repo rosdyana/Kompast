@@ -8,12 +8,15 @@ import { ApiError } from "./api-auth";
  * ids, since an external caller (or an LLM) has no way to know those.
  */
 export async function resolveProject(tx: Tx, organizationId: string, projectKey: string) {
-  const [project] = await tx
+  const matches = await tx
     .select()
     .from(schema.project)
     .where(and(eq(schema.project.organizationId, organizationId), eq(schema.project.key, projectKey.toUpperCase())));
-  if (!project) throw new ApiError(404, "Not Found", `Project ${projectKey} not found`);
-  return project;
+  if (matches.length === 0) throw new ApiError(404, "Not Found", `Project ${projectKey} not found`);
+  if (matches.length > 1) {
+    throw new ApiError(409, "Conflict", `Project key "${projectKey}" is ambiguous across teams — use the project id.`);
+  }
+  return matches[0]!;
 }
 
 const ISSUE_KEY_PATTERN = /^([a-zA-Z]+)-(\d+)$/;

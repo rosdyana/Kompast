@@ -132,7 +132,9 @@
     "searchPlaceholder": "Search the board",
     "movedToColumn": "Moved to {{column}}",
     "keyboardHint": "Focus a card, then press the left or right arrow key to move it to an adjacent column.",
-    "columnEmpty": "No issues"
+    "columnEmpty": "No issues",
+    "addIssueButton": "Add issue",
+    "activeSprintBadge": "Sprint {{number}} — {{name}}"
   },
   "settingsTab": {
     "columnsHeading": "Kanban columns",

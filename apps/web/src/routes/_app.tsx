@@ -153,8 +153,8 @@ function TeamNode({
           {projects.map((project) => (
             <Link
               key={project.id}
-              to="/projects/$projectKey"
-              params={{ projectKey: project.key }}
+              to="/projects/$teamId/$projectKey"
+              params={{ teamId: isUnassigned ? "none" : team.id, projectKey: project.key }}
               className="flex items-center gap-2 rounded-md px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
             >
               <FolderKanban size={13} strokeWidth={1.75} className="w-3.5 flex-none text-text-3" />
@@ -408,8 +408,8 @@ function SidebarRail({
         {shell.projects.map((project) => (
           <Link
             key={project.id}
-            to="/projects/$projectKey"
-            params={{ projectKey: project.key }}
+            to="/projects/$teamId/$projectKey"
+            params={{ teamId: project.teamId ?? "none", projectKey: project.key }}
             title={project.name}
             className="grid h-9 w-10 flex-none place-items-center rounded-[10px] text-[10.5px] font-semibold text-text-2 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
           >

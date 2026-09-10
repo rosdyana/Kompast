@@ -4,7 +4,7 @@ import { organization } from "better-auth/plugins/organization";
 import { genericOAuth, microsoftEntraId } from "better-auth/plugins/generic-oauth";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { apiKey } from "@better-auth/api-key";
-import { loadEnv } from "@kompast/env";
+import { loadEnv, type Env } from "@kompast/env";
 import { db, schema, eq, and } from "@kompast/db";
 import { getMicrosoftAuthConfig, isOnlyUser, enqueueEmail, withAuthorizedTenant } from "@kompast/core";
 
@@ -73,8 +73,12 @@ export async function getAuth() {
 
   if (cached && cached.configured === configured) return cached.auth;
 
-  const auth = buildAuth(microsoft);
+  const devAdmin = getDevAdminConfig(env);
+  const auth = buildAuth(microsoft, devAdmin.enabled);
   cached = { auth, configured };
+
+  if (devAdmin.enabled) await seedDevAdmin(auth, devAdmin.password!);
+
   return auth;
 }
 
@@ -83,7 +87,46 @@ export function invalidateAuthCache() {
   cached = null;
 }
 
-function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>) {
+export const DEV_ADMIN_EMAIL = "dev-admin@kompast.local";
+
+export interface DevAdminConfig {
+  enabled: boolean;
+  password?: string;
+}
+
+/**
+ * Gated by BOTH NODE_ENV !== "production" AND the explicit ENABLE_DEV_LOGIN
+ * flag — a misconfigured/missing NODE_ENV alone can never expose this.
+ * Extracted standalone (same reasoning as sendInvitationEmail above) so
+ * it's directly unit-testable without touching the real, process-cached
+ * loadEnv() singleton.
+ */
+export function getDevAdminConfig(env: Pick<Env, "NODE_ENV" | "ENABLE_DEV_LOGIN" | "DEV_ADMIN_PASSWORD">): DevAdminConfig {
+  const enabled = env.NODE_ENV !== "production" && env.ENABLE_DEV_LOGIN === "true";
+  if (enabled && !env.DEV_ADMIN_PASSWORD) {
+    throw new Error("ENABLE_DEV_LOGIN is true but DEV_ADMIN_PASSWORD is not set. Refusing to boot with dev login half-configured.");
+  }
+  return { enabled, password: env.DEV_ADMIN_PASSWORD };
+}
+
+/**
+ * Idempotently seeds the fixed dev-only admin account via Better Auth's own
+ * signUpEmail — deliberately NOT disableSignUp on the emailAndPassword
+ * config (that flag also blocks this same server-side call, since
+ * auth.api.* runs the identical handler an HTTP sign-up request would), so
+ * this reuses the real signUpEmail path and, with it, buildAuth's existing
+ * "first user becomes org owner + super admin" hook for free — exactly as
+ * a real first Microsoft sign-in would get it. The sign-up endpoint being
+ * technically reachable is an accepted tradeoff: this whole path is already
+ * gated by getDevAdminConfig to local dev only.
+ */
+export async function seedDevAdmin(auth: ReturnType<typeof buildAuth>, password: string): Promise<void> {
+  const [existing] = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, DEV_ADMIN_EMAIL));
+  if (existing) return;
+  await auth.api.signUpEmail({ body: { email: DEV_ADMIN_EMAIL, password, name: "Dev Admin" } });
+}
+
+export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>, devLoginEnabled: boolean) {
   return betterAuth({
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
@@ -91,6 +134,7 @@ function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>
       provider: "pg",
       schema,
     }),
+    ...(devLoginEnabled ? { emailAndPassword: { enabled: true } } : {}),
     databaseHooks: {
       user: {
         create: {

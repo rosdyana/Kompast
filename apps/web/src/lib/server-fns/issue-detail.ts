@@ -6,22 +6,41 @@ import {
   listComments,
   listAttachments,
   listIssuePropertyDefinitions,
+  getProjectByTeamAndKey,
   setWatching,
   updateIssue,
   withAuthorizedTenant,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
+import { resolveIssue } from "../api-resolvers";
+
+/**
+ * Resolves a bare "KPT-123"-style key typed by a user (e.g. the docs page's
+ * issue-linking input) with no team context available yet — reuses the
+ * same ambiguity-aware resolver REST/MCP use (throws if the key now matches
+ * more than one project across teams) rather than duplicating the lookup.
+ */
+export const resolveIssueByKeyFn = createServerFn({ method: "GET" })
+  .validator((issueKey: string) => issueKey)
+  .handler(async ({ data: issueKey }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      const { issue } = await resolveIssue(tx, ctx.organizationId, issueKey);
+      return { issueId: issue.id };
+    });
+  });
 
 export const getIssueDetailFn = createServerFn({ method: "GET" })
-  .validator((input: { projectKey: string; issueKeySeq: number }) => input)
+  .validator((input: { teamId: string; projectKey: string; issueKeySeq: number }) => input)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
 
     return withAuthorizedTenant(ctx, async (tx) => {
-      const [project] = await tx
-        .select()
-        .from(schema.project)
-        .where(and(eq(schema.project.organizationId, ctx.organizationId), eq(schema.project.key, data.projectKey.toUpperCase())));
+      const project = await getProjectByTeamAndKey(tx, {
+        organizationId: ctx.organizationId,
+        teamId: data.teamId === "none" ? null : data.teamId,
+        key: data.projectKey,
+      });
       if (!project) throw new Error(`Project ${data.projectKey} not found`);
 
       const [issue] = await tx

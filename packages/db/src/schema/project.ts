@@ -9,7 +9,15 @@ export const project = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     teamId: text("team_id").references(() => team.id, { onDelete: "set null" }),
-    /** Short uppercase prefix used in issue keys, e.g. "KPT" -> KPT-123. Unique per workspace. */
+    /**
+     * Short uppercase prefix used in issue keys, e.g. "KPT" -> KPT-123.
+     * Unique per team within a workspace (see `project_team_key_uq`) — two
+     * different teams may use the same key. `teamId` NULL is a legacy
+     * escape hatch (pre-team-admin-required projects); Postgres treats each
+     * NULL as distinct, so two legacy NULL-team projects could in theory
+     * share a key uncaught by this index. That's defended against in the
+     * lookup code (throw on >1 match), not the schema.
+     */
     key: text("key").notNull(),
     name: text("name").notNull(),
     icon: text("icon"),
@@ -19,7 +27,7 @@ export const project = pgTable(
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("project_org_key_uq").on(t.organizationId, t.key)],
+  (t) => [uniqueIndex("project_team_key_uq").on(t.organizationId, t.teamId, t.key)],
 );
 
 export const projectMember = pgTable(

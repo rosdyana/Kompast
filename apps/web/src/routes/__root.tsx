@@ -4,6 +4,7 @@ import themeCss from "@kompast/ui/theme.css?url";
 import { ThemeProvider, type Theme } from "@kompast/ui/theme";
 import { I18nextProvider, createI18nInstance, useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { getSetupStatusFn } from "@/lib/server-fns/setup";
+import { getDevLoginStatusFn } from "@/lib/server-fns/dev-login";
 import { getThemeFn } from "@/lib/server-fns/theme";
 import { getRequestLocaleFn } from "@/lib/server-fns/locale";
 
@@ -11,9 +12,14 @@ export const Route = createRootRoute({
   // Gates the ENTIRE app, not just /login: until Microsoft Entra ID is
   // configured, every route bounces to /setup — there is no working sign-in
   // to fall through to otherwise. /setup and /api/* are excluded to avoid a
-  // redirect loop / to let the auth callback route itself.
+  // redirect loop / to let the auth callback route itself. When dev login is
+  // enabled (getDevAdminConfig, local dev only), the whole /setup gate is
+  // skipped too — that's the point of the bypass: no real Entra tenant
+  // needed to reach /login and sign in as the seeded dev-admin account.
   beforeLoad: async ({ location }) => {
     if (location.pathname === "/setup" || location.pathname.startsWith("/api/")) return;
+    const devLogin = await getDevLoginStatusFn();
+    if (devLogin.enabled) return;
     const status = await getSetupStatusFn();
     if (!status.isConfigured) throw redirect({ to: "/setup" });
   },

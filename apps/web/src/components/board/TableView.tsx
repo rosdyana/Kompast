@@ -147,8 +147,8 @@ export function TableView({ data }: { data: BoardData }) {
                     <tr key={issue.id} className="border-b border-border bg-surface last:border-b-0 hover:bg-surface-2">
                       <td className="px-3 py-2">
                         <Link
-                          to="/issues/$projectKey/$issueKeySeq"
-                          params={{ projectKey: data.project.key, issueKeySeq: String(issue.keySeq) }}
+                          to="/issues/$teamId/$projectKey/$issueKeySeq"
+                          params={{ teamId: data.project.teamId ?? "none", projectKey: data.project.key, issueKeySeq: String(issue.keySeq) }}
                           className="font-mono text-text-3 hover:text-accent"
                         >
                           {data.project.key}-{issue.keySeq}
