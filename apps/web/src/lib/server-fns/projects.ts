@@ -3,6 +3,8 @@ import * as z from "zod";
 import { and, db, eq, inArray, schema } from "@kompast/db";
 import {
   createProject,
+  createPage,
+  setSprintMinutesTemplate,
   ForbiddenError,
   getBoard,
   getOrCreateDefaultTableView,
@@ -15,6 +17,7 @@ import {
   updateSavedViewConfig,
   withAuthorizedTenant,
 } from "@kompast/core";
+import { seedPageContentFromMarkdown } from "../seed-page-content";
 import { requireAuthContext } from "../session";
 
 export const listProjectsFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -46,16 +49,37 @@ export const createProjectFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     await requireTeamAdmin(db, { ...ctx, teamId: data.teamId });
     try {
-      return await withAuthorizedTenant(ctx, (tx) =>
-        createProject(tx, {
+      return await withAuthorizedTenant(ctx, async (tx) => {
+        const created = await createProject(tx, {
           organizationId: ctx.organizationId,
           teamId: data.teamId,
           key: data.key,
           name: data.name,
           icon: data.icon,
           actorUserId: ctx.userId,
-        }),
-      );
+        });
+
+        // Best-effort: a docs-side failure here (e.g. a BlockNote/jsdom
+        // construction error) must never block project creation itself —
+        // same principle createLinkedMinutesPage (packages/core/src/sprint.ts)
+        // already applies one layer down. A project with no template just
+        // means its sprints get blank minutes docs instead of pre-seeded ones.
+        try {
+          const templatePage = await createPage(tx, {
+            organizationId: ctx.organizationId,
+            projectId: created.projectId,
+            title: "Sprint Minutes Template",
+            type: "template",
+            actorUserId: ctx.userId,
+          });
+          await seedPageContentFromMarkdown(tx, templatePage.id, "# Planning\n\n# Review\n\n# Retro\n");
+          await setSprintMinutesTemplate(tx, created.projectId, templatePage.id);
+        } catch (err) {
+          console.error(`Failed to seed Sprint Minutes Template for project ${created.projectId}:`, err);
+        }
+
+        return created;
+      });
     } catch (err) {
       const code = (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
       if (code === "23505") throw new Error(`A project with key "${data.key.toUpperCase()}" already exists on this team.`);

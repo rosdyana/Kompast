@@ -43,6 +43,8 @@
     "noIssuesInSprint": "No issues in this sprint yet.",
     "removeButton": "Remove",
     "reviewHeading": "Sprint review",
+    "minutesHeading": "Meeting minutes",
+    "minutesUnavailable": "No minutes doc for this sprint yet.",
     "wizardHeading": "Set up your first sprint",
     "wizardSubtitle": "Every board needs at least one sprint before it can be used.",
     "wizardCycleLabel": "Sprint duration",

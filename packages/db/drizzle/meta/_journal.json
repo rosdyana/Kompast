@@ -117,8 +117,15 @@
     {
       "idx": 16,
       "version": "7",
-      "when": 1789053746000,
-      "tag": "0016_common_lord_hawal",
+      "when": 1788870861968,
+      "tag": "0016_friendly_ghost_rider",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789077897617,
+      "tag": "0017_elite_devos",
       "breakpoints": true
     }
   ]

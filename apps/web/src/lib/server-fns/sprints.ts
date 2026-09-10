@@ -7,6 +7,7 @@ import {
   getSprintReport,
   listBacklogIssues,
   listSprintIssues,
+  getSprintMinutesPage,
   addIssueToSprint,
   removeIssueFromSprint,
   startSprint,
@@ -35,8 +36,13 @@ export const getSprintDetailFn = createServerFn({ method: "GET" })
   .handler(async ({ data: sprintId }) => {
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
-      const [sprint, report, issues] = await Promise.all([getSprint(tx, sprintId), getSprintReport(tx, sprintId), listSprintIssues(tx, sprintId)]);
-      return { sprint, report, issues };
+      const [sprint, report, issues, minutesPage] = await Promise.all([
+        getSprint(tx, sprintId),
+        getSprintReport(tx, sprintId),
+        listSprintIssues(tx, sprintId),
+        getSprintMinutesPage(tx, sprintId),
+      ]);
+      return { sprint, report, issues, minutesPageId: minutesPage?.id ?? null };
     });
   });
 
@@ -62,6 +68,7 @@ export const createSprintFn = createServerFn({ method: "POST" })
         cycle: data.cycle,
         startAt: data.startAt,
         endAt: data.endAt,
+        actorUserId: ctx.userId,
       }),
     );
   });

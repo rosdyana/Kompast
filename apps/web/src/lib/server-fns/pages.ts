@@ -1,12 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
 import { loadEnv } from "@kompast/env";
-import { inArray, schema } from "@kompast/db";
+import { eq, inArray, schema } from "@kompast/db";
 import * as Y from "yjs";
 import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { createServerSchema } from "../blocknote-schema";
 import {
   createPage,
+  createIssue,
   getPage,
   listPageTree,
   updatePageMeta,
@@ -34,6 +35,7 @@ import {
   revokeShareLink,
   listPageVersions,
   getPageVersionSnapshot,
+  resolveDefaultCreationTarget,
   withAuthorizedTenant,
   ForbiddenError,
 } from "@kompast/core";
@@ -149,6 +151,26 @@ export const getPageDetailFn = createServerFn({ method: "GET" })
         collabToken,
         collabWsUrl: loadEnv().COLLAB_WS_URL,
       };
+    });
+  });
+
+/**
+ * Lightweight sibling of getPageDetailFn: just enough to embed <DocEditor>
+ * inline somewhere that isn't the full /docs/$pageId page (the Table tab's
+ * minutes split-view) — skips comments/backlinks/children/share-links,
+ * which that context doesn't render.
+ */
+export const getPageEditorAccessFn = createServerFn({ method: "GET" })
+  .validator((pageId: string) => pageId)
+  .handler(async ({ data: pageId }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      const page = await getPage(tx, pageId);
+      const allowed = await canAccessPage(tx, pageId, ctx, "view");
+      if (!allowed) throw new ForbiddenError(`No access to page ${pageId}`);
+      const canEdit = await canAccessPage(tx, pageId, ctx, "edit");
+      const collabToken = signCollabToken({ userId: ctx.userId, organizationId: ctx.organizationId, pageId, role: canEdit ? "edit" : "view" });
+      return { page, canEdit, collabToken, collabWsUrl: loadEnv().COLLAB_WS_URL };
     });
   });
 
@@ -369,4 +391,30 @@ export const getPageVersionBlocksFn = createServerFn({ method: "POST" })
     Y.applyUpdate(ydoc, snapshot);
     const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
     return editor.yDocToBlocks(ydoc, "document-store");
+  });
+
+const createIssueFromDocLineSchema = z.object({ pageId: z.string(), title: z.string().min(1) });
+
+export const createIssueFromDocLineFn = createServerFn({ method: "POST" })
+  .validator(createIssueFromDocLineSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      const page = await getPage(tx, data.pageId);
+      if (!page.projectId) throw new Error("This document isn't filed under a project, so no issue can be created from it.");
+
+      const { typeId, statusId } = await resolveDefaultCreationTarget(tx, page.projectId);
+      const { issueId, keySeq } = await createIssue(tx, {
+        organizationId: ctx.organizationId,
+        projectId: page.projectId,
+        typeId,
+        statusId,
+        title: data.title,
+        reporterId: ctx.userId,
+      });
+      await linkEntities(tx, { organizationId: ctx.organizationId, fromType: "page", fromId: data.pageId, toType: "issue", toId: issueId, createdBy: ctx.userId });
+
+      const [project] = await tx.select({ key: schema.project.key }).from(schema.project).where(eq(schema.project.id, page.projectId));
+      return { issueId, projectKey: project!.key, keySeq: String(keySeq) };
+    });
   });

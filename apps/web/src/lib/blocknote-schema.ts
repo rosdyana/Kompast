@@ -40,6 +40,25 @@ export const mentionInlineConfig = {
 };
 
 /**
+ * Inline chip left behind when a doc line is converted into a tracked
+ * issue (see Editor.tsx's "create issue" slash command). issueId/
+ * projectKey/keySeq/title are all denormalized at insert time — same
+ * "no live lookup" reasoning as mentionInlineConfig above, and for the
+ * same reason, no guest redaction is needed (see redactEmbedsForGuests):
+ * this is a display chip, not a live data embed.
+ */
+export const issueMentionInlineConfig = {
+  type: "issueMention" as const,
+  propSchema: {
+    issueId: { default: "" as string },
+    projectKey: { default: "" as string },
+    keySeq: { default: "" as string },
+    title: { default: "" as string },
+  },
+  content: "none" as const,
+};
+
+/**
  * Server-side only: lets yDocToBlocks (structural decode — never invokes
  * render/toExternalHTML at all) and blocksToFullHTML recognize the
  * kompastView block type without crashing or dropping it. `render` here
@@ -64,10 +83,17 @@ export function createServerSchema() {
       return { dom };
     },
   });
+  const issueMentionServerSpec = createInlineContentSpec(issueMentionInlineConfig, {
+    render: (inlineContent: any) => {
+      const dom = document.createElement("span");
+      dom.textContent = `${inlineContent.props.projectKey}-${inlineContent.props.keySeq}`;
+      return { dom };
+    },
+  });
 
   return BlockNoteSchema.create({
     blockSpecs: { ...defaultBlockSpecs, kompastView: kompastViewServerSpec() },
-    inlineContentSpecs: { ...defaultInlineContentSpecs, mention: mentionServerSpec },
+    inlineContentSpecs: { ...defaultInlineContentSpecs, mention: mentionServerSpec, issueMention: issueMentionServerSpec },
   });
 }
 

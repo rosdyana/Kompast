@@ -43,6 +43,8 @@
     "noIssuesInSprint": "此衝刺尚無工單。",
     "removeButton": "移出",
     "reviewHeading": "衝刺回顧",
+    "minutesHeading": "會議記錄",
+    "minutesUnavailable": "此衝刺尚無會議記錄。",
     "wizardHeading": "設定你的第一個衝刺",
     "wizardSubtitle": "每個看板在使用前都需要至少一個衝刺。",
     "wizardCycleLabel": "衝刺長度",

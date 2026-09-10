@@ -34,6 +34,20 @@ pnpm --filter @kompast/db migrate     # applies it to DATABASE_URL
 pnpm dev                              # turbo runs apps/web (:3000) and apps/collab (COLLAB_INTERNAL_PORT) together
 ```
 
+Or, in one command, against throwaway containers:
+
+```bash
+pnpm dev:docker                       # ensure the dev Postgres/Redis exist and are up, then pnpm dev
+pnpm dev:services                     # just the containers, no dev server
+```
+
+`scripts/dev-services.mjs` **creates** `kompast-dev-pg`/`kompast-dev-redis` if they don't exist (not just `docker start` — a fresh clone has no containers to start), starts them if they exist but are stopped, waits for `pg_isready`/`redis-cli ping` so `turbo run dev` can't race a still-initializing database, and — only on the pass where it had to create the Postgres container — runs `pnpm --filter @kompast/db migrate` for you, because a brand-new database has no schema and no `kompast_app` role for `DATABASE_URL` to connect as. Details worth knowing:
+
+- Images are pinned to the same ones `infra/docker-compose.yml` uses: `pgvector/pgvector:pg17` (vanilla `postgres:17` can't `CREATE EXTENSION vector`, which `packages/db/src/migrate.ts` does unconditionally) and `redis:7-alpine`. First run pulls them.
+- Ports, role, password, and database name are read out of `.env.local.dev`'s `DATABASE_ADMIN_URL`/`REDIS_URL` rather than hardcoded, so the container and the connection string can't drift apart. This is the one place a repo-root `.env.local.dev` is required — `pnpm dev:docker` sources it (`.env.*` is gitignored, so a fresh clone has to write it).
+- Both bind `127.0.0.1` only, and data lives in the `kompast-dev-pg-data`/`kompast-dev-redis-data` volumes, so `docker rm` on a container doesn't lose the database.
+- Point either URL at a non-local host and it skips container management entirely, assuming you manage those services yourself.
+
 Docs' real-time editing needs `apps/collab` actually running — `pnpm dev` starts both, but if you're running `apps/web` on its own (e.g. `pnpm --filter @kompast/web dev`), the editor will hang trying to sync until you also start `apps/collab`.
 
 `packages/env` validates `process.env` at import time and throws a field-by-field error if anything is missing — including in dev. There is no reduced "dev mode" schema. Note what's genuinely NOT in `.env` anymore: Microsoft Entra ID, AI provider, and mail vendor config all live in the `system_settings` DB table, set through the app itself (`/setup` on first boot, `/settings` after that) — see below.

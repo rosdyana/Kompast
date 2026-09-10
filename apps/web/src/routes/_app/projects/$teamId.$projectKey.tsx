@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useRouter, useNavigate, useLoaderData, ClientOnly, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Kanban, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search, Inbox } from "lucide-react";
 import {
@@ -32,6 +32,8 @@ import {
   addIssueToSprintFn,
   removeIssueFromSprintFn,
 } from "@/lib/server-fns/sprints";
+import { getPageEditorAccessFn } from "@/lib/server-fns/pages";
+import { DocEditor } from "@/components/docs/Editor";
 import { getRoadmapFn } from "@/lib/server-fns/roadmap";
 import { listAutomationRulesFn, listAutomationRunsFn, createAutomationRuleFn, setAutomationRuleEnabledFn, deleteAutomationRuleFn } from "@/lib/server-fns/automation";
 import { TableView } from "@/components/board/TableView";
@@ -176,15 +178,7 @@ function ProjectPage() {
           )
           : <SprintSetupWizard boardId={data.board.id} onCreated={() => router.invalidate()} />
       )}
-      {view === "table" && (
-        data.activeSprint
-          ? <SprintReviewTable boardData={data} sprintIssueIds={new Set(data.activeSprintIssueIds)} />
-          : (
-            <div className="p-6">
-              <EmptyStatePanel overline={t("tabs.table")} heading={t("sprint.boardEmptyHeading")} subtext={t("sprint.boardEmptySubtext")} />
-            </div>
-          )
-      )}
+      {view === "table" && <TableTab boardId={data.board.id} data={data} />}
       {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
       {view === "automation" && <AutomationTab projectId={data.project.id} data={data} />}
@@ -706,12 +700,93 @@ function BacklogTab({
  * inline-cell editing is a separate, larger gap that applies to the
  * whole table view feature, not unique to sprint review.
  *
- * Also backs the Table tab itself (scoped to the active sprint) — see
- * ProjectPage's `view === "table"` branch.
+ * Also backs the review half of the Table tab's split view (TableTab,
+ * below) — scoped to whichever sprint is selected there, active by default.
  */
 function SprintReviewTable({ boardData, sprintIssueIds }: { boardData: BoardData; sprintIssueIds: Set<string> }) {
   const filtered: BoardData = { ...boardData, columns: boardData.columns.map((c) => ({ ...c, issues: c.issues.filter((i) => sprintIssueIds.has(i.id)) })) };
   return <TableView data={filtered} />;
+}
+
+type SprintDetailWithMinutes = Awaited<ReturnType<typeof getSprintDetailFn>>;
+
+function TableTab({ boardId, data }: { boardId: string; data: BoardData }) {
+  const { t } = useTranslation("board");
+  const shell = useLoaderData({ from: "/_app" });
+  const [sprints, setSprints] = useState<Awaited<ReturnType<typeof listSprintsFn>> | null>(null);
+  const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SprintDetailWithMinutes | null>(null);
+  const [access, setAccess] = useState<Awaited<ReturnType<typeof getPageEditorAccessFn>> | null>(null);
+
+  useEffect(() => {
+    listSprintsFn({ data: boardId }).then((list) => {
+      setSprints(list);
+      const active = list.find((s) => s.state === "active");
+      setSelectedSprintId((current) => current ?? active?.id ?? list[0]?.id ?? null);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId]);
+
+  useEffect(() => {
+    setDetail(null);
+    setAccess(null);
+    if (!selectedSprintId) return;
+    getSprintDetailFn({ data: selectedSprintId }).then(setDetail);
+  }, [selectedSprintId]);
+
+  useEffect(() => {
+    if (!detail?.minutesPageId) return;
+    getPageEditorAccessFn({ data: detail.minutesPageId }).then(setAccess);
+  }, [detail?.minutesPageId]);
+
+  if (sprints === null) {
+    return <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>;
+  }
+  if (sprints.length === 0) {
+    return <TableView data={data} />;
+  }
+
+  return (
+    <div className="flex flex-col gap-3 p-6">
+      <select
+        value={selectedSprintId ?? ""}
+        onChange={(e) => setSelectedSprintId(e.target.value || null)}
+        className="kp-select w-fit rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+      >
+        {sprints.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+      </select>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="rounded-xl border border-border bg-surface">
+          <p className="p-3 pb-0 type-label-overline text-text-3">{t("sprint.reviewHeading")}</p>
+          {detail && <SprintReviewTable boardData={data} sprintIssueIds={new Set(detail.issues.map((i) => i.id))} />}
+        </div>
+        <div className="rounded-xl border border-border bg-surface p-3">
+          <p className="mb-2 type-label-overline text-text-3">{t("sprint.minutesHeading")}</p>
+          {detail && !detail.minutesPageId ? (
+            <p className="type-body text-text-3">{t("sprint.minutesUnavailable")}</p>
+          ) : access ? (
+            <ClientOnly fallback={<div className="min-h-[40vh] rounded-[9px] border border-border" />}>
+              <DocEditor
+                pageId={access.page.id}
+                collabToken={access.collabToken}
+                collabWsUrl={access.collabWsUrl}
+                canEdit={access.canEdit}
+                userId={shell.user.id}
+                userName={shell.user.name}
+              />
+            </ClientOnly>
+          ) : (
+            <div className="min-h-[40vh] rounded-[9px] border border-border" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 type RoadmapEpic = Awaited<ReturnType<typeof getRoadmapFn>>[number];

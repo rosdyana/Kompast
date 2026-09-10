@@ -1,6 +1,6 @@
 {
-  "id": "08981885-76b4-490e-b04a-6534bab88295",
-  "prevId": "facb0747-24cd-4589-a19b-a1167a9d5775",
+  "id": "730db282-2852-4836-8c62-312008711131",
+  "prevId": "08981885-76b4-490e-b04a-6534bab88295",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1150,11 +1150,17 @@
         }
       },
       "indexes": {
-        "project_org_key_uq": {
-          "name": "project_org_key_uq",
+        "project_team_key_uq": {
+          "name": "project_team_key_uq",
           "columns": [
             {
               "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "team_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -8,7 +8,8 @@
   "packageManager": "pnpm@10.4.1",
   "scripts": {
     "dev": "turbo run dev",
-    "dev:docker": "docker start kompast-dev-pg kompast-dev-redis && set -a && . ./.env.local.dev && set +a && turbo run dev",
+    "dev:docker": "node scripts/dev-services.mjs && set -a && . ./.env.local.dev && set +a && turbo run dev",
+    "dev:services": "node scripts/dev-services.mjs",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",

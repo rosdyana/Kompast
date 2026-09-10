@@ -1,9 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { db, schema, withTenant, eq } from "@kompast/db";
+import { and, db, schema, withTenant, eq } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { createProject, createWorkflowStatus, createIssueType } from "../project";
+import { createProject, createWorkflowStatus, createIssueType, setSprintMinutesTemplate, resolveDefaultCreationTarget } from "../project";
 import { createIssue, moveIssue } from "../issue";
 import { getBoard } from "../board";
 import { requireMembership, requireProjectAccess, withAuthorizedTenant, ForbiddenError } from "../permissions";
@@ -106,6 +106,29 @@ describe("project + board service layer", () => {
 
     const board = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => getBoard(tx, result.boardId));
     expect(board.columns.map((c) => c.name)).toEqual(["Backlog", "To Do", "In Progress", "In Review", "Done"]);
+  });
+
+  it("setSprintMinutesTemplate points a project at a template page", async () => {
+    const { projectId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "smt1", name: "Minutes Template Test", actorUserId: userId }),
+    );
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => setSprintMinutesTemplate(tx, projectId, "test-template-page-1"));
+
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.id, projectId));
+    expect(project?.sprintMinutesTemplatePageId).toBe("test-template-page-1");
+  });
+
+  it("resolveDefaultCreationTarget returns the project's first non-subtask type and its Backlog column's status", async () => {
+    const { projectId, boardId, issueTypes, statuses } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "smt2", name: "Default Target Test", actorUserId: userId }),
+    );
+    const { typeId, statusId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => resolveDefaultCreationTarget(tx, projectId));
+
+    expect(typeId).toBe(issueTypes.find((t) => !t.isSubtask)!.id);
+    const [backlogColumn] = await admin.select().from(schema.boardColumn).where(and(eq(schema.boardColumn.boardId, boardId), eq(schema.boardColumn.isBacklog, true)));
+    const [backlogStatus] = await admin.select().from(schema.boardColumnStatus).where(eq(schema.boardColumnStatus.boardColumnId, backlogColumn!.id));
+    expect(statusId).toBe(backlogStatus!.workflowStatusId);
+    expect(statuses.find((s) => s.id === statusId)?.category).toBe("todo");
   });
 
   it("rejects project access for a project outside the caller's operating organization", async () => {
