@@ -16,7 +16,9 @@
     "GCS_BUCKET",
     "GCS_PROJECT_ID",
     "COLLAB_WS_URL",
-    "COLLAB_INTERNAL_PORT"
+    "COLLAB_INTERNAL_PORT",
+    "ENABLE_DEV_LOGIN",
+    "DEV_ADMIN_PASSWORD"
   ],
   "tasks": {
     "build": {

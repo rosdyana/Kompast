@@ -119,7 +119,7 @@ export const getPageDetailFn = createServerFn({ method: "GET" })
       const linkedProjectIds = [...new Set(linkedIssues.map((i) => i.projectId))];
       const linkedProjects =
         linkedProjectIds.length > 0
-          ? await tx.select({ id: schema.project.id, key: schema.project.key }).from(schema.project).where(inArray(schema.project.id, linkedProjectIds))
+          ? await tx.select({ id: schema.project.id, key: schema.project.key, teamId: schema.project.teamId }).from(schema.project).where(inArray(schema.project.id, linkedProjectIds))
           : [];
 
       const backlinkPageIds = backlinks.filter((l) => l.fromType === "page").map((l) => l.fromId);

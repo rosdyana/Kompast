@@ -1,4 +1,4 @@
-import { eq, schema, sql } from "@kompast/db";
+import { and, eq, isNull, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 
@@ -107,6 +107,38 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
   }
 
   return { projectId, boardId, issueTypes: issueTypeRows, statuses: statusRows };
+}
+
+export interface GetProjectByTeamAndKeyInput {
+  organizationId: string;
+  /** null covers legacy pre-team-admin-required projects (see CreateProjectInput.teamId). */
+  teamId: string | null;
+  key: string;
+}
+
+/**
+ * Resolves a project by (workspace, team, key) — the disambiguated lookup
+ * every route/server-fn that addresses a project via its human key must use
+ * now that `project_team_key_uq` scopes uniqueness per team, not per
+ * workspace. Postgres doesn't dedupe NULL teamIds against that index, so a
+ * legacy `teamId: null` lookup can in theory still find more than one row;
+ * that's surfaced as a thrown error here rather than silently picking one.
+ */
+export async function getProjectByTeamAndKey(tx: Tx, input: GetProjectByTeamAndKeyInput) {
+  const matches = await tx
+    .select()
+    .from(schema.project)
+    .where(
+      and(
+        eq(schema.project.organizationId, input.organizationId),
+        input.teamId === null ? isNull(schema.project.teamId) : eq(schema.project.teamId, input.teamId),
+        eq(schema.project.key, input.key.toUpperCase()),
+      ),
+    );
+  if (matches.length > 1) {
+    throw new Error(`Project key "${input.key}" is ambiguous — multiple projects share it on this team. Contact an admin.`);
+  }
+  return matches[0] ?? null;
 }
 
 export interface CreateWorkflowStatusInput {

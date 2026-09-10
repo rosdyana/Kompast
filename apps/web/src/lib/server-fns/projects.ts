@@ -6,6 +6,7 @@ import {
   ForbiddenError,
   getBoard,
   getOrCreateDefaultTableView,
+  getProjectByTeamAndKey,
   listIssuePropertyDefinitions,
   listSprints,
   listSprintIssues,
@@ -20,7 +21,7 @@ export const listProjectsFn = createServerFn({ method: "GET" }).handler(async ()
   const ctx = await requireAuthContext();
   return withAuthorizedTenant(ctx, (tx) =>
     tx
-      .select({ id: schema.project.id, key: schema.project.key, name: schema.project.name })
+      .select({ id: schema.project.id, key: schema.project.key, name: schema.project.name, teamId: schema.project.teamId })
       .from(schema.project)
       .where(eq(schema.project.organizationId, ctx.organizationId)),
   );
@@ -44,28 +45,36 @@ export const createProjectFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     await requireTeamAdmin(db, { ...ctx, teamId: data.teamId });
-    return withAuthorizedTenant(ctx, (tx) =>
-      createProject(tx, {
-        organizationId: ctx.organizationId,
-        teamId: data.teamId,
-        key: data.key,
-        name: data.name,
-        icon: data.icon,
-        actorUserId: ctx.userId,
-      }),
-    );
+    try {
+      return await withAuthorizedTenant(ctx, (tx) =>
+        createProject(tx, {
+          organizationId: ctx.organizationId,
+          teamId: data.teamId,
+          key: data.key,
+          name: data.name,
+          icon: data.icon,
+          actorUserId: ctx.userId,
+        }),
+      );
+    } catch (err) {
+      const code = (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
+      if (code === "23505") throw new Error(`A project with key "${data.key.toUpperCase()}" already exists on this team.`);
+      throw err;
+    }
   });
 
 export const getProjectBoardFn = createServerFn({ method: "GET" })
-  .validator((projectKey: string) => projectKey)
-  .handler(async ({ data: projectKey }) => {
+  .validator((input: { teamId: string; projectKey: string }) => input)
+  .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
+    const { projectKey } = data;
 
     return withAuthorizedTenant(ctx, async (tx) => {
-      const [project] = await tx
-        .select()
-        .from(schema.project)
-        .where(and(eq(schema.project.organizationId, ctx.organizationId), eq(schema.project.key, projectKey.toUpperCase())));
+      const project = await getProjectByTeamAndKey(tx, {
+        organizationId: ctx.organizationId,
+        teamId: data.teamId === "none" ? null : data.teamId,
+        key: projectKey,
+      });
       if (!project) throw new Error(`Project ${projectKey} not found`);
 
       const [board] = await tx.select().from(schema.board).where(eq(schema.board.projectId, project.id));

@@ -246,7 +246,7 @@ async function notifyAssignment(
   issue: { organizationId: string; projectId: string; keySeq: number; title: string },
   assigneeId: string,
 ) {
-  const [project] = await tx.select({ key: schema.project.key }).from(schema.project).where(eq(schema.project.id, issue.projectId));
+  const [project] = await tx.select({ key: schema.project.key, teamId: schema.project.teamId }).from(schema.project).where(eq(schema.project.id, issue.projectId));
   const [user] = await tx.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, assigneeId));
   if (!project || !user) return;
 
@@ -259,7 +259,7 @@ async function notifyAssignment(
     entityId: issueId,
     title: `Anda ditugaskan ke ${issueKey}`,
     body: issue.title,
-    email: { to: user.email, actionUrl: `${loadEnv().APP_URL}/issues/${project.key}/${issue.keySeq}`, actionLabel: "Lihat tiket" },
+    email: { to: user.email, actionUrl: `${loadEnv().APP_URL}/issues/${project.teamId ?? "none"}/${project.key}/${issue.keySeq}`, actionLabel: "Lihat tiket" },
   });
 }
 

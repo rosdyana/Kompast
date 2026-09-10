@@ -38,8 +38,8 @@ import { TableView } from "@/components/board/TableView";
 import { ProjectSettingsTab } from "@/components/board/ProjectSettingsTab";
 import { DocsTree } from "@/components/docs/DocsTree";
 
-export const Route = createFileRoute("/_app/projects/$projectKey")({
-  loader: ({ params }) => getProjectBoardFn({ data: params.projectKey }),
+export const Route = createFileRoute("/_app/projects/$teamId/$projectKey")({
+  loader: ({ params }) => getProjectBoardFn({ data: { teamId: params.teamId, projectKey: params.projectKey } }),
   component: ProjectPage,
 });
 
@@ -68,9 +68,21 @@ function ProjectPage() {
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [newIssueError, setNewIssueError] = useState<string | null>(null);
+  const [backlogRefreshSignal, setBacklogRefreshSignal] = useState(0);
 
   const defaultType = data.issueTypes.find((tp) => !tp.isSubtask);
   const backlogColumn = data.columns.find((c) => c.isBacklog) ?? data.columns[0];
+  const teamId = data.project.teamId ?? "none";
+
+  // The "+ New issue" header entry only applies to Backlog/Board — reset any
+  // in-progress entry when navigating away so it doesn't linger hidden.
+  useEffect(() => {
+    if (view !== "backlog" && view !== "board") {
+      setAddingIssue(false);
+      setNewTitle("");
+      setNewIssueError(null);
+    }
+  }, [view]);
 
   async function submitNewIssue() {
     if (!newTitle.trim() || !defaultType || !backlogColumn?.statusIds[0]) return;
@@ -87,6 +99,7 @@ function ProjectPage() {
       });
       setNewTitle("");
       setAddingIssue(false);
+      setBacklogRefreshSignal((n) => n + 1);
       await router.invalidate();
     } catch (err) {
       setNewIssueError(err instanceof Error ? err.message : t("genericError"));
@@ -108,33 +121,35 @@ function ProjectPage() {
               {data.project.key} · {t("header.ticketCount", { count: data.columns.reduce((n, c) => n + c.issues.length, 0) })}
             </p>
           </div>
-          <div className="flex gap-1.5">
-            {addingIssue ? (
-              <>
-                <input
-                  autoFocus
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") submitNewIssue();
-                    if (e.key === "Escape") setAddingIssue(false);
-                  }}
-                  placeholder={t("header.newIssuePlaceholder")}
-                  className="rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
-                />
-                <Button variant="primary" onClick={submitNewIssue} disabled={creating}>
-                  {t("save")}
+          {(view === "backlog" || view === "board") && (
+            <div className="flex gap-1.5">
+              {addingIssue ? (
+                <>
+                  <input
+                    autoFocus
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") submitNewIssue();
+                      if (e.key === "Escape") setAddingIssue(false);
+                    }}
+                    placeholder={t("header.newIssuePlaceholder")}
+                    className="rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+                  />
+                  <Button variant="primary" onClick={submitNewIssue} disabled={creating}>
+                    {t("save")}
+                  </Button>
+                  <Button variant="outline" onClick={() => setAddingIssue(false)}>
+                    {t("cancel")}
+                  </Button>
+                </>
+              ) : (
+                <Button variant="primary" onClick={() => setAddingIssue(true)}>
+                  {t("header.newIssueButton")}
                 </Button>
-                <Button variant="outline" onClick={() => setAddingIssue(false)}>
-                  {t("cancel")}
-                </Button>
-              </>
-            ) : (
-              <Button variant="primary" onClick={() => setAddingIssue(true)}>
-                {t("header.newIssueButton")}
-              </Button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
         <Tabs items={viewTabs} active={view} onChange={setView} className="mt-4" />
         {newIssueError && (
@@ -149,10 +164,27 @@ function ProjectPage() {
       )}
       {view === "backlog" && (
         data.hasAnySprint
-          ? <BacklogTab projectId={data.project.id} boardId={data.board.id} columns={data.columns} />
+          ? (
+            <BacklogTab
+              projectId={data.project.id}
+              boardId={data.board.id}
+              columns={data.columns}
+              teamId={teamId}
+              projectKey={data.project.key}
+              refreshSignal={backlogRefreshSignal}
+            />
+          )
           : <SprintSetupWizard boardId={data.board.id} onCreated={() => router.invalidate()} />
       )}
-      {view === "table" && <TableView data={data} />}
+      {view === "table" && (
+        data.activeSprint
+          ? <SprintReviewTable boardData={data} sprintIssueIds={new Set(data.activeSprintIssueIds)} />
+          : (
+            <div className="p-6">
+              <EmptyStatePanel overline={t("tabs.table")} heading={t("sprint.boardEmptyHeading")} subtext={t("sprint.boardEmptySubtext")} />
+            </div>
+          )
+      )}
       {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
       {view === "automation" && <AutomationTab projectId={data.project.id} data={data} />}
@@ -325,6 +357,8 @@ function SprintSection({
   aiError,
   aiSummary,
   onGenerateAiSummary,
+  teamId,
+  projectKey,
   t,
 }: {
   sprint: SprintSummary;
@@ -345,6 +379,8 @@ function SprintSection({
   aiError: string | null;
   aiSummary: string | null;
   onGenerateAiSummary: (sprintId: string) => void;
+  teamId: string;
+  projectKey: string;
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   return (
@@ -382,7 +418,13 @@ function SprintSection({
         {(!detail || detail.issues.length === 0) && <p className="type-body text-text-3">{t("sprint.noIssuesInSprint")}</p>}
         {detail?.issues.map((issue) => (
           <div key={issue.id} className="flex items-center justify-between gap-2 rounded-[9px] border border-border px-2 py-1.5">
-            <span className="truncate type-body">{issue.title}</span>
+            <Link
+              to="/issues/$teamId/$projectKey/$issueKeySeq"
+              params={{ teamId, projectKey, issueKeySeq: String(issue.keySeq) }}
+              className="truncate type-body hover:text-accent"
+            >
+              {issue.title}
+            </Link>
             <div className="flex flex-none items-center gap-1.5">
               <select
                 disabled={busy}
@@ -425,7 +467,21 @@ function SprintSection({
   );
 }
 
-function BacklogTab({ projectId, boardId, columns }: { projectId: string; boardId: string; columns: BoardData["columns"] }) {
+function BacklogTab({
+  projectId,
+  boardId,
+  columns,
+  teamId,
+  projectKey,
+  refreshSignal,
+}: {
+  projectId: string;
+  boardId: string;
+  columns: BoardData["columns"];
+  teamId: string;
+  projectKey: string;
+  refreshSignal: number;
+}) {
   const { t } = useTranslation("board");
   const router = useRouter();
   const [sprints, setSprints] = useState<SprintSummary[] | null>(null);
@@ -455,7 +511,7 @@ function BacklogTab({ projectId, boardId, columns }: { projectId: string; boardI
     setAiSummary(null);
     setAiError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, boardId]);
+  }, [projectId, boardId, refreshSignal]);
 
   async function withBusy(fn: () => Promise<void>) {
     setBusy(true);
@@ -534,6 +590,8 @@ function BacklogTab({ projectId, boardId, columns }: { projectId: string; boardI
             aiError={aiError}
             aiSummary={aiSummary}
             onGenerateAiSummary={generateAiSummary}
+            teamId={teamId}
+            projectKey={projectKey}
             t={t}
           />
         </div>
@@ -569,6 +627,8 @@ function BacklogTab({ projectId, boardId, columns }: { projectId: string; boardI
               aiError={aiError}
               aiSummary={aiSummary}
               onGenerateAiSummary={generateAiSummary}
+              teamId={teamId}
+              projectKey={projectKey}
               t={t}
             />
           ))}
@@ -581,7 +641,13 @@ function BacklogTab({ projectId, boardId, columns }: { projectId: string; boardI
           {backlog.length === 0 && <p className="type-body text-text-3">{t("sprint.backlogEmpty")}</p>}
           {backlog.map((issue) => (
             <div key={issue.id} className="flex items-center justify-between gap-2 rounded-[9px] border border-border px-2 py-1.5">
-              <span className="truncate type-body">{issue.title}</span>
+              <Link
+                to="/issues/$teamId/$projectKey/$issueKeySeq"
+                params={{ teamId, projectKey, issueKeySeq: String(issue.keySeq) }}
+                className="truncate type-body hover:text-accent"
+              >
+                {issue.title}
+              </Link>
               <div className="flex flex-none items-center gap-1.5">
                 <select
                   disabled={busy}
@@ -634,14 +700,14 @@ function BacklogTab({ projectId, boardId, columns }: { projectId: string; boardI
  * project-level saved-view config) filtered down to just this sprint's
  * issues — the plan's "sprint review = the sprint's view in table mode
  * with grouping" ask, without a separate saved_view row per sprint (one
- * project-level table preference is shared across the Tabel tab and
+ * project-level table preference is shared across the Table tab and
  * every sprint's review here, a deliberate simplification). Cells are
  * still read-only (linking out to the issue detail page to edit) — full
  * inline-cell editing is a separate, larger gap that applies to the
  * whole table view feature, not unique to sprint review.
  *
- * Currently unreferenced — a later pass wires this into a sprint-scoped
- * Table tab. Kept defined (not deleted) so that pass can just call it.
+ * Also backs the Table tab itself (scoped to the active sprint) — see
+ * ProjectPage's `view === "table"` branch.
  */
 function SprintReviewTable({ boardData, sprintIssueIds }: { boardData: BoardData; sprintIssueIds: Set<string> }) {
   const filtered: BoardData = { ...boardData, columns: boardData.columns.map((c) => ({ ...c, issues: c.issues.filter((i) => sprintIssueIds.has(i.id)) })) };
@@ -1218,6 +1284,37 @@ function BoardView({ data }: { data: BoardData }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const usersById = new Map(data.users.map((u) => [u.id, u]));
   const issueTypesById = new Map(data.issueTypes.map((tp) => [tp.id, tp]));
+  const teamId = data.project.teamId ?? "none";
+
+  // "+ add issue" at the bottom of the board's first non-backlog column
+  // reuses addIssueToSprint's own Backlog->To Do transition (see
+  // packages/core/src/sprint.ts) rather than a separate "target status"
+  // concept: create into Backlog like every other new issue, then add it
+  // to the active sprint — it lands in the right column on its own.
+  const defaultType = data.issueTypes.find((tp) => !tp.isSubtask);
+  const backlogStatusId = data.columns.find((c) => c.isBacklog)?.statusIds[0];
+  const [addingToBoard, setAddingToBoard] = useState(false);
+  const [newBoardIssueTitle, setNewBoardIssueTitle] = useState("");
+  const [addBoardIssueError, setAddBoardIssueError] = useState<string | null>(null);
+
+  async function submitBoardIssue() {
+    if (!newBoardIssueTitle.trim() || !defaultType || !backlogStatusId || !data.activeSprint) return;
+    setPending(true);
+    setAddBoardIssueError(null);
+    try {
+      const created = await createIssueFn({
+        data: { projectId: data.project.id, typeId: defaultType.id, statusId: backlogStatusId, title: newBoardIssueTitle.trim() },
+      });
+      await addIssueToSprintFn({ data: { sprintId: data.activeSprint.id, issueId: created.issueId } });
+      setNewBoardIssueTitle("");
+      setAddingToBoard(false);
+      await router.invalidate();
+    } catch (err) {
+      setAddBoardIssueError(err instanceof Error ? err.message : t("genericError"));
+    } finally {
+      setPending(false);
+    }
+  }
 
   // A keyboard-moved card unmounts from its old column and remounts under a
   // new one once `data` refreshes — React can't preserve focus across that.
@@ -1365,6 +1462,9 @@ function BoardView({ data }: { data: BoardData }) {
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div>
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-2.5">
+          <Badge tone="indigo">
+            {t("boardView.activeSprintBadge", { number: data.activeSprint.number, name: data.activeSprint.name })}
+          </Badge>
           <div className="flex w-[190px] items-center gap-1.5 rounded-[7px] border border-border bg-surface px-2 py-1.5">
             <Search size={14} strokeWidth={1.75} className="flex-none text-text-3" />
             <input
@@ -1392,16 +1492,25 @@ function BoardView({ data }: { data: BoardData }) {
             backgroundSize: "22px 22px",
           }}
         >
-          {columns.map((col) => (
+          {columns.map((col, index) => (
             <Column
               key={col.id}
               column={col}
+              teamId={teamId}
               projectKey={data.project.key}
               issueTypesById={issueTypesById}
               usersById={usersById}
               visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
               onMoveToAdjacentColumn={moveToAdjacentColumn}
               registerCardRef={registerCardRef}
+              showAddIssue={index === 0}
+              addingIssue={addingToBoard}
+              newIssueTitle={newBoardIssueTitle}
+              onNewIssueTitleChange={setNewBoardIssueTitle}
+              onStartAddIssue={() => setAddingToBoard(true)}
+              onSubmitAddIssue={submitBoardIssue}
+              onCancelAddIssue={() => { setAddingToBoard(false); setAddBoardIssueError(null); }}
+              addIssueError={addBoardIssueError}
             />
           ))}
         </div>
@@ -1412,20 +1521,38 @@ function BoardView({ data }: { data: BoardData }) {
 
 function Column({
   column,
+  teamId,
   projectKey,
   issueTypesById,
   usersById,
   visibleProperties,
   onMoveToAdjacentColumn,
   registerCardRef,
+  showAddIssue,
+  addingIssue,
+  newIssueTitle,
+  onNewIssueTitleChange,
+  onStartAddIssue,
+  onSubmitAddIssue,
+  onCancelAddIssue,
+  addIssueError,
 }: {
   column: BoardData["columns"][number];
+  teamId: string;
   projectKey: string;
   issueTypesById: Map<string, BoardData["issueTypes"][number]>;
   usersById: Map<string, BoardData["users"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next") => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
+  showAddIssue: boolean;
+  addingIssue: boolean;
+  newIssueTitle: string;
+  onNewIssueTitleChange: (value: string) => void;
+  onStartAddIssue: () => void;
+  onSubmitAddIssue: () => void;
+  onCancelAddIssue: () => void;
+  addIssueError: string | null;
 }) {
   const { t } = useTranslation("board");
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
@@ -1458,6 +1585,7 @@ function Column({
           <Card
             key={issue.id}
             issue={issue}
+            teamId={teamId}
             projectKey={projectKey}
             columnId={column.id}
             issueTypesById={issueTypesById}
@@ -1467,6 +1595,40 @@ function Column({
             registerCardRef={registerCardRef}
           />
         ))}
+        {showAddIssue && (
+          addingIssue ? (
+            <div className="flex flex-col gap-1.5">
+              <input
+                autoFocus
+                value={newIssueTitle}
+                onChange={(e) => onNewIssueTitleChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onSubmitAddIssue();
+                  if (e.key === "Escape") onCancelAddIssue();
+                }}
+                placeholder={t("header.newIssuePlaceholder")}
+                className="rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+              />
+              <div className="flex gap-1.5">
+                <Button variant="primary" onClick={onSubmitAddIssue}>
+                  {t("save")}
+                </Button>
+                <Button variant="outline" onClick={onCancelAddIssue}>
+                  {t("cancel")}
+                </Button>
+              </div>
+              {addIssueError && <p className="type-body text-danger">{addIssueError}</p>}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onStartAddIssue}
+              className="rounded-[9px] border border-dashed border-border px-2.5 py-2 text-left type-body text-text-3 hover:border-border-2 hover:text-text-2"
+            >
+              + {t("boardView.addIssueButton")}
+            </button>
+          )
+        )}
       </div>
     </div>
   );
@@ -1485,6 +1647,7 @@ function formatPropertyValue(type: string, value: unknown, intlLocale: string): 
 
 function Card({
   issue,
+  teamId,
   projectKey,
   columnId,
   issueTypesById,
@@ -1494,6 +1657,7 @@ function Card({
   registerCardRef,
 }: {
   issue: BoardData["columns"][number]["issues"][number];
+  teamId: string;
   projectKey: string;
   columnId: string;
   issueTypesById: Map<string, BoardData["issueTypes"][number]>;
@@ -1529,8 +1693,8 @@ function Card({
 
   return (
     <Link
-      to="/issues/$projectKey/$issueKeySeq"
-      params={{ projectKey, issueKeySeq: String(issue.keySeq) }}
+      to="/issues/$teamId/$projectKey/$issueKeySeq"
+      params={{ teamId, projectKey, issueKeySeq: String(issue.keySeq) }}
       ref={setRefs}
       {...listeners}
       onKeyDown={handleKeyDown}

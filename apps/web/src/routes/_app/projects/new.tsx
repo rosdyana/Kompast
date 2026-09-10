@@ -33,7 +33,7 @@ function NewProjectPage() {
     try {
       await createProjectFn({ data: { teamId, key: key.trim(), name: name.trim() } });
       await router.invalidate();
-      await router.navigate({ to: "/projects/$projectKey", params: { projectKey: key.trim().toUpperCase() } });
+      await router.navigate({ to: "/projects/$teamId/$projectKey", params: { teamId, projectKey: key.trim().toUpperCase() } });
     } catch (err) {
       setError(err instanceof Error ? err.message : t("createFailed"));
     } finally {

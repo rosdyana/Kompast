@@ -18,7 +18,7 @@ import {
   revokeShareLinkFn,
   setPageTemplateFn,
 } from "@/lib/server-fns/pages";
-import { getIssueDetailFn } from "@/lib/server-fns/issue-detail";
+import { resolveIssueByKeyFn } from "@/lib/server-fns/issue-detail";
 import { DocEditor } from "@/components/docs/Editor";
 
 export const Route = createFileRoute("/_app/docs/$pageId")({
@@ -117,8 +117,8 @@ function DocPage() {
     setLinkingIssue(true);
     setLinkIssueError("");
     try {
-      const issueData = await getIssueDetailFn({ data: { projectKey: match[1]!, issueKeySeq: Number(match[2]) } });
-      await linkPageToIssueFn({ data: { pageId: data.page.id, issueId: issueData.issue.id } });
+      const { issueId } = await resolveIssueByKeyFn({ data: issueKeyInput.trim() });
+      await linkPageToIssueFn({ data: { pageId: data.page.id, issueId } });
       setIssueKeyInput("");
       await router.invalidate();
     } catch {
@@ -244,8 +244,8 @@ function DocPage() {
                     <div key={issue.id} className="flex items-center gap-2 rounded-[9px] border border-border bg-surface-2 px-3 py-2 type-body">
                       {project ? (
                         <Link
-                          to="/issues/$projectKey/$issueKeySeq"
-                          params={{ projectKey: project.key, issueKeySeq: String(issue.keySeq) }}
+                          to="/issues/$teamId/$projectKey/$issueKeySeq"
+                          params={{ teamId: project.teamId ?? "none", projectKey: project.key, issueKeySeq: String(issue.keySeq) }}
                           className="font-mono text-text-3 hover:text-accent"
                         >
                           {project.key}-{issue.keySeq}

@@ -2,7 +2,15 @@ import { and, desc, eq, ilike, or, schema } from "@kompast/db";
 import type { Tx } from "./types";
 
 export interface WorkspaceSearchResult {
-  issues: Array<{ id: string; projectKey: string; keySeq: number; title: string; statusName: string }>;
+  issues: Array<{
+    id: string;
+    projectKey: string;
+    keySeq: number;
+    title: string;
+    statusName: string;
+    teamId: string | null;
+    teamName: string | null;
+  }>;
   people: Array<{ id: string; name: string; email: string }>;
 }
 
@@ -31,10 +39,13 @@ export async function searchWorkspace(
         title: schema.issue.title,
         projectKey: schema.project.key,
         statusName: schema.workflowStatus.name,
+        teamId: schema.project.teamId,
+        teamName: schema.team.name,
       })
       .from(schema.issue)
       .innerJoin(schema.project, eq(schema.project.id, schema.issue.projectId))
       .innerJoin(schema.workflowStatus, eq(schema.workflowStatus.id, schema.issue.statusId))
+      .leftJoin(schema.team, eq(schema.team.id, schema.project.teamId))
       .where(
         and(
           eq(schema.issue.organizationId, organizationId),

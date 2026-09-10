@@ -69,8 +69,8 @@ export function GlobalSearch() {
               {result.issues.map((issue) => (
                 <Link
                   key={issue.id}
-                  to="/issues/$projectKey/$issueKeySeq"
-                  params={{ projectKey: issue.projectKey, issueKeySeq: String(issue.keySeq) }}
+                  to="/issues/$teamId/$projectKey/$issueKeySeq"
+                  params={{ teamId: issue.teamId ?? "none", projectKey: issue.projectKey, issueKeySeq: String(issue.keySeq) }}
                   onClick={() => setOpen(false)}
                   className="flex items-center gap-2 px-3 py-1.5 type-body hover:bg-surface-2"
                 >
@@ -78,6 +78,7 @@ export function GlobalSearch() {
                     {issue.projectKey}-{issue.keySeq}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{issue.title}</span>
+                  {issue.teamName && <span className="flex-none text-[10.5px] text-text-3">{issue.teamName}</span>}
                   <span className="flex-none text-[10.5px] text-text-3">{issue.statusName}</span>
                 </Link>
               ))}

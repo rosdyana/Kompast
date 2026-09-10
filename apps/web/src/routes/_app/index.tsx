@@ -26,8 +26,8 @@ function HomePage() {
             <h2 className="type-headline">{t("activeBoard")}</h2>
             {data.activeBoard && (
               <Link
-                to="/projects/$projectKey"
-                params={{ projectKey: data.projects[0]!.key }}
+                to="/projects/$teamId/$projectKey"
+                params={{ teamId: data.projects[0]!.teamId ?? "none", projectKey: data.projects[0]!.key }}
                 className="type-body text-accent"
               >
                 {t("openBoard")}
@@ -83,8 +83,8 @@ function HomePage() {
             {data.projects.map((project) => (
               <Link
                 key={project.id}
-                to="/projects/$projectKey"
-                params={{ projectKey: project.key }}
+                to="/projects/$teamId/$projectKey"
+                params={{ teamId: project.teamId ?? "none", projectKey: project.key }}
                 className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-2"
               >
                 <span className="min-w-0 flex-1 truncate type-body">{project.name}</span>

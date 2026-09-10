@@ -44,7 +44,11 @@ function ReadOnlyTable({ data }: { data: BoardData }) {
         <span>
           {data.project.key} · {data.project.name}
         </span>
-        <Link to="/projects/$projectKey" params={{ projectKey: data.project.key }} className="hover:text-accent">
+        <Link
+          to="/projects/$teamId/$projectKey"
+          params={{ teamId: data.project.teamId ?? "none", projectKey: data.project.key }}
+          className="hover:text-accent"
+        >
           {t("tableView.openInProjectLink")}
         </Link>
       </div>
@@ -66,8 +70,8 @@ function ReadOnlyTable({ data }: { data: BoardData }) {
                 <tr key={issue.id} className="border-b border-border bg-surface last:border-b-0 hover:bg-surface-2">
                   <td className="px-3 py-1.5">
                     <Link
-                      to="/issues/$projectKey/$issueKeySeq"
-                      params={{ projectKey: data.project.key, issueKeySeq: String(issue.keySeq) }}
+                      to="/issues/$teamId/$projectKey/$issueKeySeq"
+                      params={{ teamId: data.project.teamId ?? "none", projectKey: data.project.key, issueKeySeq: String(issue.keySeq) }}
                       className="font-mono text-text-3 hover:text-accent"
                     >
                       {data.project.key}-{issue.keySeq}

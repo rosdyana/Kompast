@@ -8,7 +8,7 @@ export const getHomeSummaryFn = createServerFn({ method: "GET" }).handler(async 
 
   return withAuthorizedTenant(ctx, async (tx) => {
     const projects = await tx
-      .select({ id: schema.project.id, key: schema.project.key, name: schema.project.name })
+      .select({ id: schema.project.id, key: schema.project.key, name: schema.project.name, teamId: schema.project.teamId })
       .from(schema.project)
       .where(eq(schema.project.organizationId, ctx.organizationId));
 
