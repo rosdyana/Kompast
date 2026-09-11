@@ -1,6 +1,7 @@
 import { and, eq, isNull, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
+import { DEFAULT_PRIORITY_LEVELS } from "./priority";
 
 export interface CreateProjectInput {
   organizationId: string;
@@ -82,6 +83,16 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
   }));
   await tx.insert(schema.workflowStatus).values(statusRows);
 
+  const priorityLevelRows = DEFAULT_PRIORITY_LEVELS.map((p, order) => ({
+    id: id("prio"),
+    projectId,
+    key: p.key,
+    name: p.name,
+    color: p.color,
+    order,
+  }));
+  await tx.insert(schema.priorityLevel).values(priorityLevelRows);
+
   const boardId = id("board");
   await tx.insert(schema.board).values({
     id: boardId,
@@ -106,7 +117,7 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
     });
   }
 
-  return { projectId, boardId, issueTypes: issueTypeRows, statuses: statusRows };
+  return { projectId, boardId, issueTypes: issueTypeRows, statuses: statusRows, priorityLevels: priorityLevelRows };
 }
 
 export interface GetProjectByTeamAndKeyInput {

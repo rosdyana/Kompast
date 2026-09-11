@@ -5,6 +5,7 @@ export * from "./project";
 export * from "./team";
 export * from "./issue";
 export * from "./issue-property";
+export * from "./priority";
 export * from "./board";
 export * from "./sprint";
 export * from "./sprint-report";

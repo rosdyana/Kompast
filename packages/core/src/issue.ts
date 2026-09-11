@@ -15,7 +15,7 @@ export interface CreateIssueInput {
   title: string;
   reporterId: string;
   assigneeId?: string;
-  priority?: "lowest" | "low" | "medium" | "high" | "highest";
+  priority?: string;
   descriptionJson?: Json;
   labels?: string[];
   storyPoints?: number;
@@ -129,7 +129,7 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
 
 export interface UpdateIssueInput {
   title?: string;
-  priority?: "lowest" | "low" | "medium" | "high" | "highest";
+  priority?: string;
   assigneeId?: string | null;
   storyPoints?: number | null;
   dueDate?: Date | null;
