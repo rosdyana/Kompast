@@ -161,7 +161,12 @@
     "deletePropertyConfirm": "刪除此屬性？此屬性將從所有工單中移除。",
     "newPropertyPlaceholder": "新屬性名稱",
     "addPropertyButton": "+ 新增屬性",
-    "propertiesFooterNote": "核心屬性仍可重新命名與隱藏，但無法刪除。"
+    "propertiesFooterNote": "核心屬性仍可重新命名與隱藏，但無法刪除。",
+    "priorityHeading": "優先等級",
+    "priorityDesc": "優先等級會顯示在每個工單與看板卡片上。可以新增、重新命名、變更顏色、重新排序或刪除 —— 仍被工單使用中的等級，或是僅剩的最後一個等級，無法刪除。",
+    "priorityCountSummary": "{{count}} 個優先等級",
+    "newPriorityPlaceholder": "新優先等級名稱",
+    "addPriorityButton": "+ 新增優先等級"
   },
   "tableView": {
     "groupLabel": "分組：",

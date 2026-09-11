@@ -20,9 +20,11 @@ import {
   updateIssuePropertyDefinitionFn,
   deleteIssuePropertyDefinitionFn,
 } from "@/lib/server-fns/issue-properties";
+import { listPriorityLevelsFn, createPriorityLevelFn, updatePriorityLevelFn, deletePriorityLevelFn } from "@/lib/server-fns/priority";
 
 type BoardData = Awaited<ReturnType<typeof getProjectBoardFn>>;
 type PropertyDefinition = Awaited<ReturnType<typeof listIssuePropertyDefinitionsFn>>[number];
+type PriorityLevel = Awaited<ReturnType<typeof listPriorityLevelsFn>>[number];
 
 /** Duplicated from packages/core/src/issue-property.ts — see server-fns/issue-properties.ts's own comment on why this list isn't imported. */
 const ISSUE_PROPERTY_TYPES = ["text", "textarea", "number", "date", "checkbox", "select", "multiSelect", "url", "person"] as const;
@@ -31,10 +33,11 @@ const COLUMN_TONES = ["var(--indigo)", "var(--violet)", "var(--amber)", "var(--g
 
 export function ProjectSettingsTab({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
-  const [subTab, setSubTab] = useState<"columns" | "properties">("columns");
+  const [subTab, setSubTab] = useState<"columns" | "properties" | "priority">("columns");
   const subTabs = [
     { key: "columns", label: t("settingsTab.columnsHeading") },
     { key: "properties", label: t("settingsTab.propertiesHeading") },
+    { key: "priority", label: t("settingsTab.priorityHeading") },
   ];
 
   return (
@@ -42,6 +45,7 @@ export function ProjectSettingsTab({ data }: { data: BoardData }) {
       <Tabs items={subTabs} active={subTab} onChange={(key) => setSubTab(key as typeof subTab)} className="mb-5" />
       {subTab === "columns" && <ColumnsSettings data={data} />}
       {subTab === "properties" && <PropertiesSettings projectId={data.project.id} />}
+      {subTab === "priority" && <PrioritySettings projectId={data.project.id} />}
     </div>
   );
 }
@@ -399,6 +403,173 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
         </div>
       </div>
       <p className="mt-3 type-body text-text-3">{t("settingsTab.propertiesFooterNote")}</p>
+    </div>
+  );
+}
+
+function PrioritySettings({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("board");
+  const [levels, setLevels] = useState<PriorityLevel[] | null>(null);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { isArmed, arm, disarm } = useConfirmArm();
+
+  async function refresh() {
+    setLevels(await listPriorityLevelsFn({ data: projectId }));
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  async function addLevel() {
+    if (!newName.trim()) return;
+    setCreating(true);
+    setError(null);
+    try {
+      await createPriorityLevelFn({ data: { projectId, name: newName.trim(), color: COLUMN_TONES[0]! } });
+      setNewName("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function rename(levelId: string, name: string) {
+    setError(null);
+    try {
+      await updatePriorityLevelFn({ data: { projectId, levelId, name } });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
+  async function recolor(levelId: string, color: string) {
+    setError(null);
+    try {
+      await updatePriorityLevelFn({ data: { projectId, levelId, color } });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
+  async function move(levelId: string, direction: "left" | "right") {
+    if (!levels) return;
+    const i = levels.findIndex((l) => l.id === levelId);
+    const j = direction === "left" ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= levels.length) return;
+    const a = levels[i]!;
+    const b = levels[j]!;
+    setError(null);
+    try {
+      await Promise.all([
+        updatePriorityLevelFn({ data: { projectId, levelId: a.id, order: b.order } }),
+        updatePriorityLevelFn({ data: { projectId, levelId: b.id, order: a.order } }),
+      ]);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
+  async function remove(levelId: string) {
+    setError(null);
+    try {
+      await deletePriorityLevelFn({ data: { projectId, levelId } });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
+  function handleDeleteClick(levelId: string) {
+    if (!isArmed(levelId)) {
+      arm(levelId);
+      return;
+    }
+    disarm();
+    remove(levelId);
+  }
+
+  if (!levels) return null;
+
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-semibold">{t("settingsTab.priorityHeading")}</h2>
+      <p className="mb-4 type-body text-text-2">{t("settingsTab.priorityDesc")}</p>
+      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="border-b border-border bg-surface-2 px-3 py-2 type-body font-semibold text-text-2">
+          {t("settingsTab.priorityCountSummary", { count: levels.length })}
+        </div>
+        {levels.map((level, i) => (
+          <div key={level.id} className="flex flex-wrap items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0">
+            <span className="flex min-w-[190px] flex-1 items-center gap-2">
+              <span className="h-2 w-2 flex-none rounded-full" style={{ background: level.color }} />
+              <input
+                defaultValue={level.name}
+                onBlur={(e) => e.target.value.trim() && e.target.value !== level.name && rename(level.id, e.target.value.trim())}
+                className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
+              />
+            </span>
+            <span className="flex items-center gap-1">
+              {COLUMN_TONES.map((tone) => (
+                <button
+                  key={tone}
+                  onClick={() => recolor(level.id, tone)}
+                  title={tone}
+                  className="h-[15px] w-[15px] flex-none rounded-full"
+                  style={{ background: tone, boxShadow: level.color === tone ? "0 0 0 2px var(--border-2)" : undefined }}
+                />
+              ))}
+            </span>
+            <span className="flex gap-0.5">
+              <button
+                onClick={() => move(level.id, "left")}
+                disabled={i === 0}
+                title={t("settingsTab.moveLeftTitle")}
+                className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
+              >
+                <ChevronLeft size={13} strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={() => move(level.id, "right")}
+                disabled={i === levels.length - 1}
+                title={t("settingsTab.moveRightTitle")}
+                className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
+              >
+                <ChevronRight size={13} strokeWidth={1.75} />
+              </button>
+              <button
+                onClick={() => handleDeleteClick(level.id)}
+                title={isArmed(level.id) ? t("clickAgainToDelete") : undefined}
+                className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
+                style={isArmed(level.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
+              >
+                {isArmed(level.id) ? t("clickAgainToDelete") : <X size={13} strokeWidth={1.75} />}
+              </button>
+            </span>
+          </div>
+        ))}
+        <div className="flex items-center gap-2 px-3 py-2.5">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addLevel()}
+            placeholder={t("settingsTab.newPriorityPlaceholder")}
+            className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+          />
+          <Button variant="outline" onClick={addLevel} disabled={creating || !newName.trim()}>
+            {t("settingsTab.addPriorityButton")}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
