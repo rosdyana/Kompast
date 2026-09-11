@@ -145,4 +145,92 @@ describe("comments + watchers", () => {
     const [comment] = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listComments(tx, issueId));
     expect(comment?.createdAt).toEqual(backdated);
   });
+
+  it("threads replies up to 3 levels deep, rejecting a 4th and a bogus parentCommentId", async () => {
+    const issueId = await seedIssue();
+
+    const { commentId: topId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, { issueId, authorId: userId, bodyJson: { text: "top-level" } }),
+    );
+    const [topComment] = (await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listComments(tx, issueId))).filter((c) => c.id === topId);
+    expect(topComment?.depth).toBe(0);
+    expect(topComment?.parentCommentId).toBeNull();
+
+    const { commentId: replyId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, { issueId, authorId: userId, bodyJson: { text: "reply to top" }, parentCommentId: topId }),
+    );
+    const [reply] = (await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listComments(tx, issueId))).filter((c) => c.id === replyId);
+    expect(reply?.depth).toBe(1);
+    expect(reply?.parentCommentId).toBe(topId);
+
+    const { commentId: replyToReplyId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, { issueId, authorId: userId, bodyJson: { text: "reply to reply" }, parentCommentId: replyId }),
+    );
+    const [replyToReply] = (await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listComments(tx, issueId))).filter((c) => c.id === replyToReplyId);
+    expect(replyToReply?.depth).toBe(2);
+    expect(replyToReply?.parentCommentId).toBe(replyId);
+
+    // A reply to a depth:2 comment would be depth 3 — rejected.
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        addComment(tx, { issueId, authorId: userId, bodyJson: { text: "too deep" }, parentCommentId: replyToReplyId }),
+      ),
+    ).rejects.toThrow("Replies can only be nested 3 levels deep");
+
+    // A bogus parentCommentId throws a not-found error rather than silently creating a top-level comment.
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        addComment(tx, { issueId, authorId: userId, bodyJson: { text: "orphan reply" }, parentCommentId: "does-not-exist" }),
+      ),
+    ).rejects.toThrow("Parent comment does-not-exist not found");
+  });
+
+  it("rejects a parentCommentId that belongs to a different issue", async () => {
+    const { issueIdA, issueIdB } = await withAuthorizedTenant({ userId, organizationId: orgId }, async (tx) => {
+      const { projectId, issueTypes, statuses } = await createProject(tx, {
+        organizationId: orgId,
+        teamId,
+        key: "cw2",
+        name: "CW2",
+        actorUserId: userId,
+      });
+      const { issueId: issueIdA } = await createIssue(tx, {
+        organizationId: orgId,
+        projectId,
+        typeId: issueTypes[0]!.id,
+        statusId: statuses[0]!.id,
+        title: "Issue A",
+        reporterId: userId,
+      });
+      const { issueId: issueIdB } = await createIssue(tx, {
+        organizationId: orgId,
+        projectId,
+        typeId: issueTypes[0]!.id,
+        statusId: statuses[0]!.id,
+        title: "Issue B",
+        reporterId: userId,
+      });
+      return { issueIdA, issueIdB };
+    });
+
+    const { commentId: commentOnA } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, { issueId: issueIdA, authorId: userId, bodyJson: { text: "comment on A" } }),
+    );
+
+    // A parentCommentId that exists but belongs to a different issue must be rejected
+    // exactly like a bogus one — not silently accepted, which would make the reply
+    // unreachable (CommentThread.tsx only buckets replies within the current issue's
+    // own comment list).
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        addComment(tx, { issueId: issueIdB, authorId: userId, bodyJson: { text: "cross-issue reply" }, parentCommentId: commentOnA }),
+      ),
+    ).rejects.toThrow(`Parent comment ${commentOnA} not found`);
+
+    // The rejected attempt must not have left a stray comment behind on either issue.
+    const commentsOnA = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listComments(tx, issueIdA));
+    expect(commentsOnA).toHaveLength(1);
+    const commentsOnB = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listComments(tx, issueIdB));
+    expect(commentsOnB).toHaveLength(0);
+  });
 });

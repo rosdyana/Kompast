@@ -10,6 +10,7 @@ import {
   getOrCreateDefaultTableView,
   getProjectByTeamAndKey,
   listIssuePropertyDefinitions,
+  listPriorityLevels,
   listSprints,
   listSprintIssues,
   requireProjectAdmin,
@@ -111,12 +112,13 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
           throw err;
         });
 
-      const [issueTypes, boardData, tableView, propertyDefinitions, sprints] = await Promise.all([
+      const [issueTypes, boardData, tableView, propertyDefinitions, sprints, priorityLevels] = await Promise.all([
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
         getBoard(tx, board.id),
         getOrCreateDefaultTableView(tx, board.id, ctx.userId),
         listIssuePropertyDefinitions(tx, project.id),
         listSprints(tx, board.id),
+        listPriorityLevels(tx, project.id),
       ]);
 
       const activeSprint = sprints.find((s) => s.state === "active") ?? null;
@@ -143,6 +145,7 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
         tableView,
         canManageProject,
         propertyDefinitions,
+        priorityLevels,
         hasAnySprint: sprints.length > 0,
         activeSprint,
         activeSprintIssueIds,
@@ -186,10 +189,11 @@ export const getBoardEmbedDataFn = createServerFn({ method: "GET" })
         .where(and(eq(schema.project.id, board.projectId), eq(schema.project.organizationId, ctx.organizationId)));
       if (!project) throw new Error(`Board ${boardId} not found`);
 
-      const [issueTypes, boardData, tableView] = await Promise.all([
+      const [issueTypes, boardData, tableView, priorityLevels] = await Promise.all([
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
         getBoard(tx, board.id),
         getOrCreateDefaultTableView(tx, board.id, ctx.userId),
+        listPriorityLevels(tx, project.id),
       ]);
 
       const assigneeIds = [
@@ -205,7 +209,7 @@ export const getBoardEmbedDataFn = createServerFn({ method: "GET" })
               .where(inArray(schema.user.id, assigneeIds))
           : [];
 
-      return { project, board, issueTypes, users, tableView, ...boardData };
+      return { project, board, issueTypes, users, tableView, priorityLevels, ...boardData };
     });
   });
 

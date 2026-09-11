@@ -7,7 +7,7 @@ import { resolveIssue, resolveUserByEmail } from "@/lib/api-resolvers";
 
 const updateIssueSchema = z.object({
   title: z.string().min(1).optional(),
-  priority: z.enum(["lowest", "low", "medium", "high", "highest"]).optional(),
+  priority: z.string().min(1).optional(),
   assigneeEmail: z.email().nullable().optional(),
   storyPoints: z.number().nullable().optional(),
   dueDate: z.iso.datetime().nullable().optional(),
@@ -76,7 +76,10 @@ export const Route = createFileRoute("/api/v1/issues/$issueKey")({
               startDate: body.startDate === undefined ? undefined : body.startDate === null ? null : new Date(body.startDate),
               epicId,
               labels: body.labels,
-              descriptionJson: body.description !== undefined ? { text: body.description } : undefined,
+              descriptionJson:
+                body.description !== undefined
+                  ? [{ type: "paragraph", content: [{ type: "text", text: body.description, styles: {} }] }]
+                  : undefined,
               actorId: ctx.userId,
               origin: ctx.origin,
               originClient: request.headers.get("user-agent") ?? undefined,

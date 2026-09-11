@@ -30,7 +30,7 @@ const createIssueSchema = z.object({
   title: z.string().min(1),
   type: z.string().optional(),
   status: z.string().optional(),
-  priority: z.enum(["lowest", "low", "medium", "high", "highest"]).optional(),
+  priority: z.string().min(1).optional(),
   assigneeEmail: z.email().optional(),
   description: z.string().optional(),
   labels: z.array(z.string()).optional(),
@@ -88,7 +88,9 @@ export const Route = createFileRoute("/api/v1/issues")({
                 reporterId: ctx.userId,
                 assigneeId,
                 priority: body.priority,
-                descriptionJson: body.description ? { text: body.description } : undefined,
+                descriptionJson: body.description
+                  ? [{ type: "paragraph", content: [{ type: "text", text: body.description, styles: {} }] }]
+                  : undefined,
                 labels: body.labels,
                 storyPoints: body.storyPoints,
                 dueDate: body.dueDate ? new Date(body.dueDate) : undefined,

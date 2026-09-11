@@ -115,6 +115,28 @@ describe("/api/mcp", () => {
     expect(historyRow?.origin).toBe("mcp");
   });
 
+  it("accepts an arbitrary priority string beyond the old fixed enum", async () => {
+    const create = await callTool(token, "create_issue", { projectKey, title: "MCP custom priority", priority: "blocker" });
+    const created = JSON.parse(create.body.result.content[0].text);
+
+    const [dbIssue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, created.id));
+    expect(dbIssue?.priority).toBe("blocker");
+  });
+
+  it("comment_issue supports parentCommentId for threaded replies", async () => {
+    const create = await callTool(token, "create_issue", { projectKey, title: "MCP threaded comments" });
+    const created = JSON.parse(create.body.result.content[0].text);
+
+    const parent = JSON.parse((await callTool(token, "comment_issue", { issueKey: created.key, text: "parent via mcp" })).body.result.content[0].text);
+    const reply = JSON.parse(
+      (await callTool(token, "comment_issue", { issueKey: created.key, text: "reply via mcp", parentCommentId: parent.id })).body.result.content[0].text,
+    );
+
+    const [dbReply] = await admin.select().from(schema.issueComment).where(eq(schema.issueComment.id, reply.id));
+    expect(dbReply?.parentCommentId).toBe(parent.id);
+    expect(dbReply?.depth).toBe(1);
+  });
+
   it("returns a tool-level error (not an HTTP error) when the token lacks the required scope", async () => {
     const { status, body } = await callTool(readOnlyToken, "create_issue", { projectKey, title: "Should fail" });
     expect(status).toBe(200);

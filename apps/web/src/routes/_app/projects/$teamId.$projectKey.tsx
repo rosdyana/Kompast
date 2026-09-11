@@ -195,14 +195,6 @@ function ProjectPage() {
 
 type BoardData = Awaited<ReturnType<typeof getProjectBoardFn>>;
 
-const PRIORITY_COLOR: Record<string, string> = {
-  highest: "var(--danger)",
-  high: "var(--amber)",
-  medium: "var(--text-3)",
-  low: "var(--text-3)",
-  lowest: "var(--text-3)",
-};
-
 function initialsOf(name: string) {
   return name
     .split(/\s+/)
@@ -1359,6 +1351,7 @@ function BoardView({ data }: { data: BoardData }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const usersById = new Map(data.users.map((u) => [u.id, u]));
   const issueTypesById = new Map(data.issueTypes.map((tp) => [tp.id, tp]));
+  const priorityLevelsByKey = new Map(data.priorityLevels.map((p) => [p.key, p]));
   const teamId = data.project.teamId ?? "none";
 
   // "+ add issue" at the bottom of the board's first non-backlog column
@@ -1575,6 +1568,7 @@ function BoardView({ data }: { data: BoardData }) {
               projectKey={data.project.key}
               issueTypesById={issueTypesById}
               usersById={usersById}
+              priorityLevelsByKey={priorityLevelsByKey}
               visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
               onMoveToAdjacentColumn={moveToAdjacentColumn}
               registerCardRef={registerCardRef}
@@ -1600,6 +1594,7 @@ function Column({
   projectKey,
   issueTypesById,
   usersById,
+  priorityLevelsByKey,
   visibleProperties,
   onMoveToAdjacentColumn,
   registerCardRef,
@@ -1617,6 +1612,7 @@ function Column({
   projectKey: string;
   issueTypesById: Map<string, BoardData["issueTypes"][number]>;
   usersById: Map<string, BoardData["users"][number]>;
+  priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next") => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
@@ -1665,6 +1661,7 @@ function Column({
             columnId={column.id}
             issueTypesById={issueTypesById}
             usersById={usersById}
+            priorityLevelsByKey={priorityLevelsByKey}
             visibleProperties={visibleProperties}
             onMoveToAdjacentColumn={onMoveToAdjacentColumn}
             registerCardRef={registerCardRef}
@@ -1727,6 +1724,7 @@ function Card({
   columnId,
   issueTypesById,
   usersById,
+  priorityLevelsByKey,
   visibleProperties,
   onMoveToAdjacentColumn,
   registerCardRef,
@@ -1737,6 +1735,7 @@ function Card({
   columnId: string;
   issueTypesById: Map<string, BoardData["issueTypes"][number]>;
   usersById: Map<string, BoardData["users"][number]>;
+  priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next") => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
@@ -1829,11 +1828,11 @@ function Card({
       )}
       <div className="flex items-center gap-1.5">
         <span
-          className="inline-flex flex-none items-center gap-1 text-[10px] font-medium capitalize"
-          style={{ color: PRIORITY_COLOR[issue.priority] }}
+          className="inline-flex flex-none items-center gap-1 text-[10px] font-medium"
+          style={{ color: priorityLevelsByKey.get(issue.priority)?.color }}
         >
-          <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: PRIORITY_COLOR[issue.priority] }} />
-          {issue.priority}
+          <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: priorityLevelsByKey.get(issue.priority)?.color }} />
+          {priorityLevelsByKey.get(issue.priority)?.name ?? issue.priority}
         </span>
         {assignee && <Avatar initials={initialsOf(assignee.name)} />}
         {issue.dueDate && (
