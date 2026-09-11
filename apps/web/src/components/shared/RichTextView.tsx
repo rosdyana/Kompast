@@ -9,7 +9,7 @@ const schema = BlockNoteSchema.create({
   inlineContentSpecs: defaultInlineContentSpecs,
 });
 
-function normalizeToBlocks(json: unknown): PartialBlock[] | undefined {
+export function normalizeToBlocks(json: unknown): PartialBlock[] | undefined {
   if (json == null) return undefined;
   if (Array.isArray(json)) return json.length > 0 ? (json as PartialBlock[]) : undefined;
   if (typeof json === "object" && "text" in json && typeof (json as { text?: unknown }).text === "string") {

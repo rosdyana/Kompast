@@ -1,10 +1,12 @@
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter, ClientOnly } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { ArrowLeft, Paperclip, X } from "lucide-react";
+import type { Block, PartialBlock } from "@blocknote/core";
 import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
 import { PageContainer } from "@kompast/ui/PageContainer";
+import { Tabs } from "@kompast/ui/Tabs";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import {
   getIssueDetailFn,
@@ -14,9 +16,15 @@ import {
   updateIssueAssigneeFn,
   updateIssuePriorityFn,
   updateIssueCustomFieldFn,
+  updateIssueDatesFn,
+  updateIssueEpicFn,
 } from "@/lib/server-fns/issue-detail";
+import { addIssueToSprintFn, removeIssueFromSprintFn } from "@/lib/server-fns/sprints";
 import { requestAttachmentUploadFn, deleteAttachmentFn } from "@/lib/server-fns/attachments";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
+import { LiteEditor } from "@/components/shared/LiteEditor";
+import { RichTextView, normalizeToBlocks } from "@/components/shared/RichTextView";
+import { CommentThread } from "@/components/issues/CommentThread";
 
 export const Route = createFileRoute("/_app/issues/$teamId/$projectKey/$issueKeySeq")({
   loader: ({ params }) =>
@@ -40,31 +48,20 @@ function IssueDetailPage() {
   const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const data = Route.useLoaderData();
   const router = useRouter();
-  const [comment, setComment] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [watching, setWatching] = useState(data.isWatching);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<"comments" | "activity">("comments");
 
-  const initialDescription = (data.issue.descriptionJson as { text?: string } | null)?.text ?? "";
+  const hasDescription = normalizeToBlocks(data.issue.descriptionJson) !== undefined;
   const [editingDescription, setEditingDescription] = useState(false);
-  const [descriptionDraft, setDescriptionDraft] = useState(initialDescription);
+  const [descriptionDraft, setDescriptionDraft] = useState<Block[]>([]);
+  const [descriptionInitialContent, setDescriptionInitialContent] = useState<PartialBlock[] | undefined>(undefined);
+  const [descriptionEditorKey, setDescriptionEditorKey] = useState(0);
   const [savingDescription, setSavingDescription] = useState(false);
   const [aiDraftBusy, setAiDraftBusy] = useState(false);
 
   const usersById = new Map(data.users.map((u) => [u.id, u]));
-
-  async function submitComment() {
-    if (!comment.trim()) return;
-    setSubmitting(true);
-    try {
-      await addCommentFn({ data: { issueId: data.issue.id, text: comment.trim() } });
-      setComment("");
-      await router.invalidate();
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   async function toggleWatch() {
     const next = !watching;
@@ -115,7 +112,9 @@ function IssueDetailPage() {
   async function saveDescription() {
     setSavingDescription(true);
     try {
-      await updateIssueDescriptionFn({ data: { issueId: data.issue.id, description: descriptionDraft } });
+      await updateIssueDescriptionFn({
+        data: { issueId: data.issue.id, descriptionJson: descriptionDraft.length > 0 ? descriptionDraft : null },
+      });
       setEditingDescription(false);
       await router.invalidate();
     } finally {
@@ -123,18 +122,62 @@ function IssueDetailPage() {
     }
   }
 
+  /**
+   * The AI draft streams plain-text deltas (see streamAiCompletion), but
+   * LiteEditor only reads `initialContent` once at mount time — it has no
+   * mechanism to accept live external content updates. Rather than attempt
+   * live token-by-token editor updates (which would require reaching into
+   * BlockNote's imperative API), this accumulates the stream into a plain
+   * local string exactly like the old plain-textarea version did, and only
+   * converts+loads it into the editor once streaming finishes, by bumping
+   * `descriptionEditorKey` to force a remount with fresh `initialContent`.
+   * Simpler and safer than live-updating a mounted BlockNote instance, at
+   * the cost of not showing AI text appear incrementally in the editor
+   * itself (the button's busy label is the only progress indicator while
+   * streaming).
+   */
   async function generateAiDescriptionDraft() {
     setAiDraftBusy(true);
-    setDescriptionDraft("");
+    let accumulated = "";
     try {
       await streamAiCompletion({ feature: "issue-description", title: data.issue.title }, (delta) => {
-        setDescriptionDraft((prev) => prev + delta);
+        accumulated += delta;
       });
     } catch (err) {
-      setDescriptionDraft(err instanceof Error ? t("aiDraftFailed", { message: err.message }) : t("aiDraftFailedGeneric"));
+      accumulated = err instanceof Error ? t("aiDraftFailed", { message: err.message }) : t("aiDraftFailedGeneric");
     } finally {
+      const blocks: PartialBlock[] = accumulated
+        ? [{ type: "paragraph", content: [{ type: "text", text: accumulated, styles: {} }] }]
+        : [];
+      setDescriptionInitialContent(blocks);
+      setDescriptionDraft(blocks as Block[]);
+      setDescriptionEditorKey((k) => k + 1);
       setAiDraftBusy(false);
     }
+  }
+
+  async function setStartDate(value: string | null) {
+    await updateIssueDatesFn({ data: { issueId: data.issue.id, startDate: value ? new Date(value).toISOString() : null } });
+    await router.invalidate();
+  }
+
+  async function setDueDate(value: string | null) {
+    await updateIssueDatesFn({ data: { issueId: data.issue.id, dueDate: value ? new Date(value).toISOString() : null } });
+    await router.invalidate();
+  }
+
+  async function setEpic(epicId: string | null) {
+    await updateIssueEpicFn({ data: { issueId: data.issue.id, epicId } });
+    await router.invalidate();
+  }
+
+  async function setSprint(sprintId: string | null) {
+    if (sprintId) {
+      await addIssueToSprintFn({ data: { sprintId, issueId: data.issue.id } });
+    } else {
+      await removeIssueFromSprintFn({ data: data.issue.id });
+    }
+    await router.invalidate();
   }
 
   return (
@@ -165,23 +208,28 @@ function IssueDetailPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setDescriptionDraft(initialDescription);
+                    const blocks = normalizeToBlocks(data.issue.descriptionJson) ?? [];
+                    setDescriptionInitialContent(blocks);
+                    setDescriptionDraft(blocks as Block[]);
+                    setDescriptionEditorKey((k) => k + 1);
                     setEditingDescription(true);
                   }}
                 >
-                  {initialDescription ? t("edit") : t("addDescription")}
+                  {hasDescription ? t("edit") : t("addDescription")}
                 </Button>
               )}
             </div>
             {editingDescription ? (
               <div className="flex flex-col gap-2">
-                <textarea
-                  value={descriptionDraft}
-                  onChange={(e) => setDescriptionDraft(e.target.value)}
-                  rows={6}
-                  placeholder={t("descriptionPlaceholder")}
-                  className="w-full rounded-[7px] border border-border bg-surface p-3 text-[12.5px] outline-none focus:border-border-2"
-                />
+                <ClientOnly fallback={<div className="min-h-[140px] rounded-[7px] border border-border bg-surface" />}>
+                  <LiteEditor
+                    key={descriptionEditorKey}
+                    initialContent={descriptionInitialContent}
+                    onChange={setDescriptionDraft}
+                    autoFocus
+                    className="min-h-[140px] rounded-[7px] border border-border bg-surface p-3 text-[12.5px] outline-none focus:border-border-2"
+                  />
+                </ClientOnly>
                 <div className="flex items-center gap-2">
                   <Button variant="primary" onClick={saveDescription} disabled={savingDescription}>
                     {savingDescription ? t("savingEllipsis") : t("save")}
@@ -194,8 +242,10 @@ function IssueDetailPage() {
                   </Button>
                 </div>
               </div>
-            ) : initialDescription ? (
-              <p className="whitespace-pre-wrap type-body leading-snug text-text-2">{initialDescription}</p>
+            ) : hasDescription ? (
+              <ClientOnly fallback={<div className="min-h-[24px]" />}>
+                <RichTextView content={data.issue.descriptionJson} className="type-body leading-snug text-text-2" />
+              </ClientOnly>
             ) : (
               <p className="type-body text-text-3">{t("noDescriptionYet")}</p>
             )}
@@ -245,44 +295,28 @@ function IssueDetailPage() {
             )}
           </section>
 
-          <div className="divide-y divide-border rounded-xl border border-border bg-surface">
-            <section className="p-4">
-              <h2 className="mb-3 type-headline">{t("commentsHeading")}</h2>
-              <div className="mb-3 flex flex-col gap-3">
-                {data.comments.length === 0 && <p className="type-body text-text-3">{t("noCommentsYet")}</p>}
-                {data.comments.map((c) => {
-                  const author = usersById.get(c.authorId);
-                  const body = c.bodyJson as { text?: string } | null;
-                  return (
-                    <div key={c.id} className="flex gap-2.5">
-                      <Avatar initials={author ? initialsOf(author.name) : "?"} size={24} />
-                      <div className="min-w-0 flex-1 rounded-[9px] border border-border bg-surface-2 p-3">
-                        <p className="mb-1 flex items-center gap-2 text-[11.5px]">
-                          <strong>{author?.name ?? t("unknownAuthor")}</strong>
-                          <span className="type-label text-text-3">{new Date(c.createdAt).toLocaleString(intlLocale)}</span>
-                        </p>
-                        <p className="type-body leading-snug">{body?.text ?? ""}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2">
-                <textarea
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder={t("commentPlaceholder")}
-                  rows={2}
-                  className="min-w-0 flex-1 rounded-[7px] border border-border bg-surface p-3 text-[12.5px] outline-none focus:border-border-2"
-                />
-                <Button variant="primary" onClick={submitComment} disabled={submitting || !comment.trim()}>
-                  {t("send")}
-                </Button>
-              </div>
-            </section>
-
-            <section className="p-4">
-              <h2 className="mb-3 type-headline">{t("activityHeading")}</h2>
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <Tabs
+              items={[
+                { key: "comments", label: t("commentsHeading") },
+                { key: "activity", label: t("activityHeading") },
+              ]}
+              active={activeTab}
+              onChange={(key) => setActiveTab(key as "comments" | "activity")}
+              className="mb-4"
+            />
+            {activeTab === "comments" && (
+              <CommentThread
+                comments={data.comments}
+                usersById={usersById}
+                intlLocale={intlLocale}
+                onSubmit={async ({ bodyJson, parentCommentId }) => {
+                  await addCommentFn({ data: { issueId: data.issue.id, bodyJson, parentCommentId } });
+                  await router.invalidate();
+                }}
+              />
+            )}
+            {activeTab === "activity" && (
               <div className="flex flex-col gap-2">
                 {data.history.length === 0 && <p className="type-body text-text-3">{t("noActivityYet")}</p>}
                 {data.history.map((h) => (
@@ -293,7 +327,7 @@ function IssueDetailPage() {
                   </p>
                 ))}
               </div>
-            </section>
+            )}
           </div>
         </div>
 
@@ -332,11 +366,63 @@ function IssueDetailPage() {
                 onChange={(e) => setPriority(e.target.value)}
                 className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
               >
-                {["lowest", "low", "medium", "high", "highest"].map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+                {[...data.priorityLevels].sort((a, b) => a.order - b.order).map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.name}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <p className="mb-1 text-text-3">{t("startDateLabel")}</p>
+              <input
+                type="date"
+                value={data.issue.startDate ? new Date(data.issue.startDate).toISOString().slice(0, 10) : ""}
+                onChange={(e) => setStartDate(e.target.value || null)}
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-text-3">{t("dueDateLabel")}</p>
+              <input
+                type="date"
+                value={data.issue.dueDate ? new Date(data.issue.dueDate).toISOString().slice(0, 10) : ""}
+                onChange={(e) => setDueDate(e.target.value || null)}
+                className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+              />
+            </div>
+            {data.type?.hierarchyLevel !== 0 && (
+              <div>
+                <p className="mb-1 text-text-3">{t("epicLabel")}</p>
+                <select
+                  value={data.issue.epicId ?? ""}
+                  onChange={(e) => setEpic(e.target.value || null)}
+                  className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+                >
+                  <option value="">{t("noEpic")}</option>
+                  {data.candidateEpics.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {data.project.key}-{e.keySeq} {e.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <p className="mb-1 text-text-3">{t("sprintLabel")}</p>
+              <select
+                value={data.issue.sprintId ?? ""}
+                onChange={(e) => setSprint(e.target.value || null)}
+                className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+              >
+                <option value="">{t("backlogLabel")}</option>
+                {data.boardSprints
+                  .filter((s) => s.state !== "closed" || s.id === data.issue.sprintId)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
               </select>
             </div>
             {data.issue.storyPoints != null && (
