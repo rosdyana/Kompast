@@ -1,11 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { and, asc, desc, eq, inArray, schema, type Json } from "@kompast/db";
+import { and, asc, desc, eq, inArray, ne, schema, type Json } from "@kompast/db";
 import {
   addComment,
   listComments,
   listAttachments,
   listIssuePropertyDefinitions,
+  listPriorityLevels,
+  listSprints,
   getProjectByTeamAndKey,
   setWatching,
   updateIssue,
@@ -77,7 +79,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         .where(and(eq(schema.issueWatcher.issueId, issue.id), eq(schema.issueWatcher.userId, ctx.userId)))
         .then((r) => r.length > 0);
 
-      const [statuses, allTypes, propertyDefinitions, orgMembers] = await Promise.all([
+      const [statuses, allTypes, propertyDefinitions, orgMembers, priorityLevels, candidateEpics, boardSprints] = await Promise.all([
         tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, project.id)).orderBy(asc(schema.workflowStatus.order)),
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
         listIssuePropertyDefinitions(tx, project.id),
@@ -89,38 +91,87 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
           .from(schema.member)
           .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
           .where(eq(schema.member.organizationId, ctx.organizationId)),
+        listPriorityLevels(tx, project.id),
+        // Epic picker candidates: this project's issues whose type is an epic
+        // (hierarchyLevel === 0), excluding the current issue itself — an
+        // issue can't be its own epic. `project.key` is already in hand from
+        // the loader above, so a bare keySeq is enough for the UI to render
+        // "KEY-123 Title".
+        tx
+          .select({ id: schema.issue.id, keySeq: schema.issue.keySeq, title: schema.issue.title })
+          .from(schema.issue)
+          .innerJoin(schema.issueType, eq(schema.issueType.id, schema.issue.typeId))
+          .where(and(eq(schema.issue.projectId, project.id), eq(schema.issueType.hierarchyLevel, 0), ne(schema.issue.id, issue.id))),
+        // A project has exactly one board today (see every schema.board
+        // insert site) — same first-row-destructure pattern as home.ts/
+        // projects.ts, not a "what if multiple boards" branch.
+        (async () => {
+          const [board] = await tx.select().from(schema.board).where(eq(schema.board.projectId, project.id));
+          return board ? listSprints(tx, board.id) : [];
+        })(),
       ]);
 
-      return { project, issue, type, status, comments, users, isWatching, history, statuses, allTypes, attachments, propertyDefinitions, orgMembers };
+      return {
+        project,
+        issue,
+        type,
+        status,
+        comments,
+        users,
+        isWatching,
+        history,
+        statuses,
+        allTypes,
+        attachments,
+        propertyDefinitions,
+        orgMembers,
+        priorityLevels,
+        candidateEpics,
+        boardSprints,
+      };
     });
   });
 
-const addCommentSchema = z.object({ issueId: z.string(), text: z.string().min(1) });
+const addCommentSchema = z.object({
+  issueId: z.string(),
+  bodyJson: z.array(z.record(z.string(), z.unknown())).min(1),
+  parentCommentId: z.string().optional(),
+});
 
 export const addCommentFn = createServerFn({ method: "POST" })
   .validator(addCommentSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, (tx) =>
-      addComment(tx, { issueId: data.issueId, authorId: ctx.userId, bodyJson: { text: data.text } }),
+      addComment(tx, {
+        issueId: data.issueId,
+        authorId: ctx.userId,
+        // Zod's z.record(z.string(), z.unknown()) infers Record<string,
+        // unknown>, which — since `unknown` isn't structurally assignable to
+        // Json — TS won't accept as Json[] even though every value it holds
+        // is real jsonb-serializable data (BlockNote Block[]); same
+        // intentionally-loose-validator-then-cast pattern as
+        // updateIssueCustomFieldFn's `merged` below.
+        bodyJson: data.bodyJson as Json,
+        parentCommentId: data.parentCommentId,
+      }),
     );
   });
 
-const updateDescriptionSchema = z.object({ issueId: z.string(), description: z.string() });
+const updateDescriptionSchema = z.object({ issueId: z.string(), descriptionJson: z.array(z.record(z.string(), z.unknown())).nullable() });
 
 /**
- * The issue detail page had no description display/edit UI at all before
- * this (a pre-existing P1/P2 gap — description was only ever settable via
- * REST/MCP create) — this is the minimal write path for it, using the
- * same {text: string} descriptionJson shape REST/MCP already use (see
- * apps/web/src/routes/api/v1/issues.tsx), not a full BlockNote document.
+ * Accepts the rich editor's real BlockNote block JSON directly (no more
+ * server-side {text: string} wrapping) — description is now a full
+ * BlockNote document, same shape addCommentFn's bodyJson uses.
  */
 export const updateIssueDescriptionFn = createServerFn({ method: "POST" })
   .validator(updateDescriptionSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, (tx) =>
-      updateIssue(tx, data.issueId, { descriptionJson: data.description.trim() ? { text: data.description } : null, actorId: ctx.userId }),
+      // Same z.unknown()-vs-Json structural cast as addCommentFn's bodyJson above.
+      updateIssue(tx, data.issueId, { descriptionJson: data.descriptionJson as Json, actorId: ctx.userId }),
     );
     return { ok: true } as const;
   });
@@ -137,7 +188,11 @@ export const updateIssueAssigneeFn = createServerFn({ method: "POST" })
 
 const updatePrioritySchema = z.object({
   issueId: z.string(),
-  priority: z.enum(["lowest", "low", "medium", "high", "highest"]),
+  // priority is now a project-configurable key (see packages/core/src/
+  // priority.ts), not a fixed enum — validity is enforced implicitly since
+  // the UI only ever offers keys from listPriorityLevelsFn, same trust
+  // level as statusId/typeId elsewhere in this file.
+  priority: z.string().min(1),
 });
 
 export const updateIssuePriorityFn = createServerFn({ method: "POST" })
@@ -145,6 +200,36 @@ export const updateIssuePriorityFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, data.issueId, { priority: data.priority, actorId: ctx.userId }));
+    return { ok: true } as const;
+  });
+
+const updateIssueDatesSchema = z.object({
+  issueId: z.string(),
+  startDate: z.iso.datetime().nullable().optional(),
+  dueDate: z.iso.datetime().nullable().optional(),
+});
+
+export const updateIssueDatesFn = createServerFn({ method: "POST" })
+  .validator(updateIssueDatesSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) =>
+      updateIssue(tx, data.issueId, {
+        startDate: data.startDate !== undefined ? (data.startDate ? new Date(data.startDate) : null) : undefined,
+        dueDate: data.dueDate !== undefined ? (data.dueDate ? new Date(data.dueDate) : null) : undefined,
+        actorId: ctx.userId,
+      }),
+    );
+    return { ok: true } as const;
+  });
+
+const updateIssueEpicSchema = z.object({ issueId: z.string(), epicId: z.string().nullable() });
+
+export const updateIssueEpicFn = createServerFn({ method: "POST" })
+  .validator(updateIssueEpicSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, data.issueId, { epicId: data.epicId, actorId: ctx.userId }));
     return { ok: true } as const;
   });
 
