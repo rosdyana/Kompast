@@ -33,16 +33,13 @@ export const issue = pgTable(
     parentId: text("parent_id"),
     epicId: text("epic_id"),
     title: text("title").notNull(),
-    /** BlockNote document JSON. */
-    /** BlockNote document JSON (P2) — untyped placeholder until that schema exists. */
+    /** Rich text document: either a legacy { text: string } shape (all content written before this pass) or a real BlockNote Block[] JSON array (this pass onward). See packages/core/src/rich-text.ts's toPlainText for a shape-agnostic reader. */
     descriptionJson: jsonb("description_json").$type<Json | null>(),
     assigneeId: text("assignee_id").references(() => user.id),
     reporterId: text("reporter_id")
       .notNull()
       .references(() => user.id),
-    priority: text("priority", { enum: ["lowest", "low", "medium", "high", "highest"] })
-      .notNull()
-      .default("medium"),
+    priority: text("priority").notNull().default("medium"),
     storyPoints: integer("story_points"),
     estimateSeconds: integer("estimate_seconds"),
     spentSeconds: integer("spent_seconds").notNull().default(0),
@@ -100,7 +97,9 @@ export const issueComment = pgTable("issue_comment", {
   authorId: text("author_id")
     .notNull()
     .references(() => user.id),
+  parentCommentId: text("parent_comment_id"),
   bodyJson: jsonb("body_json").$type<Json>().notNull(),
+  depth: integer("depth").notNull().default(0),
   origin: text("origin").notNull().default("user"),
   originClient: text("origin_client"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

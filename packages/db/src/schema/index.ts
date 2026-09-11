@@ -21,6 +21,7 @@ export * from "./workflow";
 export * from "./board";
 export * from "./issue";
 export * from "./issue-property";
+export * from "./priority";
 export * from "./sprint";
 export * from "./settings";
 export * from "./page";
