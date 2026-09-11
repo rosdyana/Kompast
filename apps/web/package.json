@@ -9,7 +9,6 @@
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
     "seed:dev": "tsx scripts/seed-dev.ts",
-    "backfill:priority-levels": "tsx scripts/backfill-priority-levels.ts",
     "test": "vitest run"
   },
   "dependencies": {

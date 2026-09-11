@@ -184,4 +184,53 @@ describe("comments + watchers", () => {
       ),
     ).rejects.toThrow("Parent comment does-not-exist not found");
   });
+
+  it("rejects a parentCommentId that belongs to a different issue", async () => {
+    const { issueIdA, issueIdB } = await withAuthorizedTenant({ userId, organizationId: orgId }, async (tx) => {
+      const { projectId, issueTypes, statuses } = await createProject(tx, {
+        organizationId: orgId,
+        teamId,
+        key: "cw2",
+        name: "CW2",
+        actorUserId: userId,
+      });
+      const { issueId: issueIdA } = await createIssue(tx, {
+        organizationId: orgId,
+        projectId,
+        typeId: issueTypes[0]!.id,
+        statusId: statuses[0]!.id,
+        title: "Issue A",
+        reporterId: userId,
+      });
+      const { issueId: issueIdB } = await createIssue(tx, {
+        organizationId: orgId,
+        projectId,
+        typeId: issueTypes[0]!.id,
+        statusId: statuses[0]!.id,
+        title: "Issue B",
+        reporterId: userId,
+      });
+      return { issueIdA, issueIdB };
+    });
+
+    const { commentId: commentOnA } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, { issueId: issueIdA, authorId: userId, bodyJson: { text: "comment on A" } }),
+    );
+
+    // A parentCommentId that exists but belongs to a different issue must be rejected
+    // exactly like a bogus one — not silently accepted, which would make the reply
+    // unreachable (CommentThread.tsx only buckets replies within the current issue's
+    // own comment list).
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        addComment(tx, { issueId: issueIdB, authorId: userId, bodyJson: { text: "cross-issue reply" }, parentCommentId: commentOnA }),
+      ),
+    ).rejects.toThrow(`Parent comment ${commentOnA} not found`);
+
+    // The rejected attempt must not have left a stray comment behind on either issue.
+    const commentsOnA = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listComments(tx, issueIdA));
+    expect(commentsOnA).toHaveLength(1);
+    const commentsOnB = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listComments(tx, issueIdB));
+    expect(commentsOnB).toHaveLength(0);
+  });
 });

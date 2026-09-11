@@ -35,7 +35,7 @@ type PriorityLevel = Awaited<ReturnType<typeof listPriorityLevelsFn>>[number];
 /** Duplicated from packages/core/src/issue-property.ts — see server-fns/issue-properties.ts's own comment on why this list isn't imported. */
 const ISSUE_PROPERTY_TYPES = ["text", "textarea", "number", "date", "checkbox", "select", "multiSelect", "url", "person"] as const;
 
-const COLUMN_TONES = ["var(--indigo)", "var(--violet)", "var(--amber)", "var(--green)", "var(--danger)", "var(--text-3)"];
+const COLUMN_TONES = ["var(--indigo)", "var(--violet)", "var(--amber)", "var(--green)", "var(--danger)", "var(--text3)"];
 
 export function ProjectSettingsTab({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");

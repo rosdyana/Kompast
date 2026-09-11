@@ -1,4 +1,4 @@
-import { asc, eq, inArray, schema, type Json } from "@kompast/db";
+import { and, asc, eq, inArray, schema, type Json } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import type { Tx } from "./types";
 import { id } from "./ids";
@@ -81,7 +81,7 @@ export async function addComment(tx: Tx, input: AddCommentInput) {
     const [parent] = await tx
       .select({ depth: schema.issueComment.depth })
       .from(schema.issueComment)
-      .where(eq(schema.issueComment.id, input.parentCommentId));
+      .where(and(eq(schema.issueComment.id, input.parentCommentId), eq(schema.issueComment.issueId, input.issueId)));
     if (!parent) throw new Error(`Parent comment ${input.parentCommentId} not found`);
     if (parent.depth >= 2) throw new Error("Replies can only be nested 3 levels deep");
     depth = parent.depth + 1;

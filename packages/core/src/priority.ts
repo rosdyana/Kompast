@@ -10,7 +10,7 @@ export interface PriorityLevelSeed {
 
 /** Seeded into every newly-created project (packages/core/src/project.ts's createProject). */
 export const DEFAULT_PRIORITY_LEVELS: PriorityLevelSeed[] = [
-  { key: "very_low", name: "Very Low", color: "var(--text-3)" },
+  { key: "very_low", name: "Very Low", color: "var(--text3)" },
   { key: "low", name: "Low", color: "var(--indigo)" },
   { key: "medium", name: "Medium", color: "var(--amber)" },
   { key: "high", name: "High", color: "var(--accent)" },

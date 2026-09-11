@@ -10,17 +10,26 @@ import { kompastViewBlockConfig } from "@/lib/blocknote-schema";
 type BoardData = Awaited<ReturnType<typeof getBoardEmbedDataFn>>;
 type FlatIssue = BoardData["columns"][number]["issues"][number] & { columnName: string; columnColor: string };
 
-const PRIORITY_ORDER: Record<string, number> = { highest: 0, high: 1, medium: 2, low: 3, lowest: 4 };
-
 function initialsOf(name: string) {
   return name.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 }
 
-function sortIssues(issues: FlatIssue[], sortBy: TableViewConfig["sortBy"], sortDir: "asc" | "desc") {
+/**
+ * `priority_level.order` is ascending-severity (0 = lowest). The table's
+ * "Sort: Priority" wants descending severity (highest first), so invert:
+ * the level with `order: 0` gets the highest index, sorting last — same
+ * derivation as TableView.tsx's priorityOrderByKey.
+ */
+function priorityOrderByKey(priorityLevels: { key: string; order: number }[]): Record<string, number> {
+  const sorted = [...priorityLevels].sort((a, b) => a.order - b.order);
+  return Object.fromEntries(sorted.map((p, i, arr) => [p.key, arr.length - 1 - i]));
+}
+
+function sortIssues(issues: FlatIssue[], sortBy: TableViewConfig["sortBy"], sortDir: "asc" | "desc", priorityOrder: Record<string, number>) {
   const sorted = [...issues].sort((a, b) => {
     let cmp = 0;
     if (sortBy === "rank") cmp = a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0;
-    else if (sortBy === "priority") cmp = (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99);
+    else if (sortBy === "priority") cmp = (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99);
     else if (sortBy === "dueDate") cmp = (a.dueDate ? new Date(a.dueDate).getTime() : Infinity) - (b.dueDate ? new Date(b.dueDate).getTime() : Infinity);
     else if (sortBy === "points") cmp = (a.storyPoints ?? -1) - (b.storyPoints ?? -1);
     else if (sortBy === "key") cmp = a.keySeq - b.keySeq;
@@ -36,7 +45,7 @@ function ReadOnlyTable({ data }: { data: BoardData }) {
   const usersById = new Map(data.users.map((u) => [u.id, u]));
 
   const flat: FlatIssue[] = data.columns.flatMap((col) => col.issues.map((issue) => ({ ...issue, columnName: col.name, columnColor: col.color })));
-  const sorted = sortIssues(flat, config.sortBy, config.sortDir);
+  const sorted = sortIssues(flat, config.sortBy, config.sortDir, priorityOrderByKey(data.priorityLevels));
 
   return (
     <div className="overflow-hidden rounded-xl border border-border">

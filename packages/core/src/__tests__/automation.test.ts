@@ -6,6 +6,7 @@ import { addComment } from "../comment";
 import { createAutomationRule, evaluateAutomationEvent, claimPendingAutomationEvents, MAX_AUTOMATION_DEPTH } from "../automation";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
+import { toPlainText } from "../rich-text";
 
 describe("automation engine", () => {
   const orgId = "test-automation-org";
@@ -114,7 +115,10 @@ describe("automation engine", () => {
 
     const comments = await admin.select().from(schema.issueComment).where(eq(schema.issueComment.issueId, issueId));
     expect(comments).toHaveLength(1);
-    expect((comments[0]!.bodyJson as { text: string }).text).toBe("Closed by automation");
+    // The "comment" automation action now writes the same Block[] rich-text shape
+    // as every other writer (Finding 3 of the final-review fix wave) — read it back
+    // via toPlainText rather than the old { text } accessor.
+    expect(toPlainText(comments[0]!.bodyJson)).toBe("Closed by automation");
   });
 
   it("a disabled rule is never evaluated", async () => {

@@ -146,7 +146,7 @@ async function executeActions(tx: Tx, rule: AutomationRuleRow, event: Automation
       const labels = [...new Set([...(current?.labels ?? []), action.label])];
       await updateIssue(tx, issueId, { labels, actorId, origin, originClient, automationContext });
     } else if (action.type === "comment") {
-      await addComment(tx, { issueId, authorId: actorId, bodyJson: { text: action.text }, origin, originClient });
+      await addComment(tx, { issueId, authorId: actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: action.text, styles: {} }] }], origin, originClient });
     } else if (action.type === "notify") {
       await notify(tx, { organizationId: event.organizationId, userId: action.userId, eventType: "automation.rule", entityType: "issue", entityId: issueId, title: action.title, body: action.body });
     } else if (action.type === "add_to_sprint") {
