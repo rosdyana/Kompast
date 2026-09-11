@@ -14,6 +14,7 @@ export * from "./email";
 export * from "./notification";
 export * from "./automation";
 export * from "./comment";
+export * from "./rich-text";
 export * from "./watcher";
 export * from "./attachment";
 export * from "./worklog";

@@ -15,6 +15,7 @@ export interface AddCommentInput {
   automationContext?: AutomationContext;
   /** Backdates the comment — for the importer, preserving a JIRA/Notion comment's real timestamp. Omit for a real-time comment (defaults to now). */
   createdAt?: Date;
+  parentCommentId?: string;
 }
 
 /**
@@ -74,6 +75,18 @@ async function notifyCommentParticipants(tx: Tx, issueId: string, authorId: stri
 
 export async function addComment(tx: Tx, input: AddCommentInput) {
   const commentId = id("comment");
+
+  let depth = 0;
+  if (input.parentCommentId) {
+    const [parent] = await tx
+      .select({ depth: schema.issueComment.depth })
+      .from(schema.issueComment)
+      .where(eq(schema.issueComment.id, input.parentCommentId));
+    if (!parent) throw new Error(`Parent comment ${input.parentCommentId} not found`);
+    if (parent.depth >= 2) throw new Error("Replies can only be nested 3 levels deep");
+    depth = parent.depth + 1;
+  }
+
   await tx.insert(schema.issueComment).values({
     id: commentId,
     issueId: input.issueId,
@@ -81,6 +94,8 @@ export async function addComment(tx: Tx, input: AddCommentInput) {
     bodyJson: input.bodyJson,
     origin: input.origin ?? "user",
     originClient: input.originClient,
+    parentCommentId: input.parentCommentId,
+    depth,
     ...(input.createdAt ? { createdAt: input.createdAt, updatedAt: input.createdAt } : {}),
   });
 

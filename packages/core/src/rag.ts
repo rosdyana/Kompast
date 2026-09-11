@@ -4,6 +4,7 @@ import type { Tx, AnyDb } from "./types";
 import { id } from "./ids";
 import { getEmbeddingCredentials } from "./settings";
 import { runAiCompletion } from "./ai";
+import { toPlainText } from "./rich-text";
 
 export type RagEntityType = "issue" | "comment" | "page";
 
@@ -128,7 +129,7 @@ export async function processReindexTask(tx: Tx, task: { organizationId: string;
     const [issue] = await tx.select().from(schema.issue).where(eq(schema.issue.id, task.entityId));
     if (!issue) return; // deleted since being queued
 
-    const parts = [issue.title, (issue.descriptionJson as { text?: string } | null)?.text ?? ""];
+    const parts = [issue.title, toPlainText(issue.descriptionJson)];
     if (issue.sprintId) {
       const [sprint] = await tx.select({ name: schema.sprint.name, goal: schema.sprint.goal }).from(schema.sprint).where(eq(schema.sprint.id, issue.sprintId));
       // Folded into the issue's own indexed text (not a separately-indexed entity) — lets a query like
@@ -139,7 +140,7 @@ export async function processReindexTask(tx: Tx, task: { organizationId: string;
   } else if (task.entityType === "comment") {
     const [comment] = await tx.select().from(schema.issueComment).where(eq(schema.issueComment.id, task.entityId));
     if (!comment) return;
-    const text = (comment.bodyJson as { text?: string } | null)?.text ?? "";
+    const text = toPlainText(comment.bodyJson);
     await indexEntity(tx, { organizationId: task.organizationId, entityType: "comment", entityId: task.entityId, text });
   }
 }
