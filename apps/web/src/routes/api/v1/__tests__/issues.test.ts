@@ -183,6 +183,54 @@ describe("/api/v1/issues", () => {
     expect(comments.data[0].text).toBe("via REST");
   });
 
+  it("accepts an arbitrary priority string beyond the old fixed enum, on create and patch", async () => {
+    const created = await (
+      await issuesHandlers.POST({
+        request: req("http://x/api/v1/issues", { method: "POST", token, body: { projectKey, title: "Custom priority issue", priority: "blocker" } }),
+        params: {},
+      })
+    ).json();
+
+    const [dbIssue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, created.id));
+    expect(dbIssue?.priority).toBe("blocker");
+
+    const patchRes = await issueItemHandlers.PATCH({
+      request: req(`http://x/api/v1/issues/${created.key}`, { method: "PATCH", token, body: { priority: "urgent-custom" } }),
+      params: { issueKey: created.key },
+    });
+    expect(patchRes.status).toBe(200);
+
+    const [afterPatch] = await admin.select().from(schema.issue).where(eq(schema.issue.id, created.id));
+    expect(afterPatch?.priority).toBe("urgent-custom");
+  });
+
+  it("creates a threaded reply comment via parentCommentId", async () => {
+    const created = await (
+      await issuesHandlers.POST({
+        request: req("http://x/api/v1/issues", { method: "POST", token, body: { projectKey, title: "Threaded comments issue" } }),
+        params: {},
+      })
+    ).json();
+    const issueKey: string = created.key;
+
+    const parentRes = await commentsHandlers.POST({
+      request: req(`http://x/api/v1/issues/${issueKey}/comments`, { method: "POST", token, body: { text: "parent comment" } }),
+      params: { issueKey },
+    });
+    const parent = await parentRes.json();
+
+    const replyRes = await commentsHandlers.POST({
+      request: req(`http://x/api/v1/issues/${issueKey}/comments`, { method: "POST", token, body: { text: "a reply", parentCommentId: parent.id } }),
+      params: { issueKey },
+    });
+    expect(replyRes.status).toBe(201);
+    const reply = await replyRes.json();
+
+    const [dbReply] = await admin.select().from(schema.issueComment).where(eq(schema.issueComment.id, reply.id));
+    expect(dbReply?.parentCommentId).toBe(parent.id);
+    expect(dbReply?.depth).toBe(1);
+  });
+
   it("returns a 404 problem+json for an issue key that doesn't exist", async () => {
     const res = await issueItemHandlers.GET({
       request: req(`http://x/api/v1/issues/${projectKey.toUpperCase()}-999`, { token }),

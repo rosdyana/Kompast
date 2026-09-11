@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import { addComment, listComments, withAuthorizedTenant } from "@kompast/core";
+import { addComment, listComments, toPlainText, withAuthorizedTenant } from "@kompast/core";
 import { requireApiAuth } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
 import { resolveIssue } from "@/lib/api-resolvers";
 
-const addCommentSchema = z.object({ text: z.string().min(1) });
+const addCommentSchema = z.object({ text: z.string().min(1), parentCommentId: z.string().optional() });
 
 export const Route = createFileRoute("/api/v1/issues/$issueKey/comments")({
   server: {
@@ -20,7 +20,7 @@ export const Route = createFileRoute("/api/v1/issues/$issueKey/comments")({
               data: comments.map((c) => ({
                 id: c.id,
                 authorId: c.authorId,
-                text: (c.bodyJson as { text?: string } | null)?.text ?? "",
+                text: toPlainText(c.bodyJson),
                 createdAt: c.createdAt,
               })),
             });
@@ -37,7 +37,8 @@ export const Route = createFileRoute("/api/v1/issues/$issueKey/comments")({
             const result = await addComment(tx, {
               issueId: issue.id,
               authorId: ctx.userId,
-              bodyJson: { text: body.text },
+              bodyJson: [{ type: "paragraph", content: [{ type: "text", text: body.text, styles: {} }] }],
+              parentCommentId: body.parentCommentId,
               origin: ctx.origin,
               originClient: request.headers.get("user-agent") ?? undefined,
             });

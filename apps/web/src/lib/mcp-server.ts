@@ -236,7 +236,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
         title: z.string().min(1),
         type: z.string().optional(),
         status: z.string().optional(),
-        priority: z.enum(["lowest", "low", "medium", "high", "highest"]).optional(),
+        priority: z.string().min(1).optional(),
         assigneeEmail: z.email().optional(),
         description: z.string().optional(),
         labels: z.array(z.string()).optional(),
@@ -264,7 +264,9 @@ export function buildMcpServer(ctx: ApiAuthContext) {
               reporterId: ctx.userId,
               assigneeId,
               priority: args.priority,
-              descriptionJson: args.description ? { text: args.description } : undefined,
+              descriptionJson: args.description
+                ? [{ type: "paragraph", content: [{ type: "text", text: args.description, styles: {} }] }]
+                : undefined,
               labels: args.labels,
               storyPoints: args.storyPoints,
               dueDate: args.dueDate ? new Date(args.dueDate) : undefined,
@@ -287,7 +289,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
       inputSchema: {
         issueKey: z.string().min(1),
         title: z.string().optional(),
-        priority: z.enum(["lowest", "low", "medium", "high", "highest"]).optional(),
+        priority: z.string().min(1).optional(),
         storyPoints: z.number().nullable().optional(),
         dueDate: z.string().nullable().optional(),
         startDate: z.string().nullable().optional(),
@@ -309,7 +311,10 @@ export function buildMcpServer(ctx: ApiAuthContext) {
             startDate: args.startDate === undefined ? undefined : args.startDate === null ? null : new Date(args.startDate),
             epicId,
             labels: args.labels,
-            descriptionJson: args.description !== undefined ? { text: args.description } : undefined,
+            descriptionJson:
+              args.description !== undefined
+                ? [{ type: "paragraph", content: [{ type: "text", text: args.description, styles: {} }] }]
+                : undefined,
             actorId: ctx.userId,
             origin: ctx.origin,
             originClient: "mcp",
@@ -357,14 +362,21 @@ export function buildMcpServer(ctx: ApiAuthContext) {
   server.registerTool(
     "comment_issue",
     {
-      description: "Add a comment to an issue.",
-      inputSchema: { issueKey: z.string().min(1), text: z.string().min(1) },
+      description: "Add a comment to an issue, optionally as a reply to an existing comment (parentCommentId) — up to 3 levels deep.",
+      inputSchema: { issueKey: z.string().min(1), text: z.string().min(1), parentCommentId: z.string().optional() },
     },
     (args) =>
       tool(ctx, "issues:write", () =>
         withAuthorizedTenant(ctx, async (tx) => {
           const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
-          const result = await addComment(tx, { issueId: issue.id, authorId: ctx.userId, bodyJson: { text: args.text }, origin: ctx.origin, originClient: "mcp" });
+          const result = await addComment(tx, {
+            issueId: issue.id,
+            authorId: ctx.userId,
+            bodyJson: [{ type: "paragraph", content: [{ type: "text", text: args.text, styles: {} }] }],
+            parentCommentId: args.parentCommentId,
+            origin: ctx.origin,
+            originClient: "mcp",
+          });
           return { id: result.commentId };
         }),
       )(),
