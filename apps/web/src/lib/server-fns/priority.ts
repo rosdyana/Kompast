@@ -4,6 +4,7 @@ import {
   createPriorityLevel,
   deletePriorityLevel,
   listPriorityLevels,
+  reorderPriorityLevels,
   requireProjectAccess,
   requireProjectAdmin,
   updatePriorityLevel,
@@ -52,6 +53,19 @@ export const updatePriorityLevelFn = createServerFn({ method: "POST" })
     await withAuthorizedTenant(ctx, async (tx) => {
       await requireProjectAdmin(tx, { ...ctx, projectId: data.projectId });
       await updatePriorityLevel(tx, data);
+    });
+    return { ok: true } as const;
+  });
+
+const reorderPriorityLevelsSchema = z.object({ projectId: z.string(), orderedLevelIds: z.array(z.string()) });
+
+export const reorderPriorityLevelsFn = createServerFn({ method: "POST" })
+  .validator(reorderPriorityLevelsSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requireProjectAdmin(tx, { ...ctx, projectId: data.projectId });
+      await reorderPriorityLevels(tx, data);
     });
     return { ok: true } as const;
   });

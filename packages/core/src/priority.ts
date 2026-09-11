@@ -99,6 +99,29 @@ export async function updatePriorityLevel(tx: Tx, input: UpdatePriorityLevelInpu
   }
 }
 
+export interface ReorderPriorityLevelsInput {
+  projectId: string;
+  /** Full new order for every priority level in this project; must include exactly the project's current level-id set. */
+  orderedLevelIds: string[];
+}
+
+export async function reorderPriorityLevels(tx: Tx, input: ReorderPriorityLevelsInput): Promise<void> {
+  const levels = await tx
+    .select({ id: schema.priorityLevel.id })
+    .from(schema.priorityLevel)
+    .where(eq(schema.priorityLevel.projectId, input.projectId));
+
+  const currentIds = new Set(levels.map((l) => l.id));
+  const requestedIds = new Set(input.orderedLevelIds);
+  if (currentIds.size !== requestedIds.size || [...currentIds].some((id) => !requestedIds.has(id))) {
+    throw new Error("orderedLevelIds must include exactly the project's current priority levels, no more and no less");
+  }
+
+  for (const [index, levelId] of input.orderedLevelIds.entries()) {
+    await tx.update(schema.priorityLevel).set({ order: index }).where(eq(schema.priorityLevel.id, levelId));
+  }
+}
+
 export interface DeletePriorityLevelInput {
   projectId: string;
   levelId: string;

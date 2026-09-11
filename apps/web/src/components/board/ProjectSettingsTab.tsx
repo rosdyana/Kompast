@@ -20,7 +20,13 @@ import {
   updateIssuePropertyDefinitionFn,
   deleteIssuePropertyDefinitionFn,
 } from "@/lib/server-fns/issue-properties";
-import { listPriorityLevelsFn, createPriorityLevelFn, updatePriorityLevelFn, deletePriorityLevelFn } from "@/lib/server-fns/priority";
+import {
+  listPriorityLevelsFn,
+  createPriorityLevelFn,
+  updatePriorityLevelFn,
+  deletePriorityLevelFn,
+  reorderPriorityLevelsFn,
+} from "@/lib/server-fns/priority";
 
 type BoardData = Awaited<ReturnType<typeof getProjectBoardFn>>;
 type PropertyDefinition = Awaited<ReturnType<typeof listIssuePropertyDefinitionsFn>>[number];
@@ -461,17 +467,14 @@ function PrioritySettings({ projectId }: { projectId: string }) {
 
   async function move(levelId: string, direction: "left" | "right") {
     if (!levels) return;
-    const i = levels.findIndex((l) => l.id === levelId);
+    const ids = levels.map((l) => l.id);
+    const i = ids.indexOf(levelId);
     const j = direction === "left" ? i - 1 : i + 1;
-    if (i < 0 || j < 0 || j >= levels.length) return;
-    const a = levels[i]!;
-    const b = levels[j]!;
+    if (j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j]!, ids[i]!];
     setError(null);
     try {
-      await Promise.all([
-        updatePriorityLevelFn({ data: { projectId, levelId: a.id, order: b.order } }),
-        updatePriorityLevelFn({ data: { projectId, levelId: b.id, order: a.order } }),
-      ]);
+      await reorderPriorityLevelsFn({ data: { projectId, orderedLevelIds: ids } });
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("genericError"));
