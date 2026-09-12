@@ -273,4 +273,55 @@ describe("updateIssue + createIssue attribution", () => {
     [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.descriptionJson).toBeNull();
   });
+
+  function mentionBlocks(userId: string) {
+    return [{ type: "paragraph", content: [{ type: "userMention", props: { userId, name: "Mentioned" } }] }];
+  }
+
+  it("updateIssue notifies a newly @mentioned user in the description", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx);
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { descriptionJson: mentionBlocks(otherUserId), actorId: userId }));
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    const mentionNotifications = notifications.filter((n) => n.eventType === "issue.mentioned");
+    expect(mentionNotifications).toHaveLength(1);
+    expect(mentionNotifications[0]).toMatchObject({ userId: otherUserId, entityId: issueId });
+  });
+
+  it("updateIssue does not notify the actor for mentioning themselves", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx);
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { descriptionJson: mentionBlocks(userId), actorId: userId }));
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications.filter((n) => n.eventType === "issue.mentioned")).toHaveLength(0);
+  });
+
+  it("updateIssue does not re-notify a user who was already mentioned before this edit", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx, { descriptionJson: mentionBlocks(otherUserId) });
+
+    // Same mention still present, plus an unrelated title change — must not re-notify.
+    await withAuthorizedTenant(ctx, (tx) =>
+      updateIssue(tx, issueId, { descriptionJson: mentionBlocks(otherUserId), title: "Retitled", actorId: userId }),
+    );
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications.filter((n) => n.eventType === "issue.mentioned")).toHaveLength(0);
+  });
+
+  it('updateIssue with origin:"import" never notifies mentions', async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx);
+
+    await withAuthorizedTenant(ctx, (tx) =>
+      updateIssue(tx, issueId, { descriptionJson: mentionBlocks(otherUserId), origin: "import", actorId: userId }),
+    );
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications.filter((n) => n.eventType === "issue.mentioned")).toHaveLength(0);
+  });
 });

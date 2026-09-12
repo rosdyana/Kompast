@@ -1,5 +1,5 @@
 {
-  "tabs": { "members": "Members", "teams": "Teams", "roles": "Roles & Permissions", "integrations": "Integrations" },
+  "tabs": { "notifications": "Notifications", "members": "Members", "teams": "Teams", "roles": "Roles & Permissions", "integrations": "Integrations" },
   "pageTitle": "Workspace settings",
   "teamsNonAdminNote": "Only super admins can manage the workspace's team list here.",
   "integrations": {

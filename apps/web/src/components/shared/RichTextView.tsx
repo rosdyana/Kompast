@@ -4,10 +4,13 @@ import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, type Par
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useTheme } from "@kompast/ui/theme";
+import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
+import { userMentionInlineSpec } from "@/components/shared/UserMentionInlineContent";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see LiteEditor.tsx's identical schema cast.
 const schema = BlockNoteSchema.create({
   blockSpecs: defaultBlockSpecs,
-  inlineContentSpecs: defaultInlineContentSpecs,
+  inlineContentSpecs: { ...defaultInlineContentSpecs, issueMention: issueMentionInlineSpec as any, userMention: userMentionInlineSpec as any },
 });
 
 export function normalizeToBlocks(json: unknown): PartialBlock[] | undefined {

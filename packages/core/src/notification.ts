@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, schema } from "@kompast/db";
+import { and, desc, eq, inArray, isNull, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { enqueueEmail } from "./email";
@@ -21,6 +21,7 @@ export interface NotificationPrefView {
 export const NOTIFICATION_EVENT_TYPES = [
   { eventType: "issue.assigned", label: "Ditugaskan ke tiket" },
   { eventType: "issue.commented", label: "Komentar baru di tiket" },
+  { eventType: "issue.mentioned", label: "Mentioned in a ticket" },
 ] as const;
 
 const DEFAULT_PREF: NotificationPrefView = { inApp: true, email: true, digest: "instant" };
@@ -123,6 +124,41 @@ export async function notify(tx: Tx, input: NotifyInput): Promise<{ notification
   }
 
   return { notificationId, emailQueued };
+}
+
+export interface NotifyMentionedUsersInput {
+  organizationId: string;
+  entityId: string;
+  mentionedUserIds: string[];
+  title: string;
+  body?: string;
+  actionUrl: string;
+}
+
+/**
+ * One `notify()` call per @mentioned user with eventType "issue.mentioned".
+ * Callers (addComment, updateIssue) are responsible for filtering out the
+ * author and anyone already notified for the same event through another
+ * path (e.g. the assignee/reporter on a new comment) before calling this,
+ * so a person never gets two notifications for one action.
+ */
+export async function notifyMentionedUsers(tx: Tx, input: NotifyMentionedUsersInput) {
+  if (input.mentionedUserIds.length === 0) return;
+  const users = await tx.select({ id: schema.user.id, email: schema.user.email }).from(schema.user).where(inArray(schema.user.id, input.mentionedUserIds));
+  const emailByUserId = new Map(users.map((u) => [u.id, u.email]));
+  for (const userId of input.mentionedUserIds) {
+    const email = emailByUserId.get(userId);
+    await notify(tx, {
+      organizationId: input.organizationId,
+      userId,
+      eventType: "issue.mentioned",
+      entityType: "issue",
+      entityId: input.entityId,
+      title: input.title,
+      body: input.body,
+      email: email ? { to: email, actionUrl: input.actionUrl, actionLabel: "View issue" } : undefined,
+    });
+  }
 }
 
 export async function listNotifications(tx: Tx, organizationId: string, userId: string, limit = 50) {

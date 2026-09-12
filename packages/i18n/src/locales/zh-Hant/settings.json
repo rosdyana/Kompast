@@ -1,5 +1,5 @@
 {
-  "tabs": { "members": "成員", "teams": "團隊", "roles": "角色與權限", "integrations": "整合" },
+  "tabs": { "notifications": "通知", "members": "成員", "teams": "團隊", "roles": "角色與權限", "integrations": "整合" },
   "pageTitle": "工作區設定",
   "teamsNonAdminNote": "只有超級管理員可以在此管理工作區的團隊清單。",
   "integrations": {

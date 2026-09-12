@@ -89,7 +89,8 @@ export function NotificationBell() {
             )}
           </div>
           <Link
-            to="/notifications"
+            to="/settings"
+            search={{ tab: "notifications" }}
             onClick={() => setOpen(false)}
             className="block border-t border-border px-3 py-2 text-center text-[11.5px] text-text-2 hover:bg-surface-3"
           >

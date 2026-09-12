@@ -414,7 +414,7 @@ export const createIssueFromDocLineFn = createServerFn({ method: "POST" })
       });
       await linkEntities(tx, { organizationId: ctx.organizationId, fromType: "page", fromId: data.pageId, toType: "issue", toId: issueId, createdBy: ctx.userId });
 
-      const [project] = await tx.select({ key: schema.project.key }).from(schema.project).where(eq(schema.project.id, page.projectId));
-      return { issueId, projectKey: project!.key, keySeq: String(keySeq) };
+      const [project] = await tx.select({ key: schema.project.key, teamId: schema.project.teamId }).from(schema.project).where(eq(schema.project.id, page.projectId));
+      return { issueId, projectKey: project!.key, teamId: project!.teamId, keySeq: String(keySeq) };
     });
   });

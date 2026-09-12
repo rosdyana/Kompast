@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { schema, eq } from "@kompast/db";
+import { schema, eq, and } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -18,6 +18,7 @@ describe("comments + watchers", () => {
   const orgId = "test-cw-org";
   const userId = "test-cw-user";
   const assigneeId = "test-cw-assignee";
+  const mentionedId = "test-cw-mentioned";
   const teamId = "test-cw-team";
 
   async function cleanup() {
@@ -28,6 +29,7 @@ describe("comments + watchers", () => {
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.user).where(eq(schema.user.id, assigneeId));
+    await admin.delete(schema.user).where(eq(schema.user.id, mentionedId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
   }
 
@@ -37,10 +39,12 @@ describe("comments + watchers", () => {
     await admin.insert(schema.user).values([
       { id: userId, name: "Test User", email: `${userId}@example.com` },
       { id: assigneeId, name: "Assignee", email: `${assigneeId}@example.com` },
+      { id: mentionedId, name: "Mentioned", email: `${mentionedId}@example.com` },
     ]);
     await admin.insert(schema.member).values([
       { id: id("mem"), organizationId: orgId, userId, role: "member" },
       { id: id("mem"), organizationId: orgId, userId: assigneeId, role: "member" },
+      { id: id("mem"), organizationId: orgId, userId: mentionedId, role: "member" },
     ]);
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
@@ -183,6 +187,66 @@ describe("comments + watchers", () => {
         addComment(tx, { issueId, authorId: userId, bodyJson: { text: "orphan reply" }, parentCommentId: "does-not-exist" }),
       ),
     ).rejects.toThrow("Parent comment does-not-exist not found");
+  });
+
+  it("addComment notifies an @mentioned user who is not the assignee/reporter", async () => {
+    const issueId = await seedIssue();
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, { issueId, authorId: userId, bodyJson: [{ type: "paragraph", content: [{ type: "userMention", props: { userId: mentionedId, name: "Mentioned" } }] }] }),
+    );
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    const mentionNotifications = notifications.filter((n) => n.eventType === "issue.mentioned");
+    expect(mentionNotifications).toHaveLength(1);
+    expect(mentionNotifications[0]).toMatchObject({ userId: mentionedId, entityId: issueId });
+  });
+
+  it("addComment does not double-notify a mentioned user who is also the assignee", async () => {
+    // create-time assignment already queues its own "issue.assigned" notification —
+    // irrelevant to this test, which only cares about the comment action itself.
+    const issueId = await seedIssue({ assigneeId });
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, { issueId, authorId: userId, bodyJson: [{ type: "paragraph", content: [{ type: "userMention", props: { userId: assigneeId, name: "Assignee" } }] }] }),
+    );
+
+    const notifications = await admin
+      .select()
+      .from(schema.notification)
+      .where(and(eq(schema.notification.organizationId, orgId), eq(schema.notification.userId, assigneeId), eq(schema.notification.entityId, issueId)));
+    // Exactly one notification from this comment (the "commented" one) — not a
+    // second "mentioned" one for the same person/comment.
+    const fromThisComment = notifications.filter((n) => n.eventType !== "issue.assigned");
+    expect(fromThisComment).toHaveLength(1);
+    expect(fromThisComment[0]?.eventType).toBe("issue.commented");
+  });
+
+  it("addComment does not notify the commenter for mentioning themselves", async () => {
+    const issueId = await seedIssue();
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, { issueId, authorId: userId, bodyJson: [{ type: "paragraph", content: [{ type: "userMention", props: { userId, name: "Self" } }] }] }),
+    );
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications.filter((n) => n.eventType === "issue.mentioned")).toHaveLength(0);
+  });
+
+  it('addComment with origin:"import" never sends mention notifications', async () => {
+    const issueId = await seedIssue();
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      addComment(tx, {
+        issueId,
+        authorId: userId,
+        bodyJson: [{ type: "paragraph", content: [{ type: "userMention", props: { userId: mentionedId, name: "Mentioned" } }] }],
+        origin: "import",
+      }),
+    );
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications.filter((n) => n.eventType === "issue.mentioned")).toHaveLength(0);
   });
 
   it("rejects a parentCommentId that belongs to a different issue", async () => {

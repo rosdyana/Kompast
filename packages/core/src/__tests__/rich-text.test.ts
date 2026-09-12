@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toPlainText } from "../rich-text";
+import { toPlainText, extractMentionedUserIds } from "../rich-text";
 
 describe("toPlainText", () => {
   it("returns empty string for null/undefined", () => {
@@ -88,5 +88,50 @@ describe("toPlainText", () => {
     expect(() => toPlainText(blocks as unknown as never)).not.toThrow();
     // { type: "text" } with no `text` field -> "" (via String(undefined ?? "")); others contribute "".
     expect(toPlainText(blocks as unknown as never)).toBe("");
+  });
+});
+
+describe("extractMentionedUserIds", () => {
+  it("returns an empty array for null/undefined/legacy {text} bodies", () => {
+    expect(extractMentionedUserIds(null)).toEqual([]);
+    expect(extractMentionedUserIds(undefined)).toEqual([]);
+    expect(extractMentionedUserIds({ text: "hello" } as unknown as never)).toEqual([]);
+  });
+
+  it("collects a single userMention node's userId", () => {
+    const blocks = [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "cc " }, { type: "userMention", props: { userId: "user-1", name: "Alice" } }],
+      },
+    ];
+    expect(extractMentionedUserIds(blocks as unknown as never)).toEqual(["user-1"]);
+  });
+
+  it("collects multiple distinct mentions across blocks, deduping repeats", () => {
+    const blocks = [
+      { type: "paragraph", content: [{ type: "userMention", props: { userId: "user-1" } }] },
+      { type: "paragraph", content: [{ type: "userMention", props: { userId: "user-2" } }, { type: "userMention", props: { userId: "user-1" } }] },
+    ];
+    expect(extractMentionedUserIds(blocks as unknown as never).sort()).toEqual(["user-1", "user-2"]);
+  });
+
+  it("collects mentions nested inside children", () => {
+    const blocks = [
+      {
+        type: "bulletListItem",
+        content: [],
+        children: [{ type: "paragraph", content: [{ type: "userMention", props: { userId: "user-9" } }] }],
+      },
+    ];
+    expect(extractMentionedUserIds(blocks as unknown as never)).toEqual(["user-9"]);
+  });
+
+  it("ignores non-userMention inline content and malformed entries without throwing", () => {
+    const blocks = [
+      { type: "paragraph", content: [{ type: "issueMention", props: { issueId: "i1" } }, { type: "text", text: "hi" }, null, 42] },
+    ];
+    expect(() => extractMentionedUserIds(blocks as unknown as never)).not.toThrow();
+    expect(extractMentionedUserIds(blocks as unknown as never)).toEqual([]);
   });
 });
