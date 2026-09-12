@@ -84,7 +84,13 @@
   "roadmap": {
     "noEpicsHeading": "No epics yet.",
     "noEpicsSubtext": "Create an issue of type \"Epic\" and link other issues to it to see the roadmap.",
-    "progressSummary": "{{done}}/{{total}} issues done ({{pct}}%)"
+    "progressSummary": "{{done}}/{{total}} issues done ({{pct}}%)",
+    "createEpicButton": "+ Create epic",
+    "newEpicPlaceholder": "Epic title…"
+  },
+  "card": {
+    "noEpic": "No epic",
+    "renameHint": "Click to rename"
   },
   "automation": {
     "triggerCreated": "Issue created",

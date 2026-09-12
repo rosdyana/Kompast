@@ -39,6 +39,24 @@
   "activityHeading": "Aktivitas",
   "noActivityYet": "Belum ada aktivitas.",
   "historyCreated": "dibuat",
+  "historyDescriptionUpdated": "memperbarui deskripsi",
+  "historyActorSystem": "Sistem",
   "historyOrigin": "via {{origin}}",
+  "historyField": {
+    "title": "Judul",
+    "status": "Status",
+    "priority": "Priority",
+    "assigneeId": "Assignee",
+    "storyPoints": "Points",
+    "dueDate": "Tenggat waktu",
+    "startDate": "Tanggal mulai",
+    "epicId": "Epic",
+    "parentId": "Induk",
+    "estimateSeconds": "Estimasi",
+    "spentSeconds": "Waktu terpakai",
+    "labels": "Label",
+    "sprint": "Sprint"
+  },
+  "renameHint": "Klik untuk mengganti nama",
   "customPropertiesHeading": "Properti kustom"
 }

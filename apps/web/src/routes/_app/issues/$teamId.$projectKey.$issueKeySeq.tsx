@@ -18,6 +18,7 @@ import {
   updateIssueCustomFieldFn,
   updateIssueDatesFn,
   updateIssueEpicFn,
+  updateIssueTitleFn,
 } from "@/lib/server-fns/issue-detail";
 import { moveIssueFn } from "@/lib/server-fns/issues";
 import { addIssueToSprintFn, removeIssueFromSprintFn } from "@/lib/server-fns/sprints";
@@ -28,6 +29,13 @@ import { RichTextView, normalizeToBlocks } from "@/components/shared/RichTextVie
 import { CommentThread } from "@/components/issues/CommentThread";
 
 export const Route = createFileRoute("/_app/issues/$teamId/$projectKey/$issueKeySeq")({
+  // Which project tab to return to on "back" — set by the Link that opened
+  // this issue (the Board tab's kanban card, the Backlog tab's issue rows);
+  // any other entry point (search, doc mentions, ...) has no opinion and
+  // falls back to Backlog, matching this page's pre-existing behavior.
+  validateSearch: (search: Record<string, unknown>): { from?: "board" | "backlog" } => ({
+    from: search.from === "board" ? "board" : undefined,
+  }),
   loader: ({ params }) =>
     getIssueDetailFn({ data: { teamId: params.teamId, projectKey: params.projectKey, issueKeySeq: Number(params.issueKeySeq) } }),
   component: IssueDetailPage,
@@ -48,11 +56,14 @@ function IssueDetailPage() {
   const { t, i18n } = useTranslation("issue");
   const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const data = Route.useLoaderData();
+  const from = Route.useSearch().from ?? "backlog";
   const router = useRouter();
   const [watching, setWatching] = useState(data.isWatching);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<"comments" | "activity">("comments");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(data.issue.title);
 
   const hasDescription = normalizeToBlocks(data.issue.descriptionJson) !== undefined;
   const [editingDescription, setEditingDescription] = useState(false);
@@ -184,6 +195,48 @@ function IssueDetailPage() {
     await router.invalidate();
   }
 
+  async function saveTitle() {
+    const trimmed = titleDraft.trim();
+    setEditingTitle(false);
+    if (!trimmed || trimmed === data.issue.title) return;
+    await updateIssueTitleFn({ data: { issueId: data.issue.id, title: trimmed } });
+    await router.invalidate();
+  }
+
+  /**
+   * Automation-driven rows are attributed to `rule.createdBy` at write time
+   * (see packages/core/src/automation.ts) — the rule's author, not "the
+   * automation" — so origin (not actorId alone) is what decides whether the
+   * activity feed shows a person's name or a generic "System" label here.
+   */
+  function historyActorLabel(h: (typeof data.history)[number]): string {
+    if (h.origin === "automation") return t("historyActorSystem");
+    const actor = h.actorId ? usersById.get(h.actorId) : undefined;
+    return actor?.name ?? t("unknownAuthor");
+  }
+
+  function resolveHistoryValue(field: string, raw: string | null): string {
+    if (raw == null) return "—";
+    if (field === "assigneeId") return usersById.get(raw)?.name ?? raw;
+    if (field === "epicId") {
+      const epic = data.candidateEpics.find((e) => e.id === raw);
+      return epic ? `${data.project.key}-${epic.keySeq} ${epic.title}` : raw;
+    }
+    if (field === "sprint") return data.boardSprints.find((s) => s.id === raw)?.name ?? raw;
+    if (field === "status") return data.statuses.find((s) => s.id === raw)?.name ?? raw;
+    if (field === "priority") return data.priorityLevels.find((p) => p.key === raw)?.name ?? raw;
+    if (field === "dueDate" || field === "startDate") {
+      const d = new Date(raw);
+      return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString(intlLocale, { day: "numeric", month: "short", year: "numeric" });
+    }
+    return raw;
+  }
+
+  function describeHistoryChange(h: (typeof data.history)[number]): string {
+    const label = t(`historyField.${h.field}`, { defaultValue: h.field });
+    return `${label}: ${resolveHistoryValue(h.field, h.fromValue)} → ${resolveHistoryValue(h.field, h.toValue)}`;
+  }
+
   async function setSprint(sprintId: string | null) {
     if (sprintId) {
       await addIssueToSprintFn({ data: { sprintId, issueId: data.issue.id } });
@@ -198,6 +251,7 @@ function IssueDetailPage() {
       <Link
         to="/projects/$teamId/$projectKey"
         params={{ teamId: data.project.teamId ?? "none", projectKey: data.project.key }}
+        search={{ tab: from }}
         className="mb-4 inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-2"
       >
         <ArrowLeft size={13} strokeWidth={1.75} /> {data.project.name}
@@ -220,7 +274,33 @@ function IssueDetailPage() {
               />
             )}
           </div>
-          <h1 className="mb-1 type-title">{data.issue.title}</h1>
+          {editingTitle ? (
+            <input
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={saveTitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveTitle();
+                if (e.key === "Escape") {
+                  setTitleDraft(data.issue.title);
+                  setEditingTitle(false);
+                }
+              }}
+              className="mb-1 w-full rounded-[7px] border border-border-2 bg-surface px-1.5 py-0.5 type-title outline-none"
+            />
+          ) : (
+            <h1
+              onClick={() => {
+                setTitleDraft(data.issue.title);
+                setEditingTitle(true);
+              }}
+              title={t("renameHint")}
+              className="mb-1 cursor-text type-title"
+            >
+              {data.issue.title}
+            </h1>
+          )}
           <p className="mb-8 type-label text-text-3">
             {t("createdUpdatedMeta", {
               created: new Date(data.issue.createdAt).toLocaleDateString(intlLocale, { day: "numeric", month: "short", year: "numeric" }),
@@ -351,7 +431,12 @@ function IssueDetailPage() {
                 {data.history.map((h) => (
                   <p key={h.id} className="text-[12px] text-text-2">
                     <span className="font-mono text-text-3">{new Date(h.createdAt).toLocaleString(intlLocale)}</span>{" "}
-                    {h.field === "created" ? t("historyCreated") : `${h.field}: ${h.fromValue ?? "—"} → ${h.toValue ?? "—"}`}
+                    <span className="font-medium text-text">{historyActorLabel(h)}</span>{" "}
+                    {h.field === "created"
+                      ? t("historyCreated")
+                      : h.field === "description"
+                        ? t("historyDescriptionUpdated")
+                        : describeHistoryChange(h)}
                     {h.origin !== "user" && <span className="ml-1 text-text-3">{t("historyOrigin", { origin: h.originClient ?? h.origin })}</span>}
                   </p>
                 ))}

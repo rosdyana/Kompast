@@ -264,6 +264,18 @@ export async function reorderSprintIssue(tx: Tx, input: ReorderSprintIssueInput)
 }
 
 /**
+ * Optional attribution for addIssueToSprint/removeIssueFromSprint — undefined
+ * (every pre-existing caller before the Activity tab needed this) means
+ * "don't write an issue_history row," matching the original behavior;
+ * passing it logs a "sprint" field change so the Activity tab can show it.
+ */
+export interface SprintMembershipActor {
+  actorId: string;
+  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  originClient?: string;
+}
+
+/**
  * Adds an issue to a sprint (moving it out of the backlog, or off whatever
  * sprint it was on before). `plannedAtStart` is true only when the sprint
  * hasn't started yet — an issue added while a sprint is already active is
@@ -275,14 +287,13 @@ export async function reorderSprintIssue(tx: Tx, input: ReorderSprintIssueInput)
  * getDefaultActiveStatusId) — otherwise it would join the sprint but never
  * appear on the Board tab, which filters the Backlog column out entirely.
  * An issue already past Backlog (In Progress, Done, ...) is left alone.
- * Deliberately no issue_history row for this transition, matching this
- * function's own style elsewhere (no attribution plumbing here today) —
- * burndown/CFD won't see it as a discrete event.
  */
-export async function addIssueToSprint(tx: Tx, sprintId: string, issueId: string) {
+export async function addIssueToSprint(tx: Tx, sprintId: string, issueId: string, actor?: SprintMembershipActor) {
   const sprint = await getSprint(tx, sprintId);
   if (!sprint) throw new Error(`Sprint ${sprintId} not found`);
   if (sprint.state === "closed") throw new Error("Cannot add an issue to a closed sprint");
+
+  const [before] = await tx.select({ sprintId: schema.issue.sprintId }).from(schema.issue).where(eq(schema.issue.id, issueId));
 
   await tx
     .update(schema.sprintIssue)
@@ -320,15 +331,43 @@ export async function addIssueToSprint(tx: Tx, sprintId: string, issueId: string
   }
 
   await tx.update(schema.issue).set(updateValues).where(eq(schema.issue.id, issueId));
+
+  if (actor && before?.sprintId !== sprintId) {
+    await tx.insert(schema.issueHistory).values({
+      id: id("hist"),
+      issueId,
+      actorId: actor.actorId,
+      origin: actor.origin ?? "user",
+      originClient: actor.originClient,
+      field: "sprint",
+      fromValue: before?.sprintId ?? null,
+      toValue: sprintId,
+    });
+  }
 }
 
 /** Moves an issue back to the backlog (no sprint). */
-export async function removeIssueFromSprint(tx: Tx, issueId: string) {
+export async function removeIssueFromSprint(tx: Tx, issueId: string, actor?: SprintMembershipActor) {
+  const [before] = await tx.select({ sprintId: schema.issue.sprintId }).from(schema.issue).where(eq(schema.issue.id, issueId));
+
   await tx
     .update(schema.sprintIssue)
     .set({ removedAt: new Date() })
     .where(and(eq(schema.sprintIssue.issueId, issueId), isNull(schema.sprintIssue.removedAt)));
   await tx.update(schema.issue).set({ sprintId: null, updatedAt: new Date() }).where(eq(schema.issue.id, issueId));
+
+  if (actor && before?.sprintId) {
+    await tx.insert(schema.issueHistory).values({
+      id: id("hist"),
+      issueId,
+      actorId: actor.actorId,
+      origin: actor.origin ?? "user",
+      originClient: actor.originClient,
+      field: "sprint",
+      fromValue: before.sprintId,
+      toValue: null,
+    });
+  }
 }
 
 async function scopeAndCompletion(tx: Tx, sprintId: string) {
@@ -434,11 +473,12 @@ export async function completeSprint(tx: Tx, input: CompleteSprintInput): Promis
   const doneStatusIds = new Set(statuses.filter((s) => s.category === "done").map((s) => s.id));
   const notDone = issues.filter((i) => !doneStatusIds.has(i.statusId));
 
+  const actor: SprintMembershipActor = { actorId: input.actorId };
   for (const issue of notDone) {
     if (input.carryToSprintId) {
-      await addIssueToSprint(tx, input.carryToSprintId, issue.id);
+      await addIssueToSprint(tx, input.carryToSprintId, issue.id, actor);
     } else {
-      await removeIssueFromSprint(tx, issue.id);
+      await removeIssueFromSprint(tx, issue.id, actor);
     }
   }
 

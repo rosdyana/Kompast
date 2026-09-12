@@ -39,6 +39,24 @@
   "activityHeading": "Activity",
   "noActivityYet": "No activity yet.",
   "historyCreated": "created",
+  "historyDescriptionUpdated": "updated the description",
+  "historyActorSystem": "System",
   "historyOrigin": "via {{origin}}",
+  "historyField": {
+    "title": "Title",
+    "status": "Status",
+    "priority": "Priority",
+    "assigneeId": "Assignee",
+    "storyPoints": "Points",
+    "dueDate": "Due date",
+    "startDate": "Start date",
+    "epicId": "Epic",
+    "parentId": "Parent",
+    "estimateSeconds": "Estimate",
+    "spentSeconds": "Time spent",
+    "labels": "Labels",
+    "sprint": "Sprint"
+  },
+  "renameHint": "Click to rename",
   "customPropertiesHeading": "Custom properties"
 }

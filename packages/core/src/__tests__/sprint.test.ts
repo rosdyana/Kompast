@@ -144,6 +144,37 @@ describe("sprint lifecycle", () => {
     expect(backlog.map((i) => i.id)).toContain(issueId);
   });
 
+  it("logs a 'sprint' issue_history row only when an actor is given, for both add and remove", async () => {
+    const { projectId, boardId, issueTypes, statuses } = await seedProject();
+    const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));
+    const noActorIssueId = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id));
+    const withActorIssueId = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id));
+
+    await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, sprintId, noActorIssueId));
+    await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, sprintId, withActorIssueId, { actorId: userId }));
+
+    let noActorHistory = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, noActorIssueId));
+    expect(noActorHistory.filter((h) => h.field === "sprint")).toHaveLength(0);
+
+    let withActorHistory = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, withActorIssueId));
+    expect(withActorHistory.find((h) => h.field === "sprint")).toMatchObject({
+      actorId: userId,
+      origin: "user",
+      fromValue: null,
+      toValue: sprintId,
+    });
+
+    await withAuthorizedTenant(ctx, (tx) => removeIssueFromSprint(tx, noActorIssueId));
+    await withAuthorizedTenant(ctx, (tx) => removeIssueFromSprint(tx, withActorIssueId, { actorId: userId, origin: "automation", originClient: "automation:Test rule" }));
+
+    noActorHistory = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, noActorIssueId));
+    expect(noActorHistory.filter((h) => h.field === "sprint")).toHaveLength(0);
+
+    withActorHistory = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, withActorIssueId));
+    const removalRow = withActorHistory.filter((h) => h.field === "sprint").find((h) => h.toValue === null);
+    expect(removalRow).toMatchObject({ origin: "automation", originClient: "automation:Test rule", fromValue: sprintId, toValue: null });
+  });
+
   it("refuses to start a second sprint while one is already active on the same board", async () => {
     const { boardId } = await seedProject();
     const { sprintId: s1 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));

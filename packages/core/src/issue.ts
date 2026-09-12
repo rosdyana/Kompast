@@ -196,18 +196,65 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
     await enqueueReindex(tx, { organizationId: current.organizationId, entityType: "issue", entityId: issueId });
   }
 
-  const historyRows = UPDATE_ISSUE_HISTORY_FIELDS.filter((field) => patch[field] !== undefined && patch[field] !== current[field]).map(
-    (field) => ({
+  interface HistoryRow {
+    id: string;
+    issueId: string;
+    actorId: string;
+    origin: "user" | "automation" | "mcp" | "api" | "import";
+    originClient: string | undefined;
+    field: string;
+    fromValue: string | null;
+    toValue: string | null;
+  }
+
+  const historyRows: HistoryRow[] = UPDATE_ISSUE_HISTORY_FIELDS.filter(
+    (field) => patch[field] !== undefined && patch[field] !== current[field],
+  ).map((field) => ({
+    id: id("hist"),
+    issueId,
+    actorId: patch.actorId,
+    origin: patch.origin ?? "user",
+    originClient: patch.originClient,
+    field,
+    fromValue: current[field] == null ? null : String(current[field]),
+    toValue: patch[field] == null ? null : String(patch[field]),
+  }));
+
+  // labels/descriptionJson are excluded from UPDATE_ISSUE_HISTORY_FIELDS
+  // above (set-valued/large, and `!==` on an array or jsonb blob is a
+  // reference comparison that would false-positive on every call that just
+  // happens to pass the same content back) — diffed here by value instead,
+  // logging that a change happened without trying to render a full jsonb
+  // diff as a from/to string.
+  if (patch.labels !== undefined) {
+    const currentLabels = [...current.labels].sort();
+    const nextLabels = [...patch.labels].sort();
+    if (currentLabels.join(" ") !== nextLabels.join(" ")) {
+      historyRows.push({
+        id: id("hist"),
+        issueId,
+        actorId: patch.actorId,
+        origin: patch.origin ?? "user",
+        originClient: patch.originClient,
+        field: "labels",
+        fromValue: current.labels.length > 0 ? current.labels.join(", ") : null,
+        toValue: patch.labels.length > 0 ? patch.labels.join(", ") : null,
+      });
+    }
+  }
+  if (patch.descriptionJson !== undefined && JSON.stringify(patch.descriptionJson) !== JSON.stringify(current.descriptionJson)) {
+    historyRows.push({
       id: id("hist"),
       issueId,
       actorId: patch.actorId,
       origin: patch.origin ?? "user",
       originClient: patch.originClient,
-      field,
-      fromValue: current[field] == null ? null : String(current[field]),
-      toValue: patch[field] == null ? null : String(patch[field]),
-    }),
-  );
+      field: "description",
+      fromValue: null,
+      toValue: null,
+    });
+  }
+
   if (historyRows.length > 0) await tx.insert(schema.issueHistory).values(historyRows);
 
   const assigneeChanged = patch.assigneeId !== undefined && patch.assigneeId !== current.assigneeId;

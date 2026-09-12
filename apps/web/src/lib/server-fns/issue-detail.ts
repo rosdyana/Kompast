@@ -1,10 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { and, asc, desc, eq, inArray, ne, schema, type Json } from "@kompast/db";
+import { and, asc, desc, eq, inArray, schema, type Json } from "@kompast/db";
 import {
   addComment,
   listComments,
   listAttachments,
+  listCandidateEpics,
   listIssuePropertyDefinitions,
   listPriorityLevels,
   listSprints,
@@ -92,16 +93,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
           .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
           .where(eq(schema.member.organizationId, ctx.organizationId)),
         listPriorityLevels(tx, project.id),
-        // Epic picker candidates: this project's issues whose type is an epic
-        // (hierarchyLevel === 0), excluding the current issue itself — an
-        // issue can't be its own epic. `project.key` is already in hand from
-        // the loader above, so a bare keySeq is enough for the UI to render
-        // "KEY-123 Title".
-        tx
-          .select({ id: schema.issue.id, keySeq: schema.issue.keySeq, title: schema.issue.title })
-          .from(schema.issue)
-          .innerJoin(schema.issueType, eq(schema.issueType.id, schema.issue.typeId))
-          .where(and(eq(schema.issue.projectId, project.id), eq(schema.issueType.hierarchyLevel, 0), ne(schema.issue.id, issue.id))),
+        listCandidateEpics(tx, project.id, issue.id),
         // A project has exactly one board today (see every schema.board
         // insert site) — same first-row-destructure pattern as home.ts/
         // projects.ts, not a "what if multiple boards" branch.
@@ -174,6 +166,16 @@ export const updateIssueDescriptionFn = createServerFn({ method: "POST" })
       // Same z.unknown()-vs-Json structural cast as addCommentFn's bodyJson above.
       updateIssue(tx, data.issueId, { descriptionJson: data.descriptionJson as Json, actorId: ctx.userId }),
     );
+    return { ok: true } as const;
+  });
+
+const updateTitleSchema = z.object({ issueId: z.string(), title: z.string().min(1) });
+
+export const updateIssueTitleFn = createServerFn({ method: "POST" })
+  .validator(updateTitleSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, data.issueId, { title: data.title, actorId: ctx.userId }));
     return { ok: true } as const;
   });
 

@@ -40,6 +40,7 @@ export async function getBoard(tx: Tx, boardId: string) {
             typeId: schema.issue.typeId,
             title: schema.issue.title,
             assigneeId: schema.issue.assigneeId,
+            epicId: schema.issue.epicId,
             priority: schema.issue.priority,
             storyPoints: schema.issue.storyPoints,
             dueDate: schema.issue.dueDate,

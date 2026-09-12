@@ -1,5 +1,32 @@
-import { and, eq, inArray, schema } from "@kompast/db";
+import { and, eq, inArray, ne, schema } from "@kompast/db";
 import type { Tx } from "./types";
+
+export interface CandidateEpic {
+  id: string;
+  keySeq: number;
+  title: string;
+}
+
+/**
+ * Epic-picker candidates: this project's issues whose type is an epic
+ * (hierarchyLevel === 0). Pass `excludeIssueId` when picking an epic FOR a
+ * specific issue (it can't be its own epic) — omit it for a project-wide
+ * list (e.g. the kanban board, where every card gets the same list and
+ * filters itself out client-side if it happens to be an epic).
+ */
+export async function listCandidateEpics(tx: Tx, projectId: string, excludeIssueId?: string): Promise<CandidateEpic[]> {
+  return tx
+    .select({ id: schema.issue.id, keySeq: schema.issue.keySeq, title: schema.issue.title })
+    .from(schema.issue)
+    .innerJoin(schema.issueType, eq(schema.issueType.id, schema.issue.typeId))
+    .where(
+      and(
+        eq(schema.issue.projectId, projectId),
+        eq(schema.issueType.hierarchyLevel, 0),
+        excludeIssueId ? ne(schema.issue.id, excludeIssueId) : undefined,
+      ),
+    );
+}
 
 export interface EpicRoadmapItem {
   id: string;
