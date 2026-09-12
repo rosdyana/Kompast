@@ -105,26 +105,42 @@
 
   /* shadcn/ui's semantic token names, registered so Tailwind actually
      generates the utilities @blocknote/shadcn's compiled classes use
-     (bg-popover, text-muted-foreground, ring-ring, ...). Each aliases a
-     plain runtime var scoped to .bn-shadcn below — undefined anywhere
-     else in the app, since nothing outside the editor uses these names. */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
+     (bg-popover, text-muted-foreground, ring-ring, ...), aliased straight
+     to Kompast tokens. Direct aliases, not a runtime var scoped to
+     .bn-shadcn below: a custom property that itself contains var(--x)
+     substitutes using --x's value at THIS declaring rule (:root) and
+     inherits that already-resolved result — a later rule that redeclares
+     only --x, without redeclaring --color-popover itself, never reaches
+     descendants of that rule, no matter how deep. (First shipped as
+     `--color-popover: var(--popover)` with --popover only ever set
+     inside .bn-shadcn — --popover had no :root definition to substitute,
+     so every one of these computed to the guaranteed-invalid value at
+     :root and inherited that everywhere: the slash-menu popover rendered
+     fully transparent, not white.) Safe to alias globally, not just
+     inside the editor — grepping the app for every one of these class
+     names (bg-primary, bg-popover, bg-card, bg-secondary, bg-muted,
+     text-muted-foreground, bg-destructive, border-input, ring-ring) turns
+     up no other consumer; nothing outside @blocknote/shadcn's own
+     compiled bundle uses this shadcn/ui naming convention. --color-accent
+     is the one deliberate exception, left untouched here — see the
+     .bn-shadcn-scoped override below for why. */
+  --color-background: var(--surface);
+  --color-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-primary: var(--text);
+  --color-primary-foreground: var(--bg);
+  --color-secondary: var(--surface3);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface3);
+  --color-muted-foreground: var(--text3);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--bg);
+  --color-input: var(--border2);
+  --color-ring: var(--indigo);
 
   --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Instrument Serif", Georgia, serif;
@@ -317,39 +333,29 @@ body {
   --bn-colors-side-menu: var(--text3);
 }
 
-/* @blocknote/shadcn's menus/toolbars don't read the --bn-colors-* bridge
-   above at all — they're a second, independent theming surface built on
-   shadcn/ui's Tailwind color tokens (bg-popover, text-foreground, ...),
-   registered in the @theme block above. Bridged to the same Kompast tokens
-   here, scoped to .bn-shadcn (the class @blocknote/shadcn's BlockNoteView
-   adds to the same element .bn-root is on) so it can't leak outside the
-   editor. --primary/--ring deliberately don't route through var(--accent):
-   this block itself redefines --accent below (shadcn's "accent" is a
-   neutral hover-fill role used on every hovered/selected menu row, not a
-   brand color — aliasing it to Cobalt Focus would paint a solid blue fill
-   behind each row you arrow through, a wash of blue the One Loud Color Rule
-   bans), and since CSS custom properties resolve against the final
-   cascaded value at each point of use, a var(--accent) anywhere in this
-   same block would pick up that redefinition instead of the brand color. */
-.bn-shadcn {
-  --background: var(--surface);
-  --foreground: var(--text);
-  --popover: var(--surface);
-  --popover-foreground: var(--text);
-  --card: var(--surface);
-  --card-foreground: var(--text);
-  --primary: var(--text);
-  --primary-foreground: var(--bg);
-  --secondary: var(--surface3);
-  --secondary-foreground: var(--text);
-  --muted: var(--surface3);
-  --muted-foreground: var(--text3);
-  --accent: var(--surface3);
-  --accent-foreground: var(--text);
-  --destructive: var(--danger);
-  --destructive-foreground: var(--bg);
-  --input: var(--border2);
-  --ring: var(--indigo);
+/* @blocknote/shadcn's menus/toolbars/dropdown items also use Tailwind's
+   accent/accent-foreground utilities (bg-accent, aria-selected:bg-accent,
+   hover:bg-accent) for their hovered/selected row — but --color-accent is
+   left at its global Cobalt Focus value above deliberately, unlike every
+   other shadcn token: it's the same "accent" the @mention/issue-mention
+   pills (IssueMentionInlineContent/UserMentionInlineContent) use for their
+   brand-blue chip, and those pills render inside this exact BlockNote
+   document — the editable content and every floating menu share the same
+   .bn-shadcn ancestor (BlockNote portals menus as children of its own
+   .bn-container, not document.body). Redefining --color-accent globally
+   would recolor the mention chips gray along with the menus. Scoped
+   instead to just the popover/dropdown containers below, so only a
+   hovered/selected MENU row gets the neutral tint — shadcn's "accent" here
+   is a hover-fill role, not a brand color, and painting it solid Cobalt
+   Focus on every row you arrow through would be exactly the wash of blue
+   the One Loud Color Rule bans. (Redeclaring --color-accent, not the bare
+   --accent runtime token, is what makes this actually reach descendants —
+   see the comment on --color-background above for why the bare-token
+   version silently didn't.) */
+.bn-shadcn [role="listbox"],
+.bn-shadcn [role="menu"] {
+  --color-accent: var(--surface3);
+  --color-accent-foreground: var(--text);
 }
 
 /* Slash menu, @mention menu, and the formatting toolbar's dropdowns

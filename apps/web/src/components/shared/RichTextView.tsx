@@ -44,11 +44,13 @@ export function RichTextView({ content, className }: { content: unknown; classNa
 
   if (!blocks) return null;
   return (
-    <BlockNoteView
-      editor={editor}
-      editable={false}
-      theme={theme}
-      className={className ? `kp-lite-editor ${className}` : "kp-lite-editor"}
-    />
+    // See LiteEditor's identical wrapper for why: BlockNoteView copies its
+    // own `className` prop onto a second, normally-invisible internal
+    // portal div, not just its real container — visual chrome belongs on
+    // a wrapper, never passed straight through as BlockNoteView's own
+    // className.
+    <div className={className}>
+      <BlockNoteView editor={editor} editable={false} theme={theme} className="kp-lite-editor" />
+    </div>
   );
 }

@@ -62,37 +62,44 @@ export function LiteEditor({ initialContent, onChange, autoFocus, className, pla
   }, [editor, onChange]);
 
   return (
-    <BlockNoteView
-      editor={editor}
-      editable
-      theme={theme}
-      autoFocus={autoFocus}
-      className={className ? `kp-lite-editor ${className}` : "kp-lite-editor"}
-    >
-      <SuggestionMenuController
-        triggerCharacter="@"
-        getItems={async (query) => {
-          if (query.trim().length < 2) return [];
-          const { people, issues } = await searchWorkspaceFn({ data: query });
-          return [
-            ...people.map((p) => ({
-              title: p.name,
-              subtext: p.email,
-              group: "People",
-              onItemClick: () => editor.insertInlineContent([{ type: "userMention", props: { userId: p.id, name: p.name } }, " "] as any),
-            })),
-            ...issues.map((i) => ({
-              title: `${i.projectKey}-${i.keySeq}`,
-              subtext: i.title,
-              group: "Issues",
-              onItemClick: () =>
-                editor.insertInlineContent(
-                  [{ type: "issueMention", props: { issueId: i.id, projectKey: i.projectKey, keySeq: String(i.keySeq), teamId: i.teamId ?? "", title: i.title } }, " "] as any,
-                ),
-            })),
-          ];
-        }}
-      />
-    </BlockNoteView>
+    // `className` carries visual chrome (border/background/padding/
+    // min-height), not just layout, so it can't be forwarded straight into
+    // BlockNoteView's own `className` prop: BlockNoteView copies that exact
+    // string onto TWO elements — its real container and a separate,
+    // normally-invisible "portal" div it mounts floating menus into
+    // (`editor.portalElement.className = mergeCSSClasses(..., className ||
+    // "")` in @blocknote/react's BlockNoteView.tsx) — so the portal div
+    // rendered as a second, empty, bordered/padded box sitting right next
+    // to the real editor. Wrapping it here instead keeps that chrome on
+    // one element; BlockNoteView itself only ever gets the bare
+    // "kp-lite-editor" marker class both copies already share harmlessly.
+    <div className={className}>
+      <BlockNoteView editor={editor} editable theme={theme} autoFocus={autoFocus} className="kp-lite-editor">
+        <SuggestionMenuController
+          triggerCharacter="@"
+          getItems={async (query) => {
+            if (query.trim().length < 2) return [];
+            const { people, issues } = await searchWorkspaceFn({ data: query });
+            return [
+              ...people.map((p) => ({
+                title: p.name,
+                subtext: p.email,
+                group: "People",
+                onItemClick: () => editor.insertInlineContent([{ type: "userMention", props: { userId: p.id, name: p.name } }, " "] as any),
+              })),
+              ...issues.map((i) => ({
+                title: `${i.projectKey}-${i.keySeq}`,
+                subtext: i.title,
+                group: "Issues",
+                onItemClick: () =>
+                  editor.insertInlineContent(
+                    [{ type: "issueMention", props: { issueId: i.id, projectKey: i.projectKey, keySeq: String(i.keySeq), teamId: i.teamId ?? "", title: i.title } }, " "] as any,
+                  ),
+              })),
+            ];
+          }}
+        />
+      </BlockNoteView>
+    </div>
   );
 }
