@@ -1,4 +1,6 @@
 {
+  "statusLabel": "Status",
+  "createdUpdatedMeta": "Created {{created}} · Updated {{updated}}",
   "assigneeLabel": "Assignee",
   "unassigned": "Unassigned",
   "reporterLabel": "Reporter",

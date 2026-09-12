@@ -1,9 +1,11 @@
 import "@blocknote/core/style.css";
 import "@blocknote/shadcn/style.css";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, type Block, type PartialBlock } from "@blocknote/core";
+import { en } from "@blocknote/core/locales";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
+import { useTheme } from "@kompast/ui/theme";
 
 const schema = BlockNoteSchema.create({
   blockSpecs: defaultBlockSpecs,
@@ -15,6 +17,8 @@ export interface LiteEditorProps {
   onChange: (blocks: Block[]) => void;
   autoFocus?: boolean;
   className?: string;
+  /** Shown as ghost text while the document is a single empty paragraph. */
+  placeholder?: string;
 }
 
 /**
@@ -23,19 +27,23 @@ export interface LiteEditorProps {
  * issue descriptions and comment/reply bodies, where a single field
  * doesn't need live multi-user collaboration.
  *
- * Note: a `placeholder` prop was intentionally left out. The only
- * placeholder mechanism on `BlockNoteEditorOptions` is `placeholders`
- * (`Record<string, string | undefined>`), which is marked
- * `@deprecated, provide placeholders via dictionary instead` and
- * `@internal` in the installed `@blocknote/core` v0.54.0 source
- * (`editor/BlockNoteEditor.ts`) — not a stable surface worth wiring up
- * for a nice-to-have. The supported route (a custom `dictionary`) is
- * more involved than this component warrants.
+ * `placeholder` goes through the supported `dictionary` route (the
+ * top-level `placeholders` option is `@deprecated, provide placeholders
+ * via dictionary instead` in the installed `@blocknote/core` v0.54.0
+ * source) rather than that deprecated prop — merged onto BlockNote's own
+ * `en` dictionary so slash-menu labels etc. stay at their defaults, only
+ * `placeholders.default`/`emptyDocument` are overridden.
  */
-export function LiteEditor({ initialContent, onChange, autoFocus, className }: LiteEditorProps) {
+export function LiteEditor({ initialContent, onChange, autoFocus, className, placeholder }: LiteEditorProps) {
+  const { theme } = useTheme();
+  const dictionary = useMemo(
+    () => (placeholder ? { ...en, placeholders: { ...en.placeholders, default: placeholder, emptyDocument: placeholder } } : en),
+    [placeholder],
+  );
   const editor = useCreateBlockNote({
     schema,
     initialContent: initialContent && initialContent.length > 0 ? initialContent : undefined,
+    dictionary,
   });
 
   useEffect(() => {
@@ -43,5 +51,13 @@ export function LiteEditor({ initialContent, onChange, autoFocus, className }: L
     return unsubscribe;
   }, [editor, onChange]);
 
-  return <BlockNoteView editor={editor} editable theme="light" autoFocus={autoFocus} className={className} />;
+  return (
+    <BlockNoteView
+      editor={editor}
+      editable
+      theme={theme}
+      autoFocus={autoFocus}
+      className={className ? `kp-lite-editor ${className}` : "kp-lite-editor"}
+    />
+  );
 }

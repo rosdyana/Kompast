@@ -204,6 +204,105 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2370757e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
+/* Shared bordered field control for plain <input>/<select> property rows
+   (issue sidebar, custom properties). These were hand-repeated per field
+   with no :focus state at all — centralizing here gives every field a
+   real focus ring in one place instead of ten near-identical class strings. */
+.kp-field {
+  border-radius: 7px;
+  border: 1px solid var(--border2);
+  /* background-color, not the `background` shorthand: the shorthand resets
+     unmentioned sub-properties to their initial values, which silently wiped
+     out .kp-select's background-image/-repeat/-position/-size (its chevron)
+     on every select carrying both classes — background-color alone can't
+     touch those siblings. */
+  background-color: var(--surface);
+  padding: 4px 8px;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 0.1s ease;
+}
+.kp-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.kp-field:hover:not(:focus) {
+  border-color: var(--border);
+}
+/* .kp-field's shorthand `padding` is declared after .kp-select in source
+   order, so on an element carrying both classes it would otherwise clobber
+   .kp-select's own padding-right (reserved for the chevron icon) even
+   though .kp-select is the more semantically specific one — pin it back
+   with a same-file, higher-specificity combined selector rather than
+   depending on declaration order. */
+.kp-field.kp-select {
+  padding-right: 26px;
+}
+
+/* Colored, pill-shaped native <select> (issue detail's status control) —
+   background/text color comes from the status's own DB-stored hex via an
+   inline style, since workflow statuses are admin-configurable and can't
+   be limited to the six fixed Badge tones. */
+.kp-pill-select {
+  border: none;
+  cursor: pointer;
+}
+.kp-pill-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.kp-pill-select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* BlockNote bridge (LiteEditor / RichTextView): reroutes @blocknote/react's
+   own CSS custom properties onto Kompast's tokens so the description and
+   comment editors read as part of this system instead of BlockNote's stock
+   shadcn skin (Inter font, generic grays). Unscoped since every
+   BlockNoteView in the app carries the same drift and these are
+   colors/radii only — never layout — so there's no risk to DocEditor's
+   own full-document layout. --bn-colors-* already track light/dark for
+   free since they resolve through this file's own :root/[data-theme] vars. */
+.bn-root {
+  --bn-font-family: var(--font-sans);
+  --bn-border-radius: 7px;
+  --bn-colors-editor-text: var(--text);
+  --bn-colors-editor-background: transparent;
+  --bn-colors-menu-text: var(--text);
+  --bn-colors-menu-background: var(--surface);
+  --bn-colors-tooltip-text: var(--bg);
+  --bn-colors-tooltip-background: var(--text);
+  --bn-colors-hovered-text: var(--text);
+  --bn-colors-hovered-background: var(--surface3);
+  --bn-colors-selected-text: var(--accent);
+  --bn-colors-selected-background: var(--accent-soft);
+  --bn-colors-disabled-text: var(--text3);
+  --bn-colors-disabled-background: var(--surface3);
+  --bn-colors-shadow: var(--border2);
+  --bn-colors-border: var(--border);
+  --bn-colors-side-menu: var(--text3);
+}
+
+/* .kp-lite-editor scopes the layout-sensitive fixes (BlockNote copies
+   `className` onto its floating-menu portal too, so this reaches both):
+   the 54px doc-margin and 16px/Inter prose defaults only make sense for a
+   full document page, not a small inline description/comment field. */
+.kp-lite-editor .bn-editor {
+  padding-inline: 0;
+}
+.kp-lite-editor .bn-default-styles,
+.kp-lite-editor .bn-default-styles p,
+.kp-lite-editor .bn-default-styles li {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.kp-lite-editor .bn-block-content:has(.ProseMirror-trailingBreak:only-child):after {
+  color: var(--text3);
+  font-style: normal;
+}
+
 ::selection {
   background: var(--accent-soft);
   color: var(--text);

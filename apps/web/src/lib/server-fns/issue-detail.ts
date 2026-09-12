@@ -118,6 +118,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         status,
         comments,
         users,
+        currentUserId: ctx.userId,
         isWatching,
         history,
         statuses,
