@@ -19,6 +19,7 @@ import {
   updateIssueDatesFn,
   updateIssueEpicFn,
 } from "@/lib/server-fns/issue-detail";
+import { moveIssueFn } from "@/lib/server-fns/issues";
 import { addIssueToSprintFn, removeIssueFromSprintFn } from "@/lib/server-fns/sprints";
 import { requestAttachmentUploadFn, deleteAttachmentFn } from "@/lib/server-fns/attachments";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
@@ -62,11 +63,23 @@ function IssueDetailPage() {
   const [aiDraftBusy, setAiDraftBusy] = useState(false);
 
   const usersById = new Map(data.users.map((u) => [u.id, u]));
+  const currentUserName = data.orgMembers.find((m) => m.userId === data.currentUserId)?.name;
+  const [changingStatus, setChangingStatus] = useState(false);
 
   async function toggleWatch() {
     const next = !watching;
     setWatching(next);
     await toggleWatchFn({ data: { issueId: data.issue.id, watching: next } });
+  }
+
+  async function setStatus(statusId: string) {
+    setChangingStatus(true);
+    try {
+      await moveIssueFn({ data: { issueId: data.issue.id, toStatusId: statusId } });
+      await router.invalidate();
+    } finally {
+      setChangingStatus(false);
+    }
   }
 
   async function setAssignee(assigneeId: string) {
@@ -197,9 +210,23 @@ function IssueDetailPage() {
               {data.project.key}-{data.issue.keySeq}
             </span>
             {data.type && <Badge tone="indigo">{data.type.name}</Badge>}
-            {data.status && <Badge tone="green">{data.status.name}</Badge>}
+            {data.status && (
+              <StatusSelect
+                statuses={data.statuses}
+                value={data.issue.statusId}
+                disabled={changingStatus}
+                onChange={setStatus}
+                label={t("statusLabel")}
+              />
+            )}
           </div>
-          <h1 className="mb-8 type-title">{data.issue.title}</h1>
+          <h1 className="mb-1 type-title">{data.issue.title}</h1>
+          <p className="mb-8 type-label text-text-3">
+            {t("createdUpdatedMeta", {
+              created: new Date(data.issue.createdAt).toLocaleDateString(intlLocale, { day: "numeric", month: "short", year: "numeric" }),
+              updated: new Date(data.issue.updatedAt).toLocaleDateString(intlLocale, { day: "numeric", month: "short", year: "numeric" }),
+            })}
+          </p>
 
           <section className="mb-8">
             <div className="mb-3 flex items-center justify-between">
@@ -227,7 +254,8 @@ function IssueDetailPage() {
                     initialContent={descriptionInitialContent}
                     onChange={setDescriptionDraft}
                     autoFocus
-                    className="min-h-[140px] rounded-[7px] border border-border bg-surface p-3 text-[12.5px] outline-none focus:border-border-2"
+                    placeholder={t("descriptionPlaceholder")}
+                    className="min-h-[140px] rounded-[7px] border border-border bg-surface p-3 outline-none focus-within:border-border-2"
                   />
                 </ClientOnly>
                 <div className="flex items-center gap-2">
@@ -310,6 +338,7 @@ function IssueDetailPage() {
                 comments={data.comments}
                 usersById={usersById}
                 intlLocale={intlLocale}
+                currentUserName={currentUserName}
                 onSubmit={async ({ bodyJson, parentCommentId }) => {
                   await addCommentFn({ data: { issueId: data.issue.id, bodyJson, parentCommentId } });
                   await router.invalidate();
@@ -342,7 +371,7 @@ function IssueDetailPage() {
               <select
                 value={data.issue.assigneeId ?? ""}
                 onChange={(e) => setAssignee(e.target.value)}
-                className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+                className="kp-select kp-field w-full"
               >
                 <option value="">{t("unassigned")}</option>
                 {data.orgMembers.map((m) => (
@@ -361,17 +390,24 @@ function IssueDetailPage() {
             </div>
             <div>
               <p className="mb-1 text-text-3">{t("priorityLabel")}</p>
-              <select
-                value={data.issue.priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
-              >
-                {[...data.priorityLevels].sort((a, b) => a.order - b.order).map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <span
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full"
+                  style={{ background: data.priorityLevels.find((p) => p.key === data.issue.priority)?.color }}
+                />
+                <select
+                  value={data.issue.priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="kp-select kp-field w-full"
+                  style={{ paddingLeft: 22 }}
+                >
+                  {[...data.priorityLevels].sort((a, b) => a.order - b.order).map((p) => (
+                    <option key={p.key} value={p.key}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div>
               <p className="mb-1 text-text-3">{t("startDateLabel")}</p>
@@ -379,7 +415,7 @@ function IssueDetailPage() {
                 type="date"
                 value={data.issue.startDate ? new Date(data.issue.startDate).toISOString().slice(0, 10) : ""}
                 onChange={(e) => setStartDate(e.target.value || null)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+                className="kp-field w-full"
               />
             </div>
             <div>
@@ -388,7 +424,7 @@ function IssueDetailPage() {
                 type="date"
                 value={data.issue.dueDate ? new Date(data.issue.dueDate).toISOString().slice(0, 10) : ""}
                 onChange={(e) => setDueDate(e.target.value || null)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+                className="kp-field w-full"
               />
             </div>
             {data.type?.hierarchyLevel !== 0 && (
@@ -397,7 +433,7 @@ function IssueDetailPage() {
                 <select
                   value={data.issue.epicId ?? ""}
                   onChange={(e) => setEpic(e.target.value || null)}
-                  className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+                  className="kp-select kp-field w-full"
                 >
                   <option value="">{t("noEpic")}</option>
                   {data.candidateEpics.map((e) => (
@@ -413,7 +449,7 @@ function IssueDetailPage() {
               <select
                 value={data.issue.sprintId ?? ""}
                 onChange={(e) => setSprint(e.target.value || null)}
-                className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+                className="kp-select kp-field w-full"
               >
                 <option value="">{t("backlogLabel")}</option>
                 {data.boardSprints
@@ -443,6 +479,48 @@ function IssueDetailPage() {
         </div>
       </div>
     </PageContainer>
+  );
+}
+
+type StatusOption = Awaited<ReturnType<typeof getIssueDetailFn>>["statuses"][number];
+
+/**
+ * A colored, pill-shaped status dropdown — mirrors how Card.tsx colors the
+ * board's priority dot from DB-stored hex, since workflow statuses are
+ * per-project/admin-configurable and can't be limited to Badge's six fixed
+ * tones. Uses backgroundColor (not the `background` shorthand) in the
+ * inline style so it doesn't blank out .kp-select's own background-image
+ * chevron.
+ */
+function StatusSelect({
+  statuses,
+  value,
+  disabled,
+  onChange,
+  label,
+}: {
+  statuses: StatusOption[];
+  value: string;
+  disabled?: boolean;
+  onChange: (statusId: string) => void;
+  label: string;
+}) {
+  const color = statuses.find((s) => s.id === value)?.color ?? "var(--text-3)";
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className="kp-select kp-pill-select rounded-full py-0.5 pl-2.5 text-[10.5px] font-semibold uppercase tracking-[0.05em]"
+      style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, var(--surface))`, color }}
+    >
+      {statuses.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.name}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -497,7 +575,7 @@ function CustomPropertyField({
         <select
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value || null)}
-          className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+          className="kp-select kp-field w-full"
         >
           <option value="">—</option>
           {options.map((o) => (
@@ -542,7 +620,7 @@ function CustomPropertyField({
           type="number"
           defaultValue={typeof value === "number" ? value : ""}
           onBlur={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-          className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+          className="kp-field w-full"
         />
       </div>
     );
@@ -556,7 +634,7 @@ function CustomPropertyField({
           type="date"
           defaultValue={typeof value === "string" ? value : ""}
           onBlur={(e) => onChange(e.target.value || null)}
-          className="rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+          className="kp-field"
         />
       </div>
     );
@@ -569,7 +647,7 @@ function CustomPropertyField({
       <input
         defaultValue={typeof value === "string" ? value : ""}
         onBlur={(e) => onChange(e.target.value || null)}
-        className="w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+        className="kp-field w-full"
       />
     </div>
   );

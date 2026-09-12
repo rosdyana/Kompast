@@ -20,6 +20,7 @@ interface CommentThreadProps {
   comments: ThreadComment[];
   usersById: Map<string, { id: string; name: string }>;
   intlLocale: string;
+  currentUserName?: string;
   onSubmit: (input: { bodyJson: Block[]; parentCommentId?: string }) => Promise<void>;
 }
 
@@ -53,14 +54,20 @@ function CommentComposer({
   onSubmit,
   onCancel,
   autoFocus,
+  authorName,
 }: {
   onSubmit: (bodyJson: Block[]) => Promise<void>;
   onCancel?: () => void;
   autoFocus?: boolean;
+  authorName?: string;
 }) {
   const { t } = useTranslation("issue");
   const [draft, setDraft] = useState<Block[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  // Remounts LiteEditor (clearing it) only after a successful submit — it's
+  // an uncontrolled editor, so nothing else resets its ProseMirror document
+  // once mounted. Bumping this on failure too would lose the user's draft.
+  const [submitCount, setSubmitCount] = useState(0);
   const hasContent = blocksToPlainText(draft).length > 0;
 
   async function submit() {
@@ -68,25 +75,36 @@ function CommentComposer({
     setSubmitting(true);
     try {
       await onSubmit(draft);
+      setDraft([]);
+      setSubmitCount((c) => c + 1);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <ClientOnly fallback={<div className="min-h-[80px] rounded-[7px] border border-border bg-surface" />}>
-        <LiteEditor onChange={setDraft} autoFocus={autoFocus} className="min-h-[80px] rounded-[7px] border border-border bg-surface" />
-      </ClientOnly>
-      <div className="flex items-center gap-2">
-        <Button variant="primary" onClick={submit} disabled={submitting || !hasContent}>
-          {t("send")}
-        </Button>
-        {onCancel && (
-          <Button variant="outline" onClick={onCancel} disabled={submitting}>
-            {t("cancel")}
+    <div className="flex gap-2.5">
+      {authorName && <Avatar initials={initialsOf(authorName)} size={24} className="mt-0.5" />}
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <ClientOnly fallback={<div className="min-h-[80px] rounded-[7px] border border-border bg-surface" />}>
+          <LiteEditor
+            key={submitCount}
+            onChange={setDraft}
+            autoFocus={autoFocus}
+            placeholder={t("commentPlaceholder")}
+            className="min-h-[80px] rounded-[7px] border border-border bg-surface p-2.5 focus-within:border-border-2"
+          />
+        </ClientOnly>
+        <div className="flex items-center gap-2">
+          <Button variant="primary" onClick={submit} disabled={submitting || !hasContent}>
+            {t("send")}
           </Button>
-        )}
+          {onCancel && (
+            <Button variant="outline" onClick={onCancel} disabled={submitting}>
+              {t("cancel")}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -97,12 +115,14 @@ function CommentNode({
   childrenByParent,
   usersById,
   intlLocale,
+  currentUserName,
   onReply,
 }: {
   comment: ThreadComment;
   childrenByParent: Map<string, ThreadComment[]>;
   usersById: Map<string, { id: string; name: string }>;
   intlLocale: string;
+  currentUserName?: string;
   onReply: (parentCommentId: string, bodyJson: Block[]) => Promise<void>;
 }) {
   const { t } = useTranslation("issue");
@@ -136,6 +156,7 @@ function CommentNode({
             </div>
             <CommentComposer
               autoFocus
+              authorName={currentUserName}
               onCancel={() => setReplying(false)}
               onSubmit={async (bodyJson) => {
                 await onReply(comment.id, bodyJson);
@@ -147,7 +168,15 @@ function CommentNode({
         {replies.length > 0 && (
           <div className="mt-2.5 flex flex-col gap-2.5 border-l-2 border-border pl-3">
             {replies.map((reply) => (
-              <CommentNode key={reply.id} comment={reply} childrenByParent={childrenByParent} usersById={usersById} intlLocale={intlLocale} onReply={onReply} />
+              <CommentNode
+                key={reply.id}
+                comment={reply}
+                childrenByParent={childrenByParent}
+                usersById={usersById}
+                intlLocale={intlLocale}
+                currentUserName={currentUserName}
+                onReply={onReply}
+              />
             ))}
           </div>
         )}
@@ -156,7 +185,7 @@ function CommentNode({
   );
 }
 
-export function CommentThread({ comments, usersById, intlLocale, onSubmit }: CommentThreadProps) {
+export function CommentThread({ comments, usersById, intlLocale, currentUserName, onSubmit }: CommentThreadProps) {
   const { t } = useTranslation("issue");
   const childrenByParent = new Map<string, ThreadComment[]>();
   const topLevel: ThreadComment[] = [];
@@ -178,9 +207,17 @@ export function CommentThread({ comments, usersById, intlLocale, onSubmit }: Com
     <div className="flex flex-col gap-3">
       {comments.length === 0 && <p className="type-body text-text-3">{t("noCommentsYet")}</p>}
       {topLevel.map((c) => (
-        <CommentNode key={c.id} comment={c} childrenByParent={childrenByParent} usersById={usersById} intlLocale={intlLocale} onReply={handleReply} />
+        <CommentNode
+          key={c.id}
+          comment={c}
+          childrenByParent={childrenByParent}
+          usersById={usersById}
+          intlLocale={intlLocale}
+          currentUserName={currentUserName}
+          onReply={handleReply}
+        />
       ))}
-      <CommentComposer onSubmit={(bodyJson) => onSubmit({ bodyJson })} />
+      <CommentComposer authorName={currentUserName} onSubmit={(bodyJson) => onSubmit({ bodyJson })} />
     </div>
   );
 }

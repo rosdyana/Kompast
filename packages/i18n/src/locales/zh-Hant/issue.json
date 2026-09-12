@@ -1,4 +1,6 @@
 {
+  "statusLabel": "狀態",
+  "createdUpdatedMeta": "建立於 {{created}} · 更新於 {{updated}}",
   "assigneeLabel": "Assignee",
   "unassigned": "未指派",
   "reporterLabel": "Reporter",

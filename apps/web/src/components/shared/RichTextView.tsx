@@ -3,6 +3,7 @@ import "@blocknote/shadcn/style.css";
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, type PartialBlock } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
+import { useTheme } from "@kompast/ui/theme";
 
 const schema = BlockNoteSchema.create({
   blockSpecs: defaultBlockSpecs,
@@ -34,9 +35,17 @@ export function normalizeToBlocks(json: unknown): PartialBlock[] | undefined {
  * after e.g. a comment edit reloads page data with new content.
  */
 export function RichTextView({ content, className }: { content: unknown; className?: string }) {
+  const { theme } = useTheme();
   const blocks = normalizeToBlocks(content);
   const editor = useCreateBlockNote({ schema, initialContent: blocks }, [JSON.stringify(content)]);
 
   if (!blocks) return null;
-  return <BlockNoteView editor={editor} editable={false} theme="light" className={className} />;
+  return (
+    <BlockNoteView
+      editor={editor}
+      editable={false}
+      theme={theme}
+      className={className ? `kp-lite-editor ${className}` : "kp-lite-editor"}
+    />
+  );
 }

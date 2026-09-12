@@ -1,4 +1,6 @@
 {
+  "statusLabel": "Status",
+  "createdUpdatedMeta": "Dibuat {{created}} · Diperbarui {{updated}}",
   "assigneeLabel": "Assignee",
   "unassigned": "Belum ditugaskan",
   "reporterLabel": "Reporter",
