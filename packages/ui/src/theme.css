@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* @blocknote/shadcn's own menus/toolbars/dropdowns (slash menu, formatting
+   toolbar, block-type select, color picker) are styled entirely by Tailwind
+   utility classes compiled into its own dist bundle (bg-popover,
+   max-h-(--available-height), data-open:zoom-in-95, ...). Tailwind v4's
+   automatic scanner skips node_modules, so without this, none of those
+   classes exist in the app's generated CSS at all — every BlockNote popover
+   renders with no background, no clipping, and no max-height, spilling over
+   the rest of the page instead of floating as a small bounded card. */
+@source "../../../apps/web/node_modules/@blocknote/shadcn/dist/*.{js,cjs}";
+
 /*
  * Design tokens extracted verbatim from Kompast.dc.html (the approved
  * Claude Design mockup), with --accent/--indigo since retuned to match the
@@ -92,6 +102,29 @@
   --color-violet-soft: var(--violet-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+
+  /* shadcn/ui's semantic token names, registered so Tailwind actually
+     generates the utilities @blocknote/shadcn's compiled classes use
+     (bg-popover, text-muted-foreground, ring-ring, ...). Each aliases a
+     plain runtime var scoped to .bn-shadcn below — undefined anywhere
+     else in the app, since nothing outside the editor uses these names. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
   --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Instrument Serif", Georgia, serif;
@@ -282,6 +315,57 @@ body {
   --bn-colors-shadow: var(--border2);
   --bn-colors-border: var(--border);
   --bn-colors-side-menu: var(--text3);
+}
+
+/* @blocknote/shadcn's menus/toolbars don't read the --bn-colors-* bridge
+   above at all — they're a second, independent theming surface built on
+   shadcn/ui's Tailwind color tokens (bg-popover, text-foreground, ...),
+   registered in the @theme block above. Bridged to the same Kompast tokens
+   here, scoped to .bn-shadcn (the class @blocknote/shadcn's BlockNoteView
+   adds to the same element .bn-root is on) so it can't leak outside the
+   editor. --primary/--ring deliberately don't route through var(--accent):
+   this block itself redefines --accent below (shadcn's "accent" is a
+   neutral hover-fill role used on every hovered/selected menu row, not a
+   brand color — aliasing it to Cobalt Focus would paint a solid blue fill
+   behind each row you arrow through, a wash of blue the One Loud Color Rule
+   bans), and since CSS custom properties resolve against the final
+   cascaded value at each point of use, a var(--accent) anywhere in this
+   same block would pick up that redefinition instead of the brand color. */
+.bn-shadcn {
+  --background: var(--surface);
+  --foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --primary: var(--text);
+  --primary-foreground: var(--bg);
+  --secondary: var(--surface3);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface3);
+  --muted-foreground: var(--text3);
+  --accent: var(--surface3);
+  --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--bg);
+  --input: var(--border2);
+  --ring: var(--indigo);
+}
+
+/* Slash menu, @mention menu, and the formatting toolbar's dropdowns
+   (block-type select, color picker) all render through @floating-ui/react
+   or Base UI positioners that set an inline max-height reactively — but
+   only on their own wrapper element, not on the scrollable content div
+   nested inside it. Without an explicit bound on the content div itself,
+   it sizes to its full item list and can render past the wrapper's clipped
+   box instead of scrolling internally. Belt-and-suspenders on top of the
+   @source fix above (which restores Tailwind's own overflow-y-auto /
+   max-h-(--available-height) utilities): guarantee every such popup stays
+   within the viewport and scrolls, regardless of which mechanism applies. */
+.bn-shadcn [role="listbox"],
+.bn-shadcn [role="menu"] {
+  max-height: min(70vh, 420px);
+  overflow-y: auto;
 }
 
 /* .kp-lite-editor scopes the layout-sensitive fixes (BlockNote copies
