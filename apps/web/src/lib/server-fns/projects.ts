@@ -5,6 +5,7 @@ import {
   createProject,
   createPage,
   setSprintMinutesTemplate,
+  setSprintRetroTemplate,
   ForbiddenError,
   getBoard,
   getOrCreateDefaultTableView,
@@ -17,6 +18,7 @@ import {
   requireTeamAdmin,
   updateSavedViewConfig,
   withAuthorizedTenant,
+  type FilterCondition,
 } from "@kompast/core";
 import { seedPageContentFromMarkdown } from "../seed-page-content";
 import { requireAuthContext } from "../session";
@@ -79,6 +81,22 @@ export const createProjectFn = createServerFn({ method: "POST" })
           console.error(`Failed to seed Sprint Minutes Template for project ${created.projectId}:`, err);
         }
 
+        // Same best-effort shape as the Sprint Minutes Template above, for
+        // the Sprint Retrospective doc's default sections.
+        try {
+          const retroTemplatePage = await createPage(tx, {
+            organizationId: ctx.organizationId,
+            projectId: created.projectId,
+            title: "Sprint Retrospective Template",
+            type: "template",
+            actorUserId: ctx.userId,
+          });
+          await seedPageContentFromMarkdown(tx, retroTemplatePage.id, "# Went Well\n\n# To Improve\n\n# Action Items\n");
+          await setSprintRetroTemplate(tx, created.projectId, retroTemplatePage.id);
+        } catch (err) {
+          console.error(`Failed to seed Sprint Retrospective Template for project ${created.projectId}:`, err);
+        }
+
         return created;
       });
     } catch (err) {
@@ -137,11 +155,21 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
               .where(inArray(schema.user.id, assigneeIds))
           : [];
 
+      // Distinct from `users` (assignees of currently-visible issues, no
+      // email) — this is the actual project membership, with email, used to
+      // default the Sprint Review "Send by Email" recipient list.
+      const projectMembers = await tx
+        .select({ id: schema.user.id, name: schema.user.name, email: schema.user.email })
+        .from(schema.projectMember)
+        .innerJoin(schema.user, eq(schema.user.id, schema.projectMember.userId))
+        .where(eq(schema.projectMember.projectId, project.id));
+
       return {
         project,
         board,
         issueTypes,
         users,
+        projectMembers,
         tableView,
         canManageProject,
         propertyDefinitions,
@@ -213,11 +241,23 @@ export const getBoardEmbedDataFn = createServerFn({ method: "GET" })
     });
   });
 
+const sortRuleSchema = z.object({
+  field: z.enum(["manual", "priority", "dueDate", "points", "key"]),
+  direction: z.enum(["asc", "desc"]),
+});
+
+const filterConditionSchema = z.object({
+  id: z.string(),
+  field: z.enum(["column", "assignee", "priority", "type", "points", "dueDate", "title"]),
+  operator: z.enum(["is", "isNot", "isAnyOf", "contains", "doesNotContain", "isEmpty", "isNotEmpty", "gt", "gte", "lt", "lte", "before", "after"]),
+  value: z.unknown(),
+});
+
 const updateTableViewSchema = z.object({
   viewId: z.string(),
   groupBy: z.enum(["column", "assignee", "none"]),
-  sortBy: z.enum(["rank", "priority", "dueDate", "points", "key"]),
-  sortDir: z.enum(["asc", "desc"]),
+  sort: z.array(sortRuleSchema),
+  filters: z.array(filterConditionSchema),
 });
 
 export const updateTableViewFn = createServerFn({ method: "POST" })
@@ -227,8 +267,8 @@ export const updateTableViewFn = createServerFn({ method: "POST" })
     await withAuthorizedTenant(ctx, (tx) =>
       updateSavedViewConfig(tx, data.viewId, {
         groupBy: data.groupBy,
-        sortBy: data.sortBy,
-        sortDir: data.sortDir,
+        sort: data.sort,
+        filters: data.filters as FilterCondition[],
       }),
     );
     return { ok: true } as const;

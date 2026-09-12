@@ -2,17 +2,16 @@ import { asc, eq, schema, type Json } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 
-export interface TableViewConfig {
-  groupBy: "column" | "assignee" | "none";
-  sortBy: "rank" | "priority" | "dueDate" | "points" | "key";
-  sortDir: "asc" | "desc";
-}
-
-export const DEFAULT_TABLE_VIEW_CONFIG: TableViewConfig = {
-  groupBy: "column",
-  sortBy: "rank",
-  sortDir: "asc",
-};
+/**
+ * The config shape itself lives in ./table-view-config.ts, which has no
+ * @kompast/db import — client components reach it via the
+ * "@kompast/core/table-view-config" subpath export (see that file's own
+ * doc comment) so they never pull this file's Postgres client into the
+ * browser bundle. Re-exported here for every existing server-side caller
+ * that already imports from the "@kompast/core" barrel.
+ */
+export * from "./table-view-config";
+import { DEFAULT_TABLE_VIEW_CONFIG, type TableViewConfig } from "./table-view-config";
 
 export async function listSavedViews(tx: Tx, boardId: string) {
   return tx.select().from(schema.savedView).where(eq(schema.savedView.boardId, boardId)).orderBy(asc(schema.savedView.name));

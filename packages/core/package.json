@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./collab-token": "./src/collab-token.ts",
-    "./ids": "./src/ids.ts"
+    "./ids": "./src/ids.ts",
+    "./table-view-config": "./src/table-view-config.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

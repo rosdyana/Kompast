@@ -71,3 +71,44 @@ export async function markEmailSent(db: AnyDb, outboxId: string, providerMessage
 export async function markEmailFailed(db: AnyDb, outboxId: string, error: string) {
   await db.update(schema.emailOutbox).set({ status: "failed", error }).where(eq(schema.emailOutbox.id, outboxId));
 }
+
+export interface SendSprintSummaryEmailInput {
+  organizationId: string;
+  sprintId: string;
+  recipients: string[];
+  subject: string;
+  body: string;
+}
+
+export interface SendSprintSummaryEmailResult {
+  sent: number;
+  deduped: number;
+}
+
+/**
+ * Composes-and-sends the sprint AI summary by email — one email_outbox row
+ * per recipient, all sharing a fresh per-call id in their dedupeKey so a
+ * single "Send" click can't double-queue an email on retry, but a later,
+ * deliberate re-send (a fresh call) isn't deduped away by an earlier send's
+ * key.
+ */
+export async function sendSprintSummaryEmail(tx: Tx, input: SendSprintSummaryEmailInput): Promise<SendSprintSummaryEmailResult> {
+  if (input.recipients.length === 0) throw new Error("At least one recipient is required");
+
+  const sendId = id("sprintsummarysend");
+  let sent = 0;
+  let deduped = 0;
+  for (const to of input.recipients) {
+    const result = await enqueueEmail(tx, {
+      organizationId: input.organizationId,
+      to,
+      subject: input.subject,
+      templateKey: "sprint-summary",
+      templateProps: { subject: input.subject, body: input.body },
+      dedupeKey: `sprint-summary:${input.sprintId}:${sendId}:${to}`,
+    });
+    if (result.deduped) deduped++;
+    else sent++;
+  }
+  return { sent, deduped };
+}

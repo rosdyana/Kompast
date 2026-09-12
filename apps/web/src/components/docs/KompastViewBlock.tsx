@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { createReactBlockSpec } from "@blocknote/react";
 import { Avatar } from "@kompast/ui/Avatar";
-import type { TableViewConfig } from "@kompast/core";
+import { normalizeTableViewConfig } from "@kompast/core/table-view-config";
 import { useTranslation } from "@kompast/i18n";
 import { getBoardEmbedDataFn, listEmbeddableBoardsFn } from "@/lib/server-fns/projects";
 import { kompastViewBlockConfig } from "@/lib/blocknote-schema";
+import { priorityOrderByKey, sortIssues, applyFilters } from "@/lib/table-view-utils";
 
 type BoardData = Awaited<ReturnType<typeof getBoardEmbedDataFn>>;
 type FlatIssue = BoardData["columns"][number]["issues"][number] & { columnName: string; columnColor: string };
@@ -15,37 +16,20 @@ function initialsOf(name: string) {
 }
 
 /**
- * `priority_level.order` is ascending-severity (0 = lowest). The table's
- * "Sort: Priority" wants descending severity (highest first), so invert:
- * the level with `order: 0` gets the highest index, sorting last — same
- * derivation as TableView.tsx's priorityOrderByKey.
+ * No grouping/sort/filter controls, no config mutation — the same
+ * saved_view backs the project's own Table tab (see TableView.tsx, which
+ * shares sortIssues/applyFilters with this file), an embed only ever reads
+ * it, filters included, so the embed never shows a different set of rows
+ * than the live table would.
  */
-function priorityOrderByKey(priorityLevels: { key: string; order: number }[]): Record<string, number> {
-  const sorted = [...priorityLevels].sort((a, b) => a.order - b.order);
-  return Object.fromEntries(sorted.map((p, i, arr) => [p.key, arr.length - 1 - i]));
-}
-
-function sortIssues(issues: FlatIssue[], sortBy: TableViewConfig["sortBy"], sortDir: "asc" | "desc", priorityOrder: Record<string, number>) {
-  const sorted = [...issues].sort((a, b) => {
-    let cmp = 0;
-    if (sortBy === "rank") cmp = a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0;
-    else if (sortBy === "priority") cmp = (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99);
-    else if (sortBy === "dueDate") cmp = (a.dueDate ? new Date(a.dueDate).getTime() : Infinity) - (b.dueDate ? new Date(b.dueDate).getTime() : Infinity);
-    else if (sortBy === "points") cmp = (a.storyPoints ?? -1) - (b.storyPoints ?? -1);
-    else if (sortBy === "key") cmp = a.keySeq - b.keySeq;
-    return sortDir === "asc" ? cmp : -cmp;
-  });
-  return sorted;
-}
-
-/** No grouping/sort controls, no config mutation — the same saved_view backs the project's own Table tab, an embed only ever reads it. */
 function ReadOnlyTable({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
-  const config = data.tableView.config as unknown as TableViewConfig;
+  const config = normalizeTableViewConfig(data.tableView.config);
   const usersById = new Map(data.users.map((u) => [u.id, u]));
 
   const flat: FlatIssue[] = data.columns.flatMap((col) => col.issues.map((issue) => ({ ...issue, columnName: col.name, columnColor: col.color })));
-  const sorted = sortIssues(flat, config.sortBy, config.sortDir, priorityOrderByKey(data.priorityLevels));
+  const filtered = applyFilters(flat, config.filters);
+  const sorted = sortIssues(filtered, config.sort, priorityOrderByKey(data.priorityLevels));
 
   return (
     <div className="overflow-hidden rounded-xl border border-border">

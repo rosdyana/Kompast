@@ -156,6 +156,10 @@ export async function setSprintMinutesTemplate(tx: Tx, projectId: string, pageId
   await tx.update(schema.project).set({ sprintMinutesTemplatePageId: pageId }).where(eq(schema.project.id, projectId));
 }
 
+export async function setSprintRetroTemplate(tx: Tx, projectId: string, pageId: string): Promise<void> {
+  await tx.update(schema.project).set({ sprintRetroTemplatePageId: pageId }).where(eq(schema.project.id, projectId));
+}
+
 /**
  * Same "first non-subtask type, board's Backlog column's status" default
  * the project page's own "+ New issue" button already resolves client-side
