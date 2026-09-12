@@ -3,6 +3,7 @@ import type { Tx } from "./types";
 import { id } from "./ids";
 import { getDefaultActiveStatusId } from "./board";
 import { createPage, duplicatePage, updatePageMeta } from "./page";
+import { rankBetween } from "./rank";
 
 const CYCLE_DAYS: Record<string, number> = { "1w": 7, "2w": 14, "3w": 21, "4w": 28 };
 
@@ -35,7 +36,7 @@ async function createLinkedMinutesPage(
   const [board] = await tx.select({ projectId: schema.board.projectId }).from(schema.board).where(eq(schema.board.id, input.boardId));
   if (!board) return;
 
-  const title = `Sprint ${input.number} — Meeting Minutes`;
+  const title = `Sprint ${input.number} — Sprint Action`;
 
   const [project] = await tx.select({ sprintMinutesTemplatePageId: schema.project.sprintMinutesTemplatePageId }).from(schema.project).where(eq(schema.project.id, board.projectId));
   const templateId = project?.sprintMinutesTemplatePageId;
@@ -61,6 +62,47 @@ async function createLinkedMinutesPage(
     title,
     actorUserId: input.actorUserId,
   });
+}
+
+/**
+ * Same shape as createLinkedMinutesPage, for the Sprint Retrospective doc —
+ * except the created page is linked back via sprint.retroPageId (an update
+ * on `sprint`) instead of page.sprintId, since page.sprintId already means
+ * "this sprint's Sprint Action doc" and can't identify a second linked page
+ * (see sprint.ts schema's retroPageId doc comment).
+ */
+async function createLinkedRetroPage(
+  tx: Tx,
+  input: { organizationId: string; boardId: string; sprintId: string; number: number; actorUserId: string },
+): Promise<void> {
+  const [board] = await tx.select({ projectId: schema.board.projectId }).from(schema.board).where(eq(schema.board.id, input.boardId));
+  if (!board) return;
+
+  const title = `Sprint ${input.number} — Retrospective`;
+
+  const [project] = await tx.select({ sprintRetroTemplatePageId: schema.project.sprintRetroTemplatePageId }).from(schema.project).where(eq(schema.project.id, board.projectId));
+  const templateId = project?.sprintRetroTemplatePageId;
+  const [templateExists] = templateId
+    ? await tx.select({ id: schema.page.id }).from(schema.page).where(eq(schema.page.id, templateId))
+    : [];
+
+  let retroPage;
+  if (templateId && templateExists) {
+    retroPage = await duplicatePage(tx, templateId, { actorUserId: input.actorUserId, projectId: board.projectId, titleSuffix: "" });
+    await updatePageMeta(tx, retroPage.id, { title });
+  } else {
+    // No template configured (or it's since been deleted) — still guarantee
+    // every sprint gets a retro doc; it just starts blank instead of
+    // pre-seeded with Went Well/To Improve/Action Items headings.
+    retroPage = await createPage(tx, {
+      organizationId: input.organizationId,
+      projectId: board.projectId,
+      title,
+      actorUserId: input.actorUserId,
+    });
+  }
+
+  await tx.update(schema.sprint).set({ retroPageId: retroPage.id }).where(eq(schema.sprint.id, input.sprintId));
 }
 
 /**
@@ -96,6 +138,13 @@ export async function createSprint(tx: Tx, input: CreateSprintInput) {
       number,
       actorUserId: input.actorUserId,
     });
+    await createLinkedRetroPage(tx, {
+      organizationId: input.organizationId,
+      boardId: input.boardId,
+      sprintId,
+      number,
+      actorUserId: input.actorUserId,
+    });
   }
 
   return { sprintId, number };
@@ -108,6 +157,43 @@ export async function listSprints(tx: Tx, boardId: string) {
 export async function getSprint(tx: Tx, sprintId: string) {
   const [sprint] = await tx.select().from(schema.sprint).where(eq(schema.sprint.id, sprintId));
   return sprint ?? null;
+}
+
+/** The sprint's linked Sprint Retrospective doc, if one's been created yet — null otherwise (see getOrCreateSprintRetroPage for the create-on-demand path). */
+export async function getSprintRetroPage(tx: Tx, sprintId: string) {
+  const sprint = await getSprint(tx, sprintId);
+  if (!sprint?.retroPageId) return null;
+  const [page] = await tx
+    .select()
+    .from(schema.page)
+    .where(and(eq(schema.page.id, sprint.retroPageId), isNull(schema.page.archivedAt)));
+  return page ?? null;
+}
+
+/**
+ * Lazily backfills the retro page for a sprint created before this feature
+ * existed (createSprint only wires one up for actor-initiated creation going
+ * forward) — called when the Sprint Retrospective tab is opened, so no bulk
+ * migration script is needed for already-existing sprints.
+ */
+export async function getOrCreateSprintRetroPage(tx: Tx, sprintId: string, actorUserId: string) {
+  const existing = await getSprintRetroPage(tx, sprintId);
+  if (existing) return existing;
+
+  const sprint = await getSprint(tx, sprintId);
+  if (!sprint) throw new Error(`Sprint ${sprintId} not found`);
+
+  await createLinkedRetroPage(tx, {
+    organizationId: sprint.organizationId,
+    boardId: sprint.boardId,
+    sprintId: sprint.id,
+    number: sprint.number,
+    actorUserId,
+  });
+
+  const page = await getSprintRetroPage(tx, sprintId);
+  if (!page) throw new Error(`Failed to create retrospective page for sprint ${sprintId}`);
+  return page;
 }
 
 /** Issues with no current sprint — the backlog for a board's project. */
@@ -129,11 +215,52 @@ export async function listSprintIssues(tx: Tx, sprintId: string) {
     .from(schema.sprintIssue)
     .where(and(eq(schema.sprintIssue.sprintId, sprintId), isNull(schema.sprintIssue.removedAt)));
   if (members.length === 0) return [];
-  return tx
+  const sprintRankByIssueId = new Map(members.map((m) => [m.issueId, m.rank]));
+  const issues = await tx
     .select()
     .from(schema.issue)
     .where(inArray(schema.issue.id, members.map((m) => m.issueId)))
     .orderBy(asc(schema.issue.rank));
+  // sprintRank is this sprint's own manual-reorder rank (sprint_issue.rank),
+  // distinct from issue.rank — see reorderSprintIssue/the schema doc comment
+  // on sprint_issue.rank. Null for rows created before drag-reorder shipped,
+  // until the backfill script or a first manual reorder sets it.
+  return issues.map((issue) => ({ ...issue, sprintRank: sprintRankByIssueId.get(issue.id) ?? null }));
+}
+
+export interface ReorderSprintIssueInput {
+  sprintId: string;
+  issueId: string;
+  beforeIssueId?: string;
+  afterIssueId?: string;
+}
+
+/**
+ * Manual drag-and-drop reorder for the Sprint Review table — writes
+ * sprint_issue.rank, scoped to this sprint, never issue.rank (see
+ * sprint_issue's schema doc comment: dragging a row here must never
+ * reorder that issue on the backlog/kanban board). Same
+ * neighbor-rank-lookup + single-row-write pattern as moveIssue
+ * (packages/core/src/issue.ts).
+ */
+export async function reorderSprintIssue(tx: Tx, input: ReorderSprintIssueInput): Promise<void> {
+  const [current] = await tx
+    .select({ id: schema.sprintIssue.id })
+    .from(schema.sprintIssue)
+    .where(and(eq(schema.sprintIssue.sprintId, input.sprintId), eq(schema.sprintIssue.issueId, input.issueId), isNull(schema.sprintIssue.removedAt)));
+  if (!current) throw new Error(`Issue ${input.issueId} is not currently on sprint ${input.sprintId}`);
+
+  const neighborRank = (neighborIssueId: string | undefined) =>
+    neighborIssueId
+      ? tx
+          .select({ rank: schema.sprintIssue.rank })
+          .from(schema.sprintIssue)
+          .where(and(eq(schema.sprintIssue.sprintId, input.sprintId), eq(schema.sprintIssue.issueId, neighborIssueId), isNull(schema.sprintIssue.removedAt)))
+      : Promise.resolve([]);
+
+  const [beforeRow, afterRow] = await Promise.all([neighborRank(input.beforeIssueId), neighborRank(input.afterIssueId)]);
+  const newRank = rankBetween(beforeRow[0]?.rank ?? null, afterRow[0]?.rank ?? null);
+  await tx.update(schema.sprintIssue).set({ rank: newRank }).where(eq(schema.sprintIssue.id, current.id));
 }
 
 /**
@@ -162,11 +289,21 @@ export async function addIssueToSprint(tx: Tx, sprintId: string, issueId: string
     .set({ removedAt: new Date() })
     .where(and(eq(schema.sprintIssue.issueId, issueId), isNull(schema.sprintIssue.removedAt)));
 
+  const [lastRanked] = await tx
+    .select({ rank: schema.sprintIssue.rank })
+    .from(schema.sprintIssue)
+    .where(and(eq(schema.sprintIssue.sprintId, sprintId), isNull(schema.sprintIssue.removedAt)))
+    .orderBy(desc(schema.sprintIssue.rank))
+    .limit(1);
+
   await tx.insert(schema.sprintIssue).values({
     id: id("sprintissue"),
     sprintId,
     issueId,
     plannedAtStart: sprint.state === "future",
+    // Appends to the end of this sprint's manual review order — see
+    // reorderSprintIssue/sprint_issue.rank's doc comment.
+    rank: rankBetween(lastRanked?.rank ?? null, null),
   });
 
   const updateValues: { sprintId: string; updatedAt: Date; statusId?: string } = { sprintId, updatedAt: new Date() };

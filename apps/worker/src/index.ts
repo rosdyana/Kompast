@@ -17,7 +17,7 @@ import {
   markReindexTaskFailed,
   withAuthorizedTenant,
 } from "@kompast/core";
-import { createMailer, NotificationEmail } from "@kompast/mail";
+import { createMailer, NotificationEmail, SprintSummaryEmail } from "@kompast/mail";
 
 const env = loadEnv();
 const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
@@ -33,10 +33,19 @@ interface NotificationTemplateProps {
   actionLabel: string;
 }
 
+interface SprintSummaryTemplateProps {
+  subject: string;
+  body: string;
+}
+
 function buildTemplate(templateKey: string, props: unknown) {
   if (templateKey === "notification") {
     const p = props as NotificationTemplateProps;
     return NotificationEmail({ title: p.title, body: p.body ?? undefined, actionUrl: p.actionUrl, actionLabel: p.actionLabel });
+  }
+  if (templateKey === "sprint-summary") {
+    const p = props as SprintSummaryTemplateProps;
+    return SprintSummaryEmail({ subject: p.subject, body: p.body });
   }
   throw new Error(`Unknown email template: ${templateKey}`);
 }

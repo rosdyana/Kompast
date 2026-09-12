@@ -3,7 +3,7 @@ import { schema, eq, and } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { createProject, setSprintMinutesTemplate } from "../project";
+import { createProject, setSprintMinutesTemplate, setSprintRetroTemplate } from "../project";
 import { createIssue } from "../issue";
 import { createPage, getSprintMinutesPage } from "../page";
 import { withAuthorizedTenant } from "../permissions";
@@ -20,6 +20,9 @@ import {
   completeSprint,
   getSprintReport,
   updateSprint,
+  getSprintRetroPage,
+  getOrCreateSprintRetroPage,
+  reorderSprintIssue,
 } from "../sprint";
 
 describe("sprint lifecycle", () => {
@@ -238,7 +241,7 @@ describe("sprint lifecycle", () => {
     const minutes = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, sprintId));
     expect(minutes).not.toBeNull();
     expect(minutes!.sprintId).toBe(sprintId);
-    expect(minutes!.title).toBe(`Sprint ${number} — Meeting Minutes`);
+    expect(minutes!.title).toBe(`Sprint ${number} — Sprint Action`);
   });
 
   it("falls back to a blank minutes page when the project has no template (actorUserId given); creates none at all when actorUserId is omitted", async () => {
@@ -247,7 +250,7 @@ describe("sprint lifecycle", () => {
     const minutes1 = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, s1));
     expect(minutes1).not.toBeNull();
     expect(minutes1!.sprintId).toBe(s1);
-    expect(minutes1!.title).toBe(`Sprint ${n1} — Meeting Minutes`);
+    expect(minutes1!.title).toBe(`Sprint ${n1} — Sprint Action`);
 
     const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "sprg", name: "Sprint Test G", actorUserId: userId }));
     const template = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, projectId, title: "Sprint Minutes Template", type: "template", actorUserId: userId }));
@@ -264,6 +267,79 @@ describe("sprint lifecycle", () => {
 
     const minutes = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, sprintId));
     expect(minutes).not.toBeNull();
-    expect(minutes!.title).toBe(`Sprint ${number} — Meeting Minutes`);
+    expect(minutes!.title).toBe(`Sprint ${number} — Sprint Action`);
+  });
+
+  it("creates a linked, titled retrospective page (via sprint.retroPageId, not page.sprintId) from the project's template when actorUserId is given", async () => {
+    const { projectId, boardId } = await seedProject();
+    const template = await withAuthorizedTenant(ctx, (tx) =>
+      createPage(tx, { organizationId: orgId, projectId, title: "Sprint Retrospective Template", type: "template", actorUserId: userId }),
+    );
+    await withAuthorizedTenant(ctx, (tx) => setSprintRetroTemplate(tx, projectId, template.id));
+
+    const { sprintId, number } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, actorUserId: userId }));
+
+    const retro = await withAuthorizedTenant(ctx, (tx) => getSprintRetroPage(tx, sprintId));
+    expect(retro).not.toBeNull();
+    expect(retro!.title).toBe(`Sprint ${number} — Retrospective`);
+    expect(retro!.sprintId).toBeNull(); // linked via sprint.retroPageId, distinct from the Sprint Action doc's page.sprintId linkage
+
+    const sprint = await withAuthorizedTenant(ctx, (tx) => getSprint(tx, sprintId));
+    expect(sprint!.retroPageId).toBe(retro!.id);
+  });
+
+  it("falls back to a blank retrospective page when the project has no template; creates none at creation time when actorUserId is omitted", async () => {
+    const { boardId: boardWithoutTemplate } = await seedProject();
+    const { sprintId: s1, number: n1 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId: boardWithoutTemplate, actorUserId: userId }));
+    const retro1 = await withAuthorizedTenant(ctx, (tx) => getSprintRetroPage(tx, s1));
+    expect(retro1).not.toBeNull();
+    expect(retro1!.title).toBe(`Sprint ${n1} — Retrospective`);
+
+    const { sprintId: s2 } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId: boardWithoutTemplate })); // no actorUserId
+    expect(await withAuthorizedTenant(ctx, (tx) => getSprintRetroPage(tx, s2))).toBeNull();
+  });
+
+  it("getOrCreateSprintRetroPage lazily backfills a retro page for a sprint that predates this feature (created with no actorUserId)", async () => {
+    const { boardId } = await seedProject();
+    const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId })); // no actorUserId — no retro page yet
+    expect(await withAuthorizedTenant(ctx, (tx) => getSprintRetroPage(tx, sprintId))).toBeNull();
+
+    const created = await withAuthorizedTenant(ctx, (tx) => getOrCreateSprintRetroPage(tx, sprintId, userId));
+    expect(created.id).not.toBeNull();
+
+    // Idempotent: a second call returns the same page rather than creating another.
+    const again = await withAuthorizedTenant(ctx, (tx) => getOrCreateSprintRetroPage(tx, sprintId, userId));
+    expect(again.id).toBe(created.id);
+  });
+
+  it("reorderSprintIssue moves an issue's manual review rank without touching the global issue.rank used by the backlog/board", async () => {
+    const { projectId, boardId, issueTypes, statuses } = await seedProject();
+    const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));
+    const issueA = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id));
+    const issueB = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id));
+    const issueC = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id));
+    await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, sprintId, issueA));
+    await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, sprintId, issueB));
+    await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, sprintId, issueC));
+
+    const bySprintRank = async () => {
+      const rows = await admin
+        .select({ issueId: schema.sprintIssue.issueId, rank: schema.sprintIssue.rank })
+        .from(schema.sprintIssue)
+        .where(eq(schema.sprintIssue.sprintId, sprintId));
+      return rows.sort((a, b) => (a.rank! < b.rank! ? -1 : 1)).map((r) => r.issueId);
+    };
+
+    expect(await bySprintRank()).toEqual([issueA, issueB, issueC]);
+
+    // Move C to the front.
+    await withAuthorizedTenant(ctx, (tx) => reorderSprintIssue(tx, { sprintId, issueId: issueC, beforeIssueId: undefined, afterIssueId: issueA }));
+    expect(await bySprintRank()).toEqual([issueC, issueA, issueB]);
+
+    // The global issue.rank (backlog/board order) must be untouched by a sprint-review reorder.
+    const globalRanks = await admin.select({ id: schema.issue.id, rank: schema.issue.rank }).from(schema.issue).where(eq(schema.issue.projectId, projectId));
+    const originalOrder = [issueA, issueB, issueC];
+    const sortedByGlobalRank = [...globalRanks].sort((a, b) => (a.rank < b.rank ? -1 : 1)).map((r) => r.id);
+    expect(sortedByGlobalRank).toEqual(originalOrder);
   });
 });

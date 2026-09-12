@@ -8,11 +8,14 @@ import {
   listBacklogIssues,
   listSprintIssues,
   getSprintMinutesPage,
+  getOrCreateSprintRetroPage,
+  reorderSprintIssue,
   addIssueToSprint,
   removeIssueFromSprint,
   startSprint,
   completeSprint,
   updateSprint,
+  sendSprintSummaryEmail,
   withAuthorizedTenant,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
@@ -36,14 +39,30 @@ export const getSprintDetailFn = createServerFn({ method: "GET" })
   .handler(async ({ data: sprintId }) => {
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
-      const [sprint, report, issues, minutesPage] = await Promise.all([
+      const [sprint, report, issues, minutesPage, retroPage] = await Promise.all([
         getSprint(tx, sprintId),
         getSprintReport(tx, sprintId),
         listSprintIssues(tx, sprintId),
         getSprintMinutesPage(tx, sprintId),
+        getOrCreateSprintRetroPage(tx, sprintId, ctx.userId),
       ]);
-      return { sprint, report, issues, minutesPageId: minutesPage?.id ?? null };
+      return { sprint, report, issues, minutesPageId: minutesPage?.id ?? null, retroPageId: retroPage?.id ?? null };
     });
+  });
+
+const reorderSprintIssueSchema = z.object({
+  sprintId: z.string(),
+  issueId: z.string(),
+  beforeIssueId: z.string().optional(),
+  afterIssueId: z.string().optional(),
+});
+
+export const reorderSprintIssueFn = createServerFn({ method: "POST" })
+  .validator(reorderSprintIssueSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => reorderSprintIssue(tx, data));
+    return { ok: true } as const;
   });
 
 const createSprintSchema = z.object({
@@ -116,4 +135,26 @@ export const updateSprintFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, (tx) => updateSprint(tx, { sprintId: data.sprintId, name: data.name }));
     return { ok: true } as const;
+  });
+
+const sendSprintSummaryEmailSchema = z.object({
+  sprintId: z.string(),
+  recipients: z.array(z.email()).min(1),
+  subject: z.string().min(1),
+  body: z.string().min(1),
+});
+
+export const sendSprintSummaryEmailFn = createServerFn({ method: "POST" })
+  .validator(sendSprintSummaryEmailSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, (tx) =>
+      sendSprintSummaryEmail(tx, {
+        organizationId: ctx.organizationId,
+        sprintId: data.sprintId,
+        recipients: data.recipients,
+        subject: data.subject,
+        body: data.body,
+      }),
+    );
   });

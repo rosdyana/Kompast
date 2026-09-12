@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { schema, eq, inArray, adminDb as admin } from "@kompast/db";
-import { enqueueEmail, claimPendingEmails, markEmailSent, markEmailFailed } from "../email";
+import { schema, eq, and, inArray, adminDb as admin } from "@kompast/db";
+import { enqueueEmail, claimPendingEmails, markEmailSent, markEmailFailed, sendSprintSummaryEmail } from "../email";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -91,5 +91,45 @@ describe("email outbox", () => {
     const [failedRow] = await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.id, failedId));
     expect(failedRow?.status).toBe("failed");
     expect(failedRow?.error).toBe("SMTP timeout");
+  });
+
+  it("sendSprintSummaryEmail enqueues one outbox row per recipient with the sprint-summary template", async () => {
+    const result = await withAuthorizedTenant(ctx, (tx) =>
+      sendSprintSummaryEmail(tx, { organizationId: orgId, sprintId: "test-sprint-1", recipients: ["a@example.com", "b@example.com"], subject: "Sprint 1 Summary", body: "Line one\nLine two" }),
+    );
+    expect(result).toEqual({ sent: 2, deduped: 0 });
+
+    const rows = await admin
+      .select()
+      .from(schema.emailOutbox)
+      .where(and(eq(schema.emailOutbox.organizationId, orgId), eq(schema.emailOutbox.templateKey, "sprint-summary")));
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.toEmail).sort()).toEqual(["a@example.com", "b@example.com"]);
+    for (const row of rows) {
+      expect(row.subject).toBe("Sprint 1 Summary");
+      expect(row.templateProps).toEqual({ subject: "Sprint 1 Summary", body: "Line one\nLine two" });
+    }
+  });
+
+  it("a later, separate sendSprintSummaryEmail call for the same sprint+recipient is not deduped away by an earlier send", async () => {
+    await withAuthorizedTenant(ctx, (tx) =>
+      sendSprintSummaryEmail(tx, { organizationId: orgId, sprintId: "test-sprint-2", recipients: ["a@example.com"], subject: "First send", body: "v1" }),
+    );
+    const second = await withAuthorizedTenant(ctx, (tx) =>
+      sendSprintSummaryEmail(tx, { organizationId: orgId, sprintId: "test-sprint-2", recipients: ["a@example.com"], subject: "Second send", body: "v2" }),
+    );
+    expect(second).toEqual({ sent: 1, deduped: 0 });
+
+    const rows = await admin
+      .select()
+      .from(schema.emailOutbox)
+      .where(and(eq(schema.emailOutbox.organizationId, orgId), eq(schema.emailOutbox.templateKey, "sprint-summary")));
+    expect(rows).toHaveLength(2);
+  });
+
+  it("rejects an empty recipient list", async () => {
+    await expect(
+      withAuthorizedTenant(ctx, (tx) => sendSprintSummaryEmail(tx, { organizationId: orgId, sprintId: "test-sprint-3", recipients: [], subject: "Empty", body: "" })),
+    ).rejects.toThrow(/recipient/i);
   });
 });

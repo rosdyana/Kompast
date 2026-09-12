@@ -2,6 +2,7 @@ import { pgTable, text, integer, boolean, timestamp, index, uniqueIndex } from "
 import { organization } from "./auth";
 import { board } from "./board";
 import { issue } from "./issue";
+import { rank } from "./_shared";
 
 /**
  * organizationId is denormalized here (rather than only reachable via
@@ -29,6 +30,18 @@ export const sprint = pgTable(
     endAt: timestamp("end_at"),
     capacityPoints: integer("capacity_points"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
+    /**
+     * The sprint's linked Sprint Retrospective doc — bare id, no FK (page.ts
+     * already imports this file for page.sprintId, so a reciprocal FK would
+     * cycle; same reasoning as project.sprintMinutesTemplatePageId). Unlike
+     * the Sprint Action/Meeting Minutes doc (found via page.sprintId, one
+     * page per sprint), the retro page is addressed by this pointer instead
+     * so a sprint can have two distinct linked docs without a discriminator
+     * column on `page`. The retro page itself is created with sprintId left
+     * null. Null until createSprint (or the lazy getOrCreateSprintRetroPage
+     * backfill path) creates the page.
+     */
+    retroPageId: text("retro_page_id"),
   },
   (t) => [
     index("sprint_board_idx").on(t.boardId),
@@ -59,6 +72,15 @@ export const sprintIssue = pgTable(
     plannedAtStart: boolean("planned_at_start").notNull().default(false),
     addedAt: timestamp("added_at").notNull().defaultNow(),
     removedAt: timestamp("removed_at"),
+    /**
+     * Fractional-index rank for the Sprint Review table's manual
+     * drag-and-drop order — deliberately separate from issue.rank (used by
+     * the backlog/kanban board) so reordering a row here never reorders
+     * that issue anywhere else. Nullable: rows written before this column
+     * existed are backfilled by a one-off script (see rank.ts/moveIssue's
+     * identical pattern on `issue`), ordered by addedAt.
+     */
+    rank: rank("rank"),
   },
   (t) => [index("sprint_issue_sprint_idx").on(t.sprintId), index("sprint_issue_issue_idx").on(t.issueId)],
 );

@@ -31,6 +31,7 @@ import {
   completeSprintFn,
   addIssueToSprintFn,
   removeIssueFromSprintFn,
+  sendSprintSummaryEmailFn,
 } from "@/lib/server-fns/sprints";
 import { getPageEditorAccessFn } from "@/lib/server-fns/pages";
 import { DocEditor } from "@/components/docs/Editor";
@@ -682,25 +683,46 @@ function BacklogTab({
 }
 
 /**
- * Reuses TableView verbatim (same grouping/sort/inline links, same
- * project-level saved-view config) filtered down to just this sprint's
- * issues — the plan's "sprint review = the sprint's view in table mode
- * with grouping" ask, without a separate saved_view row per sprint (one
- * project-level table preference is shared across the Table tab and
- * every sprint's review here, a deliberate simplification). Cells are
- * still read-only (linking out to the issue detail page to edit) — full
- * inline-cell editing is a separate, larger gap that applies to the
- * whole table view feature, not unique to sprint review.
+ * Reuses TableView verbatim (same grouping/sort/filter/drag-reorder,
+ * inline links, same project-level saved-view config) filtered down to
+ * just this sprint's issues — the plan's "sprint review = the sprint's
+ * view in table mode with grouping" ask, without a separate saved_view row
+ * per sprint (one project-level table preference is shared across every
+ * sprint's review here, a deliberate simplification). Cells are still
+ * read-only (linking out to the issue detail page to edit) — full
+ * inline-cell editing is a separate, larger gap that applies to the whole
+ * table view feature, not unique to sprint review.
  *
- * Also backs the review half of the Table tab's split view (TableTab,
- * below) — scoped to whichever sprint is selected there, active by default.
+ * `sprintIssues` carries each issue's sprint-scoped manual-reorder rank
+ * (sprint_issue.rank, from listSprintIssues) — merged onto the flattened
+ * boardData issues here so TableView's "Manual order" sort/drag can use it
+ * instead of the global issue.rank (see sprint_issue schema's rank doc
+ * comment on why these are kept separate).
  */
-function SprintReviewTable({ boardData, sprintIssueIds }: { boardData: BoardData; sprintIssueIds: Set<string> }) {
-  const filtered: BoardData = { ...boardData, columns: boardData.columns.map((c) => ({ ...c, issues: c.issues.filter((i) => sprintIssueIds.has(i.id)) })) };
-  return <TableView data={filtered} />;
+function SprintReviewTable({
+  boardData,
+  sprintId,
+  sprintIssues,
+  onReordered,
+}: {
+  boardData: BoardData;
+  sprintId: string;
+  sprintIssues: { id: string; sprintRank: string | null }[];
+  onReordered: () => void;
+}) {
+  const sprintRankByIssueId = new Map(sprintIssues.map((i) => [i.id, i.sprintRank]));
+  const filtered: BoardData = {
+    ...boardData,
+    columns: boardData.columns.map((c) => ({
+      ...c,
+      issues: c.issues.filter((i) => sprintRankByIssueId.has(i.id)).map((i) => ({ ...i, sprintRank: sprintRankByIssueId.get(i.id) ?? null })),
+    })),
+  };
+  return <TableView data={filtered} sprintContext={{ sprintId, onReordered }} />;
 }
 
 type SprintDetailWithMinutes = Awaited<ReturnType<typeof getSprintDetailFn>>;
+type SubTabKey = "review" | "action" | "retro";
 
 function TableTab({ boardId, data }: { boardId: string; data: BoardData }) {
   const { t } = useTranslation("board");
@@ -708,7 +730,20 @@ function TableTab({ boardId, data }: { boardId: string; data: BoardData }) {
   const [sprints, setSprints] = useState<Awaited<ReturnType<typeof listSprintsFn>> | null>(null);
   const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SprintDetailWithMinutes | null>(null);
-  const [access, setAccess] = useState<Awaited<ReturnType<typeof getPageEditorAccessFn>> | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<SubTabKey>("review");
+  const [actionAccess, setActionAccess] = useState<Awaited<ReturnType<typeof getPageEditorAccessFn>> | null>(null);
+  const [retroAccess, setRetroAccess] = useState<Awaited<ReturnType<typeof getPageEditorAccessFn>> | null>(null);
+
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailRecipients, setEmailRecipients] = useState<string[]>([]);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSentMessage, setEmailSentMessage] = useState<string | null>(null);
 
   useEffect(() => {
     listSprintsFn({ data: boardId }).then((list) => {
@@ -719,17 +754,71 @@ function TableTab({ boardId, data }: { boardId: string; data: BoardData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId]);
 
+  async function refreshDetail(sprintId: string) {
+    setDetail(await getSprintDetailFn({ data: sprintId }));
+  }
+
   useEffect(() => {
     setDetail(null);
-    setAccess(null);
+    setAiSummary(null);
+    setAiError(null);
     if (!selectedSprintId) return;
-    getSprintDetailFn({ data: selectedSprintId }).then(setDetail);
+    refreshDetail(selectedSprintId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSprintId]);
 
   useEffect(() => {
-    if (!detail?.minutesPageId) return;
-    getPageEditorAccessFn({ data: detail.minutesPageId }).then(setAccess);
-  }, [detail?.minutesPageId]);
+    setActionAccess(null);
+    if (activeSubTab !== "action" || !detail?.minutesPageId) return;
+    getPageEditorAccessFn({ data: detail.minutesPageId }).then(setActionAccess);
+  }, [activeSubTab, detail?.minutesPageId]);
+
+  useEffect(() => {
+    setRetroAccess(null);
+    if (activeSubTab !== "retro" || !detail?.retroPageId) return;
+    getPageEditorAccessFn({ data: detail.retroPageId }).then(setRetroAccess);
+  }, [activeSubTab, detail?.retroPageId]);
+
+  async function generateAiSummary(sprintId: string) {
+    setAiBusy(true);
+    setAiError(null);
+    setAiSummary("");
+    try {
+      await streamAiCompletion({ feature: "sprint-summary", sprintId }, (delta) => {
+        setAiSummary((prev) => (prev ?? "") + delta);
+      });
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : t("sprint.aiSummaryFailed"));
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  function openEmailModal() {
+    const sprint = sprints?.find((s) => s.id === selectedSprintId);
+    setEmailRecipients(data.projectMembers.map((m) => m.email));
+    setEmailSubject(sprint ? `${data.project.name} — ${sprint.name} Summary` : `${data.project.name} — Sprint Summary`);
+    setEmailBody(aiSummary ?? "");
+    setEmailError(null);
+    setEmailSentMessage(null);
+    setEmailModalOpen(true);
+  }
+
+  async function sendEmail() {
+    if (!selectedSprintId || emailRecipients.length === 0) return;
+    setEmailSending(true);
+    setEmailError(null);
+    try {
+      const result = await sendSprintSummaryEmailFn({
+        data: { sprintId: selectedSprintId, recipients: emailRecipients, subject: emailSubject, body: emailBody },
+      });
+      setEmailSentMessage(t("sprint.emailSentConfirmation", { count: result.sent }));
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : t("sprint.emailSendFailed"));
+    } finally {
+      setEmailSending(false);
+    }
+  }
 
   if (sprints === null) {
     return <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>;
@@ -738,45 +827,153 @@ function TableTab({ boardId, data }: { boardId: string; data: BoardData }) {
     return <TableView data={data} />;
   }
 
+  const subTabItems = [
+    { key: "review", label: t("sprint.reviewHeading") },
+    { key: "action", label: t("sprint.actionHeading") },
+    { key: "retro", label: t("sprint.retrospectiveHeading") },
+  ];
+
   return (
     <div className="flex flex-col gap-3 p-6">
-      <select
-        value={selectedSprintId ?? ""}
-        onChange={(e) => setSelectedSprintId(e.target.value || null)}
-        className="kp-select w-fit rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
-      >
-        {sprints.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-      </select>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="rounded-xl border border-border bg-surface">
-          <p className="p-3 pb-0 type-label-overline text-text-3">{t("sprint.reviewHeading")}</p>
-          {detail && <SprintReviewTable boardData={data} sprintIssueIds={new Set(detail.issues.map((i) => i.id))} />}
-        </div>
-        <div className="rounded-xl border border-border bg-surface p-3">
-          <p className="mb-2 type-label-overline text-text-3">{t("sprint.minutesHeading")}</p>
-          {detail && !detail.minutesPageId ? (
-            <p className="type-body text-text-3">{t("sprint.minutesUnavailable")}</p>
-          ) : access ? (
-            <ClientOnly fallback={<div className="min-h-[40vh] rounded-[9px] border border-border" />}>
-              <DocEditor
-                pageId={access.page.id}
-                collabToken={access.collabToken}
-                collabWsUrl={access.collabWsUrl}
-                canEdit={access.canEdit}
-                userId={shell.user.id}
-                userName={shell.user.name}
-              />
-            </ClientOnly>
-          ) : (
-            <div className="min-h-[40vh] rounded-[9px] border border-border" />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <select
+          value={selectedSprintId ?? ""}
+          onChange={(e) => setSelectedSprintId(e.target.value || null)}
+          className="kp-select w-fit rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+        >
+          {sprints.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => selectedSprintId && generateAiSummary(selectedSprintId)} disabled={aiBusy || !selectedSprintId}>
+            {aiBusy ? t("sprint.writingEllipsis") : t("sprint.generateSummary")}
+          </Button>
+          {aiSummary !== null && !aiError && (
+            <Button variant="outline" onClick={openEmailModal}>
+              {t("sprint.sendByEmailButton")}
+            </Button>
           )}
         </div>
       </div>
+      {aiError && <p className="type-body text-danger">{aiError}</p>}
+      {aiSummary !== null && !aiError && (
+        <p className="whitespace-pre-wrap rounded-[9px] border border-border bg-surface-2 px-3 py-2 type-body text-text-2">{aiSummary || "…"}</p>
+      )}
+
+      <Tabs items={subTabItems} active={activeSubTab} onChange={(k) => setActiveSubTab(k as SubTabKey)} />
+
+      <div className="rounded-xl border border-border bg-surface">
+        {activeSubTab === "review" &&
+          (detail ? (
+            <SprintReviewTable
+              boardData={data}
+              sprintId={selectedSprintId!}
+              sprintIssues={detail.issues.map((i) => ({ id: i.id, sprintRank: i.sprintRank ?? null }))}
+              onReordered={() => refreshDetail(selectedSprintId!)}
+            />
+          ) : (
+            <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>
+          ))}
+        {activeSubTab === "action" && (
+          <div className="p-3">
+            {detail && !detail.minutesPageId ? (
+              <p className="type-body text-text-3">{t("sprint.actionUnavailable")}</p>
+            ) : actionAccess ? (
+              <ClientOnly fallback={<div className="min-h-[40vh] rounded-[9px] border border-border" />}>
+                <DocEditor
+                  pageId={actionAccess.page.id}
+                  collabToken={actionAccess.collabToken}
+                  collabWsUrl={actionAccess.collabWsUrl}
+                  canEdit={actionAccess.canEdit}
+                  userId={shell.user.id}
+                  userName={shell.user.name}
+                />
+              </ClientOnly>
+            ) : (
+              <div className="min-h-[40vh] rounded-[9px] border border-border" />
+            )}
+          </div>
+        )}
+        {activeSubTab === "retro" && (
+          <div className="p-3">
+            {detail && !detail.retroPageId ? (
+              <p className="type-body text-text-3">{t("sprint.retrospectiveUnavailable")}</p>
+            ) : retroAccess ? (
+              <ClientOnly fallback={<div className="min-h-[40vh] rounded-[9px] border border-border" />}>
+                <DocEditor
+                  pageId={retroAccess.page.id}
+                  collabToken={retroAccess.collabToken}
+                  collabWsUrl={retroAccess.collabWsUrl}
+                  canEdit={retroAccess.canEdit}
+                  userId={shell.user.id}
+                  userName={shell.user.name}
+                />
+              </ClientOnly>
+            ) : (
+              <div className="min-h-[40vh] rounded-[9px] border border-border" />
+            )}
+          </div>
+        )}
+      </div>
+
+      {emailModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEmailModalOpen(false)}>
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-surface p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="type-label-overline text-text-3">{t("sprint.emailModalHeading")}</p>
+            <div>
+              <p className="mb-1 type-body text-text-2">{t("sprint.emailToLabel")}</p>
+              <div className="flex max-h-32 flex-col gap-1 overflow-y-auto rounded-[9px] border border-border p-2">
+                {data.projectMembers.map((m) => (
+                  <label key={m.id} className="flex items-center gap-2 type-body">
+                    <input
+                      type="checkbox"
+                      checked={emailRecipients.includes(m.email)}
+                      onChange={(e) =>
+                        setEmailRecipients((prev) => (e.target.checked ? [...prev, m.email] : prev.filter((r) => r !== m.email)))
+                      }
+                    />
+                    {m.name} <span className="text-text-3">({m.email})</span>
+                  </label>
+                ))}
+                {data.projectMembers.length === 0 && <p className="type-body text-text-3">{t("sprint.emailNoRecipientsHint")}</p>}
+              </div>
+            </div>
+            <label className="flex flex-col gap-1 type-body text-text-2">
+              {t("sprint.emailSubjectLabel")}
+              <input
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                className="rounded-[7px] border border-border bg-surface px-2 py-1.5"
+              />
+            </label>
+            <label className="flex flex-col gap-1 type-body text-text-2">
+              {t("sprint.emailBodyLabel")}
+              <textarea
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                rows={8}
+                className="rounded-[7px] border border-border bg-surface px-2 py-1.5"
+              />
+            </label>
+            {emailError && <p className="type-body text-danger">{emailError}</p>}
+            {emailSentMessage && <p className="type-body text-green">{emailSentMessage}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEmailModalOpen(false)}>
+                {t("cancel")}
+              </Button>
+              <Button onClick={sendEmail} disabled={emailSending || emailRecipients.length === 0}>
+                {emailSending ? t("sprint.emailSendingEllipsis") : t("sprint.emailSendButton")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

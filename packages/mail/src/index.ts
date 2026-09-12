@@ -7,6 +7,8 @@ import type { MailCredentials, MailDriver, SendEmailInput, SendEmailResult } fro
 export type { MailCredentials, MailDriver, SendEmailInput, SendEmailResult } from "./types";
 export { NotificationEmail } from "./templates/NotificationEmail";
 export type { NotificationEmailProps } from "./templates/NotificationEmail";
+export { SprintSummaryEmail } from "./templates/SprintSummaryEmail";
+export type { SprintSummaryEmailProps } from "./templates/SprintSummaryEmail";
 
 function createDriver(creds: MailCredentials): MailDriver {
   if (creds.driver === "brevo") {
