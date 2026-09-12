@@ -42,3 +42,35 @@ function blockPlainText(block: unknown): string {
 
   return [ownText, childText].filter(Boolean).join("\n");
 }
+
+/**
+ * Collects every distinct `userMention` inline content node's `userId` out
+ * of a Block[] JSON tree (descriptionJson/bodyJson), walking `content` and
+ * `children` the same way blockPlainText does. Legacy `{text: string}`
+ * bodies never contain a mention node, so they simply yield none. Used to
+ * decide who to notify on a new comment/description — dependency-free for
+ * the same reason toPlainText is (see its own top comment).
+ */
+export function extractMentionedUserIds(json: Json | null | undefined): string[] {
+  if (json == null || !Array.isArray(json)) return [];
+  const found = new Set<string>();
+  for (const block of json) collectMentionedUserIds(block, found);
+  return [...found];
+}
+
+function collectMentionedUserIds(block: unknown, found: Set<string>): void {
+  if (block == null || typeof block !== "object") return;
+  const b = block as { content?: unknown; children?: unknown };
+
+  if (Array.isArray(b.content)) {
+    for (const c of b.content) {
+      if (c && typeof c === "object" && (c as { type?: string }).type === "userMention") {
+        const userId = (c as { props?: { userId?: unknown } }).props?.userId;
+        if (typeof userId === "string" && userId) found.add(userId);
+      }
+    }
+  }
+  if (Array.isArray(b.children)) {
+    for (const c of b.children) collectMentionedUserIds(c, found);
+  }
+}

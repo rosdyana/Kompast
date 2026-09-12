@@ -3,7 +3,8 @@ import { loadEnv } from "@kompast/env";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { rankBetween } from "./rank";
-import { notify } from "./notification";
+import { notify, notifyMentionedUsers } from "./notification";
+import { extractMentionedUserIds } from "./rich-text";
 import { emitAutomationEvent, type AutomationContext } from "./automation-events";
 import { enqueueReindex } from "./rag";
 
@@ -218,6 +219,19 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
     await notifyAssignment(tx, issueId, { ...current, title: patch.title ?? current.title }, patch.assigneeId);
   }
 
+  // Only newly-added mentions notify — diffed against the description as
+  // it was before this patch, so re-saving an unchanged description (or
+  // editing other parts of it) never re-notifies someone already mentioned.
+  if (patch.origin !== "import" && patch.descriptionJson !== undefined) {
+    const previouslyMentioned = new Set(extractMentionedUserIds(current.descriptionJson));
+    const newlyMentioned = extractMentionedUserIds(patch.descriptionJson).filter(
+      (userId) => userId !== patch.actorId && !previouslyMentioned.has(userId),
+    );
+    if (newlyMentioned.length > 0) {
+      await notifyDescriptionMentions(tx, issueId, { ...current, title: patch.title ?? current.title }, newlyMentioned);
+    }
+  }
+
   if (patch.origin !== "import" && (assigneeChanged || historyRows.length > 0)) {
     await emitAutomationEvent(tx, {
       organizationId: current.organizationId,
@@ -260,6 +274,27 @@ async function notifyAssignment(
     title: `Anda ditugaskan ke ${issueKey}`,
     body: issue.title,
     email: { to: user.email, actionUrl: `${loadEnv().APP_URL}/issues/${project.teamId ?? "none"}/${project.key}/${issue.keySeq}`, actionLabel: "Lihat tiket" },
+  });
+}
+
+/** Caller has already filtered out the actor and anyone previously mentioned — see updateIssue's call site. */
+async function notifyDescriptionMentions(
+  tx: Tx,
+  issueId: string,
+  issue: { organizationId: string; projectId: string; keySeq: number; title: string },
+  mentionedUserIds: string[],
+) {
+  const [project] = await tx.select({ key: schema.project.key, teamId: schema.project.teamId }).from(schema.project).where(eq(schema.project.id, issue.projectId));
+  if (!project) return;
+
+  const issueKey = `${project.key}-${issue.keySeq}`;
+  await notifyMentionedUsers(tx, {
+    organizationId: issue.organizationId,
+    entityId: issueId,
+    mentionedUserIds,
+    title: `You were mentioned in ${issueKey}'s description`,
+    body: issue.title,
+    actionUrl: `${loadEnv().APP_URL}/issues/${project.teamId ?? "none"}/${project.key}/${issue.keySeq}`,
   });
 }
 

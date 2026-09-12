@@ -3,13 +3,19 @@ import "@blocknote/shadcn/style.css";
 import { useEffect, useMemo } from "react";
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, type Block, type PartialBlock } from "@blocknote/core";
 import { en } from "@blocknote/core/locales";
-import { useCreateBlockNote } from "@blocknote/react";
+import { useCreateBlockNote, SuggestionMenuController } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useTheme } from "@kompast/ui/theme";
+import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
+import { userMentionInlineSpec } from "@/components/shared/UserMentionInlineContent";
+import { searchWorkspaceFn } from "@/lib/server-fns/search";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see docs/Editor.tsx's identical cast: TS's
+// structural check on mixed-shape inline content spec records rejects this merge even though it's exactly
+// BlockNote's own documented pattern.
 const schema = BlockNoteSchema.create({
   blockSpecs: defaultBlockSpecs,
-  inlineContentSpecs: defaultInlineContentSpecs,
+  inlineContentSpecs: { ...defaultInlineContentSpecs, issueMention: issueMentionInlineSpec as any, userMention: userMentionInlineSpec as any },
 });
 
 export interface LiteEditorProps {
@@ -47,7 +53,11 @@ export function LiteEditor({ initialContent, onChange, autoFocus, className, pla
   });
 
   useEffect(() => {
-    const unsubscribe = editor.onChange((ed) => onChange(ed.document));
+    // ed.document is typed against this file's own (issueMention/userMention-extended)
+    // schema, which isn't structurally assignable to the generic default `Block[]` the
+    // onChange prop is typed with — safe to bridge through `unknown` since every caller
+    // only ever treats these as plain JSON to store/serialize, never by BlockNote type.
+    const unsubscribe = editor.onChange((ed) => onChange(ed.document as unknown as Block[]));
     return unsubscribe;
   }, [editor, onChange]);
 
@@ -58,6 +68,31 @@ export function LiteEditor({ initialContent, onChange, autoFocus, className, pla
       theme={theme}
       autoFocus={autoFocus}
       className={className ? `kp-lite-editor ${className}` : "kp-lite-editor"}
-    />
+    >
+      <SuggestionMenuController
+        triggerCharacter="@"
+        getItems={async (query) => {
+          if (query.trim().length < 2) return [];
+          const { people, issues } = await searchWorkspaceFn({ data: query });
+          return [
+            ...people.map((p) => ({
+              title: p.name,
+              subtext: p.email,
+              group: "People",
+              onItemClick: () => editor.insertInlineContent([{ type: "userMention", props: { userId: p.id, name: p.name } }, " "] as any),
+            })),
+            ...issues.map((i) => ({
+              title: `${i.projectKey}-${i.keySeq}`,
+              subtext: i.title,
+              group: "Issues",
+              onItemClick: () =>
+                editor.insertInlineContent(
+                  [{ type: "issueMention", props: { issueId: i.id, projectKey: i.projectKey, keySeq: String(i.keySeq), teamId: i.teamId ?? "", title: i.title } }, " "] as any,
+                ),
+            })),
+          ];
+        }}
+      />
+    </BlockNoteView>
   );
 }

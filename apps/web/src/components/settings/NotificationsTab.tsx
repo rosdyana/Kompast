@@ -1,20 +1,12 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { PageContainer } from "@kompast/ui/PageContainer";
-import { PageHeader } from "@kompast/ui/PageHeader";
+import { useRouter } from "@tanstack/react-router";
 import { Card } from "@kompast/ui/Card";
 import { useTranslation } from "@kompast/i18n";
 import { listNotificationPrefsFn, setNotificationPrefFn } from "@/lib/server-fns/notifications";
 
-export const Route = createFileRoute("/_app/notifications")({
-  loader: () => listNotificationPrefsFn(),
-  component: NotificationsPage,
-});
-
 const DIGEST_VALUES = ["instant", "hourly", "daily", "off"] as const;
 
-function NotificationsPage() {
+export function NotificationsTab({ data }: { data: Awaited<ReturnType<typeof listNotificationPrefsFn>> }) {
   const { t } = useTranslation("notifications");
-  const prefs = Route.useLoaderData();
   const router = useRouter();
 
   async function updatePref(eventType: string, patch: { inApp?: boolean; email?: boolean; digest?: "instant" | "hourly" | "daily" | "off" }) {
@@ -23,11 +15,10 @@ function NotificationsPage() {
   }
 
   return (
-    <PageContainer width="standard">
-      <PageHeader title={t("pageTitle")} subtitle={t("pageSubtitle")} />
-
+    <div>
+      <p className="mb-6 type-body text-text-2">{t("pageSubtitle")}</p>
       <div className="flex flex-col gap-3">
-        {prefs.map((pref) => (
+        {data.map((pref) => (
           <Card key={pref.eventType} className="p-4">
             <p className="mb-3 type-headline">{pref.label}</p>
             <div className="flex flex-wrap items-center gap-4 text-[12.5px]">
@@ -44,7 +35,7 @@ function NotificationsPage() {
                 <select
                   value={pref.digest}
                   onChange={(e) => updatePref(pref.eventType, { digest: e.target.value as "instant" | "hourly" | "daily" | "off" })}
-                  className="kp-select rounded-[7px] border border-border bg-surface px-2 py-1 text-[12.5px]"
+                  className="kp-select kp-field"
                 >
                   {DIGEST_VALUES.map((value) => (
                     <option key={value} value={value}>
@@ -60,6 +51,6 @@ function NotificationsPage() {
           </Card>
         ))}
       </div>
-    </PageContainer>
+    </div>
   );
 }

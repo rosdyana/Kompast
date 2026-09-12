@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useNavigate, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
@@ -9,11 +9,13 @@ import { useTranslation } from "@kompast/i18n";
 import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn } from "@/lib/server-fns/settings";
 import { listMembersFn } from "@/lib/server-fns/members";
 import { listTeamsFn } from "@/lib/server-fns/teams";
+import { listNotificationPrefsFn } from "@/lib/server-fns/notifications";
 import { MembersTab } from "@/components/settings/MembersTab";
 import { TeamsTab } from "@/components/settings/TeamsTab";
 import { RolesTab } from "@/components/settings/RolesTab";
+import { NotificationsTab } from "@/components/settings/NotificationsTab";
 
-const TAB_KEYS = ["members", "teams", "roles", "integrations"] as const;
+const TAB_KEYS = ["notifications", "members", "teams", "roles", "integrations"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 export const Route = createFileRoute("/_app/settings")({
@@ -21,14 +23,18 @@ export const Route = createFileRoute("/_app/settings")({
     tab: TAB_KEYS.includes(search.tab as TabKey) ? (search.tab as TabKey) : undefined,
   }),
   loader: async () => {
-    try {
-      const [integrations, members, teams] = await Promise.all([getIntegrationSettingsFn(), listMembersFn(), listTeamsFn()]);
-      return { integrations, members, teams };
-    } catch {
-      // Not an owner/admin — the sidebar already hides this link for
-      // non-admins, but someone can still type the URL directly.
-      throw redirect({ to: "/" });
-    }
+    // Notification preferences are per-user, not admin-gated — every member
+    // can see this tab. members/teams/roles/integrations are owner/admin
+    // only; a non-admin who hits this route directly (the sidebar already
+    // hides the link for them) just doesn't get those tabs' data, same as
+    // before, but still gets their own notification settings.
+    const [notificationPrefs, adminData] = await Promise.all([
+      listNotificationPrefsFn(),
+      Promise.all([getIntegrationSettingsFn(), listMembersFn(), listTeamsFn()])
+        .then(([integrations, members, teams]) => ({ integrations, members, teams }))
+        .catch(() => null),
+    ]);
+    return { notificationPrefs, adminData };
   },
   component: SettingsPage,
 });
@@ -38,13 +44,19 @@ function SettingsPage() {
   const data = Route.useLoaderData();
   const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  const active: TabKey = tab ?? "members";
+  const isAdmin = data.adminData !== null;
+  const active: TabKey = tab ?? (isAdmin ? "members" : "notifications");
 
   const items = [
-    { key: "members", label: t("tabs.members") },
-    { key: "teams", label: t("tabs.teams") },
-    { key: "roles", label: t("tabs.roles") },
-    { key: "integrations", label: t("tabs.integrations") },
+    { key: "notifications", label: t("tabs.notifications") },
+    ...(isAdmin
+      ? [
+          { key: "members", label: t("tabs.members") },
+          { key: "teams", label: t("tabs.teams") },
+          { key: "roles", label: t("tabs.roles") },
+          { key: "integrations", label: t("tabs.integrations") },
+        ]
+      : []),
   ];
 
   return (
@@ -52,13 +64,14 @@ function SettingsPage() {
       <PageHeader title={t("pageTitle")} />
       <Tabs items={items} active={active} onChange={(key) => navigate({ search: { tab: key as TabKey } })} className="mb-6 border-b border-border" />
 
-      {active === "members" && <MembersTab data={data.members} />}
-      {active === "teams" && data.integrations.isSuperAdmin && <TeamsTab teams={data.teams} members={data.members.members} />}
-      {active === "teams" && !data.integrations.isSuperAdmin && (
+      {active === "notifications" && <NotificationsTab data={data.notificationPrefs} />}
+      {active === "members" && data.adminData && <MembersTab data={data.adminData.members} />}
+      {active === "teams" && data.adminData?.integrations.isSuperAdmin && <TeamsTab teams={data.adminData.teams} members={data.adminData.members.members} />}
+      {active === "teams" && data.adminData && !data.adminData.integrations.isSuperAdmin && (
         <p className="type-body text-text-3">{t("teamsNonAdminNote")}</p>
       )}
-      {active === "roles" && <RolesTab />}
-      {active === "integrations" && <IntegrationsTab data={data.integrations} />}
+      {active === "roles" && data.adminData && <RolesTab />}
+      {active === "integrations" && data.adminData && <IntegrationsTab data={data.adminData.integrations} />}
     </PageContainer>
   );
 }

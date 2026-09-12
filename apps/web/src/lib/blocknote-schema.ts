@@ -41,11 +41,17 @@ export const mentionInlineConfig = {
 
 /**
  * Inline chip left behind when a doc line is converted into a tracked
- * issue (see Editor.tsx's "create issue" slash command). issueId/
- * projectKey/keySeq/title are all denormalized at insert time — same
- * "no live lookup" reasoning as mentionInlineConfig above, and for the
- * same reason, no guest redaction is needed (see redactEmbedsForGuests):
- * this is a display chip, not a live data embed.
+ * issue (see Editor.tsx's "create issue" slash command), or when an issue
+ * is @mentioned from the issue detail page's description/comment editor
+ * (see LiteEditor's SuggestionMenuController). issueId/projectKey/keySeq/
+ * title/teamId are all denormalized at insert time — same "no live
+ * lookup" reasoning as mentionInlineConfig above, and for the same
+ * reason, no guest redaction is needed (see redactEmbedsForGuests): this
+ * is a display chip, not a live data embed. teamId is needed to build
+ * the issue detail route's link (`/issues/$teamId/$projectKey/
+ * $issueKeySeq`) — defaults to "" for chips inserted before this field
+ * existed; the render component falls back to "none" for those, same
+ * sentinel the rest of the app uses for a teamless project.
  */
 export const issueMentionInlineConfig = {
   type: "issueMention" as const,
@@ -54,6 +60,25 @@ export const issueMentionInlineConfig = {
     projectKey: { default: "" as string },
     keySeq: { default: "" as string },
     title: { default: "" as string },
+    teamId: { default: "" as string },
+  },
+  content: "none" as const,
+};
+
+/**
+ * Inline @mention of a person — userId/name denormalized at insert time,
+ * same reasoning as mentionInlineConfig/issueMentionInlineConfig above
+ * (simplest to render; doesn't live-update if the user is later renamed).
+ * Used by the issue detail page's description/comment editors (LiteEditor)
+ * only, not the docs editor. packages/core's extractMentionedUserIds reads
+ * this exact shape to decide who to notify on a new comment/description —
+ * keep the two in sync if this ever changes.
+ */
+export const userMentionInlineConfig = {
+  type: "userMention" as const,
+  propSchema: {
+    userId: { default: "" as string },
+    name: { default: "" as string },
   },
   content: "none" as const,
 };

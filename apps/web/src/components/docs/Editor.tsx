@@ -12,7 +12,7 @@ import { useTranslation } from "@kompast/i18n";
 import { VersionHistory } from "./VersionHistory";
 import { kompastViewBlockSpec } from "./KompastViewBlock";
 import { mentionInlineSpec } from "./MentionInlineContent";
-import { issueMentionInlineSpec } from "./IssueMentionInlineContent";
+import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
 import { listPageTreeFn, linkPageMentionFn, createIssueFromDocLineFn } from "@/lib/server-fns/pages";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 
@@ -156,7 +156,7 @@ export function DocEditor({
                     try {
                       const created = await createIssueFromDocLineFn({ data: { pageId, title } });
                       editor.updateBlock(currentBlock.id, {
-                        content: [{ type: "issueMention", props: { issueId: created.issueId, projectKey: created.projectKey, keySeq: created.keySeq, title } }],
+                        content: [{ type: "issueMention", props: { issueId: created.issueId, projectKey: created.projectKey, keySeq: created.keySeq, teamId: created.teamId ?? "", title } }],
                       } as any);
                     } catch (err) {
                       editor.updateBlock(currentBlock.id, { content: originalContent } as any);

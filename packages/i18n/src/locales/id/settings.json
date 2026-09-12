@@ -1,5 +1,5 @@
 {
-  "tabs": { "members": "Anggota", "teams": "Tim", "roles": "Peran & Izin", "integrations": "Integrasi" },
+  "tabs": { "notifications": "Notifikasi", "members": "Anggota", "teams": "Tim", "roles": "Peran & Izin", "integrations": "Integrasi" },
   "pageTitle": "Pengaturan workspace",
   "teamsNonAdminNote": "Hanya super admin yang bisa mengelola daftar tim workspace di sini.",
   "integrations": {

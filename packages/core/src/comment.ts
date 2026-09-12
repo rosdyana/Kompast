@@ -2,7 +2,8 @@ import { and, asc, eq, inArray, schema, type Json } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import type { Tx } from "./types";
 import { id } from "./ids";
-import { notify } from "./notification";
+import { notify, notifyMentionedUsers } from "./notification";
+import { extractMentionedUserIds } from "./rich-text";
 import { emitAutomationEvent, type AutomationContext } from "./automation-events";
 import { enqueueReindex } from "./rag";
 
@@ -21,15 +22,16 @@ export interface AddCommentInput {
 /**
  * Notifies the issue's assignee and reporter (never the commenter about
  * their own comment, and never the same person twice if they're both),
- * and returns the issue row read along the way so addComment can reuse it
- * for emitAutomationEvent instead of a second query. Best-effort: a
- * missing project/user row here would be a data-integrity bug elsewhere,
- * not something a comment should fail over, so this reads what it needs
- * directly rather than requiring the caller to already have it (addComment
- * is called from REST/MCP/UI alike, not all of which have project key/
- * title in hand).
+ * plus anyone @mentioned in the comment body who isn't already one of
+ * those recipients, and returns the issue row read along the way so
+ * addComment can reuse it for emitAutomationEvent instead of a second
+ * query. Best-effort: a missing project/user row here would be a
+ * data-integrity bug elsewhere, not something a comment should fail over,
+ * so this reads what it needs directly rather than requiring the caller
+ * to already have it (addComment is called from REST/MCP/UI alike, not
+ * all of which have project key/title in hand).
  */
-async function notifyCommentParticipants(tx: Tx, issueId: string, authorId: string) {
+async function notifyCommentParticipants(tx: Tx, issueId: string, authorId: string, bodyJson: Json) {
   const [row] = await tx
     .select({
       organizationId: schema.issue.organizationId,
@@ -50,26 +52,39 @@ async function notifyCommentParticipants(tx: Tx, issueId: string, authorId: stri
   if (!row) return null;
 
   const recipients = [...new Set([row.assigneeId, row.reporterId].filter((userId): userId is string => !!userId && userId !== authorId))];
-  if (recipients.length === 0) return row;
-
-  const users = await tx.select({ id: schema.user.id, email: schema.user.email }).from(schema.user).where(inArray(schema.user.id, recipients));
-  const emailByUserId = new Map(users.map((u) => [u.id, u.email]));
-
   const issueKey = `${row.projectKey}-${row.keySeq}`;
   const actionUrl = `${loadEnv().APP_URL}/issues/${row.teamId ?? "none"}/${row.projectKey}/${row.keySeq}`;
-  for (const userId of recipients) {
-    const email = emailByUserId.get(userId);
-    await notify(tx, {
+
+  if (recipients.length > 0) {
+    const users = await tx.select({ id: schema.user.id, email: schema.user.email }).from(schema.user).where(inArray(schema.user.id, recipients));
+    const emailByUserId = new Map(users.map((u) => [u.id, u.email]));
+    for (const userId of recipients) {
+      const email = emailByUserId.get(userId);
+      await notify(tx, {
+        organizationId: row.organizationId,
+        userId,
+        eventType: "issue.commented",
+        entityType: "issue",
+        entityId: issueId,
+        title: `Komentar baru di ${issueKey}`,
+        body: row.title,
+        email: email ? { to: email, actionUrl, actionLabel: "Lihat tiket" } : undefined,
+      });
+    }
+  }
+
+  const mentionedUserIds = extractMentionedUserIds(bodyJson).filter((userId) => userId !== authorId && !recipients.includes(userId));
+  if (mentionedUserIds.length > 0) {
+    await notifyMentionedUsers(tx, {
       organizationId: row.organizationId,
-      userId,
-      eventType: "issue.commented",
-      entityType: "issue",
       entityId: issueId,
-      title: `Komentar baru di ${issueKey}`,
+      mentionedUserIds,
+      title: `You were mentioned in a comment on ${issueKey}`,
       body: row.title,
-      email: email ? { to: email, actionUrl, actionLabel: "Lihat tiket" } : undefined,
+      actionUrl,
     });
   }
+
   return row;
 }
 
@@ -109,7 +124,7 @@ export async function addComment(tx: Tx, input: AddCommentInput) {
   // automation — see createIssue's identical gate for why.
   if (input.origin === "import") return { commentId };
 
-  const issue = await notifyCommentParticipants(tx, input.issueId, input.authorId);
+  const issue = await notifyCommentParticipants(tx, input.issueId, input.authorId, input.bodyJson);
   if (issue) {
     await emitAutomationEvent(tx, {
       organizationId: issue.organizationId,
