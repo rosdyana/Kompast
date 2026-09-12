@@ -1,7 +1,9 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
+import { Lock, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { Badge } from "@kompast/ui/Badge";
+import { Card } from "@kompast/ui/Card";
 import { useTranslation } from "@kompast/i18n";
 import { signInWithMicrosoft, signInAsDevAdmin } from "@/lib/auth-client";
 import { getDevLoginStatusFn } from "@/lib/server-fns/dev-login";
@@ -36,8 +38,8 @@ function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-[1.05fr_0.95fr] bg-bg">
-      <div className="relative flex flex-col justify-between overflow-hidden bg-indigo px-15 py-14 text-white">
+    <div className="grid min-h-screen grid-cols-1 bg-bg lg:grid-cols-[1.05fr_0.95fr]">
+      <div className="relative flex flex-col justify-between overflow-hidden bg-[#1b3a6b] px-6 py-10 text-white sm:px-10 sm:py-12 lg:px-15 lg:py-14">
         <div
           className="pointer-events-none absolute inset-0"
           style={{
@@ -46,10 +48,14 @@ function LoginPage() {
             backgroundSize: "auto, 44px 44px, 44px 44px",
           }}
         />
+        <div
+          className="pointer-events-none absolute -right-36 top-1/2 hidden h-[520px] w-[520px] -translate-y-1/2 rotate-45 border-2 border-white/[0.14] lg:block"
+          aria-hidden="true"
+        >
+          <div className="absolute inset-14 border-2 border-white/[0.11]" />
+        </div>
         <div className="relative flex items-center gap-2.5">
-          <div className="grid h-[30px] w-[30px] place-items-center rounded-[9px] bg-accent">
-            <div className="h-2 w-2 rotate-45 rounded-sm bg-white" />
-          </div>
+          <img src="/favicon.png" alt="" className="h-[30px] w-[30px] object-contain" />
           <span className="type-headline">Kompast</span>
         </div>
         <div className="relative max-w-[430px]">
@@ -57,15 +63,24 @@ function LoginPage() {
           <h1 className="type-display">{t("heroHeadline")}</h1>
           <p className="mt-5 text-[15px] leading-relaxed text-white/72">{t("heroSubtext")}</p>
         </div>
-        <div className="relative flex gap-7 text-[12.5px] text-white/60">
-          <span>{t("featureWorkspaceTeam")}</span>
-          <span>{t("featureGranularRoles")}</span>
-          <span>{t("featureSsoMicrosoft")}</span>
+        <div className="relative flex flex-wrap gap-x-6 gap-y-2.5 text-[12.5px] text-white/60">
+          <span className="inline-flex items-center gap-2">
+            <Users size={14} strokeWidth={1.75} className="text-white/45" />
+            {t("featureWorkspaceTeam")}
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <ShieldCheck size={14} strokeWidth={1.75} className="text-white/45" />
+            {t("featureGranularRoles")}
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <Lock size={14} strokeWidth={1.75} className="text-white/45" />
+            {t("featureSsoMicrosoft")}
+          </span>
         </div>
       </div>
 
-      <div className="flex items-center justify-center p-12">
-        <div className="w-full max-w-[352px]">
+      <div className="flex items-center justify-center px-6 py-12 sm:px-12">
+        <Card className="w-full max-w-[420px] p-8 sm:p-9">
           <h2 className="mb-2 type-title">{t("signInHeading")}</h2>
           <p className="mb-7 type-body leading-relaxed text-text-2">{t("signInSubtext")}</p>
           <Button variant="dark" className="w-full py-3.5" onClick={() => signInWithMicrosoft()}>
@@ -90,7 +105,7 @@ function LoginPage() {
                   onChange={(e) => setDevPassword(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && submitDevLogin()}
                   placeholder={t("devLoginPasswordPlaceholder")}
-                  className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+                  className="kp-field min-w-0 flex-1"
                 />
                 <Button variant="outline" onClick={submitDevLogin} disabled={devLoginBusy || !devPassword.trim()}>
                   {t("devLoginButton")}
@@ -101,22 +116,16 @@ function LoginPage() {
           )}
           <p className="mt-7 type-body leading-relaxed text-text-3">
             {t("agreementPart1")}
-            <a href="#">{t("termsOfService")}</a>
+            <a href="#" className="text-text-2 underline underline-offset-2 hover:text-text">
+              {t("termsOfService")}
+            </a>
             {t("agreementPart2")}
-            <a href="#">{t("privacyPolicy")}</a>
+            <a href="#" className="text-text-2 underline underline-offset-2 hover:text-text">
+              {t("privacyPolicy")}
+            </a>
             {t("agreementPart3")}
           </p>
-          <div className="mt-[34px] flex items-start gap-2.5 rounded-[9px] border border-dashed border-border-2 bg-surface-2 p-3.5">
-            <div className="mt-1.5 h-1.5 w-1.5 animate-[kp-blink_2.2s_infinite] rounded-full bg-green" />
-            <p className="type-body leading-relaxed text-text-2">
-              {t("tenantDetectedPart1")}
-              <strong className="text-text">asus.com</strong>
-              {t("tenantDetectedPart2")}
-              <strong className="text-text">Cloud Platform</strong>
-              {t("tenantDetectedPart3")}
-            </p>
-          </div>
-        </div>
+        </Card>
       </div>
     </div>
   );
