@@ -5,7 +5,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
 import { createIssue, updateIssue } from "../issue";
-import { getEpicRoadmap } from "../roadmap";
+import { getEpicRoadmap, listCandidateEpics } from "../roadmap";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -79,5 +79,29 @@ describe("epic roadmap", () => {
     const { projectId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "emp", name: "Empty Roadmap", actorUserId: userId }));
     const roadmap = await withAuthorizedTenant(ctx, (tx) => getEpicRoadmap(tx, projectId));
     expect(roadmap).toEqual([]);
+  });
+
+  it("listCandidateEpics lists every epic-typed issue in the project, optionally excluding one by id", async () => {
+    const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "cnd", name: "Candidate Epics Test", actorUserId: userId }),
+    );
+    const epicType = issueTypes.find((t) => t.name === "Epic")!;
+    const storyType = issueTypes.find((t) => t.name === "Story")!;
+
+    const epic1 = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: epicType.id, statusId: statuses[0]!.id, title: "Epic one", reporterId: userId }).then((r) => r.issueId),
+    );
+    const epic2 = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: epicType.id, statusId: statuses[0]!.id, title: "Epic two", reporterId: userId }).then((r) => r.issueId),
+    );
+    await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: storyType.id, statusId: statuses[0]!.id, title: "Not an epic", reporterId: userId }),
+    );
+
+    const all = await withAuthorizedTenant(ctx, (tx) => listCandidateEpics(tx, projectId));
+    expect(all.map((e) => e.id).sort()).toEqual([epic1, epic2].sort());
+
+    const excludingEpic1 = await withAuthorizedTenant(ctx, (tx) => listCandidateEpics(tx, projectId, epic1));
+    expect(excludingEpic1.map((e) => e.id)).toEqual([epic2]);
   });
 });

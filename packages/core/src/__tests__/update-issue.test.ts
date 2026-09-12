@@ -119,7 +119,7 @@ describe("updateIssue + createIssue attribution", () => {
     expect(updated?.assigneeId).toBeNull();
   });
 
-  it("updateIssue replaces labels wholesale without a diffable history row", async () => {
+  it("updateIssue replaces labels wholesale and logs a value-diffed (not reference-diffed) history row", async () => {
     const ctx = { userId, organizationId: orgId };
     const { issueId } = await seedIssue(ctx, { labels: ["a", "b"] });
 
@@ -127,6 +127,20 @@ describe("updateIssue + createIssue attribution", () => {
 
     const [updated] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(updated?.labels).toEqual(["c"]);
+
+    const history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    const labelsEntry = history.find((h) => h.field === "labels");
+    expect(labelsEntry).toMatchObject({ fromValue: "a, b", toValue: "c" });
+  });
+
+  it("updateIssue does not log a labels history row when passed the same set back (order-independent)", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx, { labels: ["a", "b"] });
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { labels: ["b", "a"], actorId: userId }));
+
+    const history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history.some((h) => h.field === "labels")).toBe(false);
   });
 
   it("assigning an issue to someone else notifies them, but assigning to yourself does not", async () => {
@@ -272,6 +286,21 @@ describe("updateIssue + createIssue attribution", () => {
     await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { descriptionJson: null, actorId: userId }));
     [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.descriptionJson).toBeNull();
+  });
+
+  it("updateIssue logs a content-free 'description' history row only when the description actually changed", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx, { descriptionJson: { text: "Same" } });
+
+    // Re-saving identical content must not log a spurious change.
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { descriptionJson: { text: "Same" }, actorId: userId }));
+    let history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history.filter((h) => h.field === "description")).toHaveLength(0);
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { descriptionJson: { text: "Changed" }, actorId: userId }));
+    history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    const entry = history.find((h) => h.field === "description");
+    expect(entry).toMatchObject({ fromValue: null, toValue: null });
   });
 
   function mentionBlocks(userId: string) {

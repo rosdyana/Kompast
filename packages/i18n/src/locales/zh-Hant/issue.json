@@ -39,6 +39,24 @@
   "activityHeading": "活動紀錄",
   "noActivityYet": "尚無活動紀錄。",
   "historyCreated": "已建立",
+  "historyDescriptionUpdated": "更新了描述",
+  "historyActorSystem": "系統",
   "historyOrigin": "來自 {{origin}}",
+  "historyField": {
+    "title": "標題",
+    "status": "狀態",
+    "priority": "Priority",
+    "assigneeId": "Assignee",
+    "storyPoints": "Points",
+    "dueDate": "截止日期",
+    "startDate": "開始日期",
+    "epicId": "Epic",
+    "parentId": "上層工單",
+    "estimateSeconds": "預估時間",
+    "spentSeconds": "已花費時間",
+    "labels": "標籤",
+    "sprint": "Sprint"
+  },
+  "renameHint": "點擊以重新命名",
   "customPropertiesHeading": "自訂屬性"
 }

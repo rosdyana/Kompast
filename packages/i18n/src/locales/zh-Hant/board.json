@@ -84,7 +84,13 @@
   "roadmap": {
     "noEpicsHeading": "尚無史詩任務。",
     "noEpicsSubtext": "建立一個類型為「Epic」的工單，並將其他工單連結至它以檢視路線圖。",
-    "progressSummary": "{{done}}/{{total}} 項工單已完成（{{pct}}%）"
+    "progressSummary": "{{done}}/{{total}} 項工單已完成（{{pct}}%）",
+    "createEpicButton": "+ 建立 Epic",
+    "newEpicPlaceholder": "Epic 標題…"
+  },
+  "card": {
+    "noEpic": "無 Epic",
+    "renameHint": "點擊以重新命名"
   },
   "automation": {
     "triggerCreated": "工單建立時",

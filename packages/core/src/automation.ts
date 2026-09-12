@@ -150,7 +150,7 @@ async function executeActions(tx: Tx, rule: AutomationRuleRow, event: Automation
     } else if (action.type === "notify") {
       await notify(tx, { organizationId: event.organizationId, userId: action.userId, eventType: "automation.rule", entityType: "issue", entityId: issueId, title: action.title, body: action.body });
     } else if (action.type === "add_to_sprint") {
-      await addIssueToSprint(tx, action.sprintId, issueId);
+      await addIssueToSprint(tx, action.sprintId, issueId, { actorId, origin, originClient });
     } else if (action.type === "link_issue") {
       await linkEntities(tx, { organizationId: event.organizationId, fromType: "issue", fromId: issueId, toType: "issue", toId: action.issueId, createdBy: actorId });
     } else if (action.type === "create_subtask") {

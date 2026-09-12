@@ -84,7 +84,13 @@
   "roadmap": {
     "noEpicsHeading": "Belum ada epic.",
     "noEpicsSubtext": "Buat tiket bertipe \"Epic\" lalu tautkan tiket lain ke epic tersebut untuk melihat roadmap.",
-    "progressSummary": "{{done}}/{{total}} tiket selesai ({{pct}}%)"
+    "progressSummary": "{{done}}/{{total}} tiket selesai ({{pct}}%)",
+    "createEpicButton": "+ Buat epic",
+    "newEpicPlaceholder": "Judul epic…"
+  },
+  "card": {
+    "noEpic": "Tanpa epic",
+    "renameHint": "Klik untuk mengganti nama"
   },
   "automation": {
     "triggerCreated": "Tiket dibuat",

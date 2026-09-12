@@ -115,7 +115,7 @@ export const addIssueToSprintFn = createServerFn({ method: "POST" })
   .validator(sprintIssueSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, data.sprintId, data.issueId));
+    await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, data.sprintId, data.issueId, { actorId: ctx.userId }));
     return { ok: true } as const;
   });
 
@@ -123,7 +123,7 @@ export const removeIssueFromSprintFn = createServerFn({ method: "POST" })
   .validator((issueId: string) => issueId)
   .handler(async ({ data: issueId }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => removeIssueFromSprint(tx, issueId));
+    await withAuthorizedTenant(ctx, (tx) => removeIssueFromSprint(tx, issueId, { actorId: ctx.userId }));
     return { ok: true } as const;
   });
 

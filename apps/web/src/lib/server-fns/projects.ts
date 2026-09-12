@@ -10,6 +10,7 @@ import {
   getBoard,
   getOrCreateDefaultTableView,
   getProjectByTeamAndKey,
+  listCandidateEpics,
   listIssuePropertyDefinitions,
   listPriorityLevels,
   listSprints,
@@ -130,13 +131,14 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
           throw err;
         });
 
-      const [issueTypes, boardData, tableView, propertyDefinitions, sprints, priorityLevels] = await Promise.all([
+      const [issueTypes, boardData, tableView, propertyDefinitions, sprints, priorityLevels, candidateEpics] = await Promise.all([
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
         getBoard(tx, board.id),
         getOrCreateDefaultTableView(tx, board.id, ctx.userId),
         listIssuePropertyDefinitions(tx, project.id),
         listSprints(tx, board.id),
         listPriorityLevels(tx, project.id),
+        listCandidateEpics(tx, project.id),
       ]);
 
       const activeSprint = sprints.find((s) => s.state === "active") ?? null;
@@ -174,6 +176,7 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
         canManageProject,
         propertyDefinitions,
         priorityLevels,
+        candidateEpics,
         hasAnySprint: sprints.length > 0,
         activeSprint,
         activeSprintIssueIds,

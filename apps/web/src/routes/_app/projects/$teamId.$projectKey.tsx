@@ -18,6 +18,7 @@ import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { useConfirmArm } from "@/lib/use-confirm-arm";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
+import { updateIssueTitleFn, updateIssueEpicFn } from "@/lib/server-fns/issue-detail";
 import { listProjectPagesFn, createPageFn } from "@/lib/server-fns/pages";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 import { listImportRunsFn, startJiraImportFn } from "@/lib/server-fns/imports";
@@ -41,7 +42,16 @@ import { TableView } from "@/components/board/TableView";
 import { ProjectSettingsTab } from "@/components/board/ProjectSettingsTab";
 import { DocsTree } from "@/components/docs/DocsTree";
 
+const VIEW_KEYS = ["backlog", "board", "table", "roadmap", "docs", "automation", "import", "settings"] as const;
+type ViewKey = (typeof VIEW_KEYS)[number];
+
 export const Route = createFileRoute("/_app/projects/$teamId/$projectKey")({
+  // The tab lives in the URL (not local state) so it survives a full
+  // navigation away and back — e.g. opening an issue from the Board tab and
+  // hitting "back" needs to land on Board again, not reset to the default.
+  validateSearch: (search: Record<string, unknown>): { tab?: ViewKey } => ({
+    tab: VIEW_KEYS.includes(search.tab as ViewKey) ? (search.tab as ViewKey) : undefined,
+  }),
   loader: ({ params }) => getProjectBoardFn({ data: { teamId: params.teamId, projectKey: params.projectKey } }),
   component: ProjectPage,
 });
@@ -52,7 +62,12 @@ function ProjectPage() {
   const { t } = useTranslation("board");
   const data = Route.useLoaderData();
   const router = useRouter();
-  const [view, setView] = useState("backlog");
+  const { tab } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const view = tab ?? "backlog";
+  function setView(key: string) {
+    navigate({ search: { tab: key as ViewKey } });
+  }
 
   const iconProps = { size: 14, strokeWidth: 1.75 };
   const VIEW_TABS = [
@@ -74,6 +89,7 @@ function ProjectPage() {
   const [backlogRefreshSignal, setBacklogRefreshSignal] = useState(0);
 
   const defaultType = data.issueTypes.find((tp) => !tp.isSubtask);
+  const epicType = data.issueTypes.find((tp) => tp.hierarchyLevel === 0);
   const backlogColumn = data.columns.find((c) => c.isBacklog) ?? data.columns[0];
   const teamId = data.project.teamId ?? "none";
 
@@ -180,7 +196,14 @@ function ProjectPage() {
           : <SprintSetupWizard boardId={data.board.id} onCreated={() => router.invalidate()} />
       )}
       {view === "table" && <TableTab boardId={data.board.id} data={data} />}
-      {view === "roadmap" && <RoadmapTab projectId={data.project.id} projectKey={data.project.key} />}
+      {view === "roadmap" && (
+        <RoadmapTab
+          projectId={data.project.id}
+          projectKey={data.project.key}
+          epicTypeId={epicType?.id}
+          backlogStatusId={backlogColumn?.statusIds[0]}
+        />
+      )}
       {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
       {view === "automation" && <AutomationTab projectId={data.project.id} data={data} />}
       {view === "import" && <ImportTab projectId={data.project.id} boardId={data.board.id} />}
@@ -213,7 +236,17 @@ function initialsOf(name: string) {
  * grid-dot texture (already used behind the kanban columns), and a mono
  * overline — all devices this page already owns, just turned up here.
  */
-function EmptyStatePanel({ overline, heading, subtext }: { overline: string; heading: string; subtext?: string }) {
+function EmptyStatePanel({
+  overline,
+  heading,
+  subtext,
+  action,
+}: {
+  overline: string;
+  heading: string;
+  subtext?: string;
+  action?: React.ReactNode;
+}) {
   return (
     <div
       className="overflow-hidden rounded-xl border border-border bg-surface px-10 py-16 text-center"
@@ -225,6 +258,7 @@ function EmptyStatePanel({ overline, heading, subtext }: { overline: string; hea
       <p className="mb-1.5 type-label-overline text-text-3">{overline}</p>
       <p className="mx-auto max-w-[380px] type-display text-text">{heading}</p>
       {subtext && <p className="mx-auto mt-2 max-w-[380px] type-body leading-relaxed text-text-2">{subtext}</p>}
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
@@ -408,6 +442,7 @@ function SprintSection({
             <Link
               to="/issues/$teamId/$projectKey/$issueKeySeq"
               params={{ teamId, projectKey, issueKeySeq: String(issue.keySeq) }}
+              search={{ from: "backlog" }}
               className="truncate type-body hover:text-accent"
             >
               {issue.title}
@@ -631,6 +666,7 @@ function BacklogTab({
               <Link
                 to="/issues/$teamId/$projectKey/$issueKeySeq"
                 params={{ teamId, projectKey, issueKeySeq: String(issue.keySeq) }}
+                search={{ from: "backlog" }}
                 className="truncate type-body hover:text-accent"
               >
                 {issue.title}
@@ -980,27 +1016,103 @@ function TableTab({ boardId, data }: { boardId: string; data: BoardData }) {
 
 type RoadmapEpic = Awaited<ReturnType<typeof getRoadmapFn>>[number];
 
-function RoadmapTab({ projectId, projectKey }: { projectId: string; projectKey: string }) {
+function RoadmapTab({
+  projectId,
+  projectKey,
+  epicTypeId,
+  backlogStatusId,
+}: {
+  projectId: string;
+  projectKey: string;
+  epicTypeId: string | undefined;
+  backlogStatusId: string | undefined;
+}) {
   const { t, i18n } = useTranslation("board");
   const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const [epics, setEpics] = useState<RoadmapEpic[] | null>(null);
+  const [addingEpic, setAddingEpic] = useState(false);
+  const [newEpicTitle, setNewEpicTitle] = useState("");
+  const [creatingEpic, setCreatingEpic] = useState(false);
+  const [newEpicError, setNewEpicError] = useState<string | null>(null);
+
+  function refreshEpics() {
+    return getRoadmapFn({ data: projectId }).then(setEpics);
+  }
 
   useEffect(() => {
     getRoadmapFn({ data: projectId }).then(setEpics);
   }, [projectId]);
+
+  async function submitNewEpic() {
+    if (!newEpicTitle.trim() || !epicTypeId || !backlogStatusId) return;
+    setCreatingEpic(true);
+    setNewEpicError(null);
+    try {
+      await createIssueFn({
+        data: { projectId, typeId: epicTypeId, statusId: backlogStatusId, title: newEpicTitle.trim() },
+      });
+      setNewEpicTitle("");
+      setAddingEpic(false);
+      await refreshEpics();
+    } catch (err) {
+      setNewEpicError(err instanceof Error ? err.message : t("genericError"));
+    } finally {
+      setCreatingEpic(false);
+    }
+  }
+
+  const canCreateEpic = epicTypeId !== undefined && backlogStatusId !== undefined;
+
+  const createEpicControl = addingEpic ? (
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
+      <input
+        autoFocus
+        value={newEpicTitle}
+        onChange={(e) => setNewEpicTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submitNewEpic();
+          if (e.key === "Escape") setAddingEpic(false);
+        }}
+        placeholder={t("roadmap.newEpicPlaceholder")}
+        className="rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+      />
+      <Button variant="primary" onClick={submitNewEpic} disabled={creatingEpic}>
+        {t("save")}
+      </Button>
+      <Button variant="outline" onClick={() => setAddingEpic(false)}>
+        {t("cancel")}
+      </Button>
+    </div>
+  ) : (
+    <Button variant="primary" onClick={() => setAddingEpic(true)} disabled={!canCreateEpic}>
+      {t("roadmap.createEpicButton")}
+    </Button>
+  );
 
   if (epics === null) return <p className="p-6 type-body text-text-3">{t("loadingEllipsis")}</p>;
 
   if (epics.length === 0) {
     return (
       <div className="p-6">
-        <EmptyStatePanel overline={t("tabs.roadmap")} heading={t("roadmap.noEpicsHeading")} subtext={t("roadmap.noEpicsSubtext")} />
+        <EmptyStatePanel
+          overline={t("tabs.roadmap")}
+          heading={t("roadmap.noEpicsHeading")}
+          subtext={t("roadmap.noEpicsSubtext")}
+          action={createEpicControl}
+        />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-2.5 p-6">
+      <div className="mb-1 flex items-center justify-between">
+        <p className="type-label-overline text-text-3">{t("tabs.roadmap")}</p>
+        {createEpicControl}
+      </div>
+      {newEpicError && (
+        <p className="rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{newEpicError}</p>
+      )}
       {epics.map((epic) => {
         const pct = epic.childCount === 0 ? 0 : Math.round((epic.doneCount / epic.childCount) * 100);
         return (
@@ -1767,6 +1879,7 @@ function BoardView({ data }: { data: BoardData }) {
               usersById={usersById}
               priorityLevelsByKey={priorityLevelsByKey}
               visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
+              candidateEpics={data.candidateEpics}
               onMoveToAdjacentColumn={moveToAdjacentColumn}
               registerCardRef={registerCardRef}
               showAddIssue={index === 0}
@@ -1793,6 +1906,7 @@ function Column({
   usersById,
   priorityLevelsByKey,
   visibleProperties,
+  candidateEpics,
   onMoveToAdjacentColumn,
   registerCardRef,
   showAddIssue,
@@ -1811,6 +1925,7 @@ function Column({
   usersById: Map<string, BoardData["users"][number]>;
   priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
+  candidateEpics: BoardData["candidateEpics"];
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next") => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
   showAddIssue: boolean;
@@ -1860,6 +1975,7 @@ function Column({
             usersById={usersById}
             priorityLevelsByKey={priorityLevelsByKey}
             visibleProperties={visibleProperties}
+            candidateEpics={candidateEpics}
             onMoveToAdjacentColumn={onMoveToAdjacentColumn}
             registerCardRef={registerCardRef}
           />
@@ -1923,6 +2039,7 @@ function Card({
   usersById,
   priorityLevelsByKey,
   visibleProperties,
+  candidateEpics,
   onMoveToAdjacentColumn,
   registerCardRef,
 }: {
@@ -1934,12 +2051,16 @@ function Card({
   usersById: Map<string, BoardData["users"][number]>;
   priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
+  candidateEpics: BoardData["candidateEpics"];
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next") => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
 }) {
-  const { i18n } = useTranslation("board");
+  const { t, i18n } = useTranslation("board");
   const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
+  const router = useRouter();
   const { listeners, setNodeRef, transform, isDragging } = useDraggable({ id: issue.id });
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(issue.title);
 
   function setRefs(el: HTMLAnchorElement | null) {
     setNodeRef(el);
@@ -1962,10 +2083,31 @@ function Card({
     }
   }
 
+  function startRename(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setTitleDraft(issue.title);
+    setEditingTitle(true);
+  }
+
+  async function saveRename() {
+    const trimmed = titleDraft.trim();
+    setEditingTitle(false);
+    if (!trimmed || trimmed === issue.title) return;
+    await updateIssueTitleFn({ data: { issueId: issue.id, title: trimmed } });
+    await router.invalidate();
+  }
+
+  async function setEpic(epicId: string) {
+    await updateIssueEpicFn({ data: { issueId: issue.id, epicId: epicId || null } });
+    await router.invalidate();
+  }
+
   return (
     <Link
       to="/issues/$teamId/$projectKey/$issueKeySeq"
       params={{ teamId, projectKey, issueKeySeq: String(issue.keySeq) }}
+      search={{ from: "board" }}
       ref={setRefs}
       {...listeners}
       onKeyDown={handleKeyDown}
@@ -1990,7 +2132,51 @@ function Card({
           </span>
         )}
       </div>
-      <p className="mb-2 line-clamp-2 type-body font-medium leading-snug tracking-tight">{issue.title}</p>
+      {editingTitle ? (
+        <input
+          autoFocus
+          value={titleDraft}
+          onChange={(e) => setTitleDraft(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onBlur={saveRename}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") saveRename();
+            if (e.key === "Escape") {
+              setTitleDraft(issue.title);
+              setEditingTitle(false);
+            }
+          }}
+          className="mb-2 w-full rounded-[6px] border border-border-2 bg-surface px-1.5 py-1 type-body font-medium leading-snug tracking-tight outline-none"
+        />
+      ) : (
+        <p
+          onClick={startRename}
+          title={t("card.renameHint")}
+          className="mb-2 line-clamp-2 type-body font-medium leading-snug tracking-tight"
+        >
+          {issue.title}
+        </p>
+      )}
+      {type?.hierarchyLevel !== 0 && candidateEpics.length > 0 && (
+        <div className="mb-2" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+          <select
+            value={issue.epicId ?? ""}
+            onChange={(e) => setEpic(e.target.value)}
+            className="kp-select kp-field w-full text-[10.5px]"
+          >
+            <option value="">{t("card.noEpic")}</option>
+            {candidateEpics
+              .filter((e) => e.id !== issue.id)
+              .map((e) => (
+                <option key={e.id} value={e.id}>
+                  {projectKey}-{e.keySeq} {e.title}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
       {issue.labels.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {issue.labels.slice(0, 3).map((label) => (
