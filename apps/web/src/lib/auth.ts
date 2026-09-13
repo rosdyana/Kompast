@@ -114,16 +114,64 @@ export function getDevAdminConfig(env: Pick<Env, "NODE_ENV" | "ENABLE_DEV_LOGIN"
  * signUpEmail — deliberately NOT disableSignUp on the emailAndPassword
  * config (that flag also blocks this same server-side call, since
  * auth.api.* runs the identical handler an HTTP sign-up request would), so
- * this reuses the real signUpEmail path and, with it, buildAuth's existing
- * "first user becomes org owner + super admin" hook for free — exactly as
- * a real first Microsoft sign-in would get it. The sign-up endpoint being
- * technically reachable is an accepted tradeoff: this whole path is already
- * gated by getDevAdminConfig to local dev only.
+ * this reuses the real signUpEmail path. This used to also rely on
+ * buildAuth's "first user becomes org owner + super admin" databaseHooks
+ * hook for free — exactly as a real first Microsoft sign-in would get it —
+ * but that hook only fires when the new user is the ONLY row in the whole
+ * `user` table at creation time (see `isOnlyUser`), which is fragile the
+ * moment anything else creates a user first: a leftover test fixture that
+ * didn't get cleaned up, `scripts/seed-dev.ts`'s own `dev@example.com`, or a
+ * real Entra sign-in that happened before dev login was ever exercised. Any
+ * of those silently leaves dev-admin provisioned but org-less, which then
+ * manifests as an inexplicable bounce back to /login after a successful
+ * password check (getWorkspaceShellFn returns null with no active
+ * organization). So this explicitly ensures dev-admin has a workspace of
+ * its own regardless of `isOnlyUser`, mirroring seed-dev.ts's own explicit
+ * org-creation fallback instead of depending on global table state.
+ *
+ * `getAuth()` calls this on every cache miss, and each of this app's test
+ * files runs in its own Vitest worker with its own module cache (so its own
+ * independent `cached` in getAuth) against the SAME shared Postgres — so
+ * concurrent callers racing to seed this one fixed email/org is a real,
+ * expected case, not a hypothetical. Both steps below are written to
+ * tolerate losing that race rather than surfacing it as a failure: seeding
+ * is idempotent in outcome (dev-admin ends up with exactly one
+ * organization) even when it isn't idempotent in which call actually wins.
  */
 export async function seedDevAdmin(auth: ReturnType<typeof buildAuth>, password: string): Promise<void> {
-  const [existing] = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, DEV_ADMIN_EMAIL));
-  if (existing) return;
-  await auth.api.signUpEmail({ body: { email: DEV_ADMIN_EMAIL, password, name: "Dev Admin" } });
+  let [user] = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, DEV_ADMIN_EMAIL));
+  if (!user) {
+    try {
+      const created = await auth.api.signUpEmail({ body: { email: DEV_ADMIN_EMAIL, password, name: "Dev Admin" } });
+      user = { id: created.user.id };
+    } catch {
+      // Lost the race to create this fixed email to a concurrent caller — read back what it created.
+      [user] = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, DEV_ADMIN_EMAIL));
+      if (!user) throw new Error("seedDevAdmin: signUpEmail failed and no dev-admin user exists to fall back to");
+    }
+  }
+
+  const [existingMembership] = await db.select({ organizationId: schema.member.organizationId }).from(schema.member).where(eq(schema.member.userId, user.id));
+  if (existingMembership) return;
+
+  try {
+    const seedAuth = betterAuth({
+      baseURL: env.BETTER_AUTH_URL,
+      secret: env.BETTER_AUTH_SECRET,
+      database: drizzleAdapter(db, { provider: "pg", schema }),
+      plugins: [organization({ teams: { enabled: true, defaultTeam: { enabled: false } } })],
+    });
+    const org = await seedAuth.api.createOrganization({
+      body: { name: "Dev Admin", slug: `ws-${user.id.slice(0, 12)}`, userId: user.id },
+    });
+    if (!org) return;
+    await db.update(schema.member).set({ isSuperAdmin: true }).where(and(eq(schema.member.organizationId, org.id), eq(schema.member.userId, user.id)));
+  } catch {
+    // Lost the race to give dev-admin an organization — either a concurrent
+    // caller here, or buildAuth's own databaseHooks "first user" hook, won
+    // it instead. Either way dev-admin now has (or is about to have) one;
+    // nothing left for this call to do.
+  }
 }
 
 export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>, devLoginEnabled: boolean) {
