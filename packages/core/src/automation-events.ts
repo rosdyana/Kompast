@@ -12,10 +12,11 @@ import { id } from "./ids";
  * both sides import from instead of each other.
  */
 
-/** Threaded through a mutation call so its own emitAutomationEvent call knows this write came from a rule's action — see automation.ts's evaluateAutomationEvent loop-guards. */
+/** Both fields optional and independent — a write can be caused by the OLD rule engine (ruleId), the NEW workflow engine (workflowId), or neither (a plain user/API write). */
 export interface AutomationContext {
   depth: number;
-  ruleId: string;
+  ruleId?: string;
+  workflowId?: string;
 }
 
 export type RuleTriggerType = "issue.created" | "issue.updated" | "issue.transitioned" | "issue.assigned" | "issue.commented";
@@ -40,6 +41,7 @@ export interface EmitAutomationEventInput {
  * function's only job is "record that something happened."
  */
 export async function emitAutomationEvent(tx: Tx, input: EmitAutomationEventInput) {
+  const depth = input.automationContext?.depth ?? 0;
   await tx.insert(schema.automationEvent).values({
     id: id("aevent"),
     organizationId: input.organizationId,
@@ -48,7 +50,20 @@ export async function emitAutomationEvent(tx: Tx, input: EmitAutomationEventInpu
     entityType: "issue",
     entityId: input.entityId,
     payload: input.payload,
-    depth: input.automationContext?.depth ?? 0,
+    depth,
     causedByRuleId: input.automationContext?.ruleId ?? null,
+  });
+  // New engine's own outbox — see automation_workflow_event's schema comment
+  // for why this can't share automation_event's claim/status lifecycle.
+  await tx.insert(schema.automationWorkflowEvent).values({
+    id: id("wfevent"),
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: input.eventType,
+    entityType: "issue",
+    entityId: input.entityId,
+    payload: input.payload,
+    depth,
+    causedByWorkflowId: input.automationContext?.workflowId ?? null,
   });
 }
