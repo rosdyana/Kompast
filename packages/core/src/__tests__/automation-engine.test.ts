@@ -259,7 +259,7 @@ describe("automation engine", () => {
     const { projectId, issueId, statuses } = await seedProjectAndIssue("enf");
     const triggerId = id("anode");
     const actionId = id("anode");
-    await withAuthorizedTenant(ctx, (tx) =>
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
       createWorkflow(tx, {
         organizationId: orgId,
         projectId,
@@ -275,15 +275,139 @@ describe("automation engine", () => {
 
     await withAuthorizedTenant(ctx, (tx) => moveIssue(tx, { issueId, toStatusId: statuses[2]!.id, actorId: userId }));
 
+    // Both claim queries are unscoped, system-wide scans (real production
+    // shape — see claimPendingWorkflowEvents/claimDueWorkflowSteps's own
+    // doc comments) that can race other test FILES running concurrently
+    // against the same Postgres (see CLAUDE.md's "vitest runs test files in
+    // parallel" note). Filter down to only OUR own fixtures before
+    // asserting/processing, the same way this file's OWN
+    // claimPendingWorkflowEvents.filter(projectId) already does for events,
+    // and the old engine's equivalent test does for automation_event —
+    // never assume a stray pending/waiting row from another file can't be
+    // in the claimed batch.
     const claimedEvents = await claimPendingWorkflowEvents(admin, 20);
     const ourEvents = claimedEvents.filter((e) => e.projectId === projectId);
     expect(ourEvents.length).toBeGreaterThanOrEqual(1);
     for (const event of ourEvents) await withAuthorizedTenant(ctx, (tx) => matchAndStartRuns(tx, event));
 
+    const ourRuns = await admin.select({ id: schema.automationWorkflowRun.id }).from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    const ourRunIds = new Set(ourRuns.map((r) => r.id));
+
     const claimedSteps = await claimDueWorkflowSteps(admin, 20);
-    for (const step of claimedSteps) await withAuthorizedTenant(ctx, (tx) => advanceWorkflowStep(tx, step));
+    const ourSteps = claimedSteps.filter((s) => ourRunIds.has(s.runId));
+    expect(ourSteps.length).toBeGreaterThanOrEqual(1);
+    for (const step of ourSteps) await withAuthorizedTenant(ctx, (tx) => advanceWorkflowStep(tx, step));
 
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.labels).toEqual(["claimed"]);
+  });
+
+  it("action_comment also respects self-trigger loop prevention (doesn't bypass it like the old bug did)", async () => {
+    const { projectId, issueId } = await seedProjectAndIssue("eng");
+    const triggerId = id("anode");
+    const actionId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Comment loop test",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_event", config: { eventType: "issue.commented" }, position: { x: 0, y: 0 } },
+          { id: actionId, type: "action_comment", config: { text: "auto-reply" }, position: { x: 200, y: 0 } },
+        ],
+        edges: [{ fromNodeId: triggerId, toNodeId: actionId }],
+      }),
+    );
+
+    const { addComment } = await import("../comment");
+    await withAuthorizedTenant(ctx, (tx) => addComment(tx, { issueId, authorId: userId, bodyJson: { text: "start it" } }));
+    const firstCommentEvent = await latestWorkflowEventFor(issueId, "issue.commented");
+    await withAuthorizedTenant(ctx, (tx) => matchAndStartRuns(tx, firstCommentEvent));
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    await runAllSteps(run!.id);
+
+    const comments = await admin.select().from(schema.issueComment).where(eq(schema.issueComment.issueId, issueId));
+    expect(comments).toHaveLength(2); // the human's + the workflow's own reply
+
+    // The workflow's own comment must have emitted its own issue.commented
+    // event, correctly attributed back to this workflow (not null/unset —
+    // action_comment used to silently drop automationContext here).
+    const secondCommentEvent = await latestWorkflowEventFor(issueId, "issue.commented");
+    expect(secondCommentEvent.causedByWorkflowId).toBe(workflowId);
+
+    // Re-running trigger matching against that self-caused event must NOT
+    // start a second run for this same workflow.
+    await withAuthorizedTenant(ctx, (tx) => matchAndStartRuns(tx, secondCommentEvent));
+    const runsAfter = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    expect(runsAfter).toHaveLength(1);
+  });
+
+  it("a fan-out with one immediate sibling and one waiting (delay) sibling keeps the run running, then completes once the delay resumes", async () => {
+    const { projectId, issueId, statuses } = await seedProjectAndIssue("enh");
+    const triggerId = id("anode");
+    const immediateActionId = id("anode");
+    const delayId = id("anode");
+    const afterDelayActionId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Fan-out with a waiting sibling",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_event", config: { eventType: "issue.transitioned" }, position: { x: 0, y: 0 } },
+          { id: immediateActionId, type: "action_add_label", config: { label: "immediate" }, position: { x: 200, y: -50 } },
+          { id: delayId, type: "delay", config: { amount: 5, unit: "minutes" }, position: { x: 200, y: 50 } },
+          { id: afterDelayActionId, type: "action_comment", config: { text: "after the delay" }, position: { x: 400, y: 50 } },
+        ],
+        edges: [
+          { fromNodeId: triggerId, toNodeId: immediateActionId },
+          { fromNodeId: triggerId, toNodeId: delayId },
+          { fromNodeId: delayId, toNodeId: afterDelayActionId },
+        ],
+      }),
+    );
+
+    await withAuthorizedTenant(ctx, (tx) => moveIssue(tx, { issueId, toStatusId: statuses[2]!.id, actorId: userId }));
+    const event = await latestWorkflowEventFor(issueId, "issue.transitioned");
+    await withAuthorizedTenant(ctx, (tx) => matchAndStartRuns(tx, event));
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+
+    // Advancing the trigger cascades into both fan-out siblings: the
+    // immediate action applies right away, while the delay sibling ends up
+    // "waiting". Before the Finding-1 fix, the immediate sibling finishing
+    // first (with the delay sibling's row not yet inserted) caused
+    // finalizeRunIfDone to see zero active steps and prematurely mark the
+    // run "completed" even though the delay step is genuinely still active.
+    const [triggerStep] = await admin.select().from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, run!.id));
+    await withAuthorizedTenant(ctx, (tx) => advanceWorkflowStep(tx, triggerStep!));
+
+    const stepsAfterFirstPass = await admin.select().from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, run!.id));
+    expect(stepsAfterFirstPass).toHaveLength(3); // trigger + immediate action + delay (afterDelayAction not created yet)
+    const delayStep = stepsAfterFirstPass.find((s) => s.nodeId === delayId)!;
+    expect(delayStep.status).toBe("waiting");
+    expect(delayStep.resumeAt).not.toBeNull();
+
+    const [issueMidRun] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issueMidRun?.labels).toEqual(["immediate"]); // the immediate sibling really did apply already
+
+    const [runMidRun] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, run!.id));
+    expect(runMidRun!.status).toBe("running"); // NOT prematurely "completed" while the delay sibling is still waiting
+
+    // Force the delay due, resume it exactly like the worker's poll loop would.
+    await admin.update(schema.automationWorkflowRunStep).set({ resumeAt: new Date(Date.now() - 1000) }).where(eq(schema.automationWorkflowRunStep.id, delayStep.id));
+    const claimed = await claimDueWorkflowSteps(admin, 20);
+    const ourClaimedDelayStep = claimed.find((s) => s.id === delayStep.id);
+    expect(ourClaimedDelayStep).toBeTruthy();
+    await withAuthorizedTenant(ctx, (tx) => advanceWorkflowStep(tx, ourClaimedDelayStep!));
+
+    const finalSteps = await admin.select().from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, run!.id));
+    expect(finalSteps).toHaveLength(4);
+    const comments = await admin.select().from(schema.issueComment).where(eq(schema.issueComment.issueId, issueId));
+    expect(comments).toHaveLength(1);
+
+    const [runFinal] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, run!.id));
+    expect(runFinal!.status).toBe("completed");
   });
 });

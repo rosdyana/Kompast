@@ -95,7 +95,19 @@ async function finalizeRunIfDone(tx: Tx, runId: string): Promise<void> {
     .select({ id: schema.automationWorkflowRunStep.id })
     .from(schema.automationWorkflowRunStep)
     .where(and(eq(schema.automationWorkflowRunStep.runId, runId), inArray(schema.automationWorkflowRunStep.status, ["pending", "processing", "waiting"])));
-  if (activeSteps.length > 0) return;
+  if (activeSteps.length > 0) {
+    // Belt-and-braces: explicitly keep the run "running" rather than just
+    // returning. finalizeRunIfDone can be called before every sibling of a
+    // fan-out has had its row inserted yet (advanceWorkflowStep inserts+
+    // recurses into each edge in turn), so a run can, even correctly, be
+    // seen as "no active steps YET" mid-fan-out — see advanceWorkflowStep's
+    // two-pass insert-then-recurse split, which is the real fix for that.
+    // Writing "running" here too means the run's status is always actively
+    // kept in sync with the real step set on every call, rather than only
+    // ever moving forward from its initial "running" default.
+    await tx.update(schema.automationWorkflowRun).set({ status: "running" }).where(eq(schema.automationWorkflowRun.id, runId));
+    return;
+  }
 
   const allSteps = await tx.select({ status: schema.automationWorkflowRunStep.status }).from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, runId));
   const finalStatus = allSteps.some((s) => s.status === "failed") ? "failed" : "completed";
@@ -176,12 +188,26 @@ export async function advanceWorkflowStep(tx: Tx, step: AutomationWorkflowRunSte
 
     const outgoingEdges = await tx.select().from(schema.automationEdge).where(eq(schema.automationEdge.fromNodeId, node!.id));
     const matchingEdges = node!.type === "condition_property" ? outgoingEdges.filter((e) => e.fromHandle === result.branchTaken) : outgoingEdges;
+
+    // Two passes, deliberately not merged: insert every sibling's row FIRST,
+    // then recurse into each. If a single edge were inserted-and-recursed
+    // before the next edge's row existed, that recursion's own
+    // finalizeRunIfDone call would see an incomplete step set — e.g. one
+    // sibling finishing instantly (no more edges) while its not-yet-created
+    // sibling was actually going to end up "waiting" on a delay — and could
+    // finalize the run as "completed" while a true sibling is still pending.
+    // Inserting all rows up front makes every sibling visible to every
+    // nested finalizeRunIfDone call from the very first one.
+    const nextSteps = [];
     for (const edge of matchingEdges) {
       const [nextStep] = await tx
         .insert(schema.automationWorkflowRunStep)
         .values({ id: id("wfstep"), runId: step.runId, nodeId: edge.toNodeId, depth: step.depth + 1, status: "pending" })
         .returning();
-      await advanceWorkflowStep(tx, nextStep!);
+      nextSteps.push(nextStep!);
+    }
+    for (const nextStep of nextSteps) {
+      await advanceWorkflowStep(tx, nextStep);
     }
   }
 

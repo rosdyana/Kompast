@@ -156,7 +156,7 @@ export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationW
     }
     if (node.type === "action_comment") {
       const config = node.config as { text: string };
-      await addComment(tx, { issueId, authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient });
+      await addComment(tx, { issueId, authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
       return { status: "succeeded" };
     }
     if (node.type === "action_notify") {
