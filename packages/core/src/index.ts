@@ -18,6 +18,7 @@ export * from "./automation-workflow";
 // MAX_AUTOMATION_DEPTH (see that file's comment) which would otherwise
 // collide with automation.ts's own export of the same name.
 export { executeNode, type ExecuteStepResult } from "./automation-execution";
+export * from "./automation-engine";
 export * from "./comment";
 export * from "./rich-text";
 export * from "./watcher";
