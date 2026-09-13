@@ -155,6 +155,51 @@ describe("/api/v1/automation/workflows", () => {
     expect(edgesOnlyRes.status).toBe(400);
   });
 
+  it("returns 404 (not 500/200) for PATCH/DELETE/runs against a nonexistent workflowId", async () => {
+    const bogusId = "wf_does_not_exist";
+
+    const patchRes = await workflowItemHandlers.PATCH({
+      request: req(`http://x/api/v1/automation/workflows/${bogusId}`, { method: "PATCH", token, body: { projectKey, name: "Nope" } }),
+      params: { workflowId: bogusId },
+    });
+    expect(patchRes.status).toBe(404);
+
+    const deleteRes = await workflowItemHandlers.DELETE({
+      request: req(`http://x/api/v1/automation/workflows/${bogusId}`, { method: "DELETE", token }),
+      params: { workflowId: bogusId },
+    });
+    expect(deleteRes.status).toBe(404);
+
+    const runsRes = await workflowRunsHandlers.GET({
+      request: req(`http://x/api/v1/automation/workflows/${bogusId}/runs`, { token }),
+      params: { workflowId: bogusId },
+    });
+    expect(runsRes.status).toBe(404);
+  });
+
+  it("returns 404 for a PATCH whose workflowId exists but belongs to a different project", async () => {
+    const createRes = await workflowsHandlers.POST({
+      request: req("http://x/api/v1/automation/workflows", {
+        method: "POST",
+        token,
+        body: { projectKey, name: "Cross-project guard", nodes: [{ id: "n1", type: "trigger_event", config: {}, position: { x: 0, y: 0 } }], edges: [] },
+      }),
+      params: {},
+    });
+    const { id: workflowId } = await createRes.json();
+
+    const otherProjectKey = Array.from({ length: 5 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: otherProjectKey, name: "REST Workflows Other Project", actorUserId: userId }),
+    );
+
+    const patchRes = await workflowItemHandlers.PATCH({
+      request: req(`http://x/api/v1/automation/workflows/${workflowId}`, { method: "PATCH", token, body: { projectKey: otherProjectKey, name: "Nope" } }),
+      params: { workflowId },
+    });
+    expect(patchRes.status).toBe(404);
+  });
+
   it("rejects workflow creation from a token without issues:write", async () => {
     const auth = await getAuth();
     const readOnly = await auth.api.createApiKey({ body: { userId, permissions: { issues: ["read"] }, metadata: { organizationId: orgId } } });

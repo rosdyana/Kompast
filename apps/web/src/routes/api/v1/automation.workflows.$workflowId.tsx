@@ -56,6 +56,8 @@ export const Route = createFileRoute("/api/v1/automation/workflows/$workflowId")
 
           return withAuthorizedTenant(ctx, async (tx) => {
             const project = await resolveProject(tx, ctx.organizationId, body.projectKey);
+            const existing = await getWorkflow(tx, params.workflowId);
+            if (!existing || existing.projectId !== project.id) throw new ApiError(404, "Not Found", `Workflow ${params.workflowId} not found`);
             if (body.nodes !== undefined || body.edges !== undefined) {
               if (body.nodes === undefined || body.edges === undefined) throw new ApiError(400, "Bad Request", "nodes and edges must be sent together");
             }
@@ -75,8 +77,12 @@ export const Route = createFileRoute("/api/v1/automation/workflows/$workflowId")
       DELETE: async ({ request, params }) =>
         handleApiRoute(async () => {
           const ctx = await requireApiAuth(request, "issues:write", "api");
-          await withAuthorizedTenant(ctx, (tx) => deleteWorkflow(tx, params.workflowId));
-          return jsonResponse({ ok: true });
+          return withAuthorizedTenant(ctx, async (tx) => {
+            const existing = await getWorkflow(tx, params.workflowId);
+            if (!existing) throw new ApiError(404, "Not Found", `Workflow ${params.workflowId} not found`);
+            await deleteWorkflow(tx, params.workflowId);
+            return jsonResponse({ ok: true });
+          });
         }),
     },
   },
