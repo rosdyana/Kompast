@@ -44,6 +44,13 @@ export interface FilterCondition {
 
 export interface TableViewConfig {
   groupBy: "column" | "assignee" | "none";
+  /**
+   * Kanban-board-only swimlane grouping — independent of `groupBy` (which
+   * only affects the Sprint Hub's flat table) so switching one never
+   * silently changes the other's rendering, even though both views share
+   * this one saved_view.config blob.
+   */
+  swimlaneBy: "none" | "assignee";
   /** Ordered by priority — the first rule is the primary sort, later rules break ties. */
   sort: SortRule[];
   /** ANDed together — every condition must match for a row to show. No OR/grouping (deliberately out of scope). */
@@ -52,6 +59,7 @@ export interface TableViewConfig {
 
 export const DEFAULT_TABLE_VIEW_CONFIG: TableViewConfig = {
   groupBy: "column",
+  swimlaneBy: "none",
   sort: [{ field: "manual", direction: "asc" }],
   filters: [],
 };
@@ -74,14 +82,15 @@ interface LegacyTableViewConfig {
 export function normalizeTableViewConfig(raw: unknown): TableViewConfig {
   const config = (raw ?? {}) as Partial<TableViewConfig> & Partial<LegacyTableViewConfig>;
   const groupBy = config.groupBy ?? DEFAULT_TABLE_VIEW_CONFIG.groupBy;
+  const swimlaneBy = config.swimlaneBy ?? DEFAULT_TABLE_VIEW_CONFIG.swimlaneBy;
   const filters = Array.isArray(config.filters) ? (config.filters as FilterCondition[]) : [];
 
   if (Array.isArray(config.sort) && config.sort.length > 0) {
-    return { groupBy, sort: config.sort, filters };
+    return { groupBy, swimlaneBy, sort: config.sort, filters };
   }
   if (config.sortBy) {
     const field: SortField = config.sortBy === "rank" ? "manual" : config.sortBy;
-    return { groupBy, sort: [{ field, direction: config.sortDir ?? "asc" }], filters };
+    return { groupBy, swimlaneBy, sort: [{ field, direction: config.sortDir ?? "asc" }], filters };
   }
-  return { groupBy, sort: DEFAULT_TABLE_VIEW_CONFIG.sort, filters };
+  return { groupBy, swimlaneBy, sort: DEFAULT_TABLE_VIEW_CONFIG.sort, filters };
 }

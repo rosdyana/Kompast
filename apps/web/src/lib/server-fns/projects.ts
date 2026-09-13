@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { and, db, eq, inArray, schema } from "@kompast/db";
+import { and, asc, db, eq, inArray, schema } from "@kompast/db";
 import {
   createProject,
   createPage,
@@ -132,7 +132,7 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
         });
 
       const [issueTypes, boardData, tableView, propertyDefinitions, sprints, priorityLevels, candidateEpics] = await Promise.all([
-        tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
+        tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)).orderBy(asc(schema.issueType.order)),
         getBoard(tx, board.id),
         getOrCreateDefaultTableView(tx, board.id, ctx.userId),
         listIssuePropertyDefinitions(tx, project.id),
@@ -221,7 +221,7 @@ export const getBoardEmbedDataFn = createServerFn({ method: "GET" })
       if (!project) throw new Error(`Board ${boardId} not found`);
 
       const [issueTypes, boardData, tableView, priorityLevels] = await Promise.all([
-        tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
+        tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)).orderBy(asc(schema.issueType.order)),
         getBoard(tx, board.id),
         getOrCreateDefaultTableView(tx, board.id, ctx.userId),
         listPriorityLevels(tx, project.id),
@@ -259,6 +259,7 @@ const filterConditionSchema = z.object({
 const updateTableViewSchema = z.object({
   viewId: z.string(),
   groupBy: z.enum(["column", "assignee", "none"]),
+  swimlaneBy: z.enum(["none", "assignee"]),
   sort: z.array(sortRuleSchema),
   filters: z.array(filterConditionSchema),
 });
@@ -270,6 +271,7 @@ export const updateTableViewFn = createServerFn({ method: "POST" })
     await withAuthorizedTenant(ctx, (tx) =>
       updateSavedViewConfig(tx, data.viewId, {
         groupBy: data.groupBy,
+        swimlaneBy: data.swimlaneBy,
         sort: data.sort,
         filters: data.filters as FilterCondition[],
       }),

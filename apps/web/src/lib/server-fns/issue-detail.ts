@@ -83,7 +83,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
 
       const [statuses, allTypes, propertyDefinitions, orgMembers, priorityLevels, candidateEpics, boardSprints] = await Promise.all([
         tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, project.id)).orderBy(asc(schema.workflowStatus.order)),
-        tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)),
+        tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)).orderBy(asc(schema.issueType.order)),
         listIssuePropertyDefinitions(tx, project.id),
         // Full workspace member list (not just users already referenced by this
         // issue) — an assignee picker needs to offer everyone assignable, not
@@ -234,6 +234,36 @@ export const updateIssueEpicFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, data.issueId, { epicId: data.epicId, actorId: ctx.userId }));
+    return { ok: true } as const;
+  });
+
+const updateIssueTypeSchema = z.object({ issueId: z.string(), typeId: z.string() });
+
+export const updateIssueTypeFn = createServerFn({ method: "POST" })
+  .validator(updateIssueTypeSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, data.issueId, { typeId: data.typeId, actorId: ctx.userId }));
+    return { ok: true } as const;
+  });
+
+const updateIssueLabelsSchema = z.object({ issueId: z.string(), labels: z.array(z.string()) });
+
+export const updateIssueLabelsFn = createServerFn({ method: "POST" })
+  .validator(updateIssueLabelsSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, data.issueId, { labels: data.labels, actorId: ctx.userId }));
+    return { ok: true } as const;
+  });
+
+const updateIssueStoryPointsSchema = z.object({ issueId: z.string(), storyPoints: z.number().nullable() });
+
+export const updateIssueStoryPointsFn = createServerFn({ method: "POST" })
+  .validator(updateIssueStoryPointsSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, data.issueId, { storyPoints: data.storyPoints, actorId: ctx.userId }));
     return { ok: true } as const;
   });
 

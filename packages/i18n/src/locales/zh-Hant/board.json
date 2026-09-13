@@ -1,5 +1,5 @@
 {
-  "tabs": { "board": "看板", "table": "表格", "roadmap": "路線圖", "docs": "文件", "automation": "自動化", "import": "匯入", "settings": "設定", "backlog": "待辦清單" },
+  "tabs": { "board": "看板", "table": "Sprint 中心", "roadmap": "路線圖", "docs": "文件", "automation": "自動化", "import": "匯入", "settings": "設定", "backlog": "待辦清單" },
   "fixedBadge": "固定",
   "loadingEllipsis": "載入中…",
   "savingEllipsis": "儲存中…",

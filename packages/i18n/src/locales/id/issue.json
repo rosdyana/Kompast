@@ -12,6 +12,9 @@
   "noEpic": "Tanpa epic",
   "sprintLabel": "Sprint",
   "backlogLabel": "Backlog",
+  "typeLabel": "Tipe",
+  "labelsLabel": "Label",
+  "addLabelPlaceholder": "Tambah label, tekan Enter…",
   "watching": "◔ Mengawasi",
   "watch": "◔ Awasi",
   "descriptionHeading": "Deskripsi",
@@ -44,6 +47,7 @@
   "historyOrigin": "via {{origin}}",
   "historyField": {
     "title": "Judul",
+    "typeId": "Tipe",
     "status": "Status",
     "priority": "Priority",
     "assigneeId": "Assignee",

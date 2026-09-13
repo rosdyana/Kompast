@@ -1,5 +1,5 @@
 {
-  "tabs": { "board": "Board", "table": "Table", "roadmap": "Roadmap", "docs": "Docs", "automation": "Automation", "import": "Import", "settings": "Settings", "backlog": "Backlog" },
+  "tabs": { "board": "Board", "table": "Sprint Hub", "roadmap": "Roadmap", "docs": "Docs", "automation": "Automation", "import": "Import", "settings": "Settings", "backlog": "Backlog" },
   "fixedBadge": "fixed",
   "loadingEllipsis": "Loading…",
   "savingEllipsis": "Saving…",
@@ -169,7 +169,7 @@
     "newColumnPlaceholder": "New column name",
     "addColumnButton": "+ Add column",
     "columnsFooterNote": "Deleting a column doesn't delete its issues — they're all returned to Backlog. An empty WIP limit means unlimited.",
-    "propertiesDescPart1": "These properties form the project's database schema: columns in the Table view, contents of Kanban cards, and variables automation can use. Add, delete, rename, or change their data type — changes are immediately visible across every view. ",
+    "propertiesDescPart1": "These properties form the project's database schema: columns in the Sprint Hub, contents of Kanban cards, and variables automation can use. Add, delete, rename, or change their data type — changes are immediately visible across every view. ",
     "propertiesDescBold": "{{count}} properties shown on cards.",
     "propertiesCountSummary": "{{visible}} of {{total}} properties shown on cards",
     "coreBadge": "core",

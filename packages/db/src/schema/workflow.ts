@@ -12,6 +12,7 @@ export const issueType = pgTable("issue_type", {
   /** epic=0, story/task/bug=1, subtask=2 — governs valid parent/child nesting. */
   hierarchyLevel: integer("hierarchy_level").notNull().default(1),
   isSubtask: boolean("is_subtask").notNull().default(false),
+  order: integer("order").notNull().default(0),
 });
 
 /**

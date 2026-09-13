@@ -42,11 +42,12 @@ export const issuePropertyDefinition = pgTable(
     options: jsonb("options").$type<Json>(),
     visibleOnCard: boolean("visible_on_card").notNull().default(false),
     /**
-     * True for the project's 8 built-in issue-detail fields (assignee,
-     * reporter, priority, startDate, dueDate, epic, sprint, storyPoints),
-     * seeded by createProject (packages/core/src/project.ts's
+     * True for the project's 10 built-in issue-detail fields (assignee,
+     * reporter, priority, startDate, dueDate, epic, sprint, storyPoints,
+     * type, labels), seeded by createProject (packages/core/src/project.ts's
      * CORE_ISSUE_PROPERTIES) and backfilled for pre-existing projects by
-     * drizzle/0021_backfill_core_issue_properties.sql. These rows exist so
+     * drizzle/0021_backfill_core_issue_properties.sql (the first 8) and a
+     * later migration adding type/labels. These rows exist so
      * core fields share the same reorder mechanism as custom properties;
      * their `type`/`options` are metadata only — the issue-detail page
      * dispatches core rows to bespoke rendering by `key`, never through the
