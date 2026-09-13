@@ -4,6 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
+import { createIssue, updateIssueCustomField } from "../issue";
 import {
   createIssuePropertyDefinition,
   deleteIssuePropertyDefinition,
@@ -125,5 +126,26 @@ describe("issue property definitions", () => {
     await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => deleteIssuePropertyDefinition(tx, { projectId, definitionId }));
     const defs = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listIssuePropertyDefinitions(tx, projectId));
     expect(defs).toHaveLength(0);
+  });
+
+  it("updateIssueCustomField merges one key without touching sibling custom field values", async () => {
+    // seedProject already returns issueTypes/statuses from createProject's own result — no need to re-query them.
+    const { projectId, issueTypes, statuses } = await seedProject("IPH");
+    const { issueId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createIssue(tx, {
+        organizationId: orgId,
+        projectId,
+        typeId: issueTypes[0]!.id,
+        statusId: statuses[0]!.id,
+        title: "Custom field merge test",
+        reporterId: userId,
+        customFields: { budget: 100, region: "APAC" },
+      }),
+    );
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => updateIssueCustomField(tx, issueId, "budget", 250, { actorId: userId }));
+
+    const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issue?.customFields).toEqual({ budget: 250, region: "APAC" });
   });
 });
