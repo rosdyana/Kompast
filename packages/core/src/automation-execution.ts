@@ -307,7 +307,24 @@ export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationW
           // rejects with a DOMException named "AbortError", handled
           // generically by the catch below like any other network error.
           signal: AbortSignal.timeout(10_000),
+          // Never auto-follow a redirect: assertWebhookUrlAllowed only
+          // DNS-resolves and range-checks the INITIAL url — fetch's default
+          // redirect: "follow" would transparently chase a Location header
+          // straight past that guard (e.g. an attacker-controlled host
+          // redirecting to http://169.254.169.254/... cloud metadata, or to
+          // a loopback address), defeating the SSRF check entirely without
+          // ever re-validating the redirect target. With "manual", Node's
+          // native fetch (undici) does not follow the redirect itself —
+          // empirically, in this repo's Node version, it returns the 3xx
+          // response as-is (status/headers intact) rather than throwing or
+          // returning an opaque-redirect response, hence the status-range
+          // check below (with an `opaqueredirect` check kept alongside it
+          // in case a future Node/undici version changes that).
+          redirect: "manual",
         });
+        if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
+          return { status: "failed", error: "Webhook response was a redirect, which is not followed for security reasons" };
+        }
         if (!res.ok) return { status: "failed", error: `Webhook returned ${res.status} ${res.statusText}` };
         return { status: "succeeded", output: { status: res.status } };
       } catch (err) {

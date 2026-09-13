@@ -386,12 +386,25 @@ describe("automation-execution: action_webhook", () => {
     // signal it was handed, exercising exactly the codepath a real timeout
     // firing after 10s would — including proving executeNode really does
     // pass an AbortSignal into fetch at all.
+    //
+    // The signal is captured here and asserted on BELOW, outside this
+    // callback: an assertion thrown from inside a vi.fn() mock callback is
+    // silently swallowed under the Vitest version installed in this repo
+    // (3.2.7) — it does not propagate up to fail the test — so asserting
+    // in here would pass unconditionally regardless of whether executeNode
+    // actually wires up the timeout signal at all.
+    let capturedSignal: AbortSignal | undefined;
     const fetchMock = vi.fn((_url: string, options: RequestInit) => {
-      const signal = options.signal as AbortSignal;
-      expect(signal).toBeInstanceOf(AbortSignal);
+      capturedSignal = options.signal as AbortSignal | undefined;
       return new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(new DOMException("This operation was aborted", "AbortError")));
-        signal.dispatchEvent(new Event("abort"));
+        if (!capturedSignal) {
+          // Nothing to hang on and nothing to abort — reject immediately so
+          // a missing signal fails fast below instead of timing out the test.
+          reject(new Error("test bug: no AbortSignal was passed to fetch"));
+          return;
+        }
+        capturedSignal.addEventListener("abort", () => reject(new DOMException("This operation was aborted", "AbortError")));
+        capturedSignal.dispatchEvent(new Event("abort"));
       });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -401,6 +414,7 @@ describe("automation-execution: action_webhook", () => {
 
     expect(result.status).toBe("failed");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
     vi.unstubAllGlobals();
   });
 
@@ -417,6 +431,43 @@ describe("automation-execution: action_webhook", () => {
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/disallowed address/);
     expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("blocks a redirect response instead of following it, even though the initial URL passed the SSRF guard (Fix 5, redirect bypass)", async () => {
+    const { run, workflow } = await seed("hkf");
+    const redirectTarget = "http://169.254.169.254/latest/meta-data/";
+    // This mock deliberately simulates REAL fetch redirect semantics (not
+    // just a dumb canned response) so the test genuinely discriminates
+    // between "redirect followed" and "redirect blocked":
+    //  - if executeNode passes redirect: "manual" (the fix), we return the
+    //    3xx response as Node's native fetch actually does under manual
+    //    redirect mode in this repo's runtime (status/headers intact,
+    //    confirmed empirically — see scratch script used while diagnosing
+    //    this fix), and fetch is called exactly once.
+    //  - if executeNode omits the redirect option (pre-fix), this mock
+    //    stands in for fetch's real default "follow" behavior and resolves
+    //    the redirect itself, returning a 200 as if the metadata endpoint
+    //    had actually been reached. It also hard-fails if ever called with
+    //    the redirect target directly, which would mean OUR code (not this
+    //    mock) tried to follow the redirect itself.
+    const fetchMock = vi.fn(async (url: string, options: RequestInit) => {
+      if (url === redirectTarget) {
+        throw new Error("test bug: fetch was called with the redirect target — the redirect was followed");
+      }
+      if (options.redirect === "manual") {
+        return new Response(null, { status: 302, headers: { Location: redirectTarget } });
+      }
+      return new Response("metadata leaked", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const node = { id: id("anode"), workflowId: "unused", type: "action_webhook", config: { url: "https://example.com/hook", method: "POST", headers: {}, bodyTemplate: {} }, position: { x: 0, y: 0 } } as never;
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow, 0));
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/redirect/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
   });
 });
