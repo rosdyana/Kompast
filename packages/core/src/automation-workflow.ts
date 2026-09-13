@@ -23,13 +23,16 @@ export class AutomationGraphError extends Error {
 export interface AutomationNodeInput {
   id: string;
   type: AutomationNodeType;
+  /** Optional human-readable key for {{steps.<name>...}} expression references — must be unique within the graph (see validateGraph). */
+  name?: string | null;
   config: Json;
   position: { x: number; y: number };
 }
 
 export interface AutomationEdgeInput {
   fromNodeId: string;
-  fromHandle?: "true" | "false";
+  /** Free text: "true"/"false" for condition_property, a case label (or "default") for condition_switch, otherwise omitted. */
+  fromHandle?: string;
   toNodeId: string;
 }
 
@@ -46,7 +49,7 @@ export interface CreateWorkflowInput {
 async function insertGraph(tx: Tx, workflowId: string, nodes: AutomationNodeInput[], edges: AutomationEdgeInput[]) {
   if (nodes.length > 0) {
     await tx.insert(schema.automationNode).values(
-      nodes.map((n) => ({ id: n.id, workflowId, type: n.type, config: n.config, position: n.position })),
+      nodes.map((n) => ({ id: n.id, workflowId, type: n.type, name: n.name ?? null, config: n.config, position: n.position })),
     );
   }
   if (edges.length > 0) {
@@ -94,28 +97,56 @@ export async function listWorkflowRuns(tx: Tx, workflowId: string, limit = 50) {
     .limit(limit);
 }
 
-/**
- * Node types safe to have downstream of a trigger_schedule node. A schedule
- * tick has no triggering issue (claimDueWorkflowSchedules creates its run
- * with `context: {}` — see that function's own comment), so any node that
- * reads/writes issue state (condition_property, action_set_property,
- * action_add_label, action_comment, action_notify, action_link_issue,
- * action_create_subtask) would fail at runtime reaching for the
- * non-existent `run.context.issueId`. Rejected here at save time instead —
- * a deliberate, documented v1 scope boundary (schedule-triggered workflows
- * are for issue-independent actions only, e.g. digests/webhooks), not a
- * workaround. See the design spec's "Node types" / schedule trigger notes.
- */
-const SCHEDULE_SAFE_DOWNSTREAM_NODE_TYPES = new Set<AutomationNodeType>(["trigger_schedule", "action_webhook", "delay"]);
+export async function getWorkflowRun(tx: Tx, runId: string) {
+  const [run] = await tx.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+  if (!run) return null;
+  const steps = await tx
+    .select({ step: schema.automationWorkflowRunStep, nodeType: schema.automationNode.type, nodeName: schema.automationNode.name })
+    .from(schema.automationWorkflowRunStep)
+    .innerJoin(schema.automationNode, eq(schema.automationNode.id, schema.automationWorkflowRunStep.nodeId))
+    .where(eq(schema.automationWorkflowRunStep.runId, runId))
+    .orderBy(schema.automationWorkflowRunStep.createdAt);
+  return { ...run, steps: steps.map((s) => ({ ...s.step, nodeType: s.nodeType, nodeName: s.nodeName })) };
+}
 
-/** Every node reachable by following edges forward from `startId`, not including `startId` itself. */
-function nodesReachableFrom(startId: string, nodes: AutomationNodeInput[], edges: AutomationEdgeInput[]): AutomationNodeInput[] {
+/**
+ * Node types that require a real issueId to execute (they read/write issue
+ * state via `run.context.issueId` or a loop's current item — see
+ * automation-execution.ts's requireIssueId). A schedule tick has no
+ * triggering issue of its own (claimDueWorkflowSchedules creates its run
+ * with `context: {}`), so one of these reached WITHOUT first passing
+ * through a loop_each over issue ids (e.g. fed by find_issues) would fail
+ * at runtime. condition_switch is deliberately included even though it
+ * "only" reads a property, for the same reason condition_property is.
+ */
+const NODE_TYPES_REQUIRING_ISSUE_ID = new Set<AutomationNodeType>([
+  "condition_property",
+  "condition_switch",
+  "action_set_property",
+  "action_add_label",
+  "action_comment",
+  "action_notify",
+  "action_link_issue",
+  "action_create_subtask",
+]);
+
+/**
+ * Same forward BFS shape as the reachability check above, but does not expand PAST a
+ * loop_each node — a loop_each over issue ids is exactly where an issueId
+ * first becomes available on a schedule-triggered path (see
+ * automation-execution.ts's resolveIssueId), so anything reached without
+ * crossing one still has no issueId source. Used only for the
+ * trigger_schedule validation below.
+ */
+function nodesReachableWithoutIssueContext(startId: string, nodes: AutomationNodeInput[], edges: AutomationEdgeInput[]): AutomationNodeInput[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const visited = new Set<string>([startId]);
   const queue = [startId];
   const result: AutomationNodeInput[] = [];
   while (queue.length > 0) {
     const current = queue.shift()!;
+    const currentNode = byId.get(current);
+    if (currentNode && currentNode.type === "loop_each" && current !== startId) continue;
     for (const edge of edges) {
       if (edge.fromNodeId !== current || visited.has(edge.toNodeId)) continue;
       visited.add(edge.toNodeId);
@@ -134,6 +165,30 @@ function validateGraph(nodes: AutomationNodeInput[], edges: AutomationEdgeInput[
     if (!nodeIds.has(edge.toNodeId)) throw new AutomationGraphError(`Edge references toNodeId "${edge.toNodeId}", which does not exist in this graph`);
   }
 
+  const seenNames = new Set<string>();
+  for (const node of nodes) {
+    if (!node.name) continue;
+    if (seenNames.has(node.name)) throw new AutomationGraphError(`Node name "${node.name}" is used by more than one node — names must be unique within a workflow`);
+    seenNames.add(node.name);
+  }
+
+  const nodesById = new Map(nodes.map((n) => [n.id, n]));
+  for (const edge of edges) {
+    const fromNode = nodesById.get(edge.fromNodeId)!;
+    if (fromNode.type === "condition_property") {
+      if (edge.fromHandle !== "true" && edge.fromHandle !== "false") {
+        throw new AutomationGraphError(`condition_property node "${edge.fromNodeId}"'s outgoing edge must have fromHandle "true" or "false", got "${edge.fromHandle}"`);
+      }
+    } else if (fromNode.type === "condition_switch") {
+      const cases = (fromNode.config as { cases?: string[] }).cases ?? [];
+      if (!edge.fromHandle || (!cases.includes(edge.fromHandle) && edge.fromHandle !== "default")) {
+        throw new AutomationGraphError(`condition_switch node "${edge.fromNodeId}"'s outgoing edge fromHandle "${edge.fromHandle}" must be one of its configured cases, or "default"`);
+      }
+    } else if (edge.fromHandle) {
+      throw new AutomationGraphError(`"${fromNode.type}" node "${edge.fromNodeId}" is not a branching node and its outgoing edges must not set fromHandle`);
+    }
+  }
+
   const reachable = new Set<string>();
   const queue = nodes.filter((n) => n.type === "trigger_event" || n.type === "trigger_schedule").map((n) => n.id);
   while (queue.length > 0) {
@@ -148,6 +203,14 @@ function validateGraph(nodes: AutomationNodeInput[], edges: AutomationEdgeInput[
   }
 
   for (const node of nodes) {
+    if (node.type === "loop_each") {
+      for (const edge of edges) {
+        if (edge.fromNodeId === node.id && edge.fromHandle) {
+          throw new AutomationGraphError(`loop_each node "${node.id}" is not a branching node and its outgoing edges must not set fromHandle`);
+        }
+      }
+    }
+
     if (node.type !== "trigger_schedule") continue;
 
     // Belt-and-braces: also caught (and re-caught more coarsely) by
@@ -161,10 +224,10 @@ function validateGraph(nodes: AutomationNodeInput[], edges: AutomationEdgeInput[
       throw new AutomationGraphError(`Invalid cron expression on schedule trigger: "${config.cron}"`);
     }
 
-    for (const downstream of nodesReachableFrom(node.id, nodes, edges)) {
-      if (!SCHEDULE_SAFE_DOWNSTREAM_NODE_TYPES.has(downstream.type)) {
+    for (const downstream of nodesReachableWithoutIssueContext(node.id, nodes, edges)) {
+      if (NODE_TYPES_REQUIRING_ISSUE_ID.has(downstream.type)) {
         throw new AutomationGraphError(
-          `Schedule-triggered workflows can only contain action_webhook and delay nodes downstream of the trigger; "${downstream.type}" requires an issue and is not supported here yet`,
+          `"${downstream.type}" requires an issueId; place it downstream of a loop_each over issue ids (e.g. via find_issues) when triggered by a schedule`,
         );
       }
     }

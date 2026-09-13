@@ -1,5 +1,5 @@
 import dns from "node:dns/promises";
-import { eq, schema, type Json } from "@kompast/db";
+import { and, eq, sql, schema, type Json } from "@kompast/db";
 import type { Tx } from "./types";
 import { createIssue, moveIssue, updateIssue, updateIssueCustomField } from "./issue";
 import { addComment } from "./comment";
@@ -7,8 +7,13 @@ import { notify } from "./notification";
 import { addIssueToSprint, removeIssueFromSprint } from "./sprint";
 import { linkEntities } from "./link";
 import type { AutomationContext } from "./automation-events";
+import { resolveTemplates, buildLoopContextFields, type ExpressionContext, type IterationFrame } from "./automation-expressions";
 
 export const MAX_AUTOMATION_DEPTH = 5;
+/** Caps the number of (item x edge) child step rows a single loop_each execution can create. */
+export const MAX_LOOP_ITERATIONS = 200;
+/** Caps how many issues a single find_issues node can return, to bound downstream loop_each fan-out. */
+export const MAX_FIND_ISSUES_RESULTS = 500;
 
 type AutomationNode = typeof schema.automationNode.$inferSelect;
 type AutomationWorkflowRun = typeof schema.automationWorkflowRun.$inferSelect;
@@ -18,8 +23,8 @@ export interface ExecuteStepResult {
   status: "succeeded" | "failed" | "waiting";
   output?: Json;
   error?: string;
-  /** Only set for condition_property. */
-  branchTaken?: "true" | "false";
+  /** Only set for condition_property/condition_switch — the outgoing edge handle to follow. */
+  branchTaken?: string;
   /** Only set when status = "waiting". */
   resumeAt?: Date;
 }
@@ -196,6 +201,50 @@ async function assertWebhookUrlAllowed(rawUrl: string): Promise<void> {
 }
 
 /**
+ * Every step in this run that has already succeeded, keyed by node.name ??
+ * node.id, plus the run's fixed trigger context and the current loop
+ * iteration stack — the full data a node's expressions can reference. Built
+ * fresh on every executeNode call (not cached) so a node always sees every
+ * OTHER step that has succeeded so far in the same run, including siblings
+ * from an earlier fan-out.
+ */
+async function buildExpressionContext(tx: Tx, run: AutomationWorkflowRun, frames: IterationFrame[]): Promise<ExpressionContext> {
+  const priorSteps = await tx
+    .select({ output: schema.automationWorkflowRunStep.output, nodeId: schema.automationNode.id, name: schema.automationNode.name })
+    .from(schema.automationWorkflowRunStep)
+    .innerJoin(schema.automationNode, eq(schema.automationNode.id, schema.automationWorkflowRunStep.nodeId))
+    .where(and(eq(schema.automationWorkflowRunStep.runId, run.id), eq(schema.automationWorkflowRunStep.status, "succeeded")));
+
+  const steps: Record<string, { output: Json }> = {};
+  for (const s of priorSteps) steps[s.name ?? s.nodeId] = { output: s.output ?? null };
+
+  const { issueId, payload } = run.context as { issueId?: string; payload?: Json };
+  return { trigger: { issueId, payload }, steps, ...buildLoopContextFields(frames) };
+}
+
+/**
+ * Resolves the issueId an issue-touching node should act on: the nearest
+ * enclosing loop_each iteration whose items are issue ids wins over the
+ * run's own fixed trigger context — this is what lets a schedule-triggered
+ * workflow (whose run has no issueId of its own, see claimDueWorkflowSchedules)
+ * reach issue-touching action nodes, by looping over a find_issues node's
+ * output first. An issue-event-triggered workflow that also loops over
+ * issues (e.g. "for each subtask") gets the same precedence, deliberately —
+ * the loop you're inside is always more specific than the run's trigger.
+ */
+function resolveIssueId(run: AutomationWorkflowRun, frames: IterationFrame[]): string | undefined {
+  const loopIssueFrame = [...frames].reverse().find((f) => f.itemType === "issueId");
+  if (loopIssueFrame) return loopIssueFrame.item as string;
+  return (run.context as { issueId?: string }).issueId;
+}
+
+/** Every issue-touching node calls this instead of using `issueId` directly — fails loudly rather than silently acting on `undefined`. */
+function requireIssueId(issueId: string | undefined): string {
+  if (!issueId) throw new Error("This node requires an issueId, but none is available here (not triggered by an issue event, and not inside a loop over issues)");
+  return issueId;
+}
+
+/**
  * Executes exactly one node's logic. Does not read or write the
  * automation_workflow_run_step row itself — the claim loop (Task 6/7)
  * owns that, so this function is trivially unit-testable node-by-node.
@@ -213,9 +262,22 @@ async function assertWebhookUrlAllowed(rawUrl: string): Promise<void> {
  * subtask-creation loop bypass MAX_AUTOMATION_DEPTH entirely). Stamping
  * the right depth here, at the one place every node's mutation originates
  * from, can't miss a case like that.
+ *
+ * `iterationFrames` is the stack of enclosing loop_each iterations (see
+ * automation-engine.ts's advanceWorkflowStep) — used both for {{item}}/
+ * {{loop.*}} expression resolution and for resolveIssueId above.
  */
-export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationWorkflowRun, workflow: AutomationWorkflow, stepDepth: number): Promise<ExecuteStepResult> {
-  const issueId = (run.context as { issueId: string }).issueId;
+export async function executeNode(
+  tx: Tx,
+  node: AutomationNode,
+  run: AutomationWorkflowRun,
+  workflow: AutomationWorkflow,
+  stepDepth: number,
+  iterationFrames: IterationFrame[] = [],
+): Promise<ExecuteStepResult> {
+  const issueId = resolveIssueId(run, iterationFrames);
+  const expressionContext = await buildExpressionContext(tx, run, iterationFrames);
+  const resolvedConfig = resolveTemplates(node.config, expressionContext);
   const meta: ActionMeta = {
     actorId: workflow.createdBy!,
     origin: "automation",
@@ -225,54 +287,82 @@ export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationW
 
   try {
     if (node.type === "condition_property") {
-      const config = node.config as { property: string; operator: string; value: Json };
-      const actual = await readIssuePropertyValue(tx, issueId, config.property);
+      const config = resolvedConfig as { property: string; operator: string; value: Json };
+      const actual = await readIssuePropertyValue(tx, requireIssueId(issueId), config.property);
       const matched = matchCondition(actual, config.operator, config.value);
       return { status: "succeeded", branchTaken: matched ? "true" : "false", output: { actual: actual as Json, matched } };
     }
 
+    if (node.type === "condition_switch") {
+      const config = resolvedConfig as { property: string; cases: string[] };
+      const actual = await readIssuePropertyValue(tx, requireIssueId(issueId), config.property);
+      const matchedCase = config.cases.find((c) => String(actual) === c);
+      return { status: "succeeded", branchTaken: matchedCase ?? "default", output: { actual: actual as Json, matchedCase: matchedCase ?? null } };
+    }
+
+    if (node.type === "find_issues") {
+      const config = resolvedConfig as { statusId?: string; assigneeId?: string; label?: string };
+      const conditions = [eq(schema.issue.projectId, workflow.projectId)];
+      if (config.statusId) conditions.push(eq(schema.issue.statusId, config.statusId));
+      if (config.assigneeId) conditions.push(eq(schema.issue.assigneeId, config.assigneeId));
+      if (config.label) conditions.push(sql`${config.label} = any(${schema.issue.labels})`);
+      const rows = await tx.select({ id: schema.issue.id }).from(schema.issue).where(and(...conditions)).limit(MAX_FIND_ISSUES_RESULTS);
+      return { status: "succeeded", output: { issueIds: rows.map((r) => r.id) } };
+    }
+
+    if (node.type === "loop_each") {
+      const config = resolvedConfig as { source: Json; itemType?: "value" | "issueId" };
+      if (!Array.isArray(config.source)) return { status: "failed", error: "loop_each's source did not resolve to an array" };
+      const items = config.source.slice(0, MAX_LOOP_ITERATIONS);
+      return { status: "succeeded", output: { items, itemType: config.itemType ?? "value", truncated: config.source.length > MAX_LOOP_ITERATIONS } };
+    }
+
     if (node.type === "delay") {
-      const config = node.config as { amount: number; unit: "minutes" | "hours" | "days" };
+      const config = resolvedConfig as { amount: number; unit: "minutes" | "hours" | "days" };
       return { status: "waiting", resumeAt: delayResumeAt(config) };
     }
 
     if (workflow.dryRun) {
       // Compute-but-don't-apply: log the intended action without calling any mutation.
-      return { status: "succeeded", output: { dryRun: true, node: node.type, config: node.config } };
+      return { status: "succeeded", output: { dryRun: true, node: node.type, config: resolvedConfig } };
     }
 
     if (node.type === "action_set_property") {
-      const config = node.config as { property: string; value: Json };
-      await applySetProperty(tx, issueId, config.property, config.value, meta);
+      const config = resolvedConfig as { property: string; value: Json };
+      await applySetProperty(tx, requireIssueId(issueId), config.property, config.value, meta);
       return { status: "succeeded", output: { property: config.property, value: config.value } };
     }
     if (node.type === "action_add_label") {
-      const config = node.config as { label: string };
-      const [current] = await tx.select({ labels: schema.issue.labels }).from(schema.issue).where(eq(schema.issue.id, issueId));
+      const config = resolvedConfig as { label: string };
+      const targetIssueId = requireIssueId(issueId);
+      const [current] = await tx.select({ labels: schema.issue.labels }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       const labels = [...new Set([...(current?.labels ?? []), config.label])];
-      await updateIssue(tx, issueId, { labels, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
+      await updateIssue(tx, targetIssueId, { labels, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
       return { status: "succeeded" };
     }
     if (node.type === "action_comment") {
-      const config = node.config as { text: string };
-      await addComment(tx, { issueId, authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
+      const config = resolvedConfig as { text: string };
+      await addComment(tx, { issueId: requireIssueId(issueId), authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
       return { status: "succeeded" };
     }
     if (node.type === "action_notify") {
-      const config = node.config as { userId: string; title: string; body?: string };
-      const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, issueId));
-      await notify(tx, { organizationId: issue!.organizationId, userId: config.userId, eventType: "automation.rule", entityType: "issue", entityId: issueId, title: config.title, body: config.body });
+      const config = resolvedConfig as { userId: string; title: string; body?: string };
+      const targetIssueId = requireIssueId(issueId);
+      const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
+      await notify(tx, { organizationId: issue!.organizationId, userId: config.userId, eventType: "automation.rule", entityType: "issue", entityId: targetIssueId, title: config.title, body: config.body });
       return { status: "succeeded" };
     }
     if (node.type === "action_link_issue") {
-      const config = node.config as { issueId: string };
-      const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, issueId));
-      await linkEntities(tx, { organizationId: issue!.organizationId, fromType: "issue", fromId: issueId, toType: "issue", toId: config.issueId, createdBy: meta.actorId });
+      const config = resolvedConfig as { issueId: string };
+      const targetIssueId = requireIssueId(issueId);
+      const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
+      await linkEntities(tx, { organizationId: issue!.organizationId, fromType: "issue", fromId: targetIssueId, toType: "issue", toId: config.issueId, createdBy: meta.actorId });
       return { status: "succeeded" };
     }
     if (node.type === "action_create_subtask") {
-      const config = node.config as { typeId: string; title: string };
-      const [issue] = await tx.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+      const config = resolvedConfig as { typeId: string; title: string };
+      const targetIssueId = requireIssueId(issueId);
+      const [issue] = await tx.select().from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       const statuses = await tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, issue!.projectId));
       const statusId = (statuses.find((s) => s.category === "todo") ?? statuses[0])!.id;
       await createIssue(tx, {
@@ -282,7 +372,7 @@ export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationW
         statusId,
         title: config.title,
         reporterId: meta.actorId,
-        parentId: issueId,
+        parentId: targetIssueId,
         origin: meta.origin,
         originClient: meta.originClient,
         automationContext: meta.automationContext,
@@ -291,7 +381,7 @@ export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationW
     }
 
     if (node.type === "action_webhook") {
-      const config = node.config as { url: string; method: string; headers: Record<string, string>; bodyTemplate: Json };
+      const config = resolvedConfig as { url: string; method: string; headers: Record<string, string>; bodyTemplate: Json };
       try {
         await assertWebhookUrlAllowed(config.url);
         const res = await fetch(config.url, {

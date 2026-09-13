@@ -292,6 +292,104 @@ describe("automation-execution: executeNode", () => {
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.labels).toEqual([]);
   });
+
+  it("condition_switch: routes to the matching case's handle, or 'default' when nothing matches", async () => {
+    const { runId, workflowId } = await seedProjectIssueAndWorkflow("exswitch");
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const matching = fakeNode("condition_switch", { property: "priority", cases: ["high", "medium", "low"] });
+    const matchResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, matching, run!, workflow!, 0));
+    expect(matchResult.branchTaken).toBe("medium"); // default issue priority
+
+    const noMatch = fakeNode("condition_switch", { property: "priority", cases: ["high", "low"] });
+    const noMatchResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, noMatch, run!, workflow!, 0));
+    expect(noMatchResult.branchTaken).toBe("default");
+  });
+
+  it("find_issues: filters by statusId, returning only matching issues in this project", async () => {
+    const { projectId, issueTypes, statuses, runId, workflowId } = await seedProjectIssueAndWorkflow("exfind");
+    const { issueId: otherIssueId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[1]!.id, title: "Other status issue", reporterId: userId }),
+    );
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const node = fakeNode("find_issues", { statusId: statuses[1]!.id });
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
+
+    expect(result.status).toBe("succeeded");
+    expect((result.output as { issueIds: string[] }).issueIds).toEqual([otherIssueId]);
+  });
+
+  it("loop_each: resolves its source expression to items, truncated at MAX_LOOP_ITERATIONS; fails on a non-array source", async () => {
+    const { runId, workflowId } = await seedProjectIssueAndWorkflow("exloop");
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const node = fakeNode("loop_each", { source: "{{trigger.payload.items}}", itemType: "value" });
+    await admin.update(schema.automationWorkflowRun).set({ context: { payload: { items: ["a", "b", "c"] } } }).where(eq(schema.automationWorkflowRun.id, runId));
+    const [freshRun] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, freshRun!, workflow!, 0));
+
+    expect(result.status).toBe("succeeded");
+    expect((result.output as { items: string[] }).items).toEqual(["a", "b", "c"]);
+
+    const badNode = fakeNode("loop_each", { source: "not-an-array" });
+    const badResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, badNode, freshRun!, workflow!, 0));
+    expect(badResult.status).toBe("failed");
+  });
+
+  it("expressions: an action's config can reference the trigger payload and a prior succeeded step's output", async () => {
+    const { issueId, runId, workflowId } = await seedProjectIssueAndWorkflow("exexpr");
+    await admin.update(schema.automationWorkflowRun).set({ context: { issueId, payload: { greeting: "hello" } } }).where(eq(schema.automationWorkflowRun.id, runId));
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    // Seed a real, already-succeeded prior step for a NAMED node, so buildExpressionContext (which queries real rows) can find it.
+    const priorNodeId = id("anode");
+    await admin.insert(schema.automationNode).values({ id: priorNodeId, workflowId, type: "condition_property", name: "check", config: {}, position: { x: 0, y: 0 } });
+    await admin.insert(schema.automationWorkflowRunStep).values({ id: id("wfstep"), runId, nodeId: priorNodeId, depth: 0, status: "succeeded", output: { actual: "medium", matched: true } });
+
+    const node = fakeNode("action_comment", { text: "Payload says {{trigger.payload.greeting}}, prior check matched: {{steps.check.output.matched}}" });
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
+
+    expect(result.status).toBe("succeeded");
+    const comments = await admin.select().from(schema.issueComment).where(eq(schema.issueComment.issueId, issueId));
+    expect(toPlainText(comments[0]!.bodyJson)).toBe("Payload says hello, prior check matched: true");
+  });
+
+  it("issueId resolution: an issue-touching action inside a loop over issue ids uses the loop's item, not run.context.issueId", async () => {
+    const { projectId, runId, workflowId, statuses, issueTypes } = await seedProjectIssueAndWorkflow("exiter");
+    const { issueId: loopIssueId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Loop target issue", reporterId: userId }),
+    );
+    // A schedule-style run: no issueId of its own.
+    await admin.update(schema.automationWorkflowRun).set({ context: {} }).where(eq(schema.automationWorkflowRun.id, runId));
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const node = fakeNode("action_add_label", { label: "looped" });
+    const frames = [{ loopKey: "l1", index: 0, item: loopIssueId, itemType: "issueId" as const }];
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0, frames));
+
+    expect(result.status).toBe("succeeded");
+    const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, loopIssueId));
+    expect(issue?.labels).toContain("looped");
+  });
+
+  it("issueId resolution: an issue-touching action with no run.context.issueId and no issueId loop frame fails loudly", async () => {
+    const { runId, workflowId } = await seedProjectIssueAndWorkflow("exiter2");
+    await admin.update(schema.automationWorkflowRun).set({ context: {} }).where(eq(schema.automationWorkflowRun.id, runId));
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const node = fakeNode("action_add_label", { label: "x" });
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/requires an issueId/);
+  });
 });
 
 describe("automation-execution: action_webhook", () => {
@@ -470,4 +568,5 @@ describe("automation-execution: action_webhook", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
   });
+
 });

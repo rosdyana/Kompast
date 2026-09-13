@@ -95,7 +95,7 @@ claude mcp add --transport http kompast https://<domain>/mcp \
 
 **Notifications & mail** — per-user, per-event preferences (in-app / email), transactional email delivery via a background queue. No digest batching or outbound webhooks yet.
 
-**Automation** — event-triggered rules (trigger + conditions + actions) with guardrails against runaway loops (chain-depth limit, rate limit, dry-run mode). Rule conditions are currently REST/API-only; the UI supports single-action rules.
+**Automation** — an n8n-style visual node-graph workflow builder (React Flow canvas on each project's Automation tab): triggers (issue events or cron schedules), conditions (if/else and multi-way switch), actions (set property, label, comment, notify, link, create subtask, outbound webhook), a `find_issues` + `loop_each` pair for schedule-triggered workflows to act on a set of issues, and `{{trigger.payload.x}}` / `{{steps.<name>.output.x}}` expressions for passing data between nodes. Same guardrails as before (chain-depth limit, per-workflow rate limit, dry-run mode), now with per-node run history instead of one opaque log row. This replaced an earlier flat trigger+conditions+actions rule model in the same pass that shipped this canvas — see `docs/ENGINEERING-NOTES.md` for the migration/cutover.
 
 **AI assist** — writing assist in the doc editor (continue/improve/shorten/expand/summarize/translate), AI-drafted issue descriptions, and AI sprint summaries. One provider adapter shared across features, usage logged per call.
 

@@ -127,7 +127,7 @@ describe("JIRA importer (golden fixture)", () => {
     // No notifications/automation noise from a bulk historical import.
     const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
     expect(notifications).toHaveLength(0);
-    const automationEvents = await admin.select().from(schema.automationEvent).where(eq(schema.automationEvent.organizationId, orgId));
+    const automationEvents = await admin.select().from(schema.automationWorkflowEvent).where(eq(schema.automationWorkflowEvent.organizationId, orgId));
     expect(automationEvents).toHaveLength(0);
   });
 

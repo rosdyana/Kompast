@@ -556,4 +556,136 @@ describe("automation engine", () => {
     const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
     expect(run!.status).toBe("failed"); // NOT left stuck at "running"
   });
+
+  it("condition_switch fans out to only the matching case's branch, not the others", async () => {
+    const { projectId, issueId, statuses } = await seedProjectAndIssue("enswitch");
+    void statuses;
+    const triggerId = id("anode");
+    const switchId = id("anode");
+    const highActionId = id("anode");
+    const lowActionId = id("anode");
+    const defaultActionId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Switch fan-out test",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_event", config: { eventType: "issue.created" }, position: { x: 0, y: 0 } },
+          { id: switchId, type: "condition_switch", config: { property: "priority", cases: ["high", "low"] }, position: { x: 200, y: 0 } },
+          { id: highActionId, type: "action_add_label", config: { label: "was-high" }, position: { x: 400, y: -100 } },
+          { id: lowActionId, type: "action_add_label", config: { label: "was-low" }, position: { x: 400, y: 0 } },
+          { id: defaultActionId, type: "action_add_label", config: { label: "was-default" }, position: { x: 400, y: 100 } },
+        ],
+        edges: [
+          { fromNodeId: triggerId, toNodeId: switchId },
+          { fromNodeId: switchId, fromHandle: "high", toNodeId: highActionId },
+          { fromNodeId: switchId, fromHandle: "low", toNodeId: lowActionId },
+          { fromNodeId: switchId, fromHandle: "default", toNodeId: defaultActionId },
+        ],
+      }),
+    );
+
+    const event = await latestWorkflowEventFor(issueId, "issue.created");
+    await withAuthorizedTenant(ctx, (tx) => matchAndStartRuns(tx, event));
+    const runs = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    await runAllSteps(runs[0]!.id);
+
+    // Default seeded issue priority is "medium" — matches neither "high" nor "low", so only the "default" branch fires.
+    const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issue?.labels).toEqual(["was-default"]);
+  });
+
+  it("loop_each fans out one child step per (item x edge), applying the downstream action once per item", async () => {
+    const { projectId, issueId } = await seedProjectAndIssue("enloop");
+    const triggerId = id("anode");
+    const loopId = id("anode");
+    const actionId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Loop fan-out test",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_event", config: { eventType: "issue.created" }, position: { x: 0, y: 0 } },
+          { id: loopId, type: "loop_each", config: { source: "{{trigger.payload.labels}}", itemType: "value" }, position: { x: 200, y: 0 } },
+          { id: actionId, type: "action_add_label", config: { label: "{{item}}" }, position: { x: 400, y: 0 } },
+        ],
+        edges: [
+          { fromNodeId: triggerId, toNodeId: loopId },
+          { fromNodeId: loopId, toNodeId: actionId },
+        ],
+      }),
+    );
+
+    const event = await latestWorkflowEventFor(issueId, "issue.created");
+    // The real issue.created payload has no "labels" array to loop over — override the outbox row's payload directly for this test's purposes.
+    await admin.update(schema.automationWorkflowEvent).set({ payload: { ...(event.payload as object), labels: ["alpha", "beta", "gamma"] } }).where(eq(schema.automationWorkflowEvent.id, event.id));
+    const [updatedEvent] = await admin.select().from(schema.automationWorkflowEvent).where(eq(schema.automationWorkflowEvent.id, event.id));
+    await withAuthorizedTenant(ctx, (tx) => matchAndStartRuns(tx, updatedEvent!));
+    const runs = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    await runAllSteps(runs[0]!.id);
+
+    const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(new Set(issue?.labels)).toEqual(new Set(["alpha", "beta", "gamma"]));
+
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runs[0]!.id));
+    expect(run!.status).toBe("completed");
+  });
+
+  it("end-to-end: a schedule trigger finds issues, loops over them, and labels each one — the combined feature this engine was built for", async () => {
+    const { projectId, statuses, issueTypes } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "enssched", name: "enssched", actorUserId: userId }),
+    );
+    const { issueId: matchingIssue1 } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Matches", reporterId: userId }),
+    );
+    const { issueId: matchingIssue2 } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Also matches", reporterId: userId }),
+    );
+    const { issueId: nonMatchingIssue } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[1]!.id, title: "Does not match", reporterId: userId }),
+    );
+
+    const triggerId = id("anode");
+    const findId = id("anode");
+    const loopId = id("anode");
+    const actionId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Nightly label sweep",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_schedule", config: { cron: "0 9 * * *" }, position: { x: 0, y: 0 } },
+          { id: findId, type: "find_issues", config: { statusId: statuses[0]!.id }, name: "find", position: { x: 200, y: 0 } },
+          { id: loopId, type: "loop_each", config: { source: "{{steps.find.output.issueIds}}", itemType: "issueId" }, position: { x: 400, y: 0 } },
+          { id: actionId, type: "action_add_label", config: { label: "nightly" }, position: { x: 600, y: 0 } },
+        ],
+        edges: [
+          { fromNodeId: triggerId, toNodeId: findId },
+          { fromNodeId: findId, toNodeId: loopId },
+          { fromNodeId: loopId, toNodeId: actionId },
+        ],
+      }),
+    );
+
+    await withTenant(admin, { organizationId: orgId, userId: "system" }, (tx) => claimDueWorkflowSchedules(tx, orgId));
+    const runs = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    expect(runs).toHaveLength(1);
+    await runAllSteps(runs[0]!.id);
+
+    const [issue1] = await admin.select().from(schema.issue).where(eq(schema.issue.id, matchingIssue1));
+    const [issue2] = await admin.select().from(schema.issue).where(eq(schema.issue.id, matchingIssue2));
+    const [issue3] = await admin.select().from(schema.issue).where(eq(schema.issue.id, nonMatchingIssue));
+    expect(issue1?.labels).toContain("nightly");
+    expect(issue2?.labels).toContain("nightly");
+    expect(issue3?.labels ?? []).not.toContain("nightly");
+
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runs[0]!.id));
+    expect(run!.status).toBe("completed");
+  });
 });

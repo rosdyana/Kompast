@@ -232,7 +232,58 @@ describe("automation workflow CRUD", () => {
           edges: [{ fromNodeId: triggerId, toNodeId: actionId }],
         }),
       ),
-    ).rejects.toThrow(/can only contain action_webhook and delay/);
+    ).rejects.toThrow(/requires an issueId/);
+  });
+
+  it("accepts a trigger_schedule -> find_issues -> loop_each(issueId) -> action_add_label graph — the loop supplies the issueId", async () => {
+    const projectId = await seedProject("wfk2");
+    const triggerId = id("anode");
+    const findId = id("anode");
+    const loopId = id("anode");
+    const actionId = id("anode");
+
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Schedule over issues",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_schedule", config: { cron: "0 9 * * *" }, position: { x: 0, y: 0 } },
+          { id: findId, type: "find_issues", config: {}, name: "find", position: { x: 200, y: 0 } },
+          { id: loopId, type: "loop_each", config: { source: "{{steps.find.output.issueIds}}", itemType: "issueId" }, position: { x: 400, y: 0 } },
+          { id: actionId, type: "action_add_label", config: { label: "x" }, position: { x: 600, y: 0 } },
+        ],
+        edges: [
+          { fromNodeId: triggerId, toNodeId: findId },
+          { fromNodeId: findId, toNodeId: loopId },
+          { fromNodeId: loopId, toNodeId: actionId },
+        ],
+      }),
+    );
+    expect(workflowId).toBeTruthy();
+  });
+
+  it("rejects a trigger_schedule -> condition_property placed BEFORE any loop over issues — no issueId source yet at that point", async () => {
+    const projectId = await seedProject("wfk3");
+    const triggerId = id("anode");
+    const conditionId = id("anode");
+
+    await expect(
+      withAuthorizedTenant(ctx, (tx) =>
+        createWorkflow(tx, {
+          organizationId: orgId,
+          projectId,
+          name: "Schedule with early condition",
+          createdBy: userId,
+          nodes: [
+            { id: triggerId, type: "trigger_schedule", config: { cron: "0 9 * * *" }, position: { x: 0, y: 0 } },
+            { id: conditionId, type: "condition_property", config: { property: "priority", operator: "eq", value: "high" }, position: { x: 200, y: 0 } },
+          ],
+          edges: [{ fromNodeId: triggerId, toNodeId: conditionId }],
+        }),
+      ),
+    ).rejects.toThrow(/requires an issueId/);
   });
 
   it("rejects a malformed cron expression on a schedule trigger at save time (Fix 2)", async () => {
