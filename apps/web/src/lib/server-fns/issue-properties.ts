@@ -4,6 +4,7 @@ import {
   createIssuePropertyDefinition,
   deleteIssuePropertyDefinition,
   listIssuePropertyDefinitions,
+  reorderIssuePropertyDefinitions,
   requireProjectAccess,
   requireProjectAdmin,
   updateIssuePropertyDefinition,
@@ -73,6 +74,19 @@ export const updateIssuePropertyDefinitionFn = createServerFn({ method: "POST" }
     await withAuthorizedTenant(ctx, async (tx) => {
       await requireProjectAdmin(tx, { ...ctx, projectId: data.projectId });
       await updateIssuePropertyDefinition(tx, data);
+    });
+    return { ok: true } as const;
+  });
+
+const reorderIssuePropertyDefinitionsSchema = z.object({ projectId: z.string(), orderedDefinitionIds: z.array(z.string()) });
+
+export const reorderIssuePropertyDefinitionsFn = createServerFn({ method: "POST" })
+  .validator(reorderIssuePropertyDefinitionsSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requireProjectAdmin(tx, { ...ctx, projectId: data.projectId });
+      await reorderIssuePropertyDefinitions(tx, data);
     });
     return { ok: true } as const;
   });

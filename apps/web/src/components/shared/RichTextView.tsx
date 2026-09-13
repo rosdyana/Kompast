@@ -50,7 +50,7 @@ export function RichTextView({ content, className }: { content: unknown; classNa
     // a wrapper, never passed straight through as BlockNoteView's own
     // className.
     <div className={className}>
-      <BlockNoteView editor={editor} editable={false} theme={theme} className="kp-lite-editor" />
+      <BlockNoteView editor={editor} editable={false} theme={theme} className="kp-lite-editor kp-lite-editor-readonly" />
     </div>
   );
 }

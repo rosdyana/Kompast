@@ -2160,7 +2160,14 @@ function Card({
         </p>
       )}
       {type?.hierarchyLevel !== 0 && candidateEpics.length > 0 && (
-        <div className="mb-2" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+        <div
+          className="mb-2"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <select
             value={issue.epicId ?? ""}
             onChange={(e) => setEpic(e.target.value)}

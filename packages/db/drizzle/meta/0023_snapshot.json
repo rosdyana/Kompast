@@ -1,6 +1,6 @@
 {
-  "id": "f124e07c-629a-4310-9e73-0c0c11e65fa0",
-  "prevId": "d9e4341e-211c-4471-8aa4-71d3295afee5",
+  "id": "3e975c53-8572-4574-80aa-488e35d80c07",
+  "prevId": "f124e07c-629a-4310-9e73-0c0c11e65fa0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5121,6 +5121,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{\"x\":0,\"y\":0}'::jsonb"
+        },
+        "last_fired_at": {
+          "name": "last_fired_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {

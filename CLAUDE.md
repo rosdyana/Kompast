@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Kompast: a self-hosted Notion×JIRA hybrid for an internal BU — collaborative docs, kanban boards with configurable sprints, automation, and AI assist, one Postgres-backed workspace. Full architecture/data-model/phased-plan doc: `~/.claude/plans/use-the-claude-design-mcp-snuggly-shore.md`. **`README.md` is authoritative for what's actually built** — it has a dated, per-phase (P0–P8) section for every feature area, including explicit "not built this pass" gaps and hand-verified "gotcha" writeups for the non-obvious bugs already hit (jsdom/Nitro bundling, ESM→CJS worker rebuild, y-protocols dual-instance, Entra OIDC-discovery-on-boot fragility). Read the relevant README section before touching a feature area — don't rediscover a documented gap or already-fixed bug.
+Kompast: a self-hosted Notion×JIRA hybrid for an internal BU — collaborative docs, kanban boards with configurable sprints, automation, and AI assist, one Postgres-backed workspace. Full architecture/data-model/phased-plan doc: `~/.claude/plans/use-the-claude-design-mcp-snuggly-shore.md`. **`README.md` is authoritative for what's actually built** — a short status table plus a feature summary per area. **`docs/ENGINEERING-NOTES.md`** has the implementation rationale, explicit "not built this pass" gaps, and hand-verified "gotcha" writeups for the non-obvious bugs already hit (jsdom/Nitro bundling, ESM→CJS worker rebuild, y-protocols dual-instance, Entra OIDC-discovery-on-boot fragility). Read the relevant section of both before touching a feature area — don't rediscover a documented gap or already-fixed bug.
 
 ## Commands
 

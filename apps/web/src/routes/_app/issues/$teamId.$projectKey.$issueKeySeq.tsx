@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useRouter, ClientOnly } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Paperclip, X } from "lucide-react";
 import type { Block, PartialBlock } from "@blocknote/core";
 import { Badge } from "@kompast/ui/Badge";
@@ -450,117 +450,144 @@ function IssueDetailPage() {
             {watching ? t("watching") : t("watch")}
           </Button>
 
-          <div className="flex flex-col gap-4 border-t border-border pt-4">
-            <div>
-              <p className="mb-1 text-text-3">{t("assigneeLabel")}</p>
-              <select
-                value={data.issue.assigneeId ?? ""}
-                onChange={(e) => setAssignee(e.target.value)}
-                className="kp-select kp-field w-full"
-              >
-                <option value="">{t("unassigned")}</option>
-                {data.orgMembers.map((m) => (
-                  <option key={m.userId} value={m.userId}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <p className="mb-1 text-text-3">{t("reporterLabel")}</p>
-              <span className="inline-flex items-center gap-1.5">
-                <Avatar initials={initialsOf(usersById.get(data.issue.reporterId)?.name ?? "?")} size={18} />
-                {usersById.get(data.issue.reporterId)?.name ?? "—"}
-              </span>
-            </div>
-            <div>
-              <p className="mb-1 text-text-3">{t("priorityLabel")}</p>
-              <div className="relative">
-                <span
-                  className="pointer-events-none absolute left-2.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full"
-                  style={{ background: data.priorityLevels.find((p) => p.key === data.issue.priority)?.color }}
-                />
-                <select
-                  value={data.issue.priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  className="kp-select kp-field w-full"
-                  style={{ paddingLeft: 22 }}
-                >
-                  {[...data.priorityLevels].sort((a, b) => a.order - b.order).map((p) => (
-                    <option key={p.key} value={p.key}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div>
-              <p className="mb-1 text-text-3">{t("startDateLabel")}</p>
-              <input
-                type="date"
-                value={data.issue.startDate ? new Date(data.issue.startDate).toISOString().slice(0, 10) : ""}
-                onChange={(e) => setStartDate(e.target.value || null)}
-                className="kp-field w-full"
-              />
-            </div>
-            <div>
-              <p className="mb-1 text-text-3">{t("dueDateLabel")}</p>
-              <input
-                type="date"
-                value={data.issue.dueDate ? new Date(data.issue.dueDate).toISOString().slice(0, 10) : ""}
-                onChange={(e) => setDueDate(e.target.value || null)}
-                className="kp-field w-full"
-              />
-            </div>
-            {data.type?.hierarchyLevel !== 0 && (
-              <div>
-                <p className="mb-1 text-text-3">{t("epicLabel")}</p>
-                <select
-                  value={data.issue.epicId ?? ""}
-                  onChange={(e) => setEpic(e.target.value || null)}
-                  className="kp-select kp-field w-full"
-                >
-                  <option value="">{t("noEpic")}</option>
-                  {data.candidateEpics.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {data.project.key}-{e.keySeq} {e.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div>
-              <p className="mb-1 text-text-3">{t("sprintLabel")}</p>
-              <select
-                value={data.issue.sprintId ?? ""}
-                onChange={(e) => setSprint(e.target.value || null)}
-                className="kp-select kp-field w-full"
-              >
-                <option value="">{t("backlogLabel")}</option>
-                {data.boardSprints
-                  .filter((s) => s.state !== "closed" || s.id === data.issue.sprintId)
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            {data.issue.storyPoints != null && (
-              <div>
-                <p className="mb-1 text-text-3">{t("pointsLabel")}</p>
-                <span className="type-label">{data.issue.storyPoints}</span>
-              </div>
-            )}
-          </div>
+          {(() => {
+            const coreFieldRenderers: Record<string, () => ReactNode> = {
+              assignee: () => (
+                <div>
+                  <p className="mb-1 text-text-3">{t("assigneeLabel")}</p>
+                  <select
+                    value={data.issue.assigneeId ?? ""}
+                    onChange={(e) => setAssignee(e.target.value)}
+                    className="kp-select kp-field w-full"
+                  >
+                    <option value="">{t("unassigned")}</option>
+                    {data.orgMembers.map((m) => (
+                      <option key={m.userId} value={m.userId}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ),
+              reporter: () => (
+                <div>
+                  <p className="mb-1 text-text-3">{t("reporterLabel")}</p>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Avatar initials={initialsOf(usersById.get(data.issue.reporterId)?.name ?? "?")} size={18} />
+                    {usersById.get(data.issue.reporterId)?.name ?? "—"}
+                  </span>
+                </div>
+              ),
+              priority: () => (
+                <div>
+                  <p className="mb-1 text-text-3">{t("priorityLabel")}</p>
+                  <div className="relative">
+                    <span
+                      className="pointer-events-none absolute left-2.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full"
+                      style={{ background: data.priorityLevels.find((p) => p.key === data.issue.priority)?.color }}
+                    />
+                    <select
+                      value={data.issue.priority}
+                      onChange={(e) => setPriority(e.target.value)}
+                      className="kp-select kp-field w-full"
+                      style={{ paddingLeft: 22 }}
+                    >
+                      {[...data.priorityLevels].sort((a, b) => a.order - b.order).map((p) => (
+                        <option key={p.key} value={p.key}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ),
+              startDate: () => (
+                <div>
+                  <p className="mb-1 text-text-3">{t("startDateLabel")}</p>
+                  <input
+                    type="date"
+                    value={data.issue.startDate ? new Date(data.issue.startDate).toISOString().slice(0, 10) : ""}
+                    onChange={(e) => setStartDate(e.target.value || null)}
+                    className="kp-field w-full"
+                  />
+                </div>
+              ),
+              dueDate: () => (
+                <div>
+                  <p className="mb-1 text-text-3">{t("dueDateLabel")}</p>
+                  <input
+                    type="date"
+                    value={data.issue.dueDate ? new Date(data.issue.dueDate).toISOString().slice(0, 10) : ""}
+                    onChange={(e) => setDueDate(e.target.value || null)}
+                    className="kp-field w-full"
+                  />
+                </div>
+              ),
+              epic: () =>
+                data.type?.hierarchyLevel !== 0 ? (
+                  <div>
+                    <p className="mb-1 text-text-3">{t("epicLabel")}</p>
+                    <select
+                      value={data.issue.epicId ?? ""}
+                      onChange={(e) => setEpic(e.target.value || null)}
+                      className="kp-select kp-field w-full"
+                    >
+                      <option value="">{t("noEpic")}</option>
+                      {data.candidateEpics.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {data.project.key}-{e.keySeq} {e.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null,
+              sprint: () => (
+                <div>
+                  <p className="mb-1 text-text-3">{t("sprintLabel")}</p>
+                  <select
+                    value={data.issue.sprintId ?? ""}
+                    onChange={(e) => setSprint(e.target.value || null)}
+                    className="kp-select kp-field w-full"
+                  >
+                    <option value="">{t("backlogLabel")}</option>
+                    {data.boardSprints
+                      .filter((s) => s.state !== "closed" || s.id === data.issue.sprintId)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              ),
+              storyPoints: () =>
+                data.issue.storyPoints != null ? (
+                  <div>
+                    <p className="mb-1 text-text-3">{t("pointsLabel")}</p>
+                    <span className="type-label">{data.issue.storyPoints}</span>
+                  </div>
+                ) : null,
+            };
 
-          {data.propertyDefinitions.length > 0 && (
-            <CustomPropertiesSection
-              definitions={data.propertyDefinitions}
-              customFields={(data.issue.customFields ?? {}) as Record<string, unknown>}
-              onChange={setCustomField}
-            />
-          )}
+            return (
+              <div className="flex flex-col gap-4 border-t border-border pt-4">
+                {data.propertyDefinitions.map((def) => {
+                  if (def.isCore) {
+                    const render = coreFieldRenderers[def.key];
+                    return render ? <Fragment key={def.id}>{render()}</Fragment> : null;
+                  }
+                  return (
+                    <CustomPropertyField
+                      key={def.id}
+                      def={def}
+                      value={((data.issue.customFields ?? {}) as Record<string, unknown>)[def.key]}
+                      onChange={(v) => setCustomField(def.key, v)}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </PageContainer>
@@ -610,28 +637,6 @@ function StatusSelect({
 }
 
 type PropertyDefinition = Awaited<ReturnType<typeof getIssueDetailFn>>["propertyDefinitions"][number];
-
-function CustomPropertiesSection({
-  definitions,
-  customFields,
-  onChange,
-}: {
-  definitions: PropertyDefinition[];
-  customFields: Record<string, unknown>;
-  onChange: (key: string, value: string | number | boolean | string[] | null) => void;
-}) {
-  const { t } = useTranslation("issue");
-  return (
-    <div className="border-t border-border pt-4">
-      <p className="mb-3 type-headline">{t("customPropertiesHeading")}</p>
-      <div className="flex flex-col gap-4">
-        {definitions.map((def) => (
-          <CustomPropertyField key={def.id} def={def} value={customFields[def.key]} onChange={(v) => onChange(def.key, v)} />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function CustomPropertyField({
   def,
