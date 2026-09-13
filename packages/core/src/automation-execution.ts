@@ -87,10 +87,19 @@ async function applySetProperty(tx: Tx, issueId: string, property: string, value
     else await removeIssueFromSprint(tx, issueId, { actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient });
     return;
   }
-  const coreUpdateFields = new Set(["assigneeId", "priority", "storyPoints", "dueDate", "startDate", "epicId", "labels"]);
+  const coreUpdateFields = new Set(["title", "assigneeId", "priority", "storyPoints", "dueDate", "startDate", "epicId", "labels"]);
   if (coreUpdateFields.has(property)) {
     await updateIssue(tx, issueId, { [property]: value, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext } as Parameters<typeof updateIssue>[2]);
     return;
+  }
+  // "type" and "reporterId" have no corresponding core mutation — updateIssue
+  // has no reporterId field at all (reporter is fixed at issue creation) and
+  // no issue-type-change support either. Falling through to
+  // updateIssueCustomField for either would silently merge a bogus
+  // type/reporterId key into the jsonb customFields blob while leaving the
+  // real column untouched — fail loudly instead.
+  if (property === "type" || property === "reporterId") {
+    throw new Error(`Property "${property}" cannot be set by an automation action`);
   }
   // Anything else is a custom issue_property_definition key.
   await updateIssueCustomField(tx, issueId, property, value, { actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });

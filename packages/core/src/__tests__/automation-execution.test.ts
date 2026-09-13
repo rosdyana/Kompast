@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { schema, eq, adminDb as admin } from "@kompast/db";
 import { createProject } from "../project";
 import { createIssue } from "../issue";
+import { createSprint } from "../sprint";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 import { toPlainText } from "../rich-text";
@@ -35,7 +36,7 @@ describe("automation-execution: executeNode", () => {
   afterAll(cleanup);
 
   async function seedProjectIssueAndWorkflow(key: string) {
-    const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+    const { projectId, boardId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
       createProject(tx, { organizationId: orgId, teamId, key, name: key, actorUserId: userId }),
     );
     const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
@@ -45,7 +46,7 @@ describe("automation-execution: executeNode", () => {
     await admin.insert(schema.automationWorkflow).values({ id: workflowId, organizationId: orgId, projectId, name: "Exec test workflow", createdBy: userId });
     const runId = id("wfrun");
     await admin.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: orgId, workflowId, context: { issueId } });
-    return { projectId, issueId, statuses, workflowId, runId };
+    return { projectId, boardId, issueId, issueTypes, statuses, workflowId, runId };
   }
 
   function fakeNode(type: string, config: Record<string, unknown>) {
@@ -116,6 +117,48 @@ describe("automation-execution: executeNode", () => {
 
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.customFields).toMatchObject({ region: "APAC" });
+  });
+
+  it("action_set_property on sprint calls addIssueToSprint, then removeIssueFromSprint when cleared to null", async () => {
+    const { issueId, boardId, runId, workflowId } = await seedProjectIssueAndWorkflow("exj");
+    const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const setNode = fakeNode("action_set_property", { property: "sprint", value: sprintId });
+    const setResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, setNode, run!, workflow!));
+    expect(setResult.status).toBe("succeeded");
+    const [issueAfterAdd] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issueAfterAdd?.sprintId).toBe(sprintId);
+    const sprintIssueRows = await admin.select().from(schema.sprintIssue).where(eq(schema.sprintIssue.issueId, issueId));
+    expect(sprintIssueRows.some((r) => r.sprintId === sprintId && r.removedAt === null)).toBe(true);
+
+    const clearNode = fakeNode("action_set_property", { property: "sprint", value: null });
+    const clearResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, clearNode, run!, workflow!));
+    expect(clearResult.status).toBe("succeeded");
+    const [issueAfterRemove] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issueAfterRemove?.sprintId).toBeNull();
+  });
+
+  it("action_set_property on type or reporterId fails loudly instead of corrupting customFields", async () => {
+    const { issueId, issueTypes, runId, workflowId } = await seedProjectIssueAndWorkflow("exk");
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const typeNode = fakeNode("action_set_property", { property: "type", value: issueTypes[1]!.id });
+    const typeResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, typeNode, run!, workflow!));
+    expect(typeResult.status).toBe("failed");
+    expect(typeResult.error).toContain("type");
+
+    const reporterNode = fakeNode("action_set_property", { property: "reporterId", value: userId });
+    const reporterResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, reporterNode, run!, workflow!));
+    expect(reporterResult.status).toBe("failed");
+    expect(reporterResult.error).toContain("reporterId");
+
+    const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issue?.customFields).toEqual({});
+    expect(issue?.typeId).toBe(issueTypes[0]!.id);
+    expect(issue?.reporterId).toBe(userId);
   });
 
   it("action_add_label appends without duplicating", async () => {
