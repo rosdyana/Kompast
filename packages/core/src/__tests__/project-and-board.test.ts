@@ -90,6 +90,19 @@ describe("project + board service layer", () => {
     expect(result.issueTypes).toHaveLength(5);
     expect(result.statuses).toHaveLength(5);
 
+    expect(result.propertyDefinitions).toHaveLength(8);
+    expect(result.propertyDefinitions.every((p) => p.isCore)).toBe(true);
+    expect(result.propertyDefinitions.map((p) => p.key)).toEqual([
+      "assignee",
+      "reporter",
+      "priority",
+      "startDate",
+      "dueDate",
+      "epic",
+      "sprint",
+      "storyPoints",
+    ]);
+
     // key/board reads are through withTenant() here too, matching how a
     // real request would re-read what it just wrote.
     const project = await withTenant(db, { organizationId: orgId, userId }, (tx) =>

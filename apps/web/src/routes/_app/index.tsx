@@ -53,10 +53,19 @@ function HomePage() {
                       </p>
                       <div className="flex flex-col gap-1.5">
                         {col.issues.slice(0, 2).map((issue) => (
-                          <div key={issue.id} className="rounded-[7px] border border-border bg-surface-2 px-2 py-1.5">
+                          <Link
+                            key={issue.id}
+                            to="/issues/$teamId/$projectKey/$issueKeySeq"
+                            params={{
+                              teamId: data.activeBoard!.teamId ?? "none",
+                              projectKey: data.activeBoard!.projectKey,
+                              issueKeySeq: String(issue.keySeq),
+                            }}
+                            className="block rounded-[7px] border border-border bg-surface-2 px-2 py-1.5 hover:border-border-2"
+                          >
                             <p className="mb-1 type-label text-text-3">#{issue.keySeq}</p>
                             <p className="truncate text-[11.5px] leading-tight">{issue.title}</p>
-                          </div>
+                          </Link>
                         ))}
                       </div>
                     </div>
@@ -99,9 +108,15 @@ function HomePage() {
           <Card className="overflow-hidden">
             {data.myTasks.length === 0 && <p className="p-4 type-body text-text-3">{t("noOpenTasks")}</p>}
             {data.myTasks.map((task) => (
-              <div
+              <Link
                 key={task.id}
-                className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 last:border-b-0"
+                to="/issues/$teamId/$projectKey/$issueKeySeq"
+                params={{
+                  teamId: task.teamId ?? "none",
+                  projectKey: task.projectKey,
+                  issueKeySeq: String(task.keySeq),
+                }}
+                className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-2"
               >
                 <span className="h-3.5 w-3.5 flex-none rounded border-[1.5px] border-border-2" />
                 <span className="min-w-0 flex-1 truncate type-body">{task.title}</span>
@@ -110,7 +125,7 @@ function HomePage() {
                     {new Date(task.dueDate).toLocaleDateString(intlLocale, { day: "numeric", month: "short" })}
                   </span>
                 )}
-              </div>
+              </Link>
             ))}
           </Card>
         </div>

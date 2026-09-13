@@ -16,7 +16,7 @@ export interface TabsProps {
 
 export function Tabs({ items, active, onChange, className }: TabsProps) {
   return (
-    <div className={clsx("flex gap-0.5", className)}>
+    <div className={clsx("flex gap-0.5 overflow-x-auto", className)}>
       {items.map((item) => {
         const isActive = item.key === active;
         return (
@@ -24,7 +24,7 @@ export function Tabs({ items, active, onChange, className }: TabsProps) {
             key={item.key}
             onClick={() => onChange(item.key)}
             className={clsx(
-              "flex items-center gap-1.5 border-b-2 px-3 py-2 type-body transition-colors",
+              "flex flex-none items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 type-body transition-colors",
               isActive
                 ? "border-text font-semibold text-text"
                 : "border-transparent font-medium text-text-2 hover:text-text",

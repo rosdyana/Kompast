@@ -36,6 +36,25 @@ const DEFAULT_STATUSES = [
 ] as const;
 
 /**
+ * Every project's built-in issue-detail fields, seeded as real
+ * issue_property_definition rows (isCore: true) so they share the same
+ * reorder mechanism as user-created custom properties instead of being
+ * frozen in JSX order. `type` here is metadata only — core rows keep their
+ * own bespoke rendering/edit UI on the issue-detail page (dispatched by
+ * `key`), it's never interpreted the way it is for a real custom field.
+ */
+const CORE_ISSUE_PROPERTIES = [
+  { key: "assignee", name: "Assignee", type: "person" },
+  { key: "reporter", name: "Reporter", type: "person" },
+  { key: "priority", name: "Priority", type: "select" },
+  { key: "startDate", name: "Start date", type: "date" },
+  { key: "dueDate", name: "Due date", type: "date" },
+  { key: "epic", name: "Epic", type: "select" },
+  { key: "sprint", name: "Sprint", type: "select" },
+  { key: "storyPoints", name: "Story points", type: "number" },
+] as const;
+
+/**
  * Seeds a new project with JIRA-shaped defaults: issue types, a linear
  * workflow, one kanban board whose columns map 1:1 onto that workflow's
  * statuses, and the creator as project lead. Everything below runs inside
@@ -93,6 +112,17 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
   }));
   await tx.insert(schema.priorityLevel).values(priorityLevelRows);
 
+  const propertyDefinitionRows = CORE_ISSUE_PROPERTIES.map((p, order) => ({
+    id: id("iprop"),
+    projectId,
+    key: p.key,
+    name: p.name,
+    type: p.type,
+    isCore: true,
+    order,
+  }));
+  await tx.insert(schema.issuePropertyDefinition).values(propertyDefinitionRows);
+
   const boardId = id("board");
   await tx.insert(schema.board).values({
     id: boardId,
@@ -117,7 +147,14 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
     });
   }
 
-  return { projectId, boardId, issueTypes: issueTypeRows, statuses: statusRows, priorityLevels: priorityLevelRows };
+  return {
+    projectId,
+    boardId,
+    issueTypes: issueTypeRows,
+    statuses: statusRows,
+    priorityLevels: priorityLevelRows,
+    propertyDefinitions: propertyDefinitionRows,
+  };
 }
 
 export interface GetProjectByTeamAndKeyInput {
