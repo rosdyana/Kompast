@@ -1,4 +1,5 @@
 import { and, eq, gte, inArray, sql, schema, type Json } from "@kompast/db";
+import { CronExpressionParser } from "cron-parser";
 import type { Tx, AnyDb } from "./types";
 import { id } from "./ids";
 import { executeNode, MAX_AUTOMATION_DEPTH, type ExecuteStepResult } from "./automation-execution";
@@ -212,4 +213,34 @@ export async function advanceWorkflowStep(tx: Tx, step: AutomationWorkflowRunSte
   }
 
   await finalizeRunIfDone(tx, step.runId);
+}
+
+function isScheduleDue(cron: string, lastFiredAt: Date | null): boolean {
+  if (!lastFiredAt) return true; // never fired — due immediately
+  const interval = CronExpressionParser.parse(cron, { currentDate: lastFiredAt });
+  return interval.next().toDate().getTime() <= Date.now();
+}
+
+/**
+ * Bypasses the event outbox entirely — a schedule tick isn't caused by an
+ * issue mutation, so there's nothing for emitAutomationEvent to record.
+ * Runs on its own ~60s poller (coarser than the 5s event/step pollers —
+ * schedule granularity doesn't need second-level precision).
+ */
+export async function claimDueWorkflowSchedules(tx: Tx): Promise<void> {
+  const scheduleNodes = await tx
+    .select({ node: schema.automationNode, workflow: schema.automationWorkflow })
+    .from(schema.automationNode)
+    .innerJoin(schema.automationWorkflow, eq(schema.automationWorkflow.id, schema.automationNode.workflowId))
+    .where(and(eq(schema.automationNode.type, "trigger_schedule"), eq(schema.automationWorkflow.enabled, true)));
+
+  for (const { node, workflow } of scheduleNodes) {
+    const config = node.config as { cron: string };
+    if (!isScheduleDue(config.cron, node.lastFiredAt)) continue;
+
+    const runId = id("wfrun");
+    await tx.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: workflow.organizationId, workflowId: workflow.id, context: {} as Json });
+    await tx.insert(schema.automationWorkflowRunStep).values({ id: id("wfstep"), runId, nodeId: node.id, depth: 0, status: "pending" });
+    await tx.update(schema.automationNode).set({ lastFiredAt: new Date() }).where(eq(schema.automationNode.id, node.id));
+  }
 }

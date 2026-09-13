@@ -146,6 +146,8 @@ export const automationNode = pgTable(
     config: jsonb("config").$type<Json>().notNull().default({}),
     /** Canvas layout only — never read by the execution engine. */
     position: jsonb("position").$type<{ x: number; y: number }>().notNull().default({ x: 0, y: 0 }),
+    /** Only meaningful for trigger_schedule nodes — when this schedule last fired, so claimDueWorkflowSchedules knows whether it's due again. */
+    lastFiredAt: timestamp("last_fired_at"),
   },
   (t) => [index("automation_node_workflow_idx").on(t.workflowId)],
 );

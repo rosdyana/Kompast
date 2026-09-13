@@ -155,6 +155,13 @@
       "when": 1789270948598,
       "tag": "0021_supreme_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789278440875,
+      "tag": "0022_striped_blue_marvel",
+      "breakpoints": true
     }
   ]
 }

@@ -5,7 +5,7 @@ import { createIssue, moveIssue } from "../issue";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 import { createWorkflow } from "../automation-workflow";
-import { claimPendingWorkflowEvents, matchAndStartRuns, advanceWorkflowStep, claimDueWorkflowSteps } from "../automation-engine";
+import { claimPendingWorkflowEvents, matchAndStartRuns, advanceWorkflowStep, claimDueWorkflowSteps, claimDueWorkflowSchedules } from "../automation-engine";
 import { MAX_AUTOMATION_DEPTH } from "../automation-execution";
 
 describe("automation engine", () => {
@@ -409,5 +409,36 @@ describe("automation engine", () => {
 
     const [runFinal] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, run!.id));
     expect(runFinal!.status).toBe("completed");
+  });
+
+  it("claimDueWorkflowSchedules fires a due schedule trigger and updates lastFiredAt", async () => {
+    const { projectId } = await seedProjectAndIssue("eng");
+    const triggerId = id("anode");
+    const actionId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Daily digest",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_schedule", config: { cron: "* * * * *" }, position: { x: 0, y: 0 } }, // every minute — always "due" in a test
+          { id: actionId, type: "action_comment", config: { text: "scheduled run" }, position: { x: 200, y: 0 } },
+        ],
+        edges: [{ fromNodeId: triggerId, toNodeId: actionId }],
+      }),
+    );
+
+    await withAuthorizedTenant(ctx, (tx) => claimDueWorkflowSchedules(tx));
+
+    const runs = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    expect(runs).toHaveLength(1);
+    const [node] = await admin.select().from(schema.automationNode).where(eq(schema.automationNode.id, triggerId));
+    expect(node!.lastFiredAt).not.toBeNull();
+
+    // Calling it again immediately must NOT double-fire — the schedule isn't due again for another minute.
+    await withAuthorizedTenant(ctx, (tx) => claimDueWorkflowSchedules(tx));
+    const runsAfter = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    expect(runsAfter).toHaveLength(1);
   });
 });
