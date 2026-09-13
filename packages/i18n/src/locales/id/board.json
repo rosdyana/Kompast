@@ -179,7 +179,7 @@
     "deletePropertyConfirm": "Hapus properti ini? Properti akan dihapus dari semua tiket.",
     "newPropertyPlaceholder": "Nama properti baru",
     "addPropertyButton": "+ Tambah properti",
-    "propertiesFooterNote": "Properti inti tetap bisa diganti nama dan disembunyikan, tapi tidak bisa dihapus.",
+    "propertiesFooterNote": "Properti inti bisa diurutkan ulang, tapi tidak bisa diganti nama, diubah tipe, disembunyikan, atau dihapus.",
     "priorityHeading": "Tingkat prioritas",
     "priorityDesc": "Tingkat prioritas ditampilkan di setiap tiket dan kartu board. Tambah, ubah nama, ganti warna, urutkan ulang, atau hapus — tingkat yang masih dipakai oleh tiket, atau yang tersisa terakhir, tidak bisa dihapus.",
     "priorityCountSummary": "{{count}} tingkat prioritas",

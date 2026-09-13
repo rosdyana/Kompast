@@ -42,13 +42,16 @@ export const issuePropertyDefinition = pgTable(
     options: jsonb("options").$type<Json>(),
     visibleOnCard: boolean("visible_on_card").notNull().default(false),
     /**
-     * Forward-looking, not used yet: no property created by this pass's UI
-     * has isCore=true, and createProject's seed doesn't insert any row into
-     * this table at all. Reserved for a future first-class field
-     * deliberately folded into customFields (see schema/index.ts's own
-     * comment on version/component) that needs delete-protection because
-     * something else (e.g. the Timeline view or a built-in automation rule)
-     * depends on it existing.
+     * True for the project's 8 built-in issue-detail fields (assignee,
+     * reporter, priority, startDate, dueDate, epic, sprint, storyPoints),
+     * seeded by createProject (packages/core/src/project.ts's
+     * CORE_ISSUE_PROPERTIES) and backfilled for pre-existing projects by
+     * drizzle/0021_backfill_core_issue_properties.sql. These rows exist so
+     * core fields share the same reorder mechanism as custom properties;
+     * their `type`/`options` are metadata only — the issue-detail page
+     * dispatches core rows to bespoke rendering by `key`, never through the
+     * generic customFields editor. deleteIssuePropertyDefinition refuses to
+     * delete them.
      */
     isCore: boolean("is_core").notNull().default(false),
     order: integer("order").notNull().default(0),

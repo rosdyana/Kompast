@@ -13,12 +13,19 @@ export const getHomeSummaryFn = createServerFn({ method: "GET" }).handler(async 
       .where(eq(schema.project.organizationId, ctx.organizationId));
 
     const firstProject = projects[0];
-    let activeBoard: { name: string; columns: Awaited<ReturnType<typeof getBoard>>["columns"] } | null = null;
+    let activeBoard:
+      | { name: string; teamId: string | null; projectKey: string; columns: Awaited<ReturnType<typeof getBoard>>["columns"] }
+      | null = null;
     if (firstProject) {
       const [board] = await tx.select().from(schema.board).where(eq(schema.board.projectId, firstProject.id));
       if (board) {
         const boardData = await getBoard(tx, board.id);
-        activeBoard = { name: firstProject.name, columns: boardData.columns.slice(0, 4) };
+        activeBoard = {
+          name: firstProject.name,
+          teamId: firstProject.teamId,
+          projectKey: firstProject.key,
+          columns: boardData.columns.slice(0, 4),
+        };
       }
     }
 
@@ -28,9 +35,13 @@ export const getHomeSummaryFn = createServerFn({ method: "GET" }).handler(async 
         title: schema.issue.title,
         dueDate: schema.issue.dueDate,
         statusId: schema.issue.statusId,
+        keySeq: schema.issue.keySeq,
+        projectKey: schema.project.key,
+        teamId: schema.project.teamId,
       })
       .from(schema.issue)
       .innerJoin(schema.workflowStatus, eq(schema.workflowStatus.id, schema.issue.statusId))
+      .innerJoin(schema.project, eq(schema.project.id, schema.issue.projectId))
       .where(
         and(
           eq(schema.issue.organizationId, ctx.organizationId),

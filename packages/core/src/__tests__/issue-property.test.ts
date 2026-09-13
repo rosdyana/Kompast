@@ -8,6 +8,7 @@ import {
   createIssuePropertyDefinition,
   deleteIssuePropertyDefinition,
   listIssuePropertyDefinitions,
+  reorderIssuePropertyDefinitions,
   updateIssuePropertyDefinition,
 } from "../issue-property";
 import { withAuthorizedTenant } from "../permissions";
@@ -57,9 +58,10 @@ describe("issue property definitions", () => {
     expect(key).toBe("story_points_v2");
 
     const defs = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listIssuePropertyDefinitions(tx, projectId));
-    expect(defs).toHaveLength(1);
-    expect(defs[0]?.name).toBe("Story Points v2");
-    expect(defs[0]?.isCore).toBe(false);
+    const custom = defs.filter((d) => !d.isCore);
+    expect(custom).toHaveLength(1);
+    expect(custom[0]?.name).toBe("Story Points v2");
+    expect(custom[0]?.isCore).toBe(false);
   });
 
   it("disambiguates a colliding key with a numeric suffix instead of throwing", async () => {
@@ -124,6 +126,34 @@ describe("issue property definitions", () => {
     await admin.update(schema.issuePropertyDefinition).set({ isCore: false }).where(eq(schema.issuePropertyDefinition.id, definitionId));
     await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => deleteIssuePropertyDefinition(tx, { projectId, definitionId }));
     const defs = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listIssuePropertyDefinitions(tx, projectId));
-    expect(defs).toHaveLength(0);
+    expect(defs.filter((d) => !d.isCore)).toHaveLength(0);
+  });
+
+  it("reorderIssuePropertyDefinitions persists new order and rejects a partial/mismatched set", async () => {
+    const { projectId } = await seedProject("IPG");
+    const before = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listIssuePropertyDefinitions(tx, projectId));
+    expect(before.length).toBeGreaterThanOrEqual(2);
+
+    const ids = before.map((d) => d.id);
+    [ids[0], ids[1]] = [ids[1]!, ids[0]!];
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      reorderIssuePropertyDefinitions(tx, { projectId, orderedDefinitionIds: ids }),
+    );
+
+    const after = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => listIssuePropertyDefinitions(tx, projectId));
+    expect(after.map((d) => d.id)).toEqual(ids);
+
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        reorderIssuePropertyDefinitions(tx, { projectId, orderedDefinitionIds: ids.slice(1) }),
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        reorderIssuePropertyDefinitions(tx, { projectId, orderedDefinitionIds: [...ids, "not-a-real-id"] }),
+      ),
+    ).rejects.toThrow();
   });
 });

@@ -117,6 +117,29 @@ export async function updateIssuePropertyDefinition(tx: Tx, input: UpdateIssuePr
   }
 }
 
+export interface ReorderIssuePropertyDefinitionsInput {
+  projectId: string;
+  /** Full new order for every property definition (core and custom) in this project; must include exactly the project's current definition-id set. */
+  orderedDefinitionIds: string[];
+}
+
+export async function reorderIssuePropertyDefinitions(tx: Tx, input: ReorderIssuePropertyDefinitionsInput): Promise<void> {
+  const definitions = await tx
+    .select({ id: schema.issuePropertyDefinition.id })
+    .from(schema.issuePropertyDefinition)
+    .where(eq(schema.issuePropertyDefinition.projectId, input.projectId));
+
+  const currentIds = new Set(definitions.map((d) => d.id));
+  const requestedIds = new Set(input.orderedDefinitionIds);
+  if (currentIds.size !== requestedIds.size || [...currentIds].some((id) => !requestedIds.has(id))) {
+    throw new Error("orderedDefinitionIds must include exactly the project's current property definitions, no more and no less");
+  }
+
+  for (const [index, definitionId] of input.orderedDefinitionIds.entries()) {
+    await tx.update(schema.issuePropertyDefinition).set({ order: index }).where(eq(schema.issuePropertyDefinition.id, definitionId));
+  }
+}
+
 export interface DeleteIssuePropertyDefinitionInput {
   projectId: string;
   definitionId: string;

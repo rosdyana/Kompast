@@ -393,6 +393,29 @@ body {
   font-style: normal;
 }
 
+/* Read-only description/comment rendering only (see RichTextView.tsx's
+   extra "kp-lite-editor-readonly" class — LiteEditor's active editing
+   surface intentionally keeps BlockNote's native compact 6px block gap,
+   which suits a denser editing interaction). BlockNote's own CSS gives
+   blocks only 6px total gap (.bn-block-content's 3px top+bottom padding),
+   tuned for its compact editing UI, not for reading prose at this
+   component's 12.5px/1.5 line-height (~18.75px line box) — multi-paragraph
+   descriptions read as having no gap at all. +8px brings the total gap to
+   ~14px (~0.75x line-height), enough to read as intentional spacing. */
+.kp-lite-editor-readonly .bn-block-outer + .bn-block-outer {
+  margin-top: 8px;
+}
+/* Consecutive items of the *same* list keep BlockNote's native tight gap —
+   only a paragraph-after-list / list-after-paragraph / list-type-change
+   boundary gets the wider spacing above. data-prev-type/data-content-type
+   are BlockNote's own attributes (already used for its list-numbering CSS
+   in @blocknote/core/src/editor/Block.css). */
+.kp-lite-editor-readonly .bn-block-outer[data-prev-type="bulletListItem"]:has(> .bn-block > .bn-block-content[data-content-type="bulletListItem"]),
+.kp-lite-editor-readonly .bn-block-outer[data-prev-type="numberedListItem"]:has(> .bn-block > .bn-block-content[data-content-type="numberedListItem"]),
+.kp-lite-editor-readonly .bn-block-outer[data-prev-type="checkListItem"]:has(> .bn-block > .bn-block-content[data-content-type="checkListItem"]) {
+  margin-top: 2px;
+}
+
 ::selection {
   background: var(--accent-soft);
   color: var(--text);

@@ -19,6 +19,7 @@ import {
   createIssuePropertyDefinitionFn,
   updateIssuePropertyDefinitionFn,
   deleteIssuePropertyDefinitionFn,
+  reorderIssuePropertyDefinitionsFn,
 } from "@/lib/server-fns/issue-properties";
 import {
   listPriorityLevelsFn,
@@ -310,6 +311,22 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
     }
   }
 
+  async function move(definitionId: string, direction: "left" | "right") {
+    if (!definitions) return;
+    const ids = definitions.map((d) => d.id);
+    const i = ids.indexOf(definitionId);
+    const j = direction === "left" ? i - 1 : i + 1;
+    if (j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j]!, ids[i]!];
+    setError(null);
+    try {
+      await reorderIssuePropertyDefinitionsFn({ data: { projectId, orderedDefinitionIds: ids } });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
   async function remove(definitionId: string) {
     setError(null);
     try {
@@ -344,13 +361,14 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
         <div className="border-b border-border bg-surface-2 px-3 py-2 type-body font-semibold text-text-2">
           {t("settingsTab.propertiesCountSummary", { visible: visCount, total: definitions.length })}
         </div>
-        {definitions.map((p) => (
+        {definitions.map((p, i) => (
           <div key={p.id} className="flex flex-wrap items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0">
             <span className="flex min-w-[190px] flex-1 items-center gap-1.5">
               <input
                 defaultValue={p.name}
+                disabled={p.isCore}
                 onBlur={(e) => e.target.value.trim() && e.target.value !== p.name && rename(p.id, e.target.value.trim())}
-                className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
+                className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface disabled:opacity-60"
               />
               {p.isCore && <Badge>{t("settingsTab.coreBadge")}</Badge>}
             </span>
@@ -358,8 +376,9 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
               {t("settingsTab.typeLabel")}
               <select
                 value={p.type}
+                disabled={p.isCore}
                 onChange={(e) => retype(p.id, e.target.value as (typeof ISSUE_PROPERTY_TYPES)[number])}
-                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none disabled:opacity-60"
               >
                 {ISSUE_PROPERTY_TYPES.map((ty) => (
                   <option key={ty} value={ty}>
@@ -370,18 +389,41 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
             </span>
             <label className="flex items-center gap-1.5 text-[10px] text-text-3">
               {t("settingsTab.onCardLabel")}
-              <input type="checkbox" checked={p.visibleOnCard} onChange={(e) => toggleVisible(p.id, e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={p.visibleOnCard}
+                disabled={p.isCore}
+                onChange={(e) => toggleVisible(p.id, e.target.checked)}
+              />
             </label>
-            {!p.isCore && (
+            <span className="flex gap-0.5">
               <button
-                onClick={() => handleDeleteClick(p.id)}
-                title={isArmed(p.id) ? t("settingsTab.deletePropertyConfirm") : t("settingsTab.deletePropertyTitle")}
-                className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
-                style={isArmed(p.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
+                onClick={() => move(p.id, "left")}
+                disabled={i === 0}
+                title={t("settingsTab.moveLeftTitle")}
+                className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
               >
-                {isArmed(p.id) ? t("clickAgainToDelete") : <X size={13} strokeWidth={1.75} />}
+                <ChevronLeft size={13} strokeWidth={1.75} />
               </button>
-            )}
+              <button
+                onClick={() => move(p.id, "right")}
+                disabled={i === definitions.length - 1}
+                title={t("settingsTab.moveRightTitle")}
+                className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
+              >
+                <ChevronRight size={13} strokeWidth={1.75} />
+              </button>
+              {!p.isCore && (
+                <button
+                  onClick={() => handleDeleteClick(p.id)}
+                  title={isArmed(p.id) ? t("settingsTab.deletePropertyConfirm") : t("settingsTab.deletePropertyTitle")}
+                  className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
+                  style={isArmed(p.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
+                >
+                  {isArmed(p.id) ? t("clickAgainToDelete") : <X size={13} strokeWidth={1.75} />}
+                </button>
+              )}
+            </span>
           </div>
         ))}
         <div className="flex items-center gap-2 px-3 py-2.5">
