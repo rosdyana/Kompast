@@ -9,6 +9,7 @@ const AUTOMATION_NODE_TYPES = [
   "trigger_event",
   "trigger_schedule",
   "condition_property",
+  "condition_switch",
   "action_set_property",
   "action_add_label",
   "action_comment",
@@ -16,16 +17,19 @@ const AUTOMATION_NODE_TYPES = [
   "action_link_issue",
   "action_create_subtask",
   "action_webhook",
+  "find_issues",
+  "loop_each",
   "delay",
 ] as const;
 
 const nodeSchema = z.object({
   id: z.string().min(1),
   type: z.enum(AUTOMATION_NODE_TYPES),
+  name: z.string().min(1).optional(),
   config: z.record(z.string(), z.any()),
   position: z.object({ x: z.number(), y: z.number() }),
 });
-const edgeSchema = z.object({ fromNodeId: z.string().min(1), fromHandle: z.enum(["true", "false"]).optional(), toNodeId: z.string().min(1) });
+const edgeSchema = z.object({ fromNodeId: z.string().min(1), fromHandle: z.string().min(1).optional(), toNodeId: z.string().min(1) });
 
 const updateWorkflowSchema = z.object({
   projectKey: z.string().min(1),

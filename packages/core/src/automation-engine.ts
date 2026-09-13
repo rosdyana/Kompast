@@ -3,8 +3,12 @@ import { CronExpressionParser } from "cron-parser";
 import type { Tx, AnyDb } from "./types";
 import { id } from "./ids";
 import { executeNode, MAX_AUTOMATION_DEPTH, type ExecuteStepResult } from "./automation-execution";
+import type { IterationFrame } from "./automation-expressions";
 
 const RATE_LIMIT_PER_WORKFLOW_PER_HOUR = 50;
+
+/** Node types whose outgoing edges are filtered by `result.branchTaken` rather than fired unconditionally — see advanceWorkflowStep. */
+const BRANCHING_NODE_TYPES = new Set(["condition_property", "condition_switch"]);
 
 /**
  * Triggers carry no logic of their own — executeNode has no branch for
@@ -172,7 +176,8 @@ export async function advanceWorkflowStep(tx: Tx, step: AutomationWorkflowRunSte
   // "resuming" on its own — that distinction is exactly this claim loop's job,
   // same as the trigger short-circuit above.
   const isResuming = step.resumeAt !== null;
-  const result: ExecuteStepResult = isTrigger || isResuming ? { status: "succeeded" } : await executeNode(tx, node!, run!, workflow!, step.depth);
+  const parentFrames = (step.iterationContext as IterationFrame[] | null) ?? [];
+  const result: ExecuteStepResult = isTrigger || isResuming ? { status: "succeeded" } : await executeNode(tx, node!, run!, workflow!, step.depth, parentFrames);
 
   if (result.status === "waiting") {
     await tx.update(schema.automationWorkflowRunStep).set({ status: "waiting", resumeAt: result.resumeAt, output: result.output ?? null }).where(eq(schema.automationWorkflowRunStep.id, step.id));
@@ -193,7 +198,14 @@ export async function advanceWorkflowStep(tx: Tx, step: AutomationWorkflowRunSte
 
   if (result.status === "succeeded") {
     const outgoingEdges = await tx.select().from(schema.automationEdge).where(eq(schema.automationEdge.fromNodeId, node!.id));
-    const matchingEdges = node!.type === "condition_property" ? outgoingEdges.filter((e) => e.fromHandle === result.branchTaken) : outgoingEdges;
+    const matchingEdges = BRANCHING_NODE_TYPES.has(node!.type) ? outgoingEdges.filter((e) => e.fromHandle === result.branchTaken) : outgoingEdges;
+
+    // loop_each fans out one step per (item x edge) instead of once per
+    // edge — every other node type is the `iterations = [null]` case below,
+    // which is exactly today's one-pass-per-edge behavior, unchanged.
+    const isLoop = node!.type === "loop_each";
+    const loopOutput = isLoop ? (result.output as { items: Json[]; itemType: "value" | "issueId" }) : null;
+    const iterations: Array<{ index: number; item: Json } | null> = isLoop ? loopOutput!.items.map((item, index) => ({ index, item })) : [null];
 
     // Two passes, deliberately not merged: insert every sibling's row FIRST,
     // then recurse into each. If a single edge were inserted-and-recursed
@@ -205,12 +217,17 @@ export async function advanceWorkflowStep(tx: Tx, step: AutomationWorkflowRunSte
     // Inserting all rows up front makes every sibling visible to every
     // nested finalizeRunIfDone call from the very first one.
     const nextSteps = [];
-    for (const edge of matchingEdges) {
-      const [nextStep] = await tx
-        .insert(schema.automationWorkflowRunStep)
-        .values({ id: id("wfstep"), runId: step.runId, nodeId: edge.toNodeId, depth: step.depth + 1, status: "pending" })
-        .returning();
-      nextSteps.push(nextStep!);
+    for (const iter of iterations) {
+      const childFrames: IterationFrame[] = iter
+        ? [...parentFrames, { loopKey: node!.name ?? node!.id, index: iter.index, item: iter.item, itemType: loopOutput!.itemType }]
+        : parentFrames;
+      for (const edge of matchingEdges) {
+        const [nextStep] = await tx
+          .insert(schema.automationWorkflowRunStep)
+          .values({ id: id("wfstep"), runId: step.runId, nodeId: edge.toNodeId, depth: step.depth + 1, status: "pending", iterationContext: childFrames as unknown as Json })
+          .returning();
+        nextSteps.push(nextStep!);
+      }
     }
     for (const nextStep of nextSteps) {
       await advanceWorkflowStep(tx, nextStep);

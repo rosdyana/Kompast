@@ -7,10 +7,6 @@ import {
   markEmailSent,
   markEmailFailed,
   getMailCredentials,
-  claimPendingAutomationEvents,
-  evaluateAutomationEvent,
-  markAutomationEventProcessed,
-  markAutomationEventFailed,
   claimPendingReindexTasks,
   processReindexTask,
   markReindexTaskProcessed,
@@ -31,7 +27,6 @@ const env = loadEnv();
 const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 
 const MAIL_QUEUE = "mail";
-const AUTOMATION_QUEUE = "automation";
 const REINDEX_QUEUE = "reindex";
 
 interface NotificationTemplateProps {
@@ -90,46 +85,20 @@ async function processOutboxBatch() {
 }
 
 /**
- * evaluateAutomationEvent runs entirely inside packages/core's normal
- * withAuthorizedTenant (RLS-scoped tx), same as every other mutation —
- * the worker deliberately doesn't get a special admin-tenant bypass for
- * running rule actions. withAuthorizedTenant needs *some* real member of
- * the event's organization to satisfy requireMembership; which member
- * doesn't matter for correctness (RLS itself only checks
- * organization_id, and each action's actual attribution inside
- * automation.ts's executeActions always uses the matching rule's own
- * createdBy, not this one) — it's just the account requireMembership
- * checks against, so any member of that workspace works.
+ * processReindexTask runs entirely inside packages/core's normal
+ * withAuthorizedTenant (RLS-scoped tx), same as every other mutation — it
+ * writes into the (RLS-protected) embedding table, so it needs a real
+ * tenant-scoped tx, not the bare admin connection claimPendingReindexTasks
+ * itself uses. withAuthorizedTenant needs *some* real member of the
+ * task's organization to satisfy requireMembership; which member doesn't
+ * matter for correctness (RLS itself only checks organization_id) — it's
+ * just the account requireMembership checks against, so any member of
+ * that workspace works.
  */
 async function findAnyMember(organizationId: string): Promise<string | null> {
   const [row] = await adminDb.select({ userId: schema.member.userId }).from(schema.member).where(eq(schema.member.organizationId, organizationId)).limit(1);
   return row?.userId ?? null;
 }
-
-async function processAutomationBatch() {
-  const claimed = await claimPendingAutomationEvents(adminDb, 10);
-  for (const event of claimed) {
-    try {
-      const memberUserId = await findAnyMember(event.organizationId);
-      if (!memberUserId) {
-        await markAutomationEventFailed(adminDb, event.id);
-        continue;
-      }
-      await withAuthorizedTenant({ userId: memberUserId, organizationId: event.organizationId }, (tx) => evaluateAutomationEvent(tx, event));
-      await markAutomationEventProcessed(adminDb, event.id);
-    } catch (err) {
-      console.error(`[worker] automation event ${event.id} failed:`, err);
-      await markAutomationEventFailed(adminDb, event.id);
-    }
-  }
-}
-
-/**
- * Same withAuthorizedTenant + findAnyMember shape as processAutomationBatch
- * above — processReindexTask writes into the (RLS-protected) embedding
- * table, so it needs a real tenant-scoped tx, not the bare admin
- * connection claimPendingReindexTasks itself uses.
- */
 async function processReindexBatch() {
   const claimed = await claimPendingReindexTasks(adminDb, 10);
   for (const task of claimed) {
@@ -149,15 +118,12 @@ async function processReindexBatch() {
 }
 
 /**
- * New node-graph engine's event poller — separate queue/table from
- * processAutomationBatch's above (see automation-workflow-events schema
- * comment): claimPendingWorkflowEvents claims from automation_workflow_event,
- * not automation_event, so this can never race the old engine's own claim.
- * Unlike processAutomationBatch, matchAndStartRuns runs inside a plain
- * withTenant tx rather than withAuthorizedTenant — there's no "acting user"
- * concept here (a workflow run isn't attributed to any one member), so
- * this passes a synthetic "system" userId directly rather than looking up
- * a real member via findAnyMember.
+ * The workflow engine's event poller — claims pending automation_workflow_event
+ * rows and matches them against enabled workflows' trigger_event nodes.
+ * Runs inside a plain withTenant tx rather than withAuthorizedTenant —
+ * there's no "acting user" concept here (a workflow run isn't attributed
+ * to any one member), so this passes a synthetic "system" userId directly
+ * rather than looking up a real member via findAnyMember.
  */
 async function processWorkflowEventBatch() {
   const events = await claimPendingWorkflowEvents(adminDb, 10);
@@ -225,7 +191,6 @@ async function processWorkflowSchedules() {
 }
 
 const mailQueue = new Queue(MAIL_QUEUE, { connection });
-const automationQueue = new Queue(AUTOMATION_QUEUE, { connection });
 const reindexQueue = new Queue(REINDEX_QUEUE, { connection });
 const workflowEventQueue = new Queue("automation-workflow-events", { connection });
 const workflowStepQueue = new Queue("automation-workflow-steps", { connection });
@@ -236,13 +201,11 @@ const workflowStepQueue = new Queue("automation-workflow-steps", { connection })
 // shape — revisit if that ever changes.
 const workflowScheduleQueue = new Queue("automation-workflow-schedules", { connection });
 const mailWorker = new Worker(MAIL_QUEUE, () => processOutboxBatch(), { connection });
-const automationWorker = new Worker(AUTOMATION_QUEUE, () => processAutomationBatch(), { connection });
 const reindexWorker = new Worker(REINDEX_QUEUE, () => processReindexBatch(), { connection });
 const workflowEventWorker = new Worker("automation-workflow-events", () => processWorkflowEventBatch(), { connection });
 const workflowStepWorker = new Worker("automation-workflow-steps", () => processWorkflowStepBatch(), { connection });
 const workflowScheduleWorker = new Worker("automation-workflow-schedules", () => processWorkflowSchedules(), { connection });
 mailWorker.on("failed", (job, err) => console.error(`[worker] mail job ${job?.id} failed:`, err));
-automationWorker.on("failed", (job, err) => console.error(`[worker] automation job ${job?.id} failed:`, err));
 reindexWorker.on("failed", (job, err) => console.error(`[worker] reindex job ${job?.id} failed:`, err));
 workflowEventWorker.on("failed", (job, err) => console.error(`[worker] workflow event job ${job?.id} failed:`, err));
 workflowStepWorker.on("failed", (job, err) => console.error(`[worker] workflow step job ${job?.id} failed:`, err));
@@ -250,13 +213,11 @@ workflowScheduleWorker.on("failed", (job, err) => console.error(`[worker] workfl
 
 process.on("SIGTERM", async () => {
   await mailWorker.close();
-  await automationWorker.close();
   await reindexWorker.close();
   await workflowEventWorker.close();
   await workflowStepWorker.close();
   await workflowScheduleWorker.close();
   await mailQueue.close();
-  await automationQueue.close();
   await reindexQueue.close();
   await workflowEventQueue.close();
   await workflowStepQueue.close();
@@ -270,7 +231,6 @@ async function main() {
   // by a fresh id each time — so this is safe to run on every worker
   // restart.
   await mailQueue.add("process-outbox", {}, { repeat: { every: 15_000 } });
-  await automationQueue.add("process-events", {}, { repeat: { every: 5_000 } });
   await reindexQueue.add("process-reindex", {}, { repeat: { every: 10_000 } });
   await workflowEventQueue.add("process-workflow-events", {}, { repeat: { every: 5_000 } });
   await workflowStepQueue.add("process-workflow-steps", {}, { repeat: { every: 5_000 } });

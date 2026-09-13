@@ -235,14 +235,14 @@ describe("updateIssue + createIssue attribution", () => {
 
     let notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
     expect(notifications).toHaveLength(0);
-    let events = await admin.select().from(schema.automationEvent).where(eq(schema.automationEvent.organizationId, orgId));
+    let events = await admin.select().from(schema.automationWorkflowEvent).where(eq(schema.automationWorkflowEvent.organizationId, orgId));
     expect(events).toHaveLength(0);
 
     await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { assigneeId: userId, origin: "import", actorId: otherUserId }));
 
     notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
     expect(notifications).toHaveLength(0);
-    events = await admin.select().from(schema.automationEvent).where(eq(schema.automationEvent.organizationId, orgId));
+    events = await admin.select().from(schema.automationWorkflowEvent).where(eq(schema.automationWorkflowEvent.organizationId, orgId));
     expect(events).toHaveLength(0);
 
     // The history row itself still gets written — only the side effects are suppressed.
@@ -271,7 +271,7 @@ describe("updateIssue + createIssue attribution", () => {
     expect(statusEntry).toMatchObject({ fromValue: "status_old", toValue: "status_new", origin: "import" });
     expect(statusEntry?.createdAt).toEqual(backdated);
 
-    const events = await admin.select().from(schema.automationEvent).where(eq(schema.automationEvent.organizationId, orgId));
+    const events = await admin.select().from(schema.automationWorkflowEvent).where(eq(schema.automationWorkflowEvent.organizationId, orgId));
     expect(events).toHaveLength(0);
   });
 

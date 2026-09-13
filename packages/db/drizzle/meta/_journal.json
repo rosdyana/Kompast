@@ -169,6 +169,20 @@
       "when": 1789278440875,
       "tag": "0023_striped_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789305338363,
+      "tag": "0024_hesitant_unicorn",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789305701482,
+      "tag": "0025_even_night_nurse",
+      "breakpoints": true
     }
   ]
 }
