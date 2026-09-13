@@ -145,7 +145,9 @@ export function TableView({ data, sprintContext }: { data: BoardData; sprintCont
     const next = { ...config, ...patch };
     setError(null);
     try {
-      await updateTableViewFn({ data: { viewId: data.tableView.id, groupBy: next.groupBy, sort: next.sort, filters: next.filters } });
+      await updateTableViewFn({
+        data: { viewId: data.tableView.id, groupBy: next.groupBy, swimlaneBy: next.swimlaneBy, sort: next.sort, filters: next.filters },
+      });
       await router.invalidate();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("genericError"));

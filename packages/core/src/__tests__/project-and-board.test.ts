@@ -90,7 +90,7 @@ describe("project + board service layer", () => {
     expect(result.issueTypes).toHaveLength(5);
     expect(result.statuses).toHaveLength(5);
 
-    expect(result.propertyDefinitions).toHaveLength(8);
+    expect(result.propertyDefinitions).toHaveLength(10);
     expect(result.propertyDefinitions.every((p) => p.isCore)).toBe(true);
     expect(result.propertyDefinitions.map((p) => p.key)).toEqual([
       "assignee",
@@ -101,6 +101,8 @@ describe("project + board service layer", () => {
       "epic",
       "sprint",
       "storyPoints",
+      "type",
+      "labels",
     ]);
 
     // key/board reads are through withTenant() here too, matching how a
@@ -137,7 +139,7 @@ describe("project + board service layer", () => {
     );
     const { typeId, statusId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => resolveDefaultCreationTarget(tx, projectId));
 
-    expect(typeId).toBe(issueTypes.find((t) => !t.isSubtask)!.id);
+    expect(typeId).toBe(issueTypes.find((t) => !t.isSubtask && t.hierarchyLevel !== 0)!.id);
     const [backlogColumn] = await admin.select().from(schema.boardColumn).where(and(eq(schema.boardColumn.boardId, boardId), eq(schema.boardColumn.isBacklog, true)));
     const [backlogStatus] = await admin.select().from(schema.boardColumnStatus).where(eq(schema.boardColumnStatus.boardColumnId, backlogColumn!.id));
     expect(statusId).toBe(backlogStatus!.workflowStatusId);

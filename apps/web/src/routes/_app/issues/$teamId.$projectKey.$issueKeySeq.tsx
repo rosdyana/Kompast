@@ -2,7 +2,6 @@ import { createFileRoute, Link, useRouter, ClientOnly } from "@tanstack/react-ro
 import { Fragment, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, Paperclip, X } from "lucide-react";
 import type { Block, PartialBlock } from "@blocknote/core";
-import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
 import { PageContainer } from "@kompast/ui/PageContainer";
@@ -19,6 +18,9 @@ import {
   updateIssueDatesFn,
   updateIssueEpicFn,
   updateIssueTitleFn,
+  updateIssueTypeFn,
+  updateIssueLabelsFn,
+  updateIssueStoryPointsFn,
 } from "@/lib/server-fns/issue-detail";
 import { moveIssueFn } from "@/lib/server-fns/issues";
 import { addIssueToSprintFn, removeIssueFromSprintFn } from "@/lib/server-fns/sprints";
@@ -72,6 +74,7 @@ function IssueDetailPage() {
   const [descriptionEditorKey, setDescriptionEditorKey] = useState(0);
   const [savingDescription, setSavingDescription] = useState(false);
   const [aiDraftBusy, setAiDraftBusy] = useState(false);
+  const [labelDraft, setLabelDraft] = useState("");
 
   const usersById = new Map(data.users.map((u) => [u.id, u]));
   const currentUserName = data.orgMembers.find((m) => m.userId === data.currentUserId)?.name;
@@ -195,6 +198,21 @@ function IssueDetailPage() {
     await router.invalidate();
   }
 
+  async function setType(typeId: string) {
+    await updateIssueTypeFn({ data: { issueId: data.issue.id, typeId } });
+    await router.invalidate();
+  }
+
+  async function setLabels(labels: string[]) {
+    await updateIssueLabelsFn({ data: { issueId: data.issue.id, labels } });
+    await router.invalidate();
+  }
+
+  async function setStoryPoints(storyPoints: number | null) {
+    await updateIssueStoryPointsFn({ data: { issueId: data.issue.id, storyPoints } });
+    await router.invalidate();
+  }
+
   async function saveTitle() {
     const trimmed = titleDraft.trim();
     setEditingTitle(false);
@@ -218,6 +236,7 @@ function IssueDetailPage() {
   function resolveHistoryValue(field: string, raw: string | null): string {
     if (raw == null) return "—";
     if (field === "assigneeId") return usersById.get(raw)?.name ?? raw;
+    if (field === "typeId") return data.allTypes.find((tp) => tp.id === raw)?.name ?? raw;
     if (field === "epicId") {
       const epic = data.candidateEpics.find((e) => e.id === raw);
       return epic ? `${data.project.key}-${epic.keySeq} ${epic.title}` : raw;
@@ -263,7 +282,6 @@ function IssueDetailPage() {
             <span className="type-label text-text-3">
               {data.project.key}-{data.issue.keySeq}
             </span>
-            {data.type && <Badge tone="indigo">{data.type.name}</Badge>}
             {data.status && (
               <StatusSelect
                 statuses={data.statuses}
@@ -352,7 +370,9 @@ function IssueDetailPage() {
               </div>
             ) : hasDescription ? (
               <ClientOnly fallback={<div className="min-h-[24px]" />}>
-                <RichTextView content={data.issue.descriptionJson} className="type-body leading-snug text-text-2" />
+                <div className="rounded-[7px] border border-border bg-surface p-3">
+                  <RichTextView content={data.issue.descriptionJson} className="type-body leading-snug text-text-2" />
+                </div>
               </ClientOnly>
             ) : (
               <p className="type-body text-text-3">{t("noDescriptionYet")}</p>
@@ -560,13 +580,68 @@ function IssueDetailPage() {
                   </select>
                 </div>
               ),
-              storyPoints: () =>
-                data.issue.storyPoints != null ? (
+              storyPoints: () => (
+                <div>
+                  <p className="mb-1 text-text-3">{t("pointsLabel")}</p>
+                  <input
+                    type="number"
+                    defaultValue={data.issue.storyPoints ?? ""}
+                    onBlur={(e) => setStoryPoints(e.target.value === "" ? null : Number(e.target.value))}
+                    className="kp-field w-full"
+                  />
+                </div>
+              ),
+              type: () => {
+                const sameLevelTypes = data.allTypes.filter((tp) => tp.hierarchyLevel === data.type?.hierarchyLevel);
+                return (
                   <div>
-                    <p className="mb-1 text-text-3">{t("pointsLabel")}</p>
-                    <span className="type-label">{data.issue.storyPoints}</span>
+                    <p className="mb-1 text-text-3">{t("typeLabel")}</p>
+                    <select value={data.issue.typeId} onChange={(e) => setType(e.target.value)} className="kp-select kp-field w-full">
+                      {sameLevelTypes.map((tp) => (
+                        <option key={tp.id} value={tp.id}>
+                          {tp.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                ) : null,
+                );
+              },
+              labels: () => (
+                <div>
+                  <p className="mb-1 text-text-3">{t("labelsLabel")}</p>
+                  <div className="mb-1.5 flex flex-wrap gap-1.5">
+                    {data.issue.labels.map((label) => (
+                      <span
+                        key={label}
+                        className="inline-flex items-center gap-1 rounded bg-surface-3 px-1.5 py-0.5 text-[11px] text-text-2"
+                      >
+                        {label}
+                        <button
+                          type="button"
+                          onClick={() => setLabels(data.issue.labels.filter((l) => l !== label))}
+                          className="text-text-3 hover:text-danger"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <input
+                    value={labelDraft}
+                    onChange={(e) => setLabelDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.key === "Enter" || e.key === ",") && labelDraft.trim()) {
+                        e.preventDefault();
+                        const trimmed = labelDraft.trim();
+                        if (!data.issue.labels.includes(trimmed)) setLabels([...data.issue.labels, trimmed]);
+                        setLabelDraft("");
+                      }
+                    }}
+                    placeholder={t("addLabelPlaceholder")}
+                    className="kp-field w-full"
+                  />
+                </div>
+              ),
             };
 
             return (

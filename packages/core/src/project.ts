@@ -1,4 +1,4 @@
-import { and, eq, isNull, schema, sql } from "@kompast/db";
+import { and, asc, eq, isNull, ne, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { DEFAULT_PRIORITY_LEVELS } from "./priority";
@@ -52,6 +52,8 @@ const CORE_ISSUE_PROPERTIES = [
   { key: "epic", name: "Epic", type: "select" },
   { key: "sprint", name: "Sprint", type: "select" },
   { key: "storyPoints", name: "Story points", type: "number" },
+  { key: "type", name: "Type", type: "select" },
+  { key: "labels", name: "Labels", type: "multiSelect" },
 ] as const;
 
 /**
@@ -81,7 +83,7 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
     role: "lead",
   });
 
-  const issueTypeRows = DEFAULT_ISSUE_TYPES.map((t) => ({
+  const issueTypeRows = DEFAULT_ISSUE_TYPES.map((t, order) => ({
     id: id("itype"),
     projectId,
     name: t.name,
@@ -89,6 +91,7 @@ export async function createProject(tx: Tx, input: CreateProjectInput) {
     color: t.color,
     hierarchyLevel: t.hierarchyLevel,
     isSubtask: t.isSubtask,
+    order,
   }));
   await tx.insert(schema.issueType).values(issueTypeRows);
 
@@ -208,8 +211,22 @@ export async function resolveDefaultCreationTarget(tx: Tx, projectId: string): P
   const [defaultType] = await tx
     .select({ id: schema.issueType.id })
     .from(schema.issueType)
-    .where(and(eq(schema.issueType.projectId, projectId), eq(schema.issueType.isSubtask, false)));
-  if (!defaultType) throw new Error(`Project ${projectId} has no non-subtask issue type`);
+    .where(
+      and(
+        eq(schema.issueType.projectId, projectId),
+        eq(schema.issueType.isSubtask, false),
+        // Never hand out Epic as a creation default — a project's top-level
+        // Epics are meant to be created deliberately (roadmap tab), not as
+        // the accidental result of "+ New issue" landing on hierarchyLevel 0.
+        ne(schema.issueType.hierarchyLevel, 0),
+      ),
+    )
+    .orderBy(asc(schema.issueType.order));
+  if (!defaultType) {
+    throw new Error(
+      `Project ${projectId} has no Story/Task/Bug-equivalent issue type (hierarchyLevel 1) configured — an admin must add one before new issues can be created.`,
+    );
+  }
 
   const [board] = await tx.select({ id: schema.board.id }).from(schema.board).where(eq(schema.board.projectId, projectId));
   if (!board) throw new Error(`Project ${projectId} has no board`);
@@ -291,6 +308,12 @@ export interface CreateIssueTypeInput {
 
 /** Same idea as createWorkflowStatus, for issue types — needed when a source issue type (e.g. JIRA's "Improvement") doesn't match anything the target project already has. */
 export async function createIssueType(tx: Tx, input: CreateIssueTypeInput) {
+  const [row] = await tx
+    .select({ nextOrder: sql<number>`coalesce(max(${schema.issueType.order}), -1) + 1` })
+    .from(schema.issueType)
+    .where(eq(schema.issueType.projectId, input.projectId));
+  const nextOrder = row!.nextOrder;
+
   const typeId = id("itype");
   await tx.insert(schema.issueType).values({
     id: typeId,
@@ -300,6 +323,7 @@ export async function createIssueType(tx: Tx, input: CreateIssueTypeInput) {
     color: input.color ?? "var(--text3)",
     hierarchyLevel: input.hierarchyLevel ?? 1,
     isSubtask: input.isSubtask ?? false,
+    order: nextOrder,
   });
   return { typeId };
 }

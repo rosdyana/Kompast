@@ -17,10 +17,10 @@ function initialsOf(name: string) {
 
 /**
  * No grouping/sort/filter controls, no config mutation — the same
- * saved_view backs the project's own Table tab (see TableView.tsx, which
- * shares sortIssues/applyFilters with this file), an embed only ever reads
- * it, filters included, so the embed never shows a different set of rows
- * than the live table would.
+ * saved_view backs the project's own Sprint Hub tab (see TableView.tsx,
+ * which shares sortIssues/applyFilters with this file), an embed only ever
+ * reads it, filters included, so the embed never shows a different set of
+ * rows than the live table would.
  */
 function ReadOnlyTable({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");

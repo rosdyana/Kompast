@@ -99,6 +99,60 @@ describe("updateIssue + createIssue attribution", () => {
     expect(nonCreation.find((h) => h.field === "priority")).toMatchObject({ fromValue: "medium", toValue: "highest" });
   });
 
+  it("updateIssue allows a same-hierarchy-level type change and writes a typeId history row", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "typ1", name: "Type Change Test", actorUserId: userId }),
+    );
+    const storyType = issueTypes.find((t) => t.name === "Story")!;
+    const taskType = issueTypes.find((t) => t.name === "Task")!;
+    const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, {
+        organizationId: orgId,
+        projectId,
+        typeId: storyType.id,
+        statusId: statuses[0]!.id,
+        title: "Story issue",
+        reporterId: userId,
+      }),
+    );
+
+    await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { typeId: taskType.id, actorId: userId }));
+
+    const [updated] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(updated?.typeId).toBe(taskType.id);
+
+    const history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    const typeChange = history.find((h) => h.field === "typeId");
+    expect(typeChange).toMatchObject({ fromValue: storyType.id, toValue: taskType.id });
+  });
+
+  it("updateIssue rejects a type change that crosses hierarchy levels", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "typ2", name: "Type Change Reject Test", actorUserId: userId }),
+    );
+    const storyType = issueTypes.find((t) => t.name === "Story")!;
+    const epicType = issueTypes.find((t) => t.name === "Epic")!;
+    const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, {
+        organizationId: orgId,
+        projectId,
+        typeId: storyType.id,
+        statusId: statuses[0]!.id,
+        title: "Story issue",
+        reporterId: userId,
+      }),
+    );
+
+    await expect(
+      withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { typeId: epicType.id, actorId: userId })),
+    ).rejects.toThrow(/hierarchy level/);
+
+    const [unchanged] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(unchanged?.typeId).toBe(storyType.id);
+  });
+
   it("updateIssue does not write a history row for a field that didn't actually change", async () => {
     const ctx = { userId, organizationId: orgId };
     const { issueId } = await seedIssue(ctx);

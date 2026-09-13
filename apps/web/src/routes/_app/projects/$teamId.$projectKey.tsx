@@ -15,7 +15,8 @@ import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
 import { Tabs } from "@kompast/ui/Tabs";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
-import { getProjectBoardFn } from "@/lib/server-fns/projects";
+import { normalizeTableViewConfig } from "@kompast/core/table-view-config";
+import { getProjectBoardFn, updateTableViewFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
 import { updateIssueTitleFn, updateIssueEpicFn } from "@/lib/server-fns/issue-detail";
 import { listProjectPagesFn, createPageFn } from "@/lib/server-fns/pages";
@@ -87,7 +88,7 @@ function ProjectPage() {
   const [newIssueError, setNewIssueError] = useState<string | null>(null);
   const [backlogRefreshSignal, setBacklogRefreshSignal] = useState(0);
 
-  const defaultType = data.issueTypes.find((tp) => !tp.isSubtask);
+  const defaultType = data.issueTypes.find((tp) => !tp.isSubtask && tp.hierarchyLevel !== 0);
   const epicType = data.issueTypes.find((tp) => tp.hierarchyLevel === 0);
   const backlogColumn = data.columns.find((c) => c.isBacklog) ?? data.columns[0];
   const teamId = data.project.teamId ?? "none";
@@ -1383,6 +1384,20 @@ function SprintSetupWizard({ boardId, onCreated }: { boardId: string; onCreated:
   );
 }
 
+/** Sentinel swimlane key for issues with no assignee — never a real assigneeId (nanoids never start with "__"). */
+const UNASSIGNED_SWIMLANE = "__unassigned__";
+
+function assigneeSwimlaneKey(issue: { assigneeId: string | null }): string {
+  return issue.assigneeId ?? UNASSIGNED_SWIMLANE;
+}
+
+/** Droppable ids are plain column ids in flat mode, `${columnId}::${swimlaneKey}` in swimlane mode. */
+function parseDroppableId(id: string): { columnId: string; swimlaneKey?: string } {
+  const sep = id.indexOf("::");
+  if (sep === -1) return { columnId: id };
+  return { columnId: id.slice(0, sep), swimlaneKey: id.slice(sep + 2) };
+}
+
 function BoardView({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
   const router = useRouter();
@@ -1393,6 +1408,20 @@ function BoardView({ data }: { data: BoardData }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const usersById = new Map(data.users.map((u) => [u.id, u]));
   const issueTypesById = new Map(data.issueTypes.map((tp) => [tp.id, tp]));
+  const tableViewConfig = normalizeTableViewConfig(data.tableView.config);
+
+  async function updateSwimlaneBy(swimlaneBy: "none" | "assignee") {
+    await updateTableViewFn({
+      data: {
+        viewId: data.tableView.id,
+        groupBy: tableViewConfig.groupBy,
+        swimlaneBy,
+        sort: tableViewConfig.sort,
+        filters: tableViewConfig.filters,
+      },
+    });
+    await router.invalidate();
+  }
   const priorityLevelsByKey = new Map(data.priorityLevels.map((p) => [p.key, p]));
   const teamId = data.project.teamId ?? "none";
 
@@ -1401,7 +1430,7 @@ function BoardView({ data }: { data: BoardData }) {
   // packages/core/src/sprint.ts) rather than a separate "target status"
   // concept: create into Backlog like every other new issue, then add it
   // to the active sprint — it lands in the right column on its own.
-  const defaultType = data.issueTypes.find((tp) => !tp.isSubtask);
+  const defaultType = data.issueTypes.find((tp) => !tp.isSubtask && tp.hierarchyLevel !== 0);
   const backlogStatusId = data.columns.find((c) => c.isBacklog)?.statusIds[0];
   const [addingToBoard, setAddingToBoard] = useState(false);
   const [newBoardIssueTitle, setNewBoardIssueTitle] = useState("");
@@ -1498,25 +1527,27 @@ function BoardView({ data }: { data: BoardData }) {
     const overId = String(over.id);
     if (activeId === overId) return;
 
-    // Dropping onto a column's empty area moves to the end of that column;
-    // dropping onto a specific card inserts before it. Both are encoded as
-    // droppable ids so a single handler covers both without extra state.
-    const overColumn = columns.find((c) => c.id === overId);
+    // Dropping onto a column (or, in swimlane mode, a column×swimlane cell)'s
+    // empty area moves to the end of that cell; dropping onto a specific card
+    // inserts before it. Both are encoded as droppable ids so a single
+    // handler covers both without extra state.
     const overIsCard = columns.some((c) => c.issues.some((i) => i.id === overId));
 
     let toStatusId: string | undefined;
     let beforeIssueId: string | undefined;
     let afterIssueId: string | undefined;
 
-    if (overColumn) {
-      toStatusId = overColumn.statusIds[0];
-      afterIssueId = overColumn.issues.at(-1)?.id;
-    } else if (overIsCard) {
+    if (overIsCard) {
       const targetColumn = columns.find((c) => c.issues.some((i) => i.id === overId))!;
       toStatusId = targetColumn.statusIds[0];
       beforeIssueId = overId;
     } else {
-      return;
+      const { columnId, swimlaneKey } = parseDroppableId(overId);
+      const overColumn = columns.find((c) => c.id === columnId);
+      if (!overColumn) return;
+      toStatusId = overColumn.statusIds[0];
+      const cellIssues = swimlaneKey !== undefined ? overColumn.issues.filter((i) => assigneeSwimlaneKey(i) === swimlaneKey) : overColumn.issues;
+      afterIssueId = cellIssues.at(-1)?.id;
     }
     if (!toStatusId) return;
 
@@ -1538,18 +1569,19 @@ function BoardView({ data }: { data: BoardData }) {
   // a fixed pixel step — clumsy for jumping between ~274px-wide columns),
   // a focused card's own Left/Right arrow keys move it deterministically to
   // the adjacent column. Simpler, and just as accessible.
-  async function moveToAdjacentColumn(issueId: string, fromColumnId: string, direction: "prev" | "next") {
+  async function moveToAdjacentColumn(issueId: string, fromColumnId: string, direction: "prev" | "next", swimlaneKey?: string) {
     const idx = columns.findIndex((c) => c.id === fromColumnId);
     const target = columns[direction === "prev" ? idx - 1 : idx + 1];
     if (!target) return;
     const toStatusId = target.statusIds[0];
     if (!toStatusId) return;
+    const targetIssues = swimlaneKey !== undefined ? target.issues.filter((i) => assigneeSwimlaneKey(i) === swimlaneKey) : target.issues;
 
     setPending(true);
     setError(null);
     setAnnouncement(null);
     try {
-      await moveIssueFn({ data: { issueId, toStatusId, afterIssueId: target.issues.at(-1)?.id } });
+      await moveIssueFn({ data: { issueId, toStatusId, afterIssueId: targetIssues.at(-1)?.id } });
       pendingFocusId.current = issueId;
       await router.invalidate();
       setAnnouncement(t("boardView.movedToColumn", { column: target.name }));
@@ -1584,6 +1616,17 @@ function BoardView({ data }: { data: BoardData }) {
               className="min-w-0 flex-1 border-none bg-transparent text-[12.5px] outline-none placeholder:text-text-3"
             />
           </div>
+          <label className="flex items-center gap-1.5 type-body text-text-3">
+            {t("tableView.groupLabel")}
+            <select
+              value={tableViewConfig.swimlaneBy}
+              onChange={(e) => updateSwimlaneBy(e.target.value as "none" | "assignee")}
+              className="kp-select kp-field text-[12.5px]"
+            >
+              <option value="none">{t("tableView.groupByNone")}</option>
+              <option value="assignee">{t("tableView.groupByAssignee")}</option>
+            </select>
+          </label>
           <div className="ml-auto flex items-center gap-2 type-body" aria-live="polite">
             {pending && <span className="text-text-3">{t("savingEllipsis")}</span>}
             {!pending && error && <span className="text-danger">{error}</span>}
@@ -1595,39 +1638,192 @@ function BoardView({ data }: { data: BoardData }) {
           {t("boardView.keyboardHint")}
         </p>
 
-        <div
-          className="flex min-h-[calc(100vh-200px)] items-start gap-4 overflow-x-auto px-6 pb-7 pt-4"
-          style={{
-            backgroundImage: "radial-gradient(var(--grid) 1px, transparent 1px)",
-            backgroundSize: "22px 22px",
-          }}
-        >
-          {columns.map((col, index) => (
-            <Column
-              key={col.id}
-              column={col}
-              teamId={teamId}
-              projectKey={data.project.key}
-              issueTypesById={issueTypesById}
-              usersById={usersById}
-              priorityLevelsByKey={priorityLevelsByKey}
-              visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
-              candidateEpics={data.candidateEpics}
-              onMoveToAdjacentColumn={moveToAdjacentColumn}
-              registerCardRef={registerCardRef}
-              showAddIssue={index === 0}
-              addingIssue={addingToBoard}
-              newIssueTitle={newBoardIssueTitle}
-              onNewIssueTitleChange={setNewBoardIssueTitle}
-              onStartAddIssue={() => setAddingToBoard(true)}
-              onSubmitAddIssue={submitBoardIssue}
-              onCancelAddIssue={() => { setAddingToBoard(false); setAddBoardIssueError(null); }}
-              addIssueError={addBoardIssueError}
-            />
-          ))}
-        </div>
+        {tableViewConfig.swimlaneBy === "assignee" ? (
+          <SwimlaneBoard
+            columns={columns}
+            teamId={teamId}
+            projectKey={data.project.key}
+            issueTypesById={issueTypesById}
+            usersById={usersById}
+            priorityLevelsByKey={priorityLevelsByKey}
+            visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
+            candidateEpics={data.candidateEpics}
+            onMoveToAdjacentColumn={moveToAdjacentColumn}
+            registerCardRef={registerCardRef}
+          />
+        ) : (
+          <div
+            className="flex min-h-[calc(100vh-200px)] items-start gap-4 overflow-x-auto px-6 pb-7 pt-4"
+            style={{
+              backgroundImage: "radial-gradient(var(--grid) 1px, transparent 1px)",
+              backgroundSize: "22px 22px",
+            }}
+          >
+            {columns.map((col, index) => (
+              <Column
+                key={col.id}
+                column={col}
+                teamId={teamId}
+                projectKey={data.project.key}
+                issueTypesById={issueTypesById}
+                usersById={usersById}
+                priorityLevelsByKey={priorityLevelsByKey}
+                visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
+                candidateEpics={data.candidateEpics}
+                onMoveToAdjacentColumn={moveToAdjacentColumn}
+                registerCardRef={registerCardRef}
+                showAddIssue={index === 0}
+                addingIssue={addingToBoard}
+                newIssueTitle={newBoardIssueTitle}
+                onNewIssueTitleChange={setNewBoardIssueTitle}
+                onStartAddIssue={() => setAddingToBoard(true)}
+                onSubmitAddIssue={submitBoardIssue}
+                onCancelAddIssue={() => { setAddingToBoard(false); setAddBoardIssueError(null); }}
+                addIssueError={addBoardIssueError}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </DndContext>
+  );
+}
+
+function ColumnHeader({ column }: { column: BoardData["columns"][number] }) {
+  const { t } = useTranslation("board");
+  return (
+    <div className="flex items-center gap-2 px-0.5">
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: column.color }} />
+      <span className="type-body font-semibold tracking-tight">{column.name}</span>
+      <span className="type-label text-text-3">{column.issues.length}</span>
+      {column.isBacklog && <Badge>{t("fixedBadge")}</Badge>}
+      {column.wipLimit != null && column.issues.length > column.wipLimit && (
+        <span className="ml-auto type-label font-semibold text-amber">
+          {column.issues.length}/{column.wipLimit}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The droppable card list for one column — or, in swimlane mode, one
+ * column×swimlane cell (droppableId/issues/swimlaneKey then scoped to that
+ * cell rather than the whole column). The inline "+ Add issue" composer only
+ * ever applies in flat mode (ambiguous which swimlane it'd belong to), so its
+ * props are optional and simply omitted by SwimlaneBoard.
+ */
+function ColumnCell({
+  droppableId,
+  issues,
+  teamId,
+  projectKey,
+  columnId,
+  swimlaneKey,
+  issueTypesById,
+  usersById,
+  priorityLevelsByKey,
+  visibleProperties,
+  candidateEpics,
+  onMoveToAdjacentColumn,
+  registerCardRef,
+  showAddIssue,
+  addingIssue,
+  newIssueTitle,
+  onNewIssueTitleChange,
+  onStartAddIssue,
+  onSubmitAddIssue,
+  onCancelAddIssue,
+  addIssueError,
+}: {
+  droppableId: string;
+  issues: BoardData["columns"][number]["issues"];
+  teamId: string;
+  projectKey: string;
+  columnId: string;
+  swimlaneKey?: string;
+  issueTypesById: Map<string, BoardData["issueTypes"][number]>;
+  usersById: Map<string, BoardData["users"][number]>;
+  priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
+  visibleProperties: BoardData["propertyDefinitions"];
+  candidateEpics: BoardData["candidateEpics"];
+  onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next", swimlaneKey?: string) => void;
+  registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
+  showAddIssue?: boolean;
+  addingIssue?: boolean;
+  newIssueTitle?: string;
+  onNewIssueTitleChange?: (value: string) => void;
+  onStartAddIssue?: () => void;
+  onSubmitAddIssue?: () => void;
+  onCancelAddIssue?: () => void;
+  addIssueError?: string | null;
+}) {
+  const { t } = useTranslation("board");
+  const { setNodeRef, isOver } = useDroppable({ id: droppableId });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="flex min-h-[40px] flex-col gap-1.5 rounded-[9px]"
+      style={isOver ? { background: "var(--surface-3)" } : undefined}
+    >
+      {issues.length === 0 && (
+        <p className="rounded-[9px] border border-dashed border-border px-2.5 py-3 text-center type-body text-text-3">
+          {t("boardView.columnEmpty")}
+        </p>
+      )}
+      {issues.map((issue) => (
+        <Card
+          key={issue.id}
+          issue={issue}
+          teamId={teamId}
+          projectKey={projectKey}
+          columnId={columnId}
+          swimlaneKey={swimlaneKey}
+          issueTypesById={issueTypesById}
+          usersById={usersById}
+          priorityLevelsByKey={priorityLevelsByKey}
+          visibleProperties={visibleProperties}
+          candidateEpics={candidateEpics}
+          onMoveToAdjacentColumn={onMoveToAdjacentColumn}
+          registerCardRef={registerCardRef}
+        />
+      ))}
+      {showAddIssue && (
+        addingIssue ? (
+          <div className="flex flex-col gap-1.5">
+            <input
+              autoFocus
+              value={newIssueTitle}
+              onChange={(e) => onNewIssueTitleChange?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onSubmitAddIssue?.();
+                if (e.key === "Escape") onCancelAddIssue?.();
+              }}
+              placeholder={t("header.newIssuePlaceholder")}
+              className="rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+            />
+            <div className="flex gap-1.5">
+              <Button variant="primary" onClick={onSubmitAddIssue}>
+                {t("save")}
+              </Button>
+              <Button variant="outline" onClick={onCancelAddIssue}>
+                {t("cancel")}
+              </Button>
+            </div>
+            {addIssueError && <p className="type-body text-danger">{addIssueError}</p>}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onStartAddIssue}
+            className="rounded-[9px] border border-dashed border-border px-2.5 py-2 text-left type-body text-text-3 hover:border-border-2 hover:text-text-2"
+          >
+            + {t("boardView.addIssueButton")}
+          </button>
+        )
+      )}
+    </div>
   );
 }
 
@@ -1670,83 +1866,122 @@ function Column({
   onCancelAddIssue: () => void;
   addIssueError: string | null;
 }) {
-  const { t } = useTranslation("board");
-  const { setNodeRef, isOver } = useDroppable({ id: column.id });
-
   return (
     <div className="flex w-[274px] flex-none flex-col gap-2">
-      <div className="flex items-center gap-2 px-0.5">
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: column.color }} />
-        <span className="type-body font-semibold tracking-tight">{column.name}</span>
-        <span className="type-label text-text-3">{column.issues.length}</span>
-        {column.isBacklog && <Badge>{t("fixedBadge")}</Badge>}
-        {column.wipLimit != null && column.issues.length > column.wipLimit && (
-          <span className="ml-auto type-label font-semibold text-amber">
-            {column.issues.length}/{column.wipLimit}
-          </span>
-        )}
-      </div>
+      <ColumnHeader column={column} />
+      <ColumnCell
+        droppableId={column.id}
+        issues={column.issues}
+        teamId={teamId}
+        projectKey={projectKey}
+        columnId={column.id}
+        issueTypesById={issueTypesById}
+        usersById={usersById}
+        priorityLevelsByKey={priorityLevelsByKey}
+        visibleProperties={visibleProperties}
+        candidateEpics={candidateEpics}
+        onMoveToAdjacentColumn={onMoveToAdjacentColumn}
+        registerCardRef={registerCardRef}
+        showAddIssue={showAddIssue}
+        addingIssue={addingIssue}
+        newIssueTitle={newIssueTitle}
+        onNewIssueTitleChange={onNewIssueTitleChange}
+        onStartAddIssue={onStartAddIssue}
+        onSubmitAddIssue={onSubmitAddIssue}
+        onCancelAddIssue={onCancelAddIssue}
+        addIssueError={addIssueError}
+      />
+    </div>
+  );
+}
 
-      <div
-        ref={setNodeRef}
-        className="flex min-h-[40px] flex-col gap-1.5 rounded-[9px]"
-        style={isOver ? { background: "var(--surface-3)" } : undefined}
-      >
-        {column.issues.length === 0 && (
-          <p className="rounded-[9px] border border-dashed border-border px-2.5 py-3 text-center type-body text-text-3">
-            {t("boardView.columnEmpty")}
-          </p>
-        )}
-        {column.issues.map((issue) => (
-          <Card
-            key={issue.id}
-            issue={issue}
-            teamId={teamId}
-            projectKey={projectKey}
-            columnId={column.id}
-            issueTypesById={issueTypesById}
-            usersById={usersById}
-            priorityLevelsByKey={priorityLevelsByKey}
-            visibleProperties={visibleProperties}
-            candidateEpics={candidateEpics}
-            onMoveToAdjacentColumn={onMoveToAdjacentColumn}
-            registerCardRef={registerCardRef}
-          />
-        ))}
-        {showAddIssue && (
-          addingIssue ? (
-            <div className="flex flex-col gap-1.5">
-              <input
-                autoFocus
-                value={newIssueTitle}
-                onChange={(e) => onNewIssueTitleChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onSubmitAddIssue();
-                  if (e.key === "Escape") onCancelAddIssue();
-                }}
-                placeholder={t("header.newIssuePlaceholder")}
-                className="rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
-              />
-              <div className="flex gap-1.5">
-                <Button variant="primary" onClick={onSubmitAddIssue}>
-                  {t("save")}
-                </Button>
-                <Button variant="outline" onClick={onCancelAddIssue}>
-                  {t("cancel")}
-                </Button>
-              </div>
-              {addIssueError && <p className="type-body text-danger">{addIssueError}</p>}
+/**
+ * Jira-style swimlanes: status columns stay exactly as-is, one row per
+ * assignee (Unassigned last) overlays them. Dragging a card only ever
+ * changes status via the column it lands in — never reassigns it — so it
+ * can reappear under a different row than the one it was dropped into once
+ * the board refreshes, matching its real (unchanged) assignee.
+ */
+function SwimlaneBoard({
+  columns,
+  teamId,
+  projectKey,
+  issueTypesById,
+  usersById,
+  priorityLevelsByKey,
+  visibleProperties,
+  candidateEpics,
+  onMoveToAdjacentColumn,
+  registerCardRef,
+}: {
+  columns: BoardData["columns"];
+  teamId: string;
+  projectKey: string;
+  issueTypesById: Map<string, BoardData["issueTypes"][number]>;
+  usersById: Map<string, BoardData["users"][number]>;
+  priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
+  visibleProperties: BoardData["propertyDefinitions"];
+  candidateEpics: BoardData["candidateEpics"];
+  onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next", swimlaneKey?: string) => void;
+  registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
+}) {
+  const { t } = useTranslation("board");
+
+  const byKey = new Map<string, { key: string; label: string }>();
+  for (const col of columns) {
+    for (const issue of col.issues) {
+      const key = assigneeSwimlaneKey(issue);
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          key,
+          label: issue.assigneeId ? usersById.get(issue.assigneeId)?.name ?? issue.assigneeId : t("tableView.unassignedGroupLabel"),
+        });
+      }
+    }
+  }
+  const assignedLanes = [...byKey.values()].filter((l) => l.key !== UNASSIGNED_SWIMLANE).sort((a, b) => a.label.localeCompare(b.label));
+  const unassignedLane = byKey.get(UNASSIGNED_SWIMLANE);
+  const swimlanes = unassignedLane ? [...assignedLanes, unassignedLane] : assignedLanes;
+
+  return (
+    <div className="overflow-x-auto px-6 pb-7 pt-4">
+      <div className="flex min-w-fit flex-col gap-3">
+        <div className="flex items-start gap-4">
+          <div className="w-[150px] flex-none" />
+          {columns.map((col) => (
+            <div key={col.id} className="w-[274px] flex-none">
+              <ColumnHeader column={col} />
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={onStartAddIssue}
-              className="rounded-[9px] border border-dashed border-border px-2.5 py-2 text-left type-body text-text-3 hover:border-border-2 hover:text-text-2"
-            >
-              + {t("boardView.addIssueButton")}
-            </button>
-          )
-        )}
+          ))}
+        </div>
+        {swimlanes.length === 0 && <p className="type-body text-text-3">{t("boardView.columnEmpty")}</p>}
+        {swimlanes.map((lane) => (
+          <div key={lane.key} className="flex items-start gap-4 border-t border-border pt-3">
+            <div className="flex w-[150px] flex-none items-center gap-1.5 pt-1">
+              {lane.key !== UNASSIGNED_SWIMLANE && <Avatar initials={initialsOf(lane.label)} />}
+              <span className="truncate type-body font-medium">{lane.label}</span>
+            </div>
+            {columns.map((col) => (
+              <div key={col.id} className="w-[274px] flex-none">
+                <ColumnCell
+                  droppableId={`${col.id}::${lane.key}`}
+                  issues={col.issues.filter((i) => assigneeSwimlaneKey(i) === lane.key)}
+                  teamId={teamId}
+                  projectKey={projectKey}
+                  columnId={col.id}
+                  swimlaneKey={lane.key}
+                  issueTypesById={issueTypesById}
+                  usersById={usersById}
+                  priorityLevelsByKey={priorityLevelsByKey}
+                  visibleProperties={visibleProperties}
+                  candidateEpics={candidateEpics}
+                  onMoveToAdjacentColumn={onMoveToAdjacentColumn}
+                  registerCardRef={registerCardRef}
+                />
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1768,6 +2003,7 @@ function Card({
   teamId,
   projectKey,
   columnId,
+  swimlaneKey,
   issueTypesById,
   usersById,
   priorityLevelsByKey,
@@ -1780,12 +2016,13 @@ function Card({
   teamId: string;
   projectKey: string;
   columnId: string;
+  swimlaneKey?: string;
   issueTypesById: Map<string, BoardData["issueTypes"][number]>;
   usersById: Map<string, BoardData["users"][number]>;
   priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
   candidateEpics: BoardData["candidateEpics"];
-  onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next") => void;
+  onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next", swimlaneKey?: string) => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
 }) {
   const { t, i18n } = useTranslation("board");
@@ -1809,10 +2046,10 @@ function Card({
   function handleKeyDown(e: KeyboardEvent<HTMLAnchorElement>) {
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      onMoveToAdjacentColumn(issue.id, columnId, "prev");
+      onMoveToAdjacentColumn(issue.id, columnId, "prev", swimlaneKey);
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      onMoveToAdjacentColumn(issue.id, columnId, "next");
+      onMoveToAdjacentColumn(issue.id, columnId, "next", swimlaneKey);
     }
   }
 

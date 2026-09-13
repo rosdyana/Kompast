@@ -1,5 +1,5 @@
 {
-  "tabs": { "board": "Board", "table": "Tabel", "roadmap": "Roadmap", "docs": "Docs", "automation": "Otomasi", "import": "Impor", "settings": "Pengaturan", "backlog": "Backlog" },
+  "tabs": { "board": "Board", "table": "Sprint Hub", "roadmap": "Roadmap", "docs": "Docs", "automation": "Otomasi", "import": "Impor", "settings": "Pengaturan", "backlog": "Backlog" },
   "fixedBadge": "tetap",
   "loadingEllipsis": "Memuat…",
   "savingEllipsis": "Menyimpan…",
@@ -169,7 +169,7 @@
     "newColumnPlaceholder": "Nama kolom baru",
     "addColumnButton": "+ Tambah kolom",
     "columnsFooterNote": "Menghapus kolom tidak menghapus tiketnya — semua tiket di dalamnya dikembalikan ke Backlog. Batas WIP kosong berarti tanpa batas.",
-    "propertiesDescPart1": "Properti ini membentuk skema database project: kolom di view Tabel, isi kartu Kanban, dan variabel yang bisa dipakai otomasi. Tambah, hapus, ubah nama, atau ganti tipe datanya — perubahan langsung terlihat di semua view. ",
+    "propertiesDescPart1": "Properti ini membentuk skema database project: kolom di Sprint Hub, isi kartu Kanban, dan variabel yang bisa dipakai otomasi. Tambah, hapus, ubah nama, atau ganti tipe datanya — perubahan langsung terlihat di semua view. ",
     "propertiesDescBold": "{{count}} properti tampil di kartu.",
     "propertiesCountSummary": "{{visible}} dari {{total}} properti tampil di kartu",
     "coreBadge": "inti",

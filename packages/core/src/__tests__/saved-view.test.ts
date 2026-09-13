@@ -67,29 +67,46 @@ describe("saved views", () => {
     );
 
     await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
-      updateSavedViewConfig(tx, view.id, { groupBy: "assignee", sort: [{ field: "priority", direction: "desc" }], filters: [] }),
+      updateSavedViewConfig(tx, view.id, {
+        groupBy: "assignee",
+        swimlaneBy: "none",
+        sort: [{ field: "priority", direction: "desc" }],
+        filters: [],
+      }),
     );
 
     const [updated] = await admin.select().from(schema.savedView).where(eq(schema.savedView.id, view.id));
-    expect(updated?.config).toEqual({ groupBy: "assignee", sort: [{ field: "priority", direction: "desc" }], filters: [] });
+    expect(updated?.config).toEqual({
+      groupBy: "assignee",
+      swimlaneBy: "none",
+      sort: [{ field: "priority", direction: "desc" }],
+      filters: [],
+    });
   });
 
   it("upgrades a legacy {sortBy, sortDir} config to the current {sort, filters} shape", () => {
     expect(normalizeTableViewConfig({ groupBy: "column", sortBy: "priority", sortDir: "desc" })).toEqual({
       groupBy: "column",
+      swimlaneBy: "none",
       sort: [{ field: "priority", direction: "desc" }],
       filters: [],
     });
     // The legacy "rank" sortBy value becomes "manual" — see saved-view.ts's SortField doc comment.
     expect(normalizeTableViewConfig({ groupBy: "column", sortBy: "rank", sortDir: "asc" })).toEqual({
       groupBy: "column",
+      swimlaneBy: "none",
       sort: [{ field: "manual", direction: "asc" }],
       filters: [],
     });
   });
 
   it("passes an already-current config through unchanged, and defaults a missing/empty one", () => {
-    const current = { groupBy: "assignee" as const, sort: [{ field: "points" as const, direction: "asc" as const }], filters: [] };
+    const current = {
+      groupBy: "assignee" as const,
+      swimlaneBy: "assignee" as const,
+      sort: [{ field: "points" as const, direction: "asc" as const }],
+      filters: [],
+    };
     expect(normalizeTableViewConfig(current)).toEqual(current);
     expect(normalizeTableViewConfig(null)).toEqual(DEFAULT_TABLE_VIEW_CONFIG);
     expect(normalizeTableViewConfig({})).toEqual(DEFAULT_TABLE_VIEW_CONFIG);

@@ -130,6 +130,7 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
 
 export interface UpdateIssueInput {
   title?: string;
+  typeId?: string;
   priority?: string;
   assigneeId?: string | null;
   storyPoints?: number | null;
@@ -151,6 +152,7 @@ export interface UpdateIssueInput {
 
 const UPDATE_ISSUE_HISTORY_FIELDS = [
   "title",
+  "typeId",
   "priority",
   "assigneeId",
   "storyPoints",
@@ -172,8 +174,36 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
   const [current] = await tx.select().from(schema.issue).where(eq(schema.issue.id, issueId));
   if (!current) throw new Error(`Issue ${issueId} not found`);
 
+  // A type change can only swap within the same hierarchy level (Story ↔
+  // Task ↔ Bug). Crossing levels (e.g. into/out of Epic or Subtask) is
+  // deliberately out of scope here — it would need to decide what happens
+  // to other issues' epicId/parentId links into/out of this one, which the
+  // roadmap tab's dedicated tools and explicit parent-unlinking already
+  // handle instead of this generic field update.
+  if (patch.typeId !== undefined && patch.typeId !== current.typeId) {
+    const [[currentType], [newType]] = await Promise.all([
+      tx
+        .select({ hierarchyLevel: schema.issueType.hierarchyLevel })
+        .from(schema.issueType)
+        .where(eq(schema.issueType.id, current.typeId)),
+      tx
+        .select({ hierarchyLevel: schema.issueType.hierarchyLevel, projectId: schema.issueType.projectId })
+        .from(schema.issueType)
+        .where(eq(schema.issueType.id, patch.typeId)),
+    ]);
+    if (!newType || newType.projectId !== current.projectId) {
+      throw new Error(`Issue type ${patch.typeId} not found in this project`);
+    }
+    if (!currentType || currentType.hierarchyLevel !== newType.hierarchyLevel) {
+      throw new Error(
+        "Can't change an issue's type across hierarchy levels (Epic / Story-Task-Bug / Subtask) this way — use the roadmap's epic tools, or unlink the parent/epic first.",
+      );
+    }
+  }
+
   const updateValues: Partial<typeof schema.issue.$inferInsert> = { updatedAt: new Date() };
   if (patch.title !== undefined) updateValues.title = patch.title;
+  if (patch.typeId !== undefined) updateValues.typeId = patch.typeId;
   if (patch.priority !== undefined) updateValues.priority = patch.priority;
   if (patch.assigneeId !== undefined) updateValues.assigneeId = patch.assigneeId;
   if (patch.storyPoints !== undefined) updateValues.storyPoints = patch.storyPoints;
@@ -287,7 +317,7 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
       entityId: issueId,
       payload: {
         statusId: current.statusId,
-        typeId: current.typeId,
+        typeId: patch.typeId ?? current.typeId,
         priority: patch.priority ?? current.priority,
         assigneeId: patch.assigneeId !== undefined ? patch.assigneeId : current.assigneeId,
         projectId: current.projectId,

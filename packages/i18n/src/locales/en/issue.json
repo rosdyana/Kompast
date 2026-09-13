@@ -12,6 +12,9 @@
   "noEpic": "No epic",
   "sprintLabel": "Sprint",
   "backlogLabel": "Backlog",
+  "typeLabel": "Type",
+  "labelsLabel": "Labels",
+  "addLabelPlaceholder": "Add a label, press Enter…",
   "watching": "◔ Watching",
   "watch": "◔ Watch",
   "descriptionHeading": "Description",
@@ -44,6 +47,7 @@
   "historyOrigin": "via {{origin}}",
   "historyField": {
     "title": "Title",
+    "typeId": "Type",
     "status": "Status",
     "priority": "Priority",
     "assigneeId": "Assignee",

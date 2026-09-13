@@ -12,6 +12,9 @@
   "noEpic": "無 Epic",
   "sprintLabel": "Sprint",
   "backlogLabel": "待辦清單",
+  "typeLabel": "類型",
+  "labelsLabel": "標籤",
+  "addLabelPlaceholder": "新增標籤，按 Enter…",
   "watching": "◔ 追蹤中",
   "watch": "◔ 追蹤",
   "descriptionHeading": "描述",
@@ -44,6 +47,7 @@
   "historyOrigin": "來自 {{origin}}",
   "historyField": {
     "title": "標題",
+    "typeId": "類型",
     "status": "狀態",
     "priority": "Priority",
     "assigneeId": "Assignee",
