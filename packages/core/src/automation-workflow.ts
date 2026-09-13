@@ -1,4 +1,4 @@
-import { and, eq, schema, type Json } from "@kompast/db";
+import { and, desc, eq, schema, type Json } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 
@@ -67,6 +67,15 @@ export async function getWorkflow(tx: Tx, workflowId: string) {
     tx.select().from(schema.automationEdge).where(eq(schema.automationEdge.workflowId, workflowId)),
   ]);
   return { ...workflow, nodes, edges };
+}
+
+export async function listWorkflowRuns(tx: Tx, workflowId: string, limit = 50) {
+  return tx
+    .select()
+    .from(schema.automationWorkflowRun)
+    .where(eq(schema.automationWorkflowRun.workflowId, workflowId))
+    .orderBy(desc(schema.automationWorkflowRun.createdAt))
+    .limit(limit);
 }
 
 function validateGraph(nodes: AutomationNodeInput[], edges: AutomationEdgeInput[]): void {
