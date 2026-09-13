@@ -155,4 +155,41 @@ describe("automation workflow CRUD", () => {
     const nodeRows = await admin.select().from(schema.automationNode).where(eq(schema.automationNode.id, nodes[0]!.id));
     expect(nodeRows).toHaveLength(0);
   });
+
+  it("rejects an edge referencing a node id that isn't in this graph", async () => {
+    const projectId = await seedProject("wfg");
+    const { nodes } = twoNodeGraph();
+
+    await expect(
+      withAuthorizedTenant(ctx, (tx) =>
+        createWorkflow(tx, {
+          organizationId: orgId,
+          projectId,
+          name: "Dangling edge",
+          createdBy: userId,
+          nodes,
+          edges: [{ fromNodeId: nodes[0]!.id, toNodeId: "anode_does_not_exist" }],
+        }),
+      ),
+    ).rejects.toThrow(/does not exist in this graph/);
+  });
+
+  it("rejects a non-trigger node with no path from any trigger", async () => {
+    const projectId = await seedProject("wfh");
+    const { nodes: triggerAndAction } = twoNodeGraph();
+    const orphanId = id("anode");
+
+    await expect(
+      withAuthorizedTenant(ctx, (tx) =>
+        createWorkflow(tx, {
+          organizationId: orgId,
+          projectId,
+          name: "Orphan node",
+          createdBy: userId,
+          nodes: [...triggerAndAction, { id: orphanId, type: "action_add_label", config: { label: "orphan" }, position: { x: 0, y: 300 } }],
+          edges: [{ fromNodeId: triggerAndAction[0]!.id, toNodeId: triggerAndAction[1]!.id }],
+        }),
+      ),
+    ).rejects.toThrow(/not reachable from any trigger/);
+  });
 });

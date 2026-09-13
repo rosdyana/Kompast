@@ -41,6 +41,7 @@ async function insertGraph(tx: Tx, workflowId: string, nodes: AutomationNodeInpu
 }
 
 export async function createWorkflow(tx: Tx, input: CreateWorkflowInput): Promise<{ workflowId: string }> {
+  validateGraph(input.nodes, input.edges);
   const workflowId = id("wf");
   await tx.insert(schema.automationWorkflow).values({
     id: workflowId,
@@ -68,6 +69,27 @@ export async function getWorkflow(tx: Tx, workflowId: string) {
   return { ...workflow, nodes, edges };
 }
 
+function validateGraph(nodes: AutomationNodeInput[], edges: AutomationEdgeInput[]): void {
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.fromNodeId)) throw new Error(`Edge references fromNodeId "${edge.fromNodeId}", which does not exist in this graph`);
+    if (!nodeIds.has(edge.toNodeId)) throw new Error(`Edge references toNodeId "${edge.toNodeId}", which does not exist in this graph`);
+  }
+
+  const reachable = new Set<string>();
+  const queue = nodes.filter((n) => n.type === "trigger_event" || n.type === "trigger_schedule").map((n) => n.id);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (reachable.has(current)) continue;
+    reachable.add(current);
+    for (const edge of edges) if (edge.fromNodeId === current) queue.push(edge.toNodeId);
+  }
+
+  for (const node of nodes) {
+    if (!reachable.has(node.id)) throw new Error(`Node "${node.id}" (${node.type}) is not reachable from any trigger`);
+  }
+}
+
 export interface UpdateWorkflowInput {
   workflowId: string;
   projectId: string;
@@ -93,6 +115,7 @@ export async function updateWorkflow(tx: Tx, input: UpdateWorkflowInput): Promis
   if (result.length === 0) throw new Error(`Workflow ${input.workflowId} not found in project ${input.projectId}`);
 
   if (input.nodes && input.edges) {
+    validateGraph(input.nodes, input.edges);
     // Edges reference nodes by id — delete edges first, then nodes (both cascade from the node FK anyway, but explicit order avoids relying on cascade timing).
     await tx.delete(schema.automationEdge).where(eq(schema.automationEdge.workflowId, input.workflowId));
     await tx.delete(schema.automationNode).where(eq(schema.automationNode.workflowId, input.workflowId));
