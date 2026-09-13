@@ -68,6 +68,18 @@ alter table automation_run enable row level security;
 alter table automation_run force row level security;
 alter table automation_event enable row level security;
 alter table automation_event force row level security;
+alter table automation_workflow enable row level security;
+alter table automation_workflow force row level security;
+alter table automation_node enable row level security;
+alter table automation_node force row level security;
+alter table automation_edge enable row level security;
+alter table automation_edge force row level security;
+alter table automation_workflow_event enable row level security;
+alter table automation_workflow_event force row level security;
+alter table automation_workflow_run enable row level security;
+alter table automation_workflow_run force row level security;
+alter table automation_workflow_run_step enable row level security;
+alter table automation_workflow_run_step force row level security;
 alter table ai_usage enable row level security;
 alter table ai_usage force row level security;
 alter table import_run enable row level security;
@@ -354,6 +366,30 @@ create policy tenant_isolation_automation_run on automation_run
 drop policy if exists tenant_isolation_automation_event on automation_event;
 create policy tenant_isolation_automation_event on automation_event
   using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_automation_workflow on automation_workflow;
+create policy tenant_isolation_automation_workflow on automation_workflow
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_automation_node on automation_node;
+create policy tenant_isolation_automation_node on automation_node
+  using (workflow_id in (select id from automation_workflow where organization_id = current_setting('app.current_workspace', true)));
+
+drop policy if exists tenant_isolation_automation_edge on automation_edge;
+create policy tenant_isolation_automation_edge on automation_edge
+  using (workflow_id in (select id from automation_workflow where organization_id = current_setting('app.current_workspace', true)));
+
+drop policy if exists tenant_isolation_automation_workflow_event on automation_workflow_event;
+create policy tenant_isolation_automation_workflow_event on automation_workflow_event
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_automation_workflow_run on automation_workflow_run;
+create policy tenant_isolation_automation_workflow_run on automation_workflow_run
+  using (organization_id = current_setting('app.current_workspace', true));
+
+drop policy if exists tenant_isolation_automation_workflow_run_step on automation_workflow_run_step;
+create policy tenant_isolation_automation_workflow_run_step on automation_workflow_run_step
+  using (run_id in (select id from automation_workflow_run where organization_id = current_setting('app.current_workspace', true)));
 
 drop policy if exists tenant_isolation_ai_usage on ai_usage;
 create policy tenant_isolation_ai_usage on ai_usage
