@@ -18,9 +18,11 @@ import {
   withAuthorizedTenant,
   claimPendingWorkflowEvents,
   markWorkflowEventProcessed,
+  markWorkflowEventFailed,
   matchAndStartRuns,
   claimDueWorkflowSteps,
   advanceWorkflowStep,
+  markWorkflowStepFailed,
   claimDueWorkflowSchedules,
 } from "@kompast/core";
 import { createMailer, NotificationEmail, SprintSummaryEmail } from "@kompast/mail";
@@ -165,7 +167,7 @@ async function processWorkflowEventBatch() {
       await markWorkflowEventProcessed(adminDb, event.id);
     } catch (err) {
       console.error(`Failed to process workflow event ${event.id}:`, err);
-      await adminDb.update(schema.automationWorkflowEvent).set({ status: "failed" }).where(eq(schema.automationWorkflowEvent.id, event.id));
+      await markWorkflowEventFailed(adminDb, event.id);
     }
   }
 }
@@ -179,12 +181,25 @@ async function processWorkflowEventBatch() {
 async function processWorkflowStepBatch() {
   const steps = await claimDueWorkflowSteps(adminDb, 10);
   for (const step of steps) {
+    let organizationId: string | undefined;
     try {
       const [run] = await adminDb.select({ organizationId: schema.automationWorkflowRun.organizationId }).from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, step.runId));
-      await withTenant(adminDb, { organizationId: run!.organizationId, userId: "system" }, (tx) => advanceWorkflowStep(tx, step));
+      organizationId = run!.organizationId;
+      await withTenant(adminDb, { organizationId, userId: "system" }, (tx) => advanceWorkflowStep(tx, step));
     } catch (err) {
       console.error(`Failed to advance workflow step ${step.id}:`, err);
-      await adminDb.update(schema.automationWorkflowRunStep).set({ status: "failed", error: err instanceof Error ? err.message : String(err) }).where(eq(schema.automationWorkflowRunStep.id, step.id));
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      // Routes through the core function (not a bare adminDb.update) so the
+      // step's RUN also gets finalized — leaving it stuck at "running"
+      // forever was the bug this fix addresses. Falls back to the raw
+      // update only if we couldn't even determine the run's organization
+      // (so a tenant-scoped tx can't be opened), rather than losing the
+      // failure entirely.
+      if (organizationId) {
+        await withTenant(adminDb, { organizationId, userId: "system" }, (tx) => markWorkflowStepFailed(tx, step, errorMessage));
+      } else {
+        await adminDb.update(schema.automationWorkflowRunStep).set({ status: "failed", error: errorMessage }).where(eq(schema.automationWorkflowRunStep.id, step.id));
+      }
     }
   }
 }
@@ -202,7 +217,7 @@ async function processWorkflowSchedules() {
   const organizationIds = [...new Set(workflows.map((w) => w.organizationId))];
   for (const organizationId of organizationIds) {
     try {
-      await withTenant(adminDb, { organizationId, userId: "system" }, (tx) => claimDueWorkflowSchedules(tx));
+      await withTenant(adminDb, { organizationId, userId: "system" }, (tx) => claimDueWorkflowSchedules(tx, organizationId));
     } catch (err) {
       console.error(`Failed to process workflow schedules for org ${organizationId}:`, err);
     }
@@ -214,6 +229,11 @@ const automationQueue = new Queue(AUTOMATION_QUEUE, { connection });
 const reindexQueue = new Queue(REINDEX_QUEUE, { connection });
 const workflowEventQueue = new Queue("automation-workflow-events", { connection });
 const workflowStepQueue = new Queue("automation-workflow-steps", { connection });
+// Assumes a single worker replica: unlike the event/step queues,
+// claimDueWorkflowSchedules has no FOR UPDATE SKIP LOCKED atomic claim, so
+// two concurrent replicas could both see the same due schedule and
+// double-fire it. Not reachable at the current single-worker deployment
+// shape — revisit if that ever changes.
 const workflowScheduleQueue = new Queue("automation-workflow-schedules", { connection });
 const mailWorker = new Worker(MAIL_QUEUE, () => processOutboxBatch(), { connection });
 const automationWorker = new Worker(AUTOMATION_QUEUE, () => processAutomationBatch(), { connection });

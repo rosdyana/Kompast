@@ -1,11 +1,18 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { schema, eq, and, adminDb as admin } from "@kompast/db";
+import { schema, eq, and, adminDb as admin, withTenant } from "@kompast/db";
 import { createProject } from "../project";
 import { createIssue, moveIssue } from "../issue";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 import { createWorkflow } from "../automation-workflow";
-import { claimPendingWorkflowEvents, matchAndStartRuns, advanceWorkflowStep, claimDueWorkflowSteps, claimDueWorkflowSchedules } from "../automation-engine";
+import {
+  claimPendingWorkflowEvents,
+  matchAndStartRuns,
+  advanceWorkflowStep,
+  claimDueWorkflowSteps,
+  claimDueWorkflowSchedules,
+  markWorkflowStepFailed,
+} from "../automation-engine";
 import { MAX_AUTOMATION_DEPTH } from "../automation-execution";
 
 describe("automation engine", () => {
@@ -46,7 +53,16 @@ describe("automation engine", () => {
   }
 
   async function latestWorkflowEventFor(issueId: string, eventType: string) {
-    const rows = await admin.select().from(schema.automationWorkflowEvent).where(and(eq(schema.automationWorkflowEvent.entityId, issueId), eq(schema.automationWorkflowEvent.eventType, eventType)));
+    // Ordered ascending by createdAt so `.at(-1)` deterministically means
+    // the LATEST event — this is load-bearing for the self-trigger-loop
+    // and fix-7 depth-propagation tests, which both assert on a SPECIFIC
+    // (not just "some") event row. An unordered SELECT relies on
+    // unspecified Postgres heap-scan row order.
+    const rows = await admin
+      .select()
+      .from(schema.automationWorkflowEvent)
+      .where(and(eq(schema.automationWorkflowEvent.entityId, issueId), eq(schema.automationWorkflowEvent.eventType, eventType)))
+      .orderBy(schema.automationWorkflowEvent.createdAt);
     return rows.at(-1)!;
   }
 
@@ -414,7 +430,7 @@ describe("automation engine", () => {
   it("claimDueWorkflowSchedules fires a due schedule trigger and updates lastFiredAt", async () => {
     const { projectId } = await seedProjectAndIssue("eng");
     const triggerId = id("anode");
-    const actionId = id("anode");
+    const delayId = id("anode");
     const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
       createWorkflow(tx, {
         organizationId: orgId,
@@ -423,13 +439,20 @@ describe("automation engine", () => {
         createdBy: userId,
         nodes: [
           { id: triggerId, type: "trigger_schedule", config: { cron: "* * * * *" }, position: { x: 0, y: 0 } }, // every minute — always "due" in a test
-          { id: actionId, type: "action_comment", config: { text: "scheduled run" }, position: { x: 200, y: 0 } },
+          // delay (not action_comment) downstream of a schedule trigger — a
+          // schedule-triggered run's context has no issueId, and Fix 1's
+          // save-time check now rejects any node downstream of
+          // trigger_schedule other than action_webhook/delay. This test
+          // never advances past the trigger step anyway (it only exercises
+          // claimDueWorkflowSchedules itself), so the downstream node's
+          // type doesn't otherwise matter here.
+          { id: delayId, type: "delay", config: { amount: 5, unit: "minutes" }, position: { x: 200, y: 0 } },
         ],
-        edges: [{ fromNodeId: triggerId, toNodeId: actionId }],
+        edges: [{ fromNodeId: triggerId, toNodeId: delayId }],
       }),
     );
 
-    await withAuthorizedTenant(ctx, (tx) => claimDueWorkflowSchedules(tx));
+    await withAuthorizedTenant(ctx, (tx) => claimDueWorkflowSchedules(tx, orgId));
 
     const runs = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
     expect(runs).toHaveLength(1);
@@ -437,8 +460,100 @@ describe("automation engine", () => {
     expect(node!.lastFiredAt).not.toBeNull();
 
     // Calling it again immediately must NOT double-fire — the schedule isn't due again for another minute.
-    await withAuthorizedTenant(ctx, (tx) => claimDueWorkflowSchedules(tx));
+    await withAuthorizedTenant(ctx, (tx) => claimDueWorkflowSchedules(tx, orgId));
     const runsAfter = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
     expect(runsAfter).toHaveLength(1);
+  });
+
+  it("claimDueWorkflowSchedules is scoped to the given organizationId even over an RLS-bypassing admin connection (Fix 2)", async () => {
+    const { projectId: projectAId } = await seedProjectAndIssue("enha");
+    const triggerAId = id("anode");
+    const { workflowId: workflowAId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId: projectAId,
+        name: "Org A schedule",
+        createdBy: userId,
+        nodes: [{ id: triggerAId, type: "trigger_schedule", config: { cron: "* * * * *" }, position: { x: 0, y: 0 } }],
+        edges: [],
+      }),
+    );
+
+    // A second, fully independent organization — seeded directly rather
+    // than via this file's shared ctx/orgId fixtures.
+    const orgId2 = "test-engine-org-b";
+    const userId2 = "test-engine-user-b";
+    const teamId2 = "test-engine-team-b";
+    await admin.insert(schema.organization).values({ id: orgId2, name: "Engine Org B", slug: orgId2 });
+    await admin.insert(schema.user).values({ id: userId2, name: "User B", email: `${userId2}@example.com` });
+    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId2, userId: userId2, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId2, organizationId: orgId2, name: "Test Team B" });
+    const ctx2 = { userId: userId2, organizationId: orgId2 };
+    const { projectId: projectBId } = await withAuthorizedTenant(ctx2, (tx) =>
+      createProject(tx, { organizationId: orgId2, teamId: teamId2, key: "enhb", name: "enhb", actorUserId: userId2 }),
+    );
+    const triggerBId = id("anode");
+    const { workflowId: workflowBId } = await withAuthorizedTenant(ctx2, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId2,
+        projectId: projectBId,
+        name: "Org B schedule",
+        createdBy: userId2,
+        nodes: [{ id: triggerBId, type: "trigger_schedule", config: { cron: "* * * * *" }, position: { x: 0, y: 0 } }],
+        edges: [],
+      }),
+    );
+
+    try {
+      // Simulates production exactly: an admin (RLS-bypassing) connection,
+      // scoped ONLY by the explicit organizationId argument — see
+      // apps/worker's processWorkflowSchedules. Before Fix 2 there was no
+      // organizationId filter at all, so this single call would have fired
+      // BOTH orgs' due schedules.
+      await withTenant(admin, { organizationId: orgId, userId: "system" }, (tx) => claimDueWorkflowSchedules(tx, orgId));
+
+      const runsA = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowAId));
+      const runsB = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowBId));
+      expect(runsA).toHaveLength(1);
+      expect(runsB).toHaveLength(0);
+    } finally {
+      await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId2));
+      await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId2));
+      await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId2));
+      await admin.delete(schema.user).where(eq(schema.user.id, userId2));
+      await admin.delete(schema.organization).where(eq(schema.organization.id, orgId2));
+    }
+  });
+
+  it("markWorkflowStepFailed marks the step failed and finalizes the run's status (not left stuck at 'running') (Fix 6)", async () => {
+    const { projectId, issueId } = await seedProjectAndIssue("enk");
+    const triggerId = id("anode");
+    const actionId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Failed step finalization test",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_event", config: { eventType: "issue.transitioned" }, position: { x: 0, y: 0 } },
+          { id: actionId, type: "action_add_label", config: { label: "x" }, position: { x: 200, y: 0 } },
+        ],
+        edges: [{ fromNodeId: triggerId, toNodeId: actionId }],
+      }),
+    );
+    const runId = id("wfrun");
+    await admin.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: orgId, workflowId, context: { issueId } });
+    const stepId = id("wfstep");
+    await admin.insert(schema.automationWorkflowRunStep).values({ id: stepId, runId, nodeId: actionId, depth: 0, status: "processing" });
+
+    await withAuthorizedTenant(ctx, (tx) => markWorkflowStepFailed(tx, { id: stepId, runId }, "simulated unexpected worker crash"));
+
+    const [step] = await admin.select().from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.id, stepId));
+    expect(step!.status).toBe("failed");
+    expect(step!.error).toBe("simulated unexpected worker crash");
+
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    expect(run!.status).toBe("failed"); // NOT left stuck at "running"
   });
 });

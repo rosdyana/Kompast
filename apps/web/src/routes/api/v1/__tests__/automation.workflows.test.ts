@@ -200,6 +200,25 @@ describe("/api/v1/automation/workflows", () => {
     expect(patchRes.status).toBe(404);
   });
 
+  it("returns 400 (not 500) with the real validation message for a graph with a dangling edge (Fix 5)", async () => {
+    const res = await workflowsHandlers.POST({
+      request: req("http://x/api/v1/automation/workflows", {
+        method: "POST",
+        token,
+        body: {
+          projectKey,
+          name: "Dangling edge via REST",
+          nodes: [{ id: "n1", type: "trigger_event", config: {}, position: { x: 0, y: 0 } }],
+          edges: [{ fromNodeId: "n1", toNodeId: "does_not_exist" }],
+        },
+      }),
+      params: {},
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.detail).toMatch(/does not exist in this graph/);
+  });
+
   it("rejects workflow creation from a token without issues:write", async () => {
     const auth = await getAuth();
     const readOnly = await auth.api.createApiKey({ body: { userId, permissions: { issues: ["read"] }, metadata: { organizationId: orgId } } });

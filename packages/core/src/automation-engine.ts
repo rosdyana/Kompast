@@ -37,6 +37,11 @@ export async function markWorkflowEventProcessed(db: AnyDb, eventId: string) {
   await db.update(schema.automationWorkflowEvent).set({ status: "processed" }).where(eq(schema.automationWorkflowEvent.id, eventId));
 }
 
+/** Mirrors markWorkflowEventProcessed above, for the failure path — see apps/worker's processWorkflowEventBatch. */
+export async function markWorkflowEventFailed(db: AnyDb, eventId: string): Promise<void> {
+  await db.update(schema.automationWorkflowEvent).set({ status: "failed" }).where(eq(schema.automationWorkflowEvent.id, eventId));
+}
+
 /** Same shape, for automation_workflow_run_step: pending, or waiting past its resumeAt. */
 export async function claimDueWorkflowSteps(db: AnyDb, limit = 10) {
   const claimed = await db.execute<{ id: string }>(
@@ -91,7 +96,7 @@ export async function matchAndStartRuns(tx: Tx, event: AutomationWorkflowEventRo
   }
 }
 
-async function finalizeRunIfDone(tx: Tx, runId: string): Promise<void> {
+export async function finalizeRunIfDone(tx: Tx, runId: string): Promise<void> {
   const activeSteps = await tx
     .select({ id: schema.automationWorkflowRunStep.id })
     .from(schema.automationWorkflowRunStep)
@@ -113,6 +118,20 @@ async function finalizeRunIfDone(tx: Tx, runId: string): Promise<void> {
   const allSteps = await tx.select({ status: schema.automationWorkflowRunStep.status }).from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, runId));
   const finalStatus = allSteps.some((s) => s.status === "failed") ? "failed" : "completed";
   await tx.update(schema.automationWorkflowRun).set({ status: finalStatus }).where(eq(schema.automationWorkflowRun.id, runId));
+}
+
+/**
+ * Marks a single step failed (with the given error) and finalizes its run
+ * — unlike an in-graph node failure (handled inline by advanceWorkflowStep
+ * itself), this is for a step that failed OUTSIDE normal execution (e.g.
+ * apps/worker's processWorkflowStepBatch catching an unexpected throw from
+ * advanceWorkflowStep itself). Without the finalizeRunIfDone call here,
+ * such a run's status would stay "running" forever — nothing else would
+ * ever advance it further to notice it's actually done.
+ */
+export async function markWorkflowStepFailed(tx: Tx, step: { id: string; runId: string }, error: string): Promise<void> {
+  await tx.update(schema.automationWorkflowRunStep).set({ status: "failed", error }).where(eq(schema.automationWorkflowRunStep.id, step.id));
+  await finalizeRunIfDone(tx, step.runId);
 }
 
 /**
@@ -153,40 +172,26 @@ export async function advanceWorkflowStep(tx: Tx, step: AutomationWorkflowRunSte
   // "resuming" on its own — that distinction is exactly this claim loop's job,
   // same as the trigger short-circuit above.
   const isResuming = step.resumeAt !== null;
-  const result: ExecuteStepResult = isTrigger || isResuming ? { status: "succeeded" } : await executeNode(tx, node!, run!, workflow!);
+  const result: ExecuteStepResult = isTrigger || isResuming ? { status: "succeeded" } : await executeNode(tx, node!, run!, workflow!, step.depth);
 
   if (result.status === "waiting") {
     await tx.update(schema.automationWorkflowRunStep).set({ status: "waiting", resumeAt: result.resumeAt, output: result.output ?? null }).where(eq(schema.automationWorkflowRunStep.id, step.id));
     return; // a waiting step is still "active" — the run isn't finalized while it exists.
   }
 
+  // resumeAt: null clears a resumed delay step's stale wait timestamp on
+  // its terminal update — the automation_workflow_run_step.resume_at
+  // column's own schema doc comment says "Set only when status = waiting",
+  // so a step that just left "waiting" for good (status here is always
+  // succeeded/failed once this is reached) shouldn't keep a leftover value.
+  // A no-op for every step that was never waiting in the first place
+  // (resumeAt is already null there).
   await tx
     .update(schema.automationWorkflowRunStep)
-    .set({ status: result.status, output: result.output ?? null, error: result.error ?? null })
+    .set({ status: result.status, output: result.output ?? null, error: result.error ?? null, resumeAt: null })
     .where(eq(schema.automationWorkflowRunStep.id, step.id));
 
   if (result.status === "succeeded") {
-    if (!isTrigger && !isResuming) {
-      // executeNode always hardcodes the AutomationContext it hands to
-      // moveIssue/updateIssue/addComment/etc to `{ depth: 0, workflowId }`
-      // (see automation-execution.ts's own comment on that literal — it
-      // considers depth the claim loop's problem, not its own), so any
-      // automation_workflow_event this action's mutation just caused is
-      // sitting at depth 0 regardless of how deep this step actually is.
-      // Fix it up to this step's own depth here so a downstream workflow
-      // triggered off that event continues the SAME chain-depth count
-      // (matchAndStartRuns seeds a new run's first step from event.depth)
-      // instead of resetting it — that's what lets MAX_AUTOMATION_DEPTH
-      // bound a long chain across several different workflows, not just
-      // fan-out within one run. causedByWorkflowId is already correct
-      // (set at the same callsite); only depth needs correcting.
-      const issueId = (run!.context as { issueId: string }).issueId;
-      await tx
-        .update(schema.automationWorkflowEvent)
-        .set({ depth: step.depth })
-        .where(and(eq(schema.automationWorkflowEvent.causedByWorkflowId, workflow!.id), eq(schema.automationWorkflowEvent.entityId, issueId), eq(schema.automationWorkflowEvent.depth, 0)));
-    }
-
     const outgoingEdges = await tx.select().from(schema.automationEdge).where(eq(schema.automationEdge.fromNodeId, node!.id));
     const matchingEdges = node!.type === "condition_property" ? outgoingEdges.filter((e) => e.fromHandle === result.branchTaken) : outgoingEdges;
 
@@ -226,21 +231,44 @@ function isScheduleDue(cron: string, lastFiredAt: Date | null): boolean {
  * issue mutation, so there's nothing for emitAutomationEvent to record.
  * Runs on its own ~60s poller (coarser than the 5s event/step pollers —
  * schedule granularity doesn't need second-level precision).
+ *
+ * Explicitly scoped by `organizationId` rather than relying on RLS: this
+ * function's only production caller (apps/worker's processWorkflowSchedules)
+ * runs it via `withTenant(adminDb, ...)`, and the admin Postgres role has
+ * `rolbypassrls = true` — RLS is completely bypassed there, so without this
+ * predicate every organization's schedule nodes would be visible (and
+ * fired) on every single per-org loop iteration.
  */
-export async function claimDueWorkflowSchedules(tx: Tx): Promise<void> {
+export async function claimDueWorkflowSchedules(tx: Tx, organizationId: string): Promise<void> {
   const scheduleNodes = await tx
     .select({ node: schema.automationNode, workflow: schema.automationWorkflow })
     .from(schema.automationNode)
     .innerJoin(schema.automationWorkflow, eq(schema.automationWorkflow.id, schema.automationNode.workflowId))
-    .where(and(eq(schema.automationNode.type, "trigger_schedule"), eq(schema.automationWorkflow.enabled, true)));
+    .where(
+      and(
+        eq(schema.automationNode.type, "trigger_schedule"),
+        eq(schema.automationWorkflow.enabled, true),
+        eq(schema.automationWorkflow.organizationId, organizationId),
+      ),
+    );
 
   for (const { node, workflow } of scheduleNodes) {
-    const config = node.config as { cron: string };
-    if (!isScheduleDue(config.cron, node.lastFiredAt)) continue;
+    try {
+      const config = node.config as { cron: string };
+      if (!isScheduleDue(config.cron, node.lastFiredAt)) continue;
 
-    const runId = id("wfrun");
-    await tx.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: workflow.organizationId, workflowId: workflow.id, context: {} as Json });
-    await tx.insert(schema.automationWorkflowRunStep).values({ id: id("wfstep"), runId, nodeId: node.id, depth: 0, status: "pending" });
-    await tx.update(schema.automationNode).set({ lastFiredAt: new Date() }).where(eq(schema.automationNode.id, node.id));
+      const runId = id("wfrun");
+      await tx.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: workflow.organizationId, workflowId: workflow.id, context: {} as Json });
+      await tx.insert(schema.automationWorkflowRunStep).values({ id: id("wfstep"), runId, nodeId: node.id, depth: 0, status: "pending" });
+      await tx.update(schema.automationNode).set({ lastFiredAt: new Date() }).where(eq(schema.automationNode.id, node.id));
+    } catch (err) {
+      // A single malformed node (e.g. a cron string that predates
+      // validateGraph's own save-time check — belt-and-braces, not the
+      // primary defense) must not abort the rest of this org's pass: this
+      // whole loop runs inside one transaction (see processWorkflowSchedules),
+      // so an uncaught throw here would roll back every OTHER due schedule
+      // in the same organization's pass too, every 60 seconds, forever.
+      console.error(`[automation-engine] failed to process schedule node ${node.id}:`, err);
+    }
   }
 }

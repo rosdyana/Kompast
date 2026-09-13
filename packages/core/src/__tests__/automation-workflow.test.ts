@@ -192,4 +192,64 @@ describe("automation workflow CRUD", () => {
       ),
     ).rejects.toThrow(/not reachable from any trigger/);
   });
+
+  it("accepts a trigger_schedule -> action_webhook graph (Fix 1)", async () => {
+    const projectId = await seedProject("wfj");
+    const triggerId = id("anode");
+    const webhookId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Schedule webhook",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_schedule", config: { cron: "0 9 * * *" }, position: { x: 0, y: 0 } },
+          { id: webhookId, type: "action_webhook", config: { url: "https://example.com", method: "POST", headers: {}, bodyTemplate: {} }, position: { x: 200, y: 0 } },
+        ],
+        edges: [{ fromNodeId: triggerId, toNodeId: webhookId }],
+      }),
+    );
+    expect(workflowId).toBeTruthy();
+  });
+
+  it("rejects a trigger_schedule -> action_add_label graph — a schedule tick has no triggering issue (Fix 1)", async () => {
+    const projectId = await seedProject("wfk");
+    const triggerId = id("anode");
+    const actionId = id("anode");
+
+    await expect(
+      withAuthorizedTenant(ctx, (tx) =>
+        createWorkflow(tx, {
+          organizationId: orgId,
+          projectId,
+          name: "Schedule with issue action",
+          createdBy: userId,
+          nodes: [
+            { id: triggerId, type: "trigger_schedule", config: { cron: "0 9 * * *" }, position: { x: 0, y: 0 } },
+            { id: actionId, type: "action_add_label", config: { label: "x" }, position: { x: 200, y: 0 } },
+          ],
+          edges: [{ fromNodeId: triggerId, toNodeId: actionId }],
+        }),
+      ),
+    ).rejects.toThrow(/can only contain action_webhook and delay/);
+  });
+
+  it("rejects a malformed cron expression on a schedule trigger at save time (Fix 2)", async () => {
+    const projectId = await seedProject("wfl");
+    const triggerId = id("anode");
+
+    await expect(
+      withAuthorizedTenant(ctx, (tx) =>
+        createWorkflow(tx, {
+          organizationId: orgId,
+          projectId,
+          name: "Bad cron",
+          createdBy: userId,
+          nodes: [{ id: triggerId, type: "trigger_schedule", config: { cron: "not a cron expression" }, position: { x: 0, y: 0 } }],
+          edges: [],
+        }),
+      ),
+    ).rejects.toThrow(/Invalid cron expression/);
+  });
 });

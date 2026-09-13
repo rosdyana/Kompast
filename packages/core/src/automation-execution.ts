@@ -1,3 +1,4 @@
+import dns from "node:dns/promises";
 import { eq, schema, type Json } from "@kompast/db";
 import type { Tx } from "./types";
 import { createIssue, moveIssue, updateIssue, updateIssueCustomField } from "./issue";
@@ -30,6 +31,54 @@ export interface ExecuteStepResult {
  */
 const STRUCTURAL_PROPERTY_KEYS = new Set(["status", "type", "labels", "title"]);
 
+/**
+ * Core (non-custom) issue columns readable by condition_property/
+ * action_set_property, keyed by the same property name the node config
+ * uses, each paired with how to pull that value off a loaded issue row.
+ * Single source of truth for AUTOMATION_READABLE_PROPERTY_KEYS below AND
+ * readIssuePropertyValue's own dispatch, so the two can never drift apart —
+ * a later frontend property-picker plan needs the same list.
+ */
+const CORE_READABLE_PROPERTY_ACCESSORS: Record<string, (issue: typeof schema.issue.$inferSelect) => unknown> = {
+  assigneeId: (issue) => issue.assigneeId,
+  reporterId: (issue) => issue.reporterId,
+  priority: (issue) => issue.priority,
+  startDate: (issue) => issue.startDate,
+  dueDate: (issue) => issue.dueDate,
+  epicId: (issue) => issue.epicId,
+  sprint: (issue) => issue.sprintId,
+  storyPoints: (issue) => issue.storyPoints,
+};
+
+/**
+ * Core issue fields settable by action_set_property, OTHER than "status"/
+ * "sprint" (dispatched to moveIssue/addIssueToSprint-removeIssueFromSprint
+ * as special cases before this set is even checked — see
+ * applySetProperty). Single source of truth for
+ * AUTOMATION_SETTABLE_PROPERTY_KEYS below AND applySetProperty's own
+ * dispatch.
+ */
+const CORE_SETTABLE_PROPERTY_KEYS = new Set(["title", "assigneeId", "priority", "storyPoints", "dueDate", "startDate", "epicId", "labels"]);
+
+/**
+ * Every property key the automation engine can READ off an issue — the
+ * structural fields plus every core column above. Anything outside this
+ * set is treated as a custom issue_property_definition key. Exported so a
+ * later frontend property-picker plan has exactly one source of truth
+ * instead of re-deriving its own copy that could silently drift from this
+ * one.
+ */
+export const AUTOMATION_READABLE_PROPERTY_KEYS: readonly string[] = [...STRUCTURAL_PROPERTY_KEYS, ...Object.keys(CORE_READABLE_PROPERTY_ACCESSORS)];
+
+/**
+ * Every core property key action_set_property can WRITE — "status"/
+ * "sprint" plus CORE_SETTABLE_PROPERTY_KEYS. Deliberately excludes "type"
+ * and "reporterId" (applySetProperty fails loudly for either — see its own
+ * comment) and every other structural/read-only field. Same
+ * drift-prevention rationale as AUTOMATION_READABLE_PROPERTY_KEYS above.
+ */
+export const AUTOMATION_SETTABLE_PROPERTY_KEYS: readonly string[] = ["status", "sprint", ...CORE_SETTABLE_PROPERTY_KEYS];
+
 function matchCondition(actual: unknown, operator: string, expected: Json): boolean {
   switch (operator) {
     case "eq":
@@ -55,17 +104,7 @@ async function readIssuePropertyValue(tx: Tx, issueId: string, property: string)
     if (property === "labels") return issue.labels;
     if (property === "title") return issue.title;
   }
-  const coreColumnMap: Record<string, unknown> = {
-    assigneeId: issue.assigneeId,
-    reporterId: issue.reporterId,
-    priority: issue.priority,
-    startDate: issue.startDate,
-    dueDate: issue.dueDate,
-    epicId: issue.epicId,
-    sprint: issue.sprintId,
-    storyPoints: issue.storyPoints,
-  };
-  if (property in coreColumnMap) return coreColumnMap[property];
+  if (property in CORE_READABLE_PROPERTY_ACCESSORS) return CORE_READABLE_PROPERTY_ACCESSORS[property]!(issue);
   return (issue.customFields as Record<string, unknown> | null)?.[property] ?? null;
 }
 
@@ -87,8 +126,7 @@ async function applySetProperty(tx: Tx, issueId: string, property: string, value
     else await removeIssueFromSprint(tx, issueId, { actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient });
     return;
   }
-  const coreUpdateFields = new Set(["title", "assigneeId", "priority", "storyPoints", "dueDate", "startDate", "epicId", "labels"]);
-  if (coreUpdateFields.has(property)) {
+  if (CORE_SETTABLE_PROPERTY_KEYS.has(property)) {
     await updateIssue(tx, issueId, { [property]: value, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext } as Parameters<typeof updateIssue>[2]);
     return;
   }
@@ -111,17 +149,78 @@ function delayResumeAt(config: { amount: number; unit: "minutes" | "hours" | "da
 }
 
 /**
+ * Best-effort SSRF guard for action_webhook's own address-family check:
+ * true if `address` (already DNS-resolved, never the raw hostname — a
+ * hostname can resolve to a private IP without looking like one) falls in
+ * a loopback/link-local/private range. Deliberately not exhaustive — no
+ * full IPv6 CIDR handling beyond the common ranges below, and this can't
+ * defend against DNS rebinding between this check and the fetch call
+ * itself. A reasonable best effort for the common ranges (including the
+ * 169.254.169.254 cloud metadata endpoint), not a complete network
+ * security boundary.
+ */
+function isDisallowedWebhookAddress(address: string, family: number): boolean {
+  if (family === 4) {
+    const octets = address.split(".").map(Number);
+    if (octets.length !== 4 || octets.some((n) => Number.isNaN(n))) return true; // malformed — fail closed
+    const [a, b] = octets as [number, number, number, number];
+    if (a === 127) return true; // loopback (127.0.0.0/8)
+    if (a === 10) return true; // private (10.0.0.0/8)
+    if (a === 172 && b >= 16 && b <= 31) return true; // private (172.16.0.0/12)
+    if (a === 192 && b === 168) return true; // private (192.168.0.0/16)
+    if (a === 169 && b === 254) return true; // link-local (169.254.0.0/16) — includes the cloud metadata endpoint
+    if (a === 0) return true; // "this network" (0.0.0.0/8)
+    return false;
+  }
+  const normalized = address.toLowerCase();
+  if (normalized === "::1") return true; // loopback
+  if (normalized.startsWith("fe80:")) return true; // link-local (fe80::/10)
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // unique local (fc00::/7)
+  if (normalized.startsWith("::ffff:")) return isDisallowedWebhookAddress(normalized.slice("::ffff:".length), 4); // IPv4-mapped IPv6
+  return false;
+}
+
+/**
+ * Resolves action_webhook's user-configured target URL and rejects it if
+ * it points at a loopback/link-local/private address — this is the
+ * engine's only outbound-fetch primitive, reachable by any user with
+ * issues:write (not just an admin), and the request originates from
+ * apps/worker's own network position. Throws (caught by executeNode's
+ * existing catch, same as a real network error) rather than returning a
+ * boolean, so callers can't forget to check it.
+ */
+async function assertWebhookUrlAllowed(rawUrl: string): Promise<void> {
+  const hostname = new URL(rawUrl).hostname;
+  const { address, family } = await dns.lookup(hostname);
+  if (isDisallowedWebhookAddress(address, family)) throw new Error("Webhook target resolves to a disallowed address");
+}
+
+/**
  * Executes exactly one node's logic. Does not read or write the
  * automation_workflow_run_step row itself — the claim loop (Task 6/7)
  * owns that, so this function is trivially unit-testable node-by-node.
+ *
+ * `stepDepth` is the CURRENT step's own depth (passed in by
+ * advanceWorkflowStep) — any automation_workflow_event this node's
+ * mutation emits is stamped with this exact depth at the source, so a
+ * downstream workflow chained off that event continues the SAME
+ * chain-depth count instead of resetting to 0. This used to be hardcoded
+ * to 0 and corrected after the fact via a compensating UPDATE in
+ * automation-engine.ts, keyed on the run's own triggering issueId — which
+ * silently missed any event tied to a DIFFERENT entity than that issue
+ * (e.g. action_create_subtask's newly created subtask never got its
+ * `issue.created` event's depth fixed up, letting a two-workflow mutual
+ * subtask-creation loop bypass MAX_AUTOMATION_DEPTH entirely). Stamping
+ * the right depth here, at the one place every node's mutation originates
+ * from, can't miss a case like that.
  */
-export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationWorkflowRun, workflow: AutomationWorkflow): Promise<ExecuteStepResult> {
+export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationWorkflowRun, workflow: AutomationWorkflow, stepDepth: number): Promise<ExecuteStepResult> {
   const issueId = (run.context as { issueId: string }).issueId;
   const meta: ActionMeta = {
     actorId: workflow.createdBy!,
     origin: "automation",
     originClient: `automation-workflow:${workflow.name}`,
-    automationContext: { depth: 0, workflowId: workflow.id }, // depth is set by the claim loop when it computes the NEXT step's depth; not needed by executeNode itself.
+    automationContext: { depth: stepDepth, workflowId: workflow.id },
   };
 
   try {
@@ -194,7 +293,21 @@ export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationW
     if (node.type === "action_webhook") {
       const config = node.config as { url: string; method: string; headers: Record<string, string>; bodyTemplate: Json };
       try {
-        const res = await fetch(config.url, { method: config.method, headers: { "Content-Type": "application/json", ...config.headers }, body: JSON.stringify(config.bodyTemplate) });
+        await assertWebhookUrlAllowed(config.url);
+        const res = await fetch(config.url, {
+          method: config.method,
+          headers: { "Content-Type": "application/json", ...config.headers },
+          body: JSON.stringify(config.bodyTemplate),
+          // Bounded so a hung target can't hold this step's transaction
+          // open indefinitely — advanceWorkflowStep recurses through an
+          // entire run inside one open Postgres transaction, so a webhook
+          // that never responds would otherwise block every other
+          // tenant's workflow-step processing (the worker's step queue
+          // has concurrency 1) and pin a Postgres connection. An abort
+          // rejects with a DOMException named "AbortError", handled
+          // generically by the catch below like any other network error.
+          signal: AbortSignal.timeout(10_000),
+        });
         if (!res.ok) return { status: "failed", error: `Webhook returned ${res.status} ${res.statusText}` };
         return { status: "succeeded", output: { status: res.status } };
       } catch (err) {

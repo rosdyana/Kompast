@@ -6,6 +6,8 @@ import { createSprint } from "../sprint";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 import { toPlainText } from "../rich-text";
+import { listNotifications } from "../notification";
+import { listOutgoingLinks } from "../link";
 import { executeNode } from "../automation-execution";
 
 describe("automation-execution: executeNode", () => {
@@ -18,6 +20,11 @@ describe("automation-execution: executeNode", () => {
     await admin.delete(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, "___never_matches___")); // no-op; steps cascade from runs
     await admin.delete(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.organizationId, orgId));
     await admin.delete(schema.automationWorkflow).where(eq(schema.automationWorkflow.organizationId, orgId));
+    // action_link_issue's test creates a real link row (createdBy: userId) —
+    // must go before the user delete below, or a leftover link row from a
+    // previous test's run blocks THIS beforeEach's own user delete with an
+    // FK violation.
+    await admin.delete(schema.link).where(eq(schema.link.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
     await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
@@ -59,7 +66,7 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const node = fakeNode("condition_property", { property: "priority", operator: "eq", value: "medium" });
-    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!));
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
 
     expect(result.status).toBe("succeeded");
     expect(result.branchTaken).toBe("true"); // default issue priority is "medium"
@@ -72,7 +79,7 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const node = fakeNode("condition_property", { property: "priority", operator: "eq", value: "highest" });
-    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!));
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
 
     expect(result.branchTaken).toBe("false");
   });
@@ -83,7 +90,7 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const node = fakeNode("action_set_property", { property: "status", value: statuses[2]!.id });
-    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!));
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
 
     expect(result.status).toBe("succeeded");
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
@@ -98,7 +105,7 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const node = fakeNode("action_set_property", { property: "assigneeId", value: userId });
-    await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!));
+    await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
 
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.assigneeId).toBe(userId);
@@ -113,7 +120,7 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const node = fakeNode("action_set_property", { property: "region", value: "APAC" });
-    await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!));
+    await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
 
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.customFields).toMatchObject({ region: "APAC" });
@@ -126,7 +133,7 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const setNode = fakeNode("action_set_property", { property: "sprint", value: sprintId });
-    const setResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, setNode, run!, workflow!));
+    const setResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, setNode, run!, workflow!, 0));
     expect(setResult.status).toBe("succeeded");
     const [issueAfterAdd] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issueAfterAdd?.sprintId).toBe(sprintId);
@@ -134,7 +141,7 @@ describe("automation-execution: executeNode", () => {
     expect(sprintIssueRows.some((r) => r.sprintId === sprintId && r.removedAt === null)).toBe(true);
 
     const clearNode = fakeNode("action_set_property", { property: "sprint", value: null });
-    const clearResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, clearNode, run!, workflow!));
+    const clearResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, clearNode, run!, workflow!, 0));
     expect(clearResult.status).toBe("succeeded");
     const [issueAfterRemove] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issueAfterRemove?.sprintId).toBeNull();
@@ -146,12 +153,12 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const typeNode = fakeNode("action_set_property", { property: "type", value: issueTypes[1]!.id });
-    const typeResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, typeNode, run!, workflow!));
+    const typeResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, typeNode, run!, workflow!, 0));
     expect(typeResult.status).toBe("failed");
     expect(typeResult.error).toContain("type");
 
     const reporterNode = fakeNode("action_set_property", { property: "reporterId", value: userId });
-    const reporterResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, reporterNode, run!, workflow!));
+    const reporterResult = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, reporterNode, run!, workflow!, 0));
     expect(reporterResult.status).toBe("failed");
     expect(reporterResult.error).toContain("reporterId");
 
@@ -168,7 +175,7 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const node = fakeNode("action_add_label", { label: "existing" });
-    await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!));
+    await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
 
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.labels).toEqual(["existing"]);
@@ -180,7 +187,7 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const node = fakeNode("action_comment", { text: "Handled by a workflow" });
-    await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!));
+    await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
 
     const comments = await admin.select().from(schema.issueComment).where(eq(schema.issueComment.issueId, issueId));
     expect(comments).toHaveLength(1);
@@ -194,12 +201,81 @@ describe("automation-execution: executeNode", () => {
 
     const before = Date.now();
     const node = fakeNode("delay", { amount: 30, unit: "minutes" });
-    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!));
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
 
     expect(result.status).toBe("waiting");
     expect(result.resumeAt!.getTime()).toBeGreaterThan(before + 29 * 60 * 1000);
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.updatedAt.getTime()).toBeLessThanOrEqual(before + 1000);
+  });
+
+  it("action_notify creates a real in-app notification for the target user (Fix 9)", async () => {
+    const { runId, workflowId } = await seedProjectIssueAndWorkflow("exn");
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const node = fakeNode("action_notify", { userId, title: "Automation notified you", body: "via a workflow" });
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
+
+    expect(result.status).toBe("succeeded");
+    const notifications = await withAuthorizedTenant(ctx, (tx) => listNotifications(tx, orgId, userId));
+    expect(notifications.some((n) => n.title === "Automation notified you" && n.body === "via a workflow")).toBe(true);
+  });
+
+  it("action_link_issue creates a real link between the triggering issue and the target issue (Fix 9)", async () => {
+    const { issueId, projectId, issueTypes, statuses, runId, workflowId } = await seedProjectIssueAndWorkflow("exo");
+    const { issueId: otherIssueId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Link target", reporterId: userId }),
+    );
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const node = fakeNode("action_link_issue", { issueId: otherIssueId });
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
+
+    expect(result.status).toBe("succeeded");
+    const links = await withAuthorizedTenant(ctx, (tx) => listOutgoingLinks(tx, "issue", issueId));
+    expect(links.some((l) => l.toId === otherIssueId)).toBe(true);
+  });
+
+  it("action_create_subtask creates a real subtask issue with parentId set to the triggering issue (Fix 9)", async () => {
+    const { issueId, issueTypes, runId, workflowId } = await seedProjectIssueAndWorkflow("exl");
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const node = fakeNode("action_create_subtask", { typeId: issueTypes[0]!.id, title: "Auto-created subtask" });
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
+
+    expect(result.status).toBe("succeeded");
+    const subtasks = await admin.select().from(schema.issue).where(eq(schema.issue.parentId, issueId));
+    expect(subtasks).toHaveLength(1);
+    expect(subtasks[0]!.title).toBe("Auto-created subtask");
+  });
+
+  it("action_create_subtask stamps the SUBTASK's own emitted issue.created event with the acting step's depth, not 0 (Fix 7 regression case)", async () => {
+    // Before Fix 7, executeNode always hardcoded automationContext to
+    // { depth: 0, workflowId }, relying on a compensating UPDATE in
+    // automation-engine.ts to fix depth up afterward — an UPDATE keyed on
+    // the RUN's own triggering issueId, which never matched an event for a
+    // DIFFERENT entity (the newly created subtask). That let a
+    // subtask-creation loop bypass MAX_AUTOMATION_DEPTH entirely. Fix 7
+    // threads the acting step's depth straight into executeNode instead,
+    // so this can no longer happen — verified here directly (no need to
+    // drive a real advanceWorkflowStep chain since executeNode alone now
+    // fully determines the emitted event's depth).
+    const { issueId, issueTypes, runId, workflowId } = await seedProjectIssueAndWorkflow("exm");
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const node = fakeNode("action_create_subtask", { typeId: issueTypes[0]!.id, title: "Depth-stamped subtask" });
+    const actingStepDepth = 3;
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, actingStepDepth));
+    expect(result.status).toBe("succeeded");
+
+    const [subtask] = await admin.select().from(schema.issue).where(eq(schema.issue.parentId, issueId));
+    const [subtaskEvent] = await admin.select().from(schema.automationWorkflowEvent).where(eq(schema.automationWorkflowEvent.entityId, subtask!.id));
+    expect(subtaskEvent!.depth).toBe(actingStepDepth);
+    expect(subtaskEvent!.causedByWorkflowId).toBe(workflowId);
   });
 
   it("dry-run workflow computes the action but never applies it", async () => {
@@ -209,7 +285,7 @@ describe("automation-execution: executeNode", () => {
     const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
 
     const node = fakeNode("action_add_label", { label: "would-be-added" });
-    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!));
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run!, workflow!, 0));
 
     expect(result.status).toBe("succeeded");
     expect(result.output).toMatchObject({ dryRun: true });
@@ -266,7 +342,7 @@ describe("automation-execution: action_webhook", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const node = { id: id("anode"), workflowId: "unused", type: "action_webhook", config: { url: "https://example.com/hook", method: "POST", headers: { "X-Test": "1" }, bodyTemplate: { issue: "{{issueId}}" } }, position: { x: 0, y: 0 } } as never;
-    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow));
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow, 0));
 
     expect(result.status).toBe("succeeded");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -282,7 +358,7 @@ describe("automation-execution: action_webhook", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 500 })));
 
     const node = { id: id("anode"), workflowId: "unused", type: "action_webhook", config: { url: "https://example.com/hook", method: "POST", headers: {}, bodyTemplate: {} }, position: { x: 0, y: 0 } } as never;
-    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow));
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow, 0));
 
     expect(result.status).toBe("failed");
     expect(result.error).toContain("500");
@@ -294,10 +370,53 @@ describe("automation-execution: action_webhook", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
 
     const node = { id: id("anode"), workflowId: "unused", type: "action_webhook", config: { url: "https://example.com/hook", method: "POST", headers: {}, bodyTemplate: {} }, position: { x: 0, y: 0 } } as never;
-    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow));
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow, 0));
 
     expect(result.status).toBe("failed");
     expect(result.error).toContain("ECONNREFUSED");
+    vi.unstubAllGlobals();
+  });
+
+  it("a hung target (fetch never resolves) is aborted via the bounded timeout signal and marks the step failed (Fix 3)", async () => {
+    const { run, workflow } = await seed("hkd");
+    // Simulates the real AbortSignal.timeout(10_000) eventually firing on a
+    // hung target, WITHOUT this test actually waiting out the real 10
+    // seconds: our mock fetch never resolves on its own (like a genuinely
+    // hung target) but immediately dispatches its own "abort" event on the
+    // signal it was handed, exercising exactly the codepath a real timeout
+    // firing after 10s would — including proving executeNode really does
+    // pass an AbortSignal into fetch at all.
+    const fetchMock = vi.fn((_url: string, options: RequestInit) => {
+      const signal = options.signal as AbortSignal;
+      expect(signal).toBeInstanceOf(AbortSignal);
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new DOMException("This operation was aborted", "AbortError")));
+        signal.dispatchEvent(new Event("abort"));
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const node = { id: id("anode"), workflowId: "unused", type: "action_webhook", config: { url: "https://example.com/hook", method: "POST", headers: {}, bodyTemplate: {} }, position: { x: 0, y: 0 } } as never;
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow, 0));
+
+    expect(result.status).toBe("failed");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects a webhook target that resolves to a loopback address, before ever calling fetch (Fix 4, SSRF guard)", async () => {
+    const { run, workflow } = await seed("hke");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    // A literal IP's DNS lookup is instant (no real network call) — no need
+    // to mock dns.lookup itself.
+    const node = { id: id("anode"), workflowId: "unused", type: "action_webhook", config: { url: "http://127.0.0.1:1/webhook", method: "POST", headers: {}, bodyTemplate: {} }, position: { x: 0, y: 0 } } as never;
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow, 0));
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/disallowed address/);
+    expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });
