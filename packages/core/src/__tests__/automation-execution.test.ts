@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { schema, eq, adminDb as admin } from "@kompast/db";
 import { createProject } from "../project";
 import { createIssue } from "../issue";
@@ -215,5 +215,89 @@ describe("automation-execution: executeNode", () => {
     expect(result.output).toMatchObject({ dryRun: true });
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.labels).toEqual([]);
+  });
+});
+
+describe("automation-execution: action_webhook", () => {
+  const orgId = "test-exec-webhook-org";
+  const userId = "test-exec-webhook-user";
+  const teamId = "test-exec-webhook-team";
+  const ctx = { userId, organizationId: orgId };
+
+  async function cleanup() {
+    await admin.delete(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.organizationId, orgId));
+    await admin.delete(schema.automationWorkflow).where(eq(schema.automationWorkflow.organizationId, orgId));
+    await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
+    await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
+    await admin.delete(schema.user).where(eq(schema.user.id, userId));
+    await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    await admin.insert(schema.organization).values({ id: orgId, name: "Webhook Org", slug: orgId });
+    await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
+    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+  });
+
+  afterAll(cleanup);
+
+  async function seed(key: string) {
+    const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key, name: key, actorUserId: userId }),
+    );
+    const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Webhook test issue", reporterId: userId }),
+    );
+    const workflowId = id("wf");
+    await admin.insert(schema.automationWorkflow).values({ id: workflowId, organizationId: orgId, projectId, name: "Webhook workflow", createdBy: userId });
+    const runId = id("wfrun");
+    await admin.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: orgId, workflowId, context: { issueId } });
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+    return { run: run!, workflow: workflow! };
+  }
+
+  it("sends the configured method/url/headers/body and succeeds on a 2xx response", async () => {
+    const { run, workflow } = await seed("hka");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const node = { id: id("anode"), workflowId: "unused", type: "action_webhook", config: { url: "https://example.com/hook", method: "POST", headers: { "X-Test": "1" }, bodyTemplate: { issue: "{{issueId}}" } }, position: { x: 0, y: 0 } } as never;
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow));
+
+    expect(result.status).toBe("succeeded");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("https://example.com/hook");
+    expect(options.method).toBe("POST");
+    expect(options.headers["X-Test"]).toBe("1");
+    vi.unstubAllGlobals();
+  });
+
+  it("a non-2xx response marks the step failed with the status captured, never throws unhandled", async () => {
+    const { run, workflow } = await seed("hkb");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 500 })));
+
+    const node = { id: id("anode"), workflowId: "unused", type: "action_webhook", config: { url: "https://example.com/hook", method: "POST", headers: {}, bodyTemplate: {} }, position: { x: 0, y: 0 } } as never;
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow));
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("500");
+    vi.unstubAllGlobals();
+  });
+
+  it("a network error (fetch rejects) marks the step failed, never throws unhandled", async () => {
+    const { run, workflow } = await seed("hkc");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+
+    const node = { id: id("anode"), workflowId: "unused", type: "action_webhook", config: { url: "https://example.com/hook", method: "POST", headers: {}, bodyTemplate: {} }, position: { x: 0, y: 0 } } as never;
+    const result = await withAuthorizedTenant(ctx, (tx) => executeNode(tx, node, run, workflow));
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("ECONNREFUSED");
+    vi.unstubAllGlobals();
   });
 });

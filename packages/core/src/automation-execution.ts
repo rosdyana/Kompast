@@ -191,6 +191,17 @@ export async function executeNode(tx: Tx, node: AutomationNode, run: AutomationW
       return { status: "succeeded" };
     }
 
+    if (node.type === "action_webhook") {
+      const config = node.config as { url: string; method: string; headers: Record<string, string>; bodyTemplate: Json };
+      try {
+        const res = await fetch(config.url, { method: config.method, headers: { "Content-Type": "application/json", ...config.headers }, body: JSON.stringify(config.bodyTemplate) });
+        if (!res.ok) return { status: "failed", error: `Webhook returned ${res.status} ${res.statusText}` };
+        return { status: "succeeded", output: { status: res.status } };
+      } catch (err) {
+        return { status: "failed", error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
     return { status: "failed", error: `Unhandled node type: ${node.type}` };
   } catch (err) {
     return { status: "failed", error: err instanceof Error ? err.message : String(err) };
