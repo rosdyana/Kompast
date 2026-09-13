@@ -1,0 +1,1 @@
+ALTER TABLE "automation_node" ADD COLUMN "last_fired_at" timestamp;

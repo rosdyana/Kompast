@@ -1,7 +1,7 @@
 import { loadEnv } from "@kompast/env";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
-import { adminDb, schema, eq } from "@kompast/db";
+import { adminDb, schema, eq, withTenant } from "@kompast/db";
 import {
   claimPendingEmails,
   markEmailSent,
@@ -16,6 +16,14 @@ import {
   markReindexTaskProcessed,
   markReindexTaskFailed,
   withAuthorizedTenant,
+  claimPendingWorkflowEvents,
+  markWorkflowEventProcessed,
+  markWorkflowEventFailed,
+  matchAndStartRuns,
+  claimDueWorkflowSteps,
+  advanceWorkflowStep,
+  markWorkflowStepFailed,
+  claimDueWorkflowSchedules,
 } from "@kompast/core";
 import { createMailer, NotificationEmail, SprintSummaryEmail } from "@kompast/mail";
 
@@ -140,23 +148,119 @@ async function processReindexBatch() {
   }
 }
 
+/**
+ * New node-graph engine's event poller — separate queue/table from
+ * processAutomationBatch's above (see automation-workflow-events schema
+ * comment): claimPendingWorkflowEvents claims from automation_workflow_event,
+ * not automation_event, so this can never race the old engine's own claim.
+ * Unlike processAutomationBatch, matchAndStartRuns runs inside a plain
+ * withTenant tx rather than withAuthorizedTenant — there's no "acting user"
+ * concept here (a workflow run isn't attributed to any one member), so
+ * this passes a synthetic "system" userId directly rather than looking up
+ * a real member via findAnyMember.
+ */
+async function processWorkflowEventBatch() {
+  const events = await claimPendingWorkflowEvents(adminDb, 10);
+  for (const event of events) {
+    try {
+      await withTenant(adminDb, { organizationId: event.organizationId, userId: "system" }, (tx) => matchAndStartRuns(tx, event));
+      await markWorkflowEventProcessed(adminDb, event.id);
+    } catch (err) {
+      console.error(`Failed to process workflow event ${event.id}:`, err);
+      await markWorkflowEventFailed(adminDb, event.id);
+    }
+  }
+}
+
+/**
+ * Same shape as processWorkflowEventBatch above. claimDueWorkflowSteps
+ * claims across every workspace at once (admin connection), so the run's
+ * organizationId has to be looked up per-step before a tenant-scoped tx
+ * can be opened for advanceWorkflowStep itself.
+ */
+async function processWorkflowStepBatch() {
+  const steps = await claimDueWorkflowSteps(adminDb, 10);
+  for (const step of steps) {
+    let organizationId: string | undefined;
+    try {
+      const [run] = await adminDb.select({ organizationId: schema.automationWorkflowRun.organizationId }).from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, step.runId));
+      organizationId = run!.organizationId;
+      await withTenant(adminDb, { organizationId, userId: "system" }, (tx) => advanceWorkflowStep(tx, step));
+    } catch (err) {
+      console.error(`Failed to advance workflow step ${step.id}:`, err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      // Routes through the core function (not a bare adminDb.update) so the
+      // step's RUN also gets finalized — leaving it stuck at "running"
+      // forever was the bug this fix addresses. Falls back to the raw
+      // update only if we couldn't even determine the run's organization
+      // (so a tenant-scoped tx can't be opened), rather than losing the
+      // failure entirely.
+      if (organizationId) {
+        await withTenant(adminDb, { organizationId, userId: "system" }, (tx) => markWorkflowStepFailed(tx, step, errorMessage));
+      } else {
+        await adminDb.update(schema.automationWorkflowRunStep).set({ status: "failed", error: errorMessage }).where(eq(schema.automationWorkflowRunStep.id, step.id));
+      }
+    }
+  }
+}
+
+/**
+ * Coarser ~60s poller (see claimDueWorkflowSchedules's own comment) — no
+ * event outbox involved, so this walks every enabled workflow's
+ * organization directly rather than claiming rows. One organization's
+ * failure (e.g. a malformed cron string on one of its trigger_schedule
+ * nodes) is caught here so it can't stop other organizations from being
+ * checked in the same poll cycle.
+ */
+async function processWorkflowSchedules() {
+  const workflows = await adminDb.select({ organizationId: schema.automationWorkflow.organizationId }).from(schema.automationWorkflow).where(eq(schema.automationWorkflow.enabled, true));
+  const organizationIds = [...new Set(workflows.map((w) => w.organizationId))];
+  for (const organizationId of organizationIds) {
+    try {
+      await withTenant(adminDb, { organizationId, userId: "system" }, (tx) => claimDueWorkflowSchedules(tx, organizationId));
+    } catch (err) {
+      console.error(`Failed to process workflow schedules for org ${organizationId}:`, err);
+    }
+  }
+}
+
 const mailQueue = new Queue(MAIL_QUEUE, { connection });
 const automationQueue = new Queue(AUTOMATION_QUEUE, { connection });
 const reindexQueue = new Queue(REINDEX_QUEUE, { connection });
+const workflowEventQueue = new Queue("automation-workflow-events", { connection });
+const workflowStepQueue = new Queue("automation-workflow-steps", { connection });
+// Assumes a single worker replica: unlike the event/step queues,
+// claimDueWorkflowSchedules has no FOR UPDATE SKIP LOCKED atomic claim, so
+// two concurrent replicas could both see the same due schedule and
+// double-fire it. Not reachable at the current single-worker deployment
+// shape — revisit if that ever changes.
+const workflowScheduleQueue = new Queue("automation-workflow-schedules", { connection });
 const mailWorker = new Worker(MAIL_QUEUE, () => processOutboxBatch(), { connection });
 const automationWorker = new Worker(AUTOMATION_QUEUE, () => processAutomationBatch(), { connection });
 const reindexWorker = new Worker(REINDEX_QUEUE, () => processReindexBatch(), { connection });
+const workflowEventWorker = new Worker("automation-workflow-events", () => processWorkflowEventBatch(), { connection });
+const workflowStepWorker = new Worker("automation-workflow-steps", () => processWorkflowStepBatch(), { connection });
+const workflowScheduleWorker = new Worker("automation-workflow-schedules", () => processWorkflowSchedules(), { connection });
 mailWorker.on("failed", (job, err) => console.error(`[worker] mail job ${job?.id} failed:`, err));
 automationWorker.on("failed", (job, err) => console.error(`[worker] automation job ${job?.id} failed:`, err));
 reindexWorker.on("failed", (job, err) => console.error(`[worker] reindex job ${job?.id} failed:`, err));
+workflowEventWorker.on("failed", (job, err) => console.error(`[worker] workflow event job ${job?.id} failed:`, err));
+workflowStepWorker.on("failed", (job, err) => console.error(`[worker] workflow step job ${job?.id} failed:`, err));
+workflowScheduleWorker.on("failed", (job, err) => console.error(`[worker] workflow schedule job ${job?.id} failed:`, err));
 
 process.on("SIGTERM", async () => {
   await mailWorker.close();
   await automationWorker.close();
   await reindexWorker.close();
+  await workflowEventWorker.close();
+  await workflowStepWorker.close();
+  await workflowScheduleWorker.close();
   await mailQueue.close();
   await automationQueue.close();
   await reindexQueue.close();
+  await workflowEventQueue.close();
+  await workflowStepQueue.close();
+  await workflowScheduleQueue.close();
   process.exit(0);
 });
 
@@ -168,6 +272,9 @@ async function main() {
   await mailQueue.add("process-outbox", {}, { repeat: { every: 15_000 } });
   await automationQueue.add("process-events", {}, { repeat: { every: 5_000 } });
   await reindexQueue.add("process-reindex", {}, { repeat: { every: 10_000 } });
+  await workflowEventQueue.add("process-workflow-events", {}, { repeat: { every: 5_000 } });
+  await workflowStepQueue.add("process-workflow-steps", {}, { repeat: { every: 5_000 } });
+  await workflowScheduleQueue.add("process-workflow-schedules", {}, { repeat: { every: 60_000 } });
   console.log(`[worker] started, connected to redis at ${env.REDIS_URL}`);
 }
 

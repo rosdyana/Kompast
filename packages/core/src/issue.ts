@@ -300,6 +300,30 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
   }
 }
 
+export interface UpdateIssueCustomFieldMeta {
+  actorId: string;
+  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  originClient?: string;
+  automationContext?: AutomationContext;
+}
+
+/**
+ * Merges exactly one key into issue.customFields, never replacing the
+ * whole object — unlike UpdateIssueInput.customFields, which is a full
+ * replace (used only where a caller already has the complete merged
+ * object in hand, e.g. an importer). Extracted from
+ * apps/web/src/lib/server-fns/issue-detail.ts's updateIssueCustomFieldFn,
+ * which now calls this instead of duplicating the merge — the new
+ * automation engine's action_set_property dispatch table needs the exact
+ * same behavior for a custom-field property.
+ */
+export async function updateIssueCustomField(tx: Tx, issueId: string, key: string, value: Json, meta: UpdateIssueCustomFieldMeta): Promise<void> {
+  const [current] = await tx.select({ customFields: schema.issue.customFields }).from(schema.issue).where(eq(schema.issue.id, issueId));
+  if (!current) throw new Error(`Issue ${issueId} not found`);
+  const merged = { ...(current.customFields as Record<string, Json> | null), [key]: value } as Json;
+  await updateIssue(tx, issueId, { customFields: merged, ...meta });
+}
+
 /** Never notifies the person who did the assigning about their own action (checked by the caller). */
 async function notifyAssignment(
   tx: Tx,

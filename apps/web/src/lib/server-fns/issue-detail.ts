@@ -12,6 +12,7 @@ import {
   getProjectByTeamAndKey,
   setWatching,
   updateIssue,
+  updateIssueCustomField,
   withAuthorizedTenant,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
@@ -253,13 +254,7 @@ export const updateIssueCustomFieldFn = createServerFn({ method: "POST" })
   .validator(updateCustomFieldSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, async (tx) => {
-      const [current] = await tx.select({ customFields: schema.issue.customFields }).from(schema.issue).where(eq(schema.issue.id, data.issueId));
-      if (!current) throw new Error(`Issue ${data.issueId} not found`);
-      const merged = { ...(current.customFields as Record<string, Json> | null), [data.key]: data.value } as Json;
-      await updateIssue(tx, data.issueId, { customFields: merged, actorId: ctx.userId });
-    });
-    return { ok: true } as const;
+    await withAuthorizedTenant(ctx, (tx) => updateIssueCustomField(tx, data.issueId, data.key, data.value as Json, { actorId: ctx.userId }));
   });
 
 const toggleWatchSchema = z.object({ issueId: z.string(), watching: z.boolean() });

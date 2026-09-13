@@ -13,6 +13,12 @@ export * from "./roadmap";
 export * from "./email";
 export * from "./notification";
 export * from "./automation";
+export * from "./automation-workflow";
+// Named (not `export *`) — automation-execution.ts re-declares its own
+// MAX_AUTOMATION_DEPTH (see that file's comment) which would otherwise
+// collide with automation.ts's own export of the same name.
+export { executeNode, type ExecuteStepResult, AUTOMATION_READABLE_PROPERTY_KEYS, AUTOMATION_SETTABLE_PROPERTY_KEYS } from "./automation-execution";
+export * from "./automation-engine";
 export * from "./comment";
 export * from "./rich-text";
 export * from "./watcher";

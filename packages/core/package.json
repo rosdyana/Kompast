@@ -19,14 +19,15 @@
     "@kompast/ai": "workspace:*",
     "@kompast/db": "workspace:*",
     "@kompast/env": "workspace:*",
+    "@kompast/storage": "workspace:*",
+    "cron-parser": "^5.10.1",
     "drizzle-orm": "^0.45.2",
-    "nanoid": "^5.0.9",
     "fractional-indexing": "^4.0.0",
-    "@kompast/storage": "workspace:*"
+    "nanoid": "^5.0.9"
   },
   "devDependencies": {
+    "postgres": "^3.4.9",
     "typescript": "^5.9.3",
-    "vitest": "^3.0.0",
-    "postgres": "^3.4.9"
+    "vitest": "^3.0.0"
   }
 }
