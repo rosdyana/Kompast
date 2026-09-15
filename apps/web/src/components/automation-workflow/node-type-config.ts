@@ -1,3 +1,5 @@
+import type { useTranslation } from "@kompast/i18n";
+
 export const AUTOMATION_NODE_TYPES = [
   "trigger_event",
   "trigger_schedule",
@@ -39,169 +41,190 @@ export interface NodeTypeMeta {
   summary: (config: Record<string, unknown>) => string;
 }
 
+type TFunction = ReturnType<typeof useTranslation>["t"];
+
 const SINGLE_OUTPUT = () => [{ id: null }];
 
-export const NODE_TYPE_CONFIGS: Record<AutomationNodeType, NodeTypeMeta> = {
-  trigger_event: {
-    label: "Event trigger",
-    category: "trigger",
-    defaultConfig: { eventType: "issue.created" },
-    fields: [
-      { key: "eventType", label: "When", kind: "select", options: ["issue.created", "issue.updated", "issue.transitioned", "issue.assigned", "issue.commented"] },
-    ],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `When ${String(c.eventType ?? "issue.created")}`,
-  },
-  trigger_schedule: {
-    label: "Schedule trigger",
-    category: "trigger",
-    defaultConfig: { cron: "0 9 * * *" },
-    fields: [{ key: "cron", label: "Cron expression", kind: "text", placeholder: "0 9 * * *" }],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `Cron ${String(c.cron ?? "")}`,
-  },
-  condition_property: {
-    label: "If property",
-    category: "logic",
-    defaultConfig: { property: "priority", operator: "eq", value: "" },
-    fields: [
-      { key: "property", label: "Property", kind: "text", placeholder: "e.g. priority, status, or a custom field key" },
-      { key: "operator", label: "Operator", kind: "select", options: ["eq", "neq", "in", "contains"] },
-      { key: "value", label: "Value", kind: "json", placeholder: "high, or {{trigger.payload.x}}" },
-    ],
-    outputs: () => [
-      { id: "true", label: "Yes" },
-      { id: "false", label: "No" },
-    ],
-    summary: (c) => `If ${String(c.property ?? "")} ${String(c.operator ?? "eq")} ${JSON.stringify(c.value ?? "")}`,
-  },
-  condition_switch: {
-    label: "Switch on property",
-    category: "logic",
-    defaultConfig: { property: "priority", cases: [] },
-    fields: [
-      { key: "property", label: "Property", kind: "text", placeholder: "e.g. priority, status, or a custom field key" },
-      { key: "cases", label: "Cases (comma-separated)", kind: "text", placeholder: "high, medium, low" },
-    ],
-    outputs: (c) => {
-      const cases = Array.isArray(c.cases) ? (c.cases as string[]) : [];
-      return [...cases.map((value) => ({ id: value, label: value })), { id: "default", label: "Default" }];
-    },
-    summary: (c) => `Switch on ${String(c.property ?? "")}`,
-  },
-  action_set_property: {
-    label: "Set property",
-    category: "action",
-    defaultConfig: { property: "", value: "" },
-    fields: [
-      { key: "property", label: "Property", kind: "text", placeholder: "e.g. status, assigneeId, or a custom field key" },
-      { key: "value", label: "Value", kind: "json", placeholder: "a literal, or {{trigger.payload.x}}" },
-    ],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `Set ${String(c.property ?? "")}`,
-  },
-  action_add_label: {
-    label: "Add label",
-    category: "action",
-    defaultConfig: { label: "" },
-    fields: [{ key: "label", label: "Label", kind: "text" }],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `Add label "${String(c.label ?? "")}"`,
-  },
-  action_comment: {
-    label: "Add comment",
-    category: "action",
-    defaultConfig: { text: "" },
-    fields: [{ key: "text", label: "Comment text", kind: "textarea", placeholder: "Supports {{trigger.payload.x}} / {{steps.<name>.output.x}}" }],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `Comment: ${String(c.text ?? "").slice(0, 40)}`,
-  },
-  action_notify: {
-    label: "Notify user",
-    category: "action",
-    defaultConfig: { userId: "", title: "", body: "" },
-    fields: [
-      { key: "userId", label: "User ID", kind: "text" },
-      { key: "title", label: "Title", kind: "text" },
-      { key: "body", label: "Body", kind: "textarea", optional: true },
-    ],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `Notify: ${String(c.title ?? "")}`,
-  },
-  action_link_issue: {
-    label: "Link issue",
-    category: "action",
-    defaultConfig: { issueId: "" },
-    fields: [{ key: "issueId", label: "Target issue ID", kind: "text" }],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `Link to ${String(c.issueId ?? "")}`,
-  },
-  action_create_subtask: {
-    label: "Create subtask",
-    category: "action",
-    defaultConfig: { typeId: "", title: "" },
-    fields: [
-      { key: "typeId", label: "Issue type ID", kind: "text" },
-      { key: "title", label: "Title", kind: "text" },
-    ],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `Subtask: ${String(c.title ?? "")}`,
-  },
-  action_webhook: {
-    label: "Webhook",
-    category: "action",
-    defaultConfig: { url: "", method: "POST", headers: {}, bodyTemplate: {} },
-    fields: [
-      { key: "url", label: "URL", kind: "text" },
-      { key: "method", label: "Method", kind: "select", options: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
-      { key: "headers", label: "Headers (JSON)", kind: "json", placeholder: "{}", optional: true },
-      { key: "bodyTemplate", label: "Body (JSON)", kind: "json", placeholder: "{}", optional: true },
-    ],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `${String(c.method ?? "POST")} ${String(c.url ?? "")}`,
-  },
-  find_issues: {
-    label: "Find issues",
-    category: "flow",
-    defaultConfig: {},
-    fields: [
-      { key: "statusId", label: "Status ID", kind: "text", optional: true },
-      { key: "assigneeId", label: "Assignee ID", kind: "text", optional: true },
-      { key: "label", label: "Label", kind: "text", optional: true },
-    ],
-    outputs: SINGLE_OUTPUT,
-    summary: () => "Find issues in this project",
-  },
-  loop_each: {
-    label: "Loop over items",
-    category: "flow",
-    defaultConfig: { source: "", itemType: "value" },
-    fields: [
-      { key: "source", label: "Source expression", kind: "text", placeholder: "{{steps.<name>.output.issueIds}}" },
-      { key: "itemType", label: "Item type", kind: "select", options: ["value", "issueId"] },
-    ],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `Loop over ${String(c.source ?? "")}`,
-  },
-  delay: {
-    label: "Delay",
-    category: "flow",
-    defaultConfig: { amount: 30, unit: "minutes" },
-    fields: [
-      { key: "amount", label: "Amount", kind: "number" },
-      { key: "unit", label: "Unit", kind: "select", options: ["minutes", "hours", "days"] },
-    ],
-    outputs: SINGLE_OUTPUT,
-    summary: (c) => `Wait ${String(c.amount ?? "")} ${String(c.unit ?? "")}`,
-  },
-};
+/**
+ * A function rather than a static object because every label/placeholder/summary
+ * is translated — this is plain data (used from a ReactFlow node renderer, a
+ * palette, and a config panel, none of which share a single component tree),
+ * so it takes `t` as a parameter instead of being a hook itself.
+ */
+export function getNodeTypeConfigs(t: TFunction): Record<AutomationNodeType, NodeTypeMeta> {
+  const nt = (key: string, options?: Record<string, unknown>) => t(`nodeTypes.${key}`, options);
 
-export const CATEGORY_LABELS: Record<NodeCategory, string> = {
-  trigger: "Triggers",
-  logic: "Logic",
-  action: "Actions",
-  flow: "Flow",
-};
+  return {
+    trigger_event: {
+      label: nt("trigger_event.label"),
+      category: "trigger",
+      defaultConfig: { eventType: "issue.created" },
+      fields: [
+        { key: "eventType", label: nt("trigger_event.fields.eventType"), kind: "select", options: ["issue.created", "issue.updated", "issue.transitioned", "issue.assigned", "issue.commented"] },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("trigger_event.summary", { eventType: String(c.eventType ?? "issue.created") }),
+    },
+    trigger_schedule: {
+      label: nt("trigger_schedule.label"),
+      category: "trigger",
+      defaultConfig: { cron: "0 9 * * *" },
+      fields: [{ key: "cron", label: nt("trigger_schedule.fields.cron"), kind: "text", placeholder: "0 9 * * *" }],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("trigger_schedule.summary", { cron: String(c.cron ?? "") }),
+    },
+    condition_property: {
+      label: nt("condition_property.label"),
+      category: "logic",
+      defaultConfig: { property: "priority", operator: "eq", value: "" },
+      fields: [
+        { key: "property", label: nt("condition_property.fields.property"), kind: "text", placeholder: nt("condition_property.propertyPlaceholder") },
+        { key: "operator", label: nt("condition_property.fields.operator"), kind: "select", options: ["eq", "neq", "in", "contains"] },
+        { key: "value", label: nt("condition_property.fields.value"), kind: "json", placeholder: nt("condition_property.valuePlaceholder", { expr: "{{trigger.payload.x}}" }) },
+      ],
+      outputs: () => [
+        { id: "true", label: t("outputs.yes") },
+        { id: "false", label: t("outputs.no") },
+      ],
+      summary: (c) => nt("condition_property.summary", { property: String(c.property ?? ""), operator: String(c.operator ?? "eq"), value: JSON.stringify(c.value ?? "") }),
+    },
+    condition_switch: {
+      label: nt("condition_switch.label"),
+      category: "logic",
+      defaultConfig: { property: "priority", cases: [] },
+      fields: [
+        { key: "property", label: nt("condition_switch.fields.property"), kind: "text", placeholder: nt("condition_switch.propertyPlaceholder") },
+        { key: "cases", label: nt("condition_switch.fields.cases"), kind: "text", placeholder: nt("condition_switch.casesPlaceholder") },
+      ],
+      outputs: (c) => {
+        const cases = Array.isArray(c.cases) ? (c.cases as string[]) : [];
+        return [...cases.map((value) => ({ id: value, label: value })), { id: "default", label: t("outputs.default") }];
+      },
+      summary: (c) => nt("condition_switch.summary", { property: String(c.property ?? "") }),
+    },
+    action_set_property: {
+      label: nt("action_set_property.label"),
+      category: "action",
+      defaultConfig: { property: "", value: "" },
+      fields: [
+        { key: "property", label: nt("action_set_property.fields.property"), kind: "text", placeholder: nt("action_set_property.propertyPlaceholder") },
+        { key: "value", label: nt("action_set_property.fields.value"), kind: "json", placeholder: nt("action_set_property.valuePlaceholder", { expr: "{{trigger.payload.x}}" }) },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("action_set_property.summary", { property: String(c.property ?? "") }),
+    },
+    action_add_label: {
+      label: nt("action_add_label.label"),
+      category: "action",
+      defaultConfig: { label: "" },
+      fields: [{ key: "label", label: nt("action_add_label.fields.label"), kind: "text" }],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("action_add_label.summary", { label: String(c.label ?? "") }),
+    },
+    action_comment: {
+      label: nt("action_comment.label"),
+      category: "action",
+      defaultConfig: { text: "" },
+      fields: [
+        {
+          key: "text",
+          label: nt("action_comment.fields.text"),
+          kind: "textarea",
+          placeholder: nt("action_comment.textPlaceholder", { expr1: "{{trigger.payload.x}}", expr2: "{{steps.<name>.output.x}}" }),
+        },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("action_comment.summary", { text: String(c.text ?? "").slice(0, 40) }),
+    },
+    action_notify: {
+      label: nt("action_notify.label"),
+      category: "action",
+      defaultConfig: { userId: "", title: "", body: "" },
+      fields: [
+        { key: "userId", label: nt("action_notify.fields.userId"), kind: "text" },
+        { key: "title", label: nt("action_notify.fields.title"), kind: "text" },
+        { key: "body", label: nt("action_notify.fields.body"), kind: "textarea", optional: true },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("action_notify.summary", { title: String(c.title ?? "") }),
+    },
+    action_link_issue: {
+      label: nt("action_link_issue.label"),
+      category: "action",
+      defaultConfig: { issueId: "" },
+      fields: [{ key: "issueId", label: nt("action_link_issue.fields.issueId"), kind: "text" }],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("action_link_issue.summary", { issueId: String(c.issueId ?? "") }),
+    },
+    action_create_subtask: {
+      label: nt("action_create_subtask.label"),
+      category: "action",
+      defaultConfig: { typeId: "", title: "" },
+      fields: [
+        { key: "typeId", label: nt("action_create_subtask.fields.typeId"), kind: "text" },
+        { key: "title", label: nt("action_create_subtask.fields.title"), kind: "text" },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("action_create_subtask.summary", { title: String(c.title ?? "") }),
+    },
+    action_webhook: {
+      label: nt("action_webhook.label"),
+      category: "action",
+      defaultConfig: { url: "", method: "POST", headers: {}, bodyTemplate: {} },
+      fields: [
+        { key: "url", label: nt("action_webhook.fields.url"), kind: "text" },
+        { key: "method", label: nt("action_webhook.fields.method"), kind: "select", options: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        { key: "headers", label: nt("action_webhook.fields.headers"), kind: "json", placeholder: "{}", optional: true },
+        { key: "bodyTemplate", label: nt("action_webhook.fields.bodyTemplate"), kind: "json", placeholder: "{}", optional: true },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("action_webhook.summary", { method: String(c.method ?? "POST"), url: String(c.url ?? "") }),
+    },
+    find_issues: {
+      label: nt("find_issues.label"),
+      category: "flow",
+      defaultConfig: {},
+      fields: [
+        { key: "statusId", label: nt("find_issues.fields.statusId"), kind: "text", optional: true },
+        { key: "assigneeId", label: nt("find_issues.fields.assigneeId"), kind: "text", optional: true },
+        { key: "label", label: nt("find_issues.fields.label"), kind: "text", optional: true },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: () => nt("find_issues.summary"),
+    },
+    loop_each: {
+      label: nt("loop_each.label"),
+      category: "flow",
+      defaultConfig: { source: "", itemType: "value" },
+      fields: [
+        { key: "source", label: nt("loop_each.fields.source"), kind: "text", placeholder: "{{steps.<name>.output.issueIds}}" },
+        { key: "itemType", label: nt("loop_each.fields.itemType"), kind: "select", options: ["value", "issueId"] },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("loop_each.summary", { source: String(c.source ?? "") }),
+    },
+    delay: {
+      label: nt("delay.label"),
+      category: "flow",
+      defaultConfig: { amount: 30, unit: "minutes" },
+      fields: [
+        { key: "amount", label: nt("delay.fields.amount"), kind: "number" },
+        { key: "unit", label: nt("delay.fields.unit"), kind: "select", options: ["minutes", "hours", "days"] },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) => nt("delay.summary", { amount: String(c.amount ?? ""), unit: String(c.unit ?? "") }),
+    },
+  };
+}
+
+export function getCategoryLabels(t: TFunction): Record<NodeCategory, string> {
+  return {
+    trigger: t("categories.trigger"),
+    logic: t("categories.logic"),
+    action: t("categories.action"),
+    flow: t("categories.flow"),
+  };
+}
 
 /** Parses a form field's raw text into a JSON value: valid JSON (numbers/arrays/objects/booleans) parses as such, anything else (including a plain word or a {{expression}}) stays a raw string. */
 export function parseFieldValue(raw: string): unknown {

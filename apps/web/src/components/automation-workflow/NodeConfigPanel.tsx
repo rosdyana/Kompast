@@ -1,5 +1,6 @@
 import { Button } from "@kompast/ui/Button";
-import { NODE_TYPE_CONFIGS, parseFieldValue, parseJsonObjectField } from "./node-type-config";
+import { useTranslation } from "@kompast/i18n";
+import { getNodeTypeConfigs, parseFieldValue, parseJsonObjectField } from "./node-type-config";
 import type { WorkflowNode } from "./graph-serialize";
 
 const JSON_OBJECT_FIELD_KEYS = new Set(["headers", "bodyTemplate"]);
@@ -15,7 +16,8 @@ export function NodeConfigPanel({
   onChangeName: (nodeId: string, name: string) => void;
   onDelete: (nodeId: string) => void;
 }) {
-  const meta = NODE_TYPE_CONFIGS[node.data.nodeType];
+  const { t } = useTranslation("workflow");
+  const meta = getNodeTypeConfigs(t)[node.data.nodeType];
 
   function setField(key: string, raw: string) {
     const value = JSON_OBJECT_FIELD_KEYS.has(key) ? parseJsonObjectField(raw) : parseFieldValue(raw);
@@ -33,12 +35,12 @@ export function NodeConfigPanel({
       <div className="flex items-center justify-between">
         <p className="type-headline">{meta.label}</p>
         <Button variant="outline" onClick={() => onDelete(node.id)} style={{ color: "var(--danger)", borderColor: "var(--danger)" }}>
-          Delete
+          {t("configPanel.delete")}
         </Button>
       </div>
 
       <label className="flex flex-col gap-1 text-[11.5px] text-text-3">
-        Name (optional, for {"{{steps.<name>...}}"} references)
+        {t("nameField.label", { expr: "{{steps.<name>...}}" })}
         <input
           value={node.data.name ?? ""}
           onChange={(e) => onChangeName(node.id, e.target.value)}

@@ -1,0 +1,123 @@
+{
+  "categories": {
+    "trigger": "Trigger",
+    "logic": "Logika",
+    "action": "Aksi",
+    "flow": "Alur"
+  },
+  "outputs": {
+    "yes": "Ya",
+    "no": "Tidak",
+    "default": "Default"
+  },
+  "nodeTypes": {
+    "trigger_event": {
+      "label": "Trigger event",
+      "fields": { "eventType": "Ketika" },
+      "summary": "Ketika {{eventType}}"
+    },
+    "trigger_schedule": {
+      "label": "Trigger jadwal",
+      "fields": { "cron": "Ekspresi cron" },
+      "summary": "Cron {{cron}}"
+    },
+    "condition_property": {
+      "label": "Jika properti",
+      "fields": { "property": "Properti", "operator": "Operator", "value": "Nilai" },
+      "propertyPlaceholder": "mis. priority, status, atau kunci custom field",
+      "valuePlaceholder": "tinggi, atau {{expr}}",
+      "summary": "Jika {{property}} {{operator}} {{value}}"
+    },
+    "condition_switch": {
+      "label": "Switch berdasarkan properti",
+      "fields": { "property": "Properti", "cases": "Kasus (dipisah koma)" },
+      "propertyPlaceholder": "mis. priority, status, atau kunci custom field",
+      "casesPlaceholder": "tinggi, sedang, rendah",
+      "summary": "Switch berdasarkan {{property}}"
+    },
+    "action_set_property": {
+      "label": "Atur properti",
+      "fields": { "property": "Properti", "value": "Nilai" },
+      "propertyPlaceholder": "mis. status, assigneeId, atau kunci custom field",
+      "valuePlaceholder": "nilai literal, atau {{expr}}",
+      "summary": "Atur {{property}}"
+    },
+    "action_add_label": {
+      "label": "Tambah label",
+      "fields": { "label": "Label" },
+      "summary": "Tambah label \"{{label}}\""
+    },
+    "action_comment": {
+      "label": "Tambah komentar",
+      "fields": { "text": "Isi komentar" },
+      "textPlaceholder": "Mendukung {{expr1}} / {{expr2}}",
+      "summary": "Komentar: {{text}}"
+    },
+    "action_notify": {
+      "label": "Beri tahu pengguna",
+      "fields": { "userId": "ID pengguna", "title": "Judul", "body": "Isi" },
+      "summary": "Beri tahu: {{title}}"
+    },
+    "action_link_issue": {
+      "label": "Tautkan tiket",
+      "fields": { "issueId": "ID tiket tujuan" },
+      "summary": "Tautkan ke {{issueId}}"
+    },
+    "action_create_subtask": {
+      "label": "Buat subtask",
+      "fields": { "typeId": "ID tipe tiket", "title": "Judul" },
+      "summary": "Subtask: {{title}}"
+    },
+    "action_webhook": {
+      "label": "Webhook",
+      "fields": { "url": "URL", "method": "Method", "headers": "Headers (JSON)", "bodyTemplate": "Body (JSON)" },
+      "summary": "{{method}} {{url}}"
+    },
+    "find_issues": {
+      "label": "Cari tiket",
+      "fields": { "statusId": "ID status", "assigneeId": "ID penerima tugas", "label": "Label" },
+      "summary": "Cari tiket di proyek ini"
+    },
+    "loop_each": {
+      "label": "Ulangi untuk setiap item",
+      "fields": { "source": "Ekspresi sumber", "itemType": "Tipe item" },
+      "summary": "Ulangi untuk {{source}}"
+    },
+    "delay": {
+      "label": "Jeda",
+      "fields": { "amount": "Jumlah", "unit": "Satuan" },
+      "summary": "Tunggu {{amount}} {{unit}}"
+    }
+  },
+  "nameField": {
+    "label": "Nama (opsional, untuk referensi {{expr}})"
+  },
+  "configPanel": {
+    "delete": "Hapus"
+  },
+  "runHistory": {
+    "loading": "Memuat riwayat berjalan…",
+    "heading": "Riwayat berjalan",
+    "empty": "Belum ada riwayat berjalan."
+  },
+  "canvas": {
+    "enabledLabel": "Aktif",
+    "dryRunLabel": "Uji coba",
+    "saving": "Menyimpan…",
+    "save": "Simpan",
+    "clickAgainToDelete": "Klik lagi untuk menghapus",
+    "deleteWorkflow": "Hapus workflow",
+    "saveFailed": "Gagal menyimpan",
+    "toggleFailed": "Gagal mengubah status aktif"
+  },
+  "list": {
+    "loading": "Memuat…",
+    "newWorkflowNameLabel": "Nama workflow baru",
+    "newWorkflowButton": "Workflow baru",
+    "empty": "Belum ada workflow — buat satu di atas.",
+    "createFailed": "Gagal membuat workflow",
+    "enabledBadge": "Aktif",
+    "disabledBadge": "Nonaktif",
+    "dryRunBadge": "Uji coba"
+  }
+}

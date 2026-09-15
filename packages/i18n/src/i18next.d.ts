@@ -14,6 +14,7 @@ import type enSettings from "./locales/en/settings.json";
 import type enDocs from "./locales/en/docs.json";
 import type enBoard from "./locales/en/board.json";
 import type enIssue from "./locales/en/issue.json";
+import type enWorkflow from "./locales/en/workflow.json";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -34,6 +35,7 @@ declare module "i18next" {
       docs: typeof enDocs;
       board: typeof enBoard;
       issue: typeof enIssue;
+      workflow: typeof enWorkflow;
     };
   }
 }
