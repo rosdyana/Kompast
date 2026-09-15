@@ -9,6 +9,7 @@ import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuI
 import { withCollaboration } from "@blocknote/core/yjs";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useTranslation } from "@kompast/i18n";
+import { useTheme } from "@kompast/ui/theme";
 import { VersionHistory } from "./VersionHistory";
 import { kompastViewBlockSpec } from "./KompastViewBlock";
 import { mentionInlineSpec } from "./MentionInlineContent";
@@ -100,6 +101,7 @@ export function DocEditor({
   userName: string;
 }) {
   const { t } = useTranslation("docs");
+  const { theme } = useTheme();
   const provider = useMemo(
     () => new HocuspocusProvider({ url: collabWsUrl, name: pageId, document: new Y.Doc(), token: collabToken }),
     [pageId, collabToken, collabWsUrl],
@@ -129,7 +131,7 @@ export function DocEditor({
           <VersionHistory pageId={pageId} editor={editor} />
         </div>
       )}
-      <BlockNoteView editor={editor} editable={canEdit} theme="light" slashMenu={false} className="min-h-[60vh] px-2 py-4">
+      <BlockNoteView editor={editor} editable={canEdit} theme={theme} slashMenu={false} className="min-h-[60vh] px-2 py-4">
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={async (query) =>
