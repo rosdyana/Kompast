@@ -32,6 +32,7 @@ const createIssueSchema = z.object({
   typeId: z.string(),
   statusId: z.string(),
   title: z.string().min(1),
+  assigneeId: z.string().optional(),
 });
 
 export const createIssueFn = createServerFn({ method: "POST" })
@@ -46,6 +47,7 @@ export const createIssueFn = createServerFn({ method: "POST" })
         statusId: data.statusId,
         title: data.title,
         reporterId: ctx.userId,
+        assigneeId: data.assigneeId,
       }),
     );
   });

@@ -1387,6 +1387,9 @@ function SprintSetupWizard({ boardId, onCreated }: { boardId: string; onCreated:
 /** Sentinel swimlane key for issues with no assignee — never a real assigneeId (nanoids never start with "__"). */
 const UNASSIGNED_SWIMLANE = "__unassigned__";
 
+/** Sentinel "add issue" target for flat (non-swimlane) mode, where there's no lane to key off. */
+const FLAT_BOARD_TARGET = "__flat__";
+
 function assigneeSwimlaneKey(issue: { assigneeId: string | null }): string {
   return issue.assigneeId ?? UNASSIGNED_SWIMLANE;
 }
@@ -1425,28 +1428,36 @@ function BoardView({ data }: { data: BoardData }) {
   const priorityLevelsByKey = new Map(data.priorityLevels.map((p) => [p.key, p]));
   const teamId = data.project.teamId ?? "none";
 
-  // "+ add issue" at the bottom of the board's first non-backlog column
+  // "+ add issue" at the bottom of a column's first non-backlog cell
   // reuses addIssueToSprint's own Backlog->To Do transition (see
   // packages/core/src/sprint.ts) rather than a separate "target status"
   // concept: create into Backlog like every other new issue, then add it
   // to the active sprint — it lands in the right column on its own.
+  //
+  // A single composer is shared board-wide; `addingIssueTarget` tracks which
+  // one is open — FLAT_BOARD_TARGET in flat mode, or a swimlane's `lane.key`
+  // in swimlane mode (a real assigneeId, or UNASSIGNED_SWIMLANE), so the
+  // created issue is assigned to match the lane it was added from, the same
+  // way Jira's per-swimlane "+ Add issue" does.
   const defaultType = data.issueTypes.find((tp) => !tp.isSubtask && tp.hierarchyLevel !== 0);
   const backlogStatusId = data.columns.find((c) => c.isBacklog)?.statusIds[0];
-  const [addingToBoard, setAddingToBoard] = useState(false);
+  const [addingIssueTarget, setAddingIssueTarget] = useState<string | null>(null);
   const [newBoardIssueTitle, setNewBoardIssueTitle] = useState("");
   const [addBoardIssueError, setAddBoardIssueError] = useState<string | null>(null);
 
   async function submitBoardIssue() {
-    if (!newBoardIssueTitle.trim() || !defaultType || !backlogStatusId || !data.activeSprint) return;
+    if (!newBoardIssueTitle.trim() || !defaultType || !backlogStatusId || !data.activeSprint || addingIssueTarget === null) return;
     setPending(true);
     setAddBoardIssueError(null);
     try {
+      const assigneeId =
+        addingIssueTarget === FLAT_BOARD_TARGET || addingIssueTarget === UNASSIGNED_SWIMLANE ? undefined : addingIssueTarget;
       const created = await createIssueFn({
-        data: { projectId: data.project.id, typeId: defaultType.id, statusId: backlogStatusId, title: newBoardIssueTitle.trim() },
+        data: { projectId: data.project.id, typeId: defaultType.id, statusId: backlogStatusId, title: newBoardIssueTitle.trim(), assigneeId },
       });
       await addIssueToSprintFn({ data: { sprintId: data.activeSprint.id, issueId: created.issueId } });
       setNewBoardIssueTitle("");
-      setAddingToBoard(false);
+      setAddingIssueTarget(null);
       await router.invalidate();
     } catch (err) {
       setAddBoardIssueError(err instanceof Error ? err.message : t("genericError"));
@@ -1546,8 +1557,13 @@ function BoardView({ data }: { data: BoardData }) {
       const overColumn = columns.find((c) => c.id === columnId);
       if (!overColumn) return;
       toStatusId = overColumn.statusIds[0];
+      // rankBetween(before, after) takes before as the predecessor (sorts earlier) and after as the
+      // successor (sorts later) — see sprint.ts's own rankBetween(lastRanked.rank, null) for "append to
+      // end". So landing at the bottom pins the predecessor (current last card, no successor); landing
+      // at the top pins the successor (current first card, no predecessor).
       const cellIssues = swimlaneKey !== undefined ? overColumn.issues.filter((i) => assigneeSwimlaneKey(i) === swimlaneKey) : overColumn.issues;
-      afterIssueId = cellIssues.at(-1)?.id;
+      if (data.board.newIssuePosition === "bottom") beforeIssueId = cellIssues.at(-1)?.id;
+      else afterIssueId = cellIssues.at(0)?.id;
     }
     if (!toStatusId) return;
 
@@ -1576,12 +1592,13 @@ function BoardView({ data }: { data: BoardData }) {
     const toStatusId = target.statusIds[0];
     if (!toStatusId) return;
     const targetIssues = swimlaneKey !== undefined ? target.issues.filter((i) => assigneeSwimlaneKey(i) === swimlaneKey) : target.issues;
+    const edgeIssueId = data.board.newIssuePosition === "bottom" ? { beforeIssueId: targetIssues.at(-1)?.id } : { afterIssueId: targetIssues.at(0)?.id };
 
     setPending(true);
     setError(null);
     setAnnouncement(null);
     try {
-      await moveIssueFn({ data: { issueId, toStatusId, afterIssueId: targetIssues.at(-1)?.id } });
+      await moveIssueFn({ data: { issueId, toStatusId, ...edgeIssueId } });
       pendingFocusId.current = issueId;
       await router.invalidate();
       setAnnouncement(t("boardView.movedToColumn", { column: target.name }));
@@ -1650,6 +1667,13 @@ function BoardView({ data }: { data: BoardData }) {
             candidateEpics={data.candidateEpics}
             onMoveToAdjacentColumn={moveToAdjacentColumn}
             registerCardRef={registerCardRef}
+            addingIssueTarget={addingIssueTarget}
+            newIssueTitle={newBoardIssueTitle}
+            onNewIssueTitleChange={setNewBoardIssueTitle}
+            onStartAddIssue={setAddingIssueTarget}
+            onSubmitAddIssue={submitBoardIssue}
+            onCancelAddIssue={() => { setAddingIssueTarget(null); setAddBoardIssueError(null); }}
+            addIssueError={addBoardIssueError}
           />
         ) : (
           <div
@@ -1673,12 +1697,12 @@ function BoardView({ data }: { data: BoardData }) {
                 onMoveToAdjacentColumn={moveToAdjacentColumn}
                 registerCardRef={registerCardRef}
                 showAddIssue={index === 0}
-                addingIssue={addingToBoard}
+                addingIssue={addingIssueTarget === FLAT_BOARD_TARGET}
                 newIssueTitle={newBoardIssueTitle}
                 onNewIssueTitleChange={setNewBoardIssueTitle}
-                onStartAddIssue={() => setAddingToBoard(true)}
+                onStartAddIssue={() => setAddingIssueTarget(FLAT_BOARD_TARGET)}
                 onSubmitAddIssue={submitBoardIssue}
-                onCancelAddIssue={() => { setAddingToBoard(false); setAddBoardIssueError(null); }}
+                onCancelAddIssue={() => { setAddingIssueTarget(null); setAddBoardIssueError(null); }}
                 addIssueError={addBoardIssueError}
               />
             ))}
@@ -1709,9 +1733,10 @@ function ColumnHeader({ column }: { column: BoardData["columns"][number] }) {
 /**
  * The droppable card list for one column — or, in swimlane mode, one
  * column×swimlane cell (droppableId/issues/swimlaneKey then scoped to that
- * cell rather than the whole column). The inline "+ Add issue" composer only
- * ever applies in flat mode (ambiguous which swimlane it'd belong to), so its
- * props are optional and simply omitted by SwimlaneBoard.
+ * cell rather than the whole column). The inline "+ Add issue" composer's
+ * props are optional since most cells omit it — SwimlaneBoard only ever
+ * wires it to each lane's first column, creating the issue pre-assigned to
+ * match that lane (Jira-style), unassigned for the Unassigned lane.
  */
 function ColumnCell({
   droppableId,
@@ -1913,6 +1938,13 @@ function SwimlaneBoard({
   candidateEpics,
   onMoveToAdjacentColumn,
   registerCardRef,
+  addingIssueTarget,
+  newIssueTitle,
+  onNewIssueTitleChange,
+  onStartAddIssue,
+  onSubmitAddIssue,
+  onCancelAddIssue,
+  addIssueError,
 }: {
   columns: BoardData["columns"];
   teamId: string;
@@ -1924,6 +1956,14 @@ function SwimlaneBoard({
   candidateEpics: BoardData["candidateEpics"];
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next", swimlaneKey?: string) => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
+  /** Which lane's composer is open — a lane's own `key` (a real assigneeId, or UNASSIGNED_SWIMLANE), or null. */
+  addingIssueTarget: string | null;
+  newIssueTitle: string;
+  onNewIssueTitleChange: (value: string) => void;
+  onStartAddIssue: (laneKey: string) => void;
+  onSubmitAddIssue: () => void;
+  onCancelAddIssue: () => void;
+  addIssueError: string | null;
 }) {
   const { t } = useTranslation("board");
 
@@ -1940,48 +1980,68 @@ function SwimlaneBoard({
     }
   }
   const assignedLanes = [...byKey.values()].filter((l) => l.key !== UNASSIGNED_SWIMLANE).sort((a, b) => a.label.localeCompare(b.label));
-  const unassignedLane = byKey.get(UNASSIGNED_SWIMLANE);
-  const swimlanes = unassignedLane ? [...assignedLanes, unassignedLane] : assignedLanes;
+  // Always shown, even empty: a freshly created issue has no assignee, so the
+  // Unassigned lane's first column is where "+ Add issue" below lands it.
+  const unassignedLane = byKey.get(UNASSIGNED_SWIMLANE) ?? { key: UNASSIGNED_SWIMLANE, label: t("tableView.unassignedGroupLabel") };
+  const swimlanes = [...assignedLanes, unassignedLane];
 
   return (
     <div className="overflow-x-auto px-6 pb-7 pt-4">
-      <div className="flex min-w-fit flex-col gap-3">
+      <div className="flex min-w-fit flex-col gap-4">
         <div className="flex items-start gap-4">
-          <div className="w-[150px] flex-none" />
           {columns.map((col) => (
             <div key={col.id} className="w-[274px] flex-none">
               <ColumnHeader column={col} />
             </div>
           ))}
         </div>
-        {swimlanes.length === 0 && <p className="type-body text-text-3">{t("boardView.columnEmpty")}</p>}
-        {swimlanes.map((lane) => (
-          <div key={lane.key} className="flex items-start gap-4 border-t border-border pt-3">
-            <div className="flex w-[150px] flex-none items-center gap-1.5 pt-1">
-              {lane.key !== UNASSIGNED_SWIMLANE && <Avatar initials={initialsOf(lane.label)} />}
-              <span className="truncate type-body font-medium">{lane.label}</span>
-            </div>
-            {columns.map((col) => (
-              <div key={col.id} className="w-[274px] flex-none">
-                <ColumnCell
-                  droppableId={`${col.id}::${lane.key}`}
-                  issues={col.issues.filter((i) => assigneeSwimlaneKey(i) === lane.key)}
-                  teamId={teamId}
-                  projectKey={projectKey}
-                  columnId={col.id}
-                  swimlaneKey={lane.key}
-                  issueTypesById={issueTypesById}
-                  usersById={usersById}
-                  priorityLevelsByKey={priorityLevelsByKey}
-                  visibleProperties={visibleProperties}
-                  candidateEpics={candidateEpics}
-                  onMoveToAdjacentColumn={onMoveToAdjacentColumn}
-                  registerCardRef={registerCardRef}
-                />
+        {swimlanes.map((lane) => {
+          const laneIssueCount = columns.reduce(
+            (sum, col) => sum + col.issues.filter((i) => assigneeSwimlaneKey(i) === lane.key).length,
+            0,
+          );
+          return (
+            <div key={lane.key} className="flex flex-col gap-2 border-t border-border pt-3">
+              <div className="flex items-center gap-1.5">
+                {lane.key !== UNASSIGNED_SWIMLANE && <Avatar initials={initialsOf(lane.label)} />}
+                <span className="truncate type-body font-medium">{lane.label}</span>
+                <span className="type-label text-text-3">{laneIssueCount}</span>
               </div>
-            ))}
-          </div>
-        ))}
+              <div className="flex items-start gap-4">
+                {columns.map((col, index) => {
+                  const showAddIssue = index === 0;
+                  return (
+                    <div key={col.id} className="w-[274px] flex-none">
+                      <ColumnCell
+                        droppableId={`${col.id}::${lane.key}`}
+                        issues={col.issues.filter((i) => assigneeSwimlaneKey(i) === lane.key)}
+                        teamId={teamId}
+                        projectKey={projectKey}
+                        columnId={col.id}
+                        swimlaneKey={lane.key}
+                        issueTypesById={issueTypesById}
+                        usersById={usersById}
+                        priorityLevelsByKey={priorityLevelsByKey}
+                        visibleProperties={visibleProperties}
+                        candidateEpics={candidateEpics}
+                        onMoveToAdjacentColumn={onMoveToAdjacentColumn}
+                        registerCardRef={registerCardRef}
+                        showAddIssue={showAddIssue}
+                        addingIssue={addingIssueTarget === lane.key}
+                        newIssueTitle={newIssueTitle}
+                        onNewIssueTitleChange={onNewIssueTitleChange}
+                        onStartAddIssue={() => onStartAddIssue(lane.key)}
+                        onSubmitAddIssue={onSubmitAddIssue}
+                        onCancelAddIssue={onCancelAddIssue}
+                        addIssueError={addIssueError}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

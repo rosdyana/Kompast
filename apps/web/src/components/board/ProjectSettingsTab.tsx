@@ -13,6 +13,7 @@ import {
   deleteBoardColumnFn,
   reorderBoardColumnsFn,
   listWorkflowStatusesFn,
+  updateBoardSettingsFn,
 } from "@/lib/server-fns/board-columns";
 import {
   listIssuePropertyDefinitionsFn,
@@ -118,6 +119,16 @@ function ColumnsSettings({ data }: { data: BoardData }) {
     }
   }
 
+  async function setNewIssuePosition(position: "top" | "bottom") {
+    setError(null);
+    try {
+      await updateBoardSettingsFn({ data: { projectId: data.project.id, boardId: data.board.id, newIssuePosition: position } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
   async function move(columnId: string, direction: "left" | "right") {
     const ids = columns.map((c) => c.id);
     const i = ids.indexOf(columnId);
@@ -167,6 +178,17 @@ function ColumnsSettings({ data }: { data: BoardData }) {
           <span className="font-medium">{flowText}</span>
         </div>
       )}
+      <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-dashed border-border-2 px-3 py-2.5 type-body text-text-2">
+        <span className="type-label-overline text-text-3">{t("settingsTab.newIssuePositionLabel")}</span>
+        <select
+          value={data.board.newIssuePosition}
+          onChange={(e) => setNewIssuePosition(e.target.value as "top" | "bottom")}
+          className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+        >
+          <option value="top">{t("settingsTab.newIssuePositionTop")}</option>
+          <option value="bottom">{t("settingsTab.newIssuePositionBottom")}</option>
+        </select>
+      </div>
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="border-b border-border bg-surface-2 px-3 py-2 type-body font-semibold text-text-2">
           {t("settingsTab.columnsCountSummary", { count: columns.length })}

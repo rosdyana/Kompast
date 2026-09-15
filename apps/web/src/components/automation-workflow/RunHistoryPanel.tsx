@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Badge, type BadgeTone } from "@kompast/ui/Badge";
+import { useTranslation } from "@kompast/i18n";
 import { listWorkflowRunsFn, getWorkflowRunFn } from "@/lib/server-fns/automation-workflows";
 
 type Run = Awaited<ReturnType<typeof listWorkflowRunsFn>>[number];
@@ -16,6 +17,7 @@ const STEP_STATUS_TONE: Record<string, BadgeTone> = {
 };
 
 export function RunHistoryPanel({ workflowId, refreshSignal }: { workflowId: string; refreshSignal: number }) {
+  const { t } = useTranslation("workflow");
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [detail, setDetail] = useState<RunDetail | null>(null);
@@ -34,12 +36,12 @@ export function RunHistoryPanel({ workflowId, refreshSignal }: { workflowId: str
     setDetail(await getWorkflowRunFn({ data: runId }));
   }
 
-  if (runs === null) return <p className="p-3 type-body text-text-3">Loading runs…</p>;
+  if (runs === null) return <p className="p-3 type-body text-text-3">{t("runHistory.loading")}</p>;
 
   return (
     <div className="flex h-full w-80 flex-none flex-col gap-2 overflow-y-auto border-l border-border bg-surface p-3">
-      <p className="type-headline">Run history</p>
-      {runs.length === 0 && <p className="type-body text-text-3">No runs yet.</p>}
+      <p className="type-headline">{t("runHistory.heading")}</p>
+      {runs.length === 0 && <p className="type-body text-text-3">{t("runHistory.empty")}</p>}
       {runs.map((run) => (
         <div key={run.id} className="rounded-[9px] border border-border p-2">
           <button onClick={() => toggleRun(run.id)} className="flex w-full items-center gap-2 text-left">

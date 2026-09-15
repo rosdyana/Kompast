@@ -13,6 +13,7 @@ import enSettings from "./locales/en/settings.json";
 import enDocs from "./locales/en/docs.json";
 import enBoard from "./locales/en/board.json";
 import enIssue from "./locales/en/issue.json";
+import enWorkflow from "./locales/en/workflow.json";
 
 import idCommon from "./locales/id/common.json";
 import idNav from "./locales/id/nav.json";
@@ -29,6 +30,7 @@ import idSettings from "./locales/id/settings.json";
 import idDocs from "./locales/id/docs.json";
 import idBoard from "./locales/id/board.json";
 import idIssue from "./locales/id/issue.json";
+import idWorkflow from "./locales/id/workflow.json";
 
 import zhHantCommon from "./locales/zh-Hant/common.json";
 import zhHantNav from "./locales/zh-Hant/nav.json";
@@ -45,6 +47,7 @@ import zhHantSettings from "./locales/zh-Hant/settings.json";
 import zhHantDocs from "./locales/zh-Hant/docs.json";
 import zhHantBoard from "./locales/zh-Hant/board.json";
 import zhHantIssue from "./locales/zh-Hant/issue.json";
+import zhHantWorkflow from "./locales/zh-Hant/workflow.json";
 
 export const resources = {
   en: {
@@ -63,6 +66,7 @@ export const resources = {
     docs: enDocs,
     board: enBoard,
     issue: enIssue,
+    workflow: enWorkflow,
   },
   id: {
     common: idCommon,
@@ -80,6 +84,7 @@ export const resources = {
     docs: idDocs,
     board: idBoard,
     issue: idIssue,
+    workflow: idWorkflow,
   },
   "zh-Hant": {
     common: zhHantCommon,
@@ -97,5 +102,6 @@ export const resources = {
     docs: zhHantDocs,
     board: zhHantBoard,
     issue: zhHantIssue,
+    workflow: zhHantWorkflow,
   },
 } as const;

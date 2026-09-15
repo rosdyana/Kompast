@@ -256,6 +256,37 @@ describe("project + board service layer", () => {
     expect(statusChangesAfter).toHaveLength(1);
   });
 
+  it("moveIssue with only afterIssueId set inserts BEFORE that issue, sorting first under the real DB collation", async () => {
+    const { projectId, boardId, issueTypes, statuses } = await withAuthorizedTenant(
+      { userId, organizationId: orgId },
+      (tx) => createProject(tx, { organizationId: orgId, teamId, key: "kpt5", name: "K5", actorUserId: userId }),
+    );
+    const taskType = issueTypes.find((t) => t.name === "Task")!;
+    const todoStatus = statuses.find((s) => s.name === "To Do")!;
+
+    const first = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: taskType.id, statusId: todoStatus.id, title: "First", reporterId: userId }),
+    );
+    const second = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: taskType.id, statusId: todoStatus.id, title: "Second", reporterId: userId }),
+    );
+    // A third issue, created elsewhere, then moved into this column with
+    // afterIssueId = the current first issue — i.e. "land at the top" the
+    // same way BoardView's handleDragEnd/moveToAdjacentColumn do.
+    const inProgressStatus = statuses.find((s) => s.name === "In Progress")!;
+    const third = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: taskType.id, statusId: inProgressStatus.id, title: "Third", reporterId: userId }),
+    );
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      moveIssue(tx, { issueId: third.issueId, toStatusId: todoStatus.id, afterIssueId: first.issueId, actorId: userId }),
+    );
+
+    const board = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => getBoard(tx, boardId));
+    const todoColumn = board.columns.find((c) => c.name === "To Do")!;
+    expect(todoColumn.issues.map((i) => i.id)).toEqual([third.issueId, first.issueId, second.issueId]);
+  });
+
   it("createWorkflowStatus adds a status past the default seed, with a matching board column so it's visible", async () => {
     const { projectId, boardId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
       createProject(tx, { organizationId: orgId, teamId, key: "extst", name: "Extra Status Test", actorUserId: userId }),

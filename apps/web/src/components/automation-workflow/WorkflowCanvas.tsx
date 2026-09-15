@@ -14,11 +14,12 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@kompast/ui/Button";
+import { useTranslation } from "@kompast/i18n";
 import { AutomationNodeCard } from "./AutomationNodeCard";
 import { NodePalette } from "./NodePalette";
 import { NodeConfigPanel } from "./NodeConfigPanel";
 import { RunHistoryPanel } from "./RunHistoryPanel";
-import { NODE_TYPE_CONFIGS, type AutomationNodeType } from "./node-type-config";
+import { getNodeTypeConfigs, type AutomationNodeType } from "./node-type-config";
 import { toRFNodes, toRFEdges, fromRFGraph, newNodeId, type ApiNode, type ApiEdge, type WorkflowNode } from "./graph-serialize";
 import { updateWorkflowFn, deleteWorkflowFn } from "@/lib/server-fns/automation-workflows";
 
@@ -84,6 +85,7 @@ function WorkflowCanvasInner({
   initialEdges: ApiEdge[];
 }) {
   const navigate = useNavigate();
+  const { t } = useTranslation("workflow");
   const [nodes, setNodes, onNodesChange] = useNodesState(useMemo(() => toRFNodes(initialNodes), [initialNodes]));
   const [edges, setEdges, onEdgesChange] = useEdgesState(useMemo(() => toRFEdges(initialEdges), [initialEdges]));
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -107,7 +109,7 @@ function WorkflowCanvasInner({
   );
 
   function handleAddNode(type: AutomationNodeType) {
-    const meta = NODE_TYPE_CONFIGS[type];
+    const meta = getNodeTypeConfigs(t)[type];
     const id = newNodeId();
     setNodes((nds) => [
       ...nds,
@@ -142,7 +144,7 @@ function WorkflowCanvasInner({
       setDirty(false);
       setRunsRefreshSignal((s) => s + 1);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaveError(err instanceof Error ? err.message : t("canvas.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -154,7 +156,7 @@ function WorkflowCanvasInner({
       await updateWorkflowFn({ data: { workflowId, projectId, enabled: next } });
     } catch (err) {
       setEnabled(!next);
-      setSaveError(err instanceof Error ? err.message : "Failed to toggle enabled");
+      setSaveError(err instanceof Error ? err.message : t("canvas.toggleFailed"));
     }
   }
 
@@ -175,23 +177,23 @@ function WorkflowCanvasInner({
         <input value={name} onChange={(e) => { setName(e.target.value); markDirty(); }} className="rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[13px] font-semibold" />
         <label className="flex items-center gap-1.5 text-[11.5px] text-text-3">
           <input type="checkbox" checked={enabled} onChange={(e) => handleToggleEnabled(e.target.checked)} />
-          Enabled
+          {t("canvas.enabledLabel")}
         </label>
         <label className="flex items-center gap-1.5 text-[11.5px] text-text-3">
           <input type="checkbox" checked={dryRun} onChange={(e) => { setDryRun(e.target.checked); markDirty(); }} />
-          Dry run
+          {t("canvas.dryRunLabel")}
         </label>
         <div className="ml-auto flex items-center gap-2">
           {saveError && <span className="type-body text-danger">{saveError}</span>}
           <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("canvas.saving") : t("canvas.save")}
           </Button>
           <Button
             variant="outline"
             onClick={handleDelete}
             style={isArmed ? { color: "var(--danger)", borderColor: "var(--danger)" } : undefined}
           >
-            {isArmed ? "Click again to delete" : "Delete workflow"}
+            {isArmed ? t("canvas.clickAgainToDelete") : t("canvas.deleteWorkflow")}
           </Button>
         </div>
       </div>

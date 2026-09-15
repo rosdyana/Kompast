@@ -1,5 +1,6 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { NODE_TYPE_CONFIGS, type NodeCategory } from "./node-type-config";
+import { useTranslation } from "@kompast/i18n";
+import { getNodeTypeConfigs, type NodeCategory } from "./node-type-config";
 import type { WorkflowNode } from "./graph-serialize";
 
 function cx(...parts: Array<string | false | undefined>): string {
@@ -14,7 +15,8 @@ const CATEGORY_STYLES: Record<NodeCategory, string> = {
 };
 
 export function AutomationNodeCard({ data, selected }: NodeProps<WorkflowNode>) {
-  const meta = NODE_TYPE_CONFIGS[data.nodeType];
+  const { t } = useTranslation("workflow");
+  const meta = getNodeTypeConfigs(t)[data.nodeType];
   const outputs = meta.outputs(data.config);
   const isTrigger = meta.category === "trigger";
 

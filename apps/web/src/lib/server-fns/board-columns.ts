@@ -8,6 +8,7 @@ import {
   requireProjectAccess,
   requireProjectAdmin,
   updateBoardColumn,
+  updateBoardSettings,
   withAuthorizedTenant,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
@@ -84,6 +85,19 @@ export const reorderBoardColumnsFn = createServerFn({ method: "POST" })
     await withAuthorizedTenant(ctx, async (tx) => {
       await requireProjectAdmin(tx, { ...ctx, projectId: data.projectId });
       await reorderBoardColumns(tx, data);
+    });
+    return { ok: true } as const;
+  });
+
+const updateBoardSettingsSchema = z.object({ projectId: z.string(), boardId: z.string(), newIssuePosition: z.enum(["top", "bottom"]).optional() });
+
+export const updateBoardSettingsFn = createServerFn({ method: "POST" })
+  .validator(updateBoardSettingsSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requireProjectAdmin(tx, { ...ctx, projectId: data.projectId });
+      await updateBoardSettings(tx, data);
     });
     return { ok: true } as const;
   });
