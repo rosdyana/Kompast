@@ -1,0 +1,1 @@
+ALTER TABLE "board" ADD COLUMN "new_issue_position" text DEFAULT 'top' NOT NULL;

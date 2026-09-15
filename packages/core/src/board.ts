@@ -231,6 +231,26 @@ export async function deleteBoardColumn(tx: Tx, input: DeleteBoardColumnInput): 
   await tx.delete(schema.boardColumn).where(eq(schema.boardColumn.id, input.columnId));
 }
 
+export interface UpdateBoardSettingsInput {
+  projectId: string;
+  boardId: string;
+  newIssuePosition?: "top" | "bottom";
+}
+
+export async function updateBoardSettings(tx: Tx, input: UpdateBoardSettingsInput): Promise<void> {
+  const [board] = await tx
+    .select({ id: schema.board.id })
+    .from(schema.board)
+    .where(and(eq(schema.board.id, input.boardId), eq(schema.board.projectId, input.projectId)))
+    .limit(1);
+  if (!board) throw new Error(`Board ${input.boardId} not found in project ${input.projectId}`);
+
+  const set: Partial<{ newIssuePosition: "top" | "bottom" }> = {};
+  if (input.newIssuePosition !== undefined) set.newIssuePosition = input.newIssuePosition;
+  if (Object.keys(set).length === 0) return;
+  await tx.update(schema.board).set(set).where(eq(schema.board.id, input.boardId));
+}
+
 export interface ReorderBoardColumnsInput {
   projectId: string;
   boardId: string;

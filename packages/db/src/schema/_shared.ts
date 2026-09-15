@@ -3,11 +3,17 @@ import { customType } from "drizzle-orm/pg-core";
 /**
  * Fractional-index rank for drag-and-drop ordering (LexoRank-style string).
  * Stored as text so re-ranking a single card is a single-row write, never
- * a bulk renumber of the whole column.
+ * a bulk renumber of the whole column. COLLATE "C" is load-bearing, not
+ * cosmetic: fractional-indexing (packages/core/src/rank.ts) generates keys
+ * over a 0-9/A-Z/a-z alphabet and assumes plain byte-order comparison
+ * (e.g. "Z" < "a"), but Postgres's default locale collation (en_US.utf8
+ * here) sorts case-insensitively-ish instead — under it "Zz" > "a0", so a
+ * key generated to sort BEFORE everything (prepending to the top of a
+ * list) can silently collate to the bottom instead. "C" pins byte order.
  */
 export const rank = customType<{ data: string }>({
   dataType() {
-    return "text";
+    return `text COLLATE "C"`;
   },
 });
 

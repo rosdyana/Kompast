@@ -17,6 +17,10 @@ export const board = pgTable("board", {
   quickFilters: jsonb("quick_filters").$type<Json>(),
   /** { cycle: '1w'|'2w'|'3w'|'4w'|'custom', customDays, startWeekday, autoCreateNext, carryOverPolicy } — consumed starting P4. */
   sprintDefaults: jsonb("sprint_defaults").$type<Json>(),
+  /** Where a card lands when dropped/moved into a column without a specific neighbor (empty column area, keyboard move, adjacent-column jump). */
+  newIssuePosition: text("new_issue_position", { enum: ["top", "bottom"] })
+    .notNull()
+    .default("top"),
 });
 
 /**

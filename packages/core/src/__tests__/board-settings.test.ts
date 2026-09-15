@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
-import { deleteBoardColumn, getBoard, reorderBoardColumns, updateBoardColumn } from "../board";
+import { deleteBoardColumn, getBoard, reorderBoardColumns, updateBoardColumn, updateBoardSettings } from "../board";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -112,6 +112,36 @@ describe("board column settings", () => {
     await expect(
       withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => deleteBoardColumn(tx, { projectId: project!.id, columnId: done.id })),
     ).rejects.toThrow(/done/);
+  });
+
+  it("a freshly seeded board defaults newIssuePosition to 'top'", async () => {
+    const { boardId } = await seedProject("BSG");
+    const [board] = await admin.select().from(schema.board).where(eq(schema.board.id, boardId));
+    expect(board?.newIssuePosition).toBe("top");
+  });
+
+  it("updateBoardSettings changes newIssuePosition, scoped to the right project", async () => {
+    const { boardId } = await seedProject("BSH");
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSH"));
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      updateBoardSettings(tx, { projectId: project!.id, boardId, newIssuePosition: "bottom" }),
+    );
+
+    const [updated] = await admin.select().from(schema.board).where(eq(schema.board.id, boardId));
+    expect(updated?.newIssuePosition).toBe("bottom");
+  });
+
+  it("updateBoardSettings rejects a board that belongs to a DIFFERENT project", async () => {
+    const { boardId: boardA } = await seedProject("BSI");
+    await seedProject("BSJ");
+    const [projectJ] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSJ"));
+
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        updateBoardSettings(tx, { projectId: projectJ!.id, boardId: boardA, newIssuePosition: "bottom" }),
+      ),
+    ).rejects.toThrow();
   });
 
   it("reorderBoardColumns keeps Backlog first and rejects an incomplete/mismatched set", async () => {
