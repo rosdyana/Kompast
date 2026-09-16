@@ -8,6 +8,8 @@ const moveIssueSchema = z.object({
   toStatusId: z.string(),
   beforeIssueId: z.string().optional(),
   afterIssueId: z.string().optional(),
+  /** Set only for a swimlane-grouped drag — see BoardView's handleDragEnd. */
+  assigneeId: z.string().nullable().optional(),
 });
 
 export const moveIssueFn = createServerFn({ method: "POST" })
@@ -20,6 +22,7 @@ export const moveIssueFn = createServerFn({ method: "POST" })
         toStatusId: data.toStatusId,
         beforeIssueId: data.beforeIssueId,
         afterIssueId: data.afterIssueId,
+        assigneeId: data.assigneeId,
         actorId: ctx.userId,
         origin: "user",
       }),

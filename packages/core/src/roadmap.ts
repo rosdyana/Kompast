@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, schema } from "@kompast/db";
+import { and, eq, inArray, isNull, ne, schema } from "@kompast/db";
 import type { Tx } from "./types";
 
 export interface CandidateEpic {
@@ -23,6 +23,7 @@ export async function listCandidateEpics(tx: Tx, projectId: string, excludeIssue
       and(
         eq(schema.issue.projectId, projectId),
         eq(schema.issueType.hierarchyLevel, 0),
+        isNull(schema.issue.archivedAt),
         excludeIssueId ? ne(schema.issue.id, excludeIssueId) : undefined,
       ),
     );
@@ -55,13 +56,13 @@ export async function getEpicRoadmap(tx: Tx, projectId: string): Promise<EpicRoa
   const epics = await tx
     .select()
     .from(schema.issue)
-    .where(and(eq(schema.issue.projectId, projectId), eq(schema.issue.typeId, epicType.id)));
+    .where(and(eq(schema.issue.projectId, projectId), eq(schema.issue.typeId, epicType.id), isNull(schema.issue.archivedAt)));
   if (epics.length === 0) return [];
 
   const children = await tx
     .select({ id: schema.issue.id, epicId: schema.issue.epicId, statusId: schema.issue.statusId })
     .from(schema.issue)
-    .where(inArray(schema.issue.epicId, epics.map((e) => e.id)));
+    .where(and(inArray(schema.issue.epicId, epics.map((e) => e.id)), isNull(schema.issue.archivedAt)));
 
   const statuses = await tx
     .select({ id: schema.workflowStatus.id, category: schema.workflowStatus.category })

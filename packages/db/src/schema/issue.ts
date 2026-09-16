@@ -52,6 +52,7 @@ export const issue = pgTable(
     /** 'user' | 'automation' | 'mcp' | 'api' | 'import' — see plan §"REST API + MCP" attribution. */
     origin: text("origin").notNull().default("user"),
     originClient: text("origin_client"),
+    archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

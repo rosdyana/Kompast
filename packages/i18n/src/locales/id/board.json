@@ -90,7 +90,14 @@
   },
   "card": {
     "noEpic": "Tanpa epic",
-    "renameHint": "Klik untuk mengganti nama"
+    "renameHint": "Klik untuk mengganti nama",
+    "archive": "Arsipkan",
+    "clickAgainToArchive": "Klik lagi untuk mengarsipkan",
+    "archiveMenuLabel": "Opsi kartu"
+  },
+  "colorPicker": {
+    "customTitle": "Warna khusus",
+    "hexLabel": "Warna hex"
   },
   "automation": {
     "triggerCreated": "Tiket dibuat",

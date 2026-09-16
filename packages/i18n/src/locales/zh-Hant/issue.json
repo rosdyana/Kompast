@@ -59,8 +59,13 @@
     "estimateSeconds": "預估時間",
     "spentSeconds": "已花費時間",
     "labels": "標籤",
-    "sprint": "Sprint"
+    "sprint": "Sprint",
+    "archived": "已封存"
   },
   "renameHint": "點擊以重新命名",
-  "customPropertiesHeading": "自訂屬性"
+  "customPropertiesHeading": "自訂屬性",
+  "restore": "還原",
+  "archivedBanner": {
+    "message": "此工單已封存，不會顯示在看板、待辦清單與表格中。"
+  }
 }

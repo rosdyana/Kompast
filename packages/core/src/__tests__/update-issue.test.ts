@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
-import { createIssue, updateIssue, recordHistoricalStatusChange } from "../issue";
+import { createIssue, updateIssue, moveIssue, archiveIssue, restoreIssue, recordHistoricalStatusChange } from "../issue";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -209,6 +209,71 @@ describe("updateIssue + createIssue attribution", () => {
     await withAuthorizedTenant(ctx, (tx) => updateIssue(tx, issueId, { assigneeId: userId, actorId: userId }));
     notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
     expect(notifications).toHaveLength(1); // unchanged — no self-notification for the second assignment
+  });
+
+  it("moveIssue can reassign in the same call as a status change (swimlane drag), notifying the new assignee", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx);
+    const [before] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+
+    await withAuthorizedTenant(ctx, (tx) =>
+      moveIssue(tx, { issueId, toStatusId: before!.statusId, assigneeId: otherUserId, actorId: userId }),
+    );
+
+    const [updated] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(updated?.assigneeId).toBe(otherUserId);
+
+    const history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history.find((h) => h.field === "assigneeId")).toMatchObject({ fromValue: null, toValue: otherUserId });
+
+    const notifications = await admin.select().from(schema.notification).where(eq(schema.notification.organizationId, orgId));
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({ userId: otherUserId, eventType: "issue.assigned" });
+  });
+
+  it("moveIssue leaves the assignee untouched when assigneeId is omitted (plain column drag)", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx, { assigneeId: userId });
+    const [before] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+
+    await withAuthorizedTenant(ctx, (tx) => moveIssue(tx, { issueId, toStatusId: before!.statusId, actorId: userId }));
+
+    const [after] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(after?.assigneeId).toBe(userId);
+
+    const history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history.some((h) => h.field === "assigneeId")).toBe(false);
+  });
+
+  it("archiveIssue sets archivedAt and writes a history row; restoreIssue clears it", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx);
+
+    await withAuthorizedTenant(ctx, (tx) => archiveIssue(tx, issueId, { actorId: userId }));
+    let [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issue?.archivedAt).toBeInstanceOf(Date);
+    let history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history.filter((h) => h.field === "archived")).toHaveLength(1);
+
+    await withAuthorizedTenant(ctx, (tx) => restoreIssue(tx, issueId, { actorId: userId }));
+    [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(issue?.archivedAt).toBeNull();
+    history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history.filter((h) => h.field === "archived")).toHaveLength(2);
+  });
+
+  it("archiveIssue and restoreIssue are idempotent no-ops when already in that state", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { issueId } = await seedIssue(ctx);
+
+    await withAuthorizedTenant(ctx, (tx) => restoreIssue(tx, issueId, { actorId: userId }));
+    let history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history.filter((h) => h.field === "archived")).toHaveLength(0);
+
+    await withAuthorizedTenant(ctx, (tx) => archiveIssue(tx, issueId, { actorId: userId }));
+    await withAuthorizedTenant(ctx, (tx) => archiveIssue(tx, issueId, { actorId: userId }));
+    history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+    expect(history.filter((h) => h.field === "archived")).toHaveLength(1);
   });
 
   it("createIssue with an initial assignee (not the reporter) notifies them", async () => {

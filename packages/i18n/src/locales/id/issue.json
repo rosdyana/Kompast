@@ -59,8 +59,13 @@
     "estimateSeconds": "Estimasi",
     "spentSeconds": "Waktu terpakai",
     "labels": "Label",
-    "sprint": "Sprint"
+    "sprint": "Sprint",
+    "archived": "Diarsipkan"
   },
   "renameHint": "Klik untuk mengganti nama",
-  "customPropertiesHeading": "Properti kustom"
+  "customPropertiesHeading": "Properti kustom",
+  "restore": "Pulihkan",
+  "archivedBanner": {
+    "message": "Tiket ini diarsipkan. Disembunyikan dari board, backlog, dan tabel."
+  }
 }

@@ -29,6 +29,7 @@ import {
   deletePriorityLevelFn,
   reorderPriorityLevelsFn,
 } from "@/lib/server-fns/priority";
+import { ColorSwatchPicker, COLUMN_TONES } from "@/components/board/ColorSwatchPicker";
 
 type BoardData = Awaited<ReturnType<typeof getProjectBoardFn>>;
 type PropertyDefinition = Awaited<ReturnType<typeof listIssuePropertyDefinitionsFn>>[number];
@@ -36,8 +37,6 @@ type PriorityLevel = Awaited<ReturnType<typeof listPriorityLevelsFn>>[number];
 
 /** Duplicated from packages/core/src/issue-property.ts — see server-fns/issue-properties.ts's own comment on why this list isn't imported. */
 const ISSUE_PROPERTY_TYPES = ["text", "textarea", "number", "date", "checkbox", "select", "multiSelect", "url", "person"] as const;
-
-const COLUMN_TONES = ["var(--indigo)", "var(--violet)", "var(--amber)", "var(--green)", "var(--danger)", "var(--text3)"];
 
 export function ProjectSettingsTab({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
@@ -205,17 +204,7 @@ function ColumnsSettings({ data }: { data: BoardData }) {
               <span className="type-label text-text-3">{col.issues.length}</span>
               {col.isBacklog && <Badge>{t("fixedBadge")}</Badge>}
             </span>
-            <span className="flex items-center gap-1">
-              {COLUMN_TONES.map((tone) => (
-                <button
-                  key={tone}
-                  onClick={() => recolor(col.id, tone)}
-                  title={tone}
-                  className="h-[15px] w-[15px] flex-none rounded-full"
-                  style={{ background: tone, boxShadow: col.color === tone ? "0 0 0 2px var(--border-2)" : undefined }}
-                />
-              ))}
-            </span>
+            <ColorSwatchPicker value={col.color} onChange={(color) => recolor(col.id, color)} />
             <input
               defaultValue={col.wipLimit ?? ""}
               placeholder="∞"
@@ -585,17 +574,7 @@ function PrioritySettings({ projectId }: { projectId: string }) {
                 className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
               />
             </span>
-            <span className="flex items-center gap-1">
-              {COLUMN_TONES.map((tone) => (
-                <button
-                  key={tone}
-                  onClick={() => recolor(level.id, tone)}
-                  title={tone}
-                  className="h-[15px] w-[15px] flex-none rounded-full"
-                  style={{ background: tone, boxShadow: level.color === tone ? "0 0 0 2px var(--border-2)" : undefined }}
-                />
-              ))}
-            </span>
+            <ColorSwatchPicker value={level.color} onChange={(color) => recolor(level.id, color)} />
             <span className="flex gap-0.5">
               <button
                 onClick={() => move(level.id, "left")}

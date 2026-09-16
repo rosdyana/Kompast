@@ -3,6 +3,8 @@ import * as z from "zod";
 import { and, asc, desc, eq, inArray, schema, type Json } from "@kompast/db";
 import {
   addComment,
+  archiveIssue,
+  restoreIssue,
   listComments,
   listAttachments,
   listCandidateEpics,
@@ -14,6 +16,8 @@ import {
   updateIssue,
   updateIssueCustomField,
   withAuthorizedTenant,
+  requireProjectAdmin,
+  ForbiddenError,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 import { resolveIssue } from "../api-resolvers";
@@ -104,6 +108,13 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         })(),
       ]);
 
+      const canManageProject = await requireProjectAdmin(tx, { ...ctx, projectId: project.id })
+        .then(() => true)
+        .catch((err) => {
+          if (err instanceof ForbiddenError) return false;
+          throw err;
+        });
+
       return {
         project,
         issue,
@@ -122,8 +133,38 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         priorityLevels,
         candidateEpics,
         boardSprints,
+        canManageProject,
       };
     });
+  });
+
+const archiveIssueSchema = z.object({ issueId: z.string() });
+
+/** Soft delete, gated to project admin/lead — see packages/core/src/issue.ts's archiveIssue. */
+export const archiveIssueFn = createServerFn({ method: "POST" })
+  .validator(archiveIssueSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, async (tx) => {
+      const [issue] = await tx.select({ projectId: schema.issue.projectId }).from(schema.issue).where(eq(schema.issue.id, data.issueId));
+      if (!issue) throw new Error(`Issue ${data.issueId} not found`);
+      await requireProjectAdmin(tx, { ...ctx, projectId: issue.projectId });
+      await archiveIssue(tx, data.issueId, { actorId: ctx.userId, origin: "user" });
+    });
+    return { ok: true } as const;
+  });
+
+export const restoreIssueFn = createServerFn({ method: "POST" })
+  .validator(archiveIssueSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, async (tx) => {
+      const [issue] = await tx.select({ projectId: schema.issue.projectId }).from(schema.issue).where(eq(schema.issue.id, data.issueId));
+      if (!issue) throw new Error(`Issue ${data.issueId} not found`);
+      await requireProjectAdmin(tx, { ...ctx, projectId: issue.projectId });
+      await restoreIssue(tx, data.issueId, { actorId: ctx.userId, origin: "user" });
+    });
+    return { ok: true } as const;
   });
 
 const addCommentSchema = z.object({

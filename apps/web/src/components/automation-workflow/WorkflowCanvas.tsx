@@ -13,6 +13,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useNavigate } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { useTranslation } from "@kompast/i18n";
 import { AutomationNodeCard } from "./AutomationNodeCard";
@@ -169,11 +170,24 @@ function WorkflowCanvasInner({
     navigate({ to: "/projects/$teamId/$projectKey", params: { teamId, projectKey }, search: { tab: "automation" } });
   }
 
+  function handleBack() {
+    if (dirty && !window.confirm(t("canvas.discardChangesConfirm"))) return;
+    navigate({ to: "/projects/$teamId/$projectKey", params: { teamId, projectKey }, search: { tab: "automation" } });
+  }
+
   const selectedNode = (nodes as WorkflowNode[]).find((n) => n.id === selectedNodeId) ?? null;
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
+        <button
+          type="button"
+          onClick={handleBack}
+          aria-label={t("canvas.backLabel")}
+          className="flex flex-none items-center gap-1 text-xs text-text-3 hover:text-text-2"
+        >
+          <ArrowLeft size={13} strokeWidth={1.75} />
+        </button>
         <input value={name} onChange={(e) => { setName(e.target.value); markDirty(); }} className="rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[13px] font-semibold" />
         <label className="flex items-center gap-1.5 text-[11.5px] text-text-3">
           <input type="checkbox" checked={enabled} onChange={(e) => handleToggleEnabled(e.target.checked)} />

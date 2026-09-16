@@ -21,6 +21,7 @@ import {
   updateIssueTypeFn,
   updateIssueLabelsFn,
   updateIssueStoryPointsFn,
+  restoreIssueFn,
 } from "@/lib/server-fns/issue-detail";
 import { moveIssueFn } from "@/lib/server-fns/issues";
 import { addIssueToSprintFn, removeIssueFromSprintFn } from "@/lib/server-fns/sprints";
@@ -256,6 +257,11 @@ function IssueDetailPage() {
     return `${label}: ${resolveHistoryValue(h.field, h.fromValue)} → ${resolveHistoryValue(h.field, h.toValue)}`;
   }
 
+  async function restore() {
+    await restoreIssueFn({ data: { issueId: data.issue.id } });
+    await router.invalidate();
+  }
+
   async function setSprint(sprintId: string | null) {
     if (sprintId) {
       await addIssueToSprintFn({ data: { sprintId, issueId: data.issue.id } });
@@ -275,6 +281,17 @@ function IssueDetailPage() {
       >
         <ArrowLeft size={13} strokeWidth={1.75} /> {data.project.name}
       </Link>
+
+      {data.issue.archivedAt && (
+        <div className="mb-4 flex items-center gap-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">
+          <span>{t("archivedBanner.message")}</span>
+          {data.canManageProject && (
+            <Button variant="outline" onClick={restore} className="ml-auto">
+              {t("restore")}
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_260px]">
         <div className="min-w-0">
