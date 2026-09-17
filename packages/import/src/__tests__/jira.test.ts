@@ -17,12 +17,14 @@ describe("JIRA importer (golden fixture)", () => {
 
   const orgId = "test-jira-import-org";
   const userId = "test-jira-import-user";
+  const teamId = "test-jira-import-team";
   const ctx = { userId, organizationId: orgId };
 
   async function cleanup() {
     await admin.delete(schema.externalRef).where(eq(schema.externalRef.organizationId, orgId));
     await admin.delete(schema.importRun).where(eq(schema.importRun.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -33,6 +35,7 @@ describe("JIRA importer (golden fixture)", () => {
     await admin.insert(schema.organization).values({ id: orgId, name: "JIRA Import Test Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "Importer", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
   });
 
   afterAll(async () => {
@@ -49,7 +52,9 @@ describe("JIRA importer (golden fixture)", () => {
   });
 
   it("dry-run reports the status/type mapping without writing any issue", async () => {
-    const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, key: "demo", name: "Demo", actorUserId: userId }));
+    const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "demo", name: "Demo", actorUserId: userId }),
+    );
     const { importRunId } = await withAuthorizedTenant(ctx, (tx) =>
       createImportRun(tx, { organizationId: orgId, projectId, source: "jira", dryRun: true, config: {}, createdBy: userId }),
     );
@@ -71,7 +76,9 @@ describe("JIRA importer (golden fixture)", () => {
   });
 
   it("a real run creates issues, backfills parent linkage, comments, worklogs, links, changelog transitions, and preserves customFields", async () => {
-    const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, key: "demo2", name: "Demo 2", actorUserId: userId }));
+    const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "demo2", name: "Demo 2", actorUserId: userId }),
+    );
     const { importRunId } = await withAuthorizedTenant(ctx, (tx) =>
       createImportRun(tx, { organizationId: orgId, projectId, source: "jira", dryRun: false, config: {}, createdBy: userId }),
     );
@@ -132,7 +139,9 @@ describe("JIRA importer (golden fixture)", () => {
   });
 
   it("running the same import twice is idempotent — the second run skips every issue via external_ref, creating nothing new", async () => {
-    const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, key: "demo3", name: "Demo 3", actorUserId: userId }));
+    const { projectId, boardId } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "demo3", name: "Demo 3", actorUserId: userId }),
+    );
     const { importRunId: firstRunId } = await withAuthorizedTenant(ctx, (tx) =>
       createImportRun(tx, { organizationId: orgId, projectId, source: "jira", dryRun: false, config: {}, createdBy: userId }),
     );
