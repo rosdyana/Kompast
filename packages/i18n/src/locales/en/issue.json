@@ -59,8 +59,13 @@
     "estimateSeconds": "Estimate",
     "spentSeconds": "Time spent",
     "labels": "Labels",
-    "sprint": "Sprint"
+    "sprint": "Sprint",
+    "archived": "Archived"
   },
   "renameHint": "Click to rename",
-  "customPropertiesHeading": "Custom properties"
+  "customPropertiesHeading": "Custom properties",
+  "restore": "Restore",
+  "archivedBanner": {
+    "message": "This issue is archived. It's hidden from the board, backlog, and table."
+  }
 }

@@ -90,7 +90,14 @@
   },
   "card": {
     "noEpic": "No epic",
-    "renameHint": "Click to rename"
+    "renameHint": "Click to rename",
+    "archive": "Archive",
+    "clickAgainToArchive": "Click again to archive",
+    "archiveMenuLabel": "Card options"
+  },
+  "colorPicker": {
+    "customTitle": "Custom color",
+    "hexLabel": "Hex color"
   },
   "automation": {
     "triggerCreated": "Issue created",

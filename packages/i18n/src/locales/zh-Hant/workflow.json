@@ -101,6 +101,7 @@
     "empty": "尚無執行紀錄。"
   },
   "canvas": {
+    "backLabel": "返回自動化",
     "enabledLabel": "啟用",
     "dryRunLabel": "試跑",
     "saving": "儲存中…",
@@ -108,7 +109,8 @@
     "clickAgainToDelete": "再次點擊以刪除",
     "deleteWorkflow": "刪除工作流程",
     "saveFailed": "儲存失敗",
-    "toggleFailed": "切換啟用狀態失敗"
+    "toggleFailed": "切換啟用狀態失敗",
+    "discardChangesConfirm": "捨棄未儲存的變更？"
   },
   "list": {
     "loading": "載入中…",

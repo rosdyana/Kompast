@@ -101,6 +101,7 @@
     "empty": "Belum ada riwayat berjalan."
   },
   "canvas": {
+    "backLabel": "Kembali ke Automation",
     "enabledLabel": "Aktif",
     "dryRunLabel": "Uji coba",
     "saving": "Menyimpan…",
@@ -108,7 +109,8 @@
     "clickAgainToDelete": "Klik lagi untuk menghapus",
     "deleteWorkflow": "Hapus workflow",
     "saveFailed": "Gagal menyimpan",
-    "toggleFailed": "Gagal mengubah status aktif"
+    "toggleFailed": "Gagal mengubah status aktif",
+    "discardChangesConfirm": "Batalkan perubahan yang belum disimpan?"
   },
   "list": {
     "loading": "Memuat…",

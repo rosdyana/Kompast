@@ -1,0 +1,1 @@
+ALTER TABLE "issue" ADD COLUMN "archived_at" timestamp;

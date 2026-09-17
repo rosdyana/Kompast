@@ -101,6 +101,7 @@
     "empty": "No runs yet."
   },
   "canvas": {
+    "backLabel": "Back to Automation",
     "enabledLabel": "Enabled",
     "dryRunLabel": "Dry run",
     "saving": "Saving…",
@@ -108,7 +109,8 @@
     "clickAgainToDelete": "Click again to delete",
     "deleteWorkflow": "Delete workflow",
     "saveFailed": "Failed to save",
-    "toggleFailed": "Failed to toggle enabled"
+    "toggleFailed": "Failed to toggle enabled",
+    "discardChangesConfirm": "Discard unsaved changes?"
   },
   "list": {
     "loading": "Loading…",

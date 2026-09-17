@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject, createWorkflowStatus, createIssueType, setSprintMinutesTemplate, resolveDefaultCreationTarget } from "../project";
-import { createIssue, moveIssue } from "../issue";
+import { createIssue, moveIssue, archiveIssue } from "../issue";
 import { getBoard } from "../board";
 import { requireMembership, requireProjectAccess, withAuthorizedTenant, ForbiddenError } from "../permissions";
 import { id } from "../ids";
@@ -285,6 +285,27 @@ describe("project + board service layer", () => {
     const board = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => getBoard(tx, boardId));
     const todoColumn = board.columns.find((c) => c.name === "To Do")!;
     expect(todoColumn.issues.map((i) => i.id)).toEqual([third.issueId, first.issueId, second.issueId]);
+  });
+
+  it("getBoard excludes archived issues from column results", async () => {
+    const { projectId, boardId, issueTypes, statuses } = await withAuthorizedTenant(
+      { userId, organizationId: orgId },
+      (tx) => createProject(tx, { organizationId: orgId, teamId, key: "arch1", name: "Archive Test", actorUserId: userId }),
+    );
+    const taskType = issueTypes.find((t) => t.name === "Task")!;
+    const todoStatus = statuses.find((s) => s.name === "To Do")!;
+
+    const kept = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: taskType.id, statusId: todoStatus.id, title: "Kept", reporterId: userId }),
+    );
+    const archived = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: taskType.id, statusId: todoStatus.id, title: "Archived", reporterId: userId }),
+    );
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => archiveIssue(tx, archived.issueId, { actorId: userId }));
+
+    const board = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => getBoard(tx, boardId));
+    const todoColumn = board.columns.find((c) => c.name === "To Do")!;
+    expect(todoColumn.issues.map((i) => i.id)).toEqual([kept.issueId]);
   });
 
   it("createWorkflowStatus adds a status past the default seed, with a matching board column so it's visible", async () => {

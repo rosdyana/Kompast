@@ -404,6 +404,10 @@ export interface MoveIssueInput {
   toStatusId: string;
   beforeIssueId?: string;
   afterIssueId?: string;
+  /** Set only for a swimlane-grouped drag (see BoardView's handleDragEnd): the assignee to
+   * match the lane the card was dropped into. undefined = untouched (plain column drag or
+   * every other caller); null = dropped into the Unassigned lane. */
+  assigneeId?: string | null;
   actorId: string;
   origin?: "user" | "automation" | "mcp" | "api" | "import";
   originClient?: string;
@@ -419,7 +423,15 @@ export interface MoveIssueInput {
  */
 export async function moveIssue(tx: Tx, input: MoveIssueInput) {
   const [current] = await tx
-    .select({ organizationId: schema.issue.organizationId, projectId: schema.issue.projectId, statusId: schema.issue.statusId, rank: schema.issue.rank })
+    .select({
+      organizationId: schema.issue.organizationId,
+      projectId: schema.issue.projectId,
+      statusId: schema.issue.statusId,
+      rank: schema.issue.rank,
+      assigneeId: schema.issue.assigneeId,
+      title: schema.issue.title,
+      keySeq: schema.issue.keySeq,
+    })
     .from(schema.issue)
     .where(eq(schema.issue.id, input.issueId))
     .limit(1);
@@ -435,10 +447,16 @@ export async function moveIssue(tx: Tx, input: MoveIssueInput) {
   ]);
 
   const newRank = rankBetween(beforeRow[0]?.rank ?? null, afterRow[0]?.rank ?? null);
+  const assigneeChanged = input.assigneeId !== undefined && input.assigneeId !== current.assigneeId;
 
   await tx
     .update(schema.issue)
-    .set({ statusId: input.toStatusId, rank: newRank, updatedAt: new Date() })
+    .set({
+      statusId: input.toStatusId,
+      rank: newRank,
+      updatedAt: new Date(),
+      ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
+    })
     .where(eq(schema.issue.id, input.issueId));
 
   if (current.statusId !== input.toStatusId) {
@@ -462,6 +480,90 @@ export async function moveIssue(tx: Tx, input: MoveIssueInput) {
       automationContext: input.automationContext,
     });
   }
+
+  if (assigneeChanged) {
+    await tx.insert(schema.issueHistory).values({
+      id: id("hist"),
+      issueId: input.issueId,
+      actorId: input.actorId,
+      origin: input.origin ?? "user",
+      originClient: input.originClient,
+      field: "assigneeId",
+      fromValue: current.assigneeId,
+      toValue: input.assigneeId ?? null,
+    });
+
+    // Same notification/automation-event shape as updateIssue's own
+    // assigneeChanged branch — a drag-based reassignment is functionally
+    // identical to any other reassignment from the assignee's point of
+    // view, so it needs the same "you've got new work" signal.
+    if (input.origin !== "import" && input.assigneeId && input.assigneeId !== input.actorId) {
+      await notifyAssignment(tx, input.issueId, { organizationId: current.organizationId, projectId: current.projectId, keySeq: current.keySeq, title: current.title }, input.assigneeId);
+    }
+
+    if (input.origin !== "import") {
+      await emitAutomationEvent(tx, {
+        organizationId: current.organizationId,
+        projectId: current.projectId,
+        eventType: "issue.assigned",
+        entityId: input.issueId,
+        payload: { statusId: input.toStatusId, assigneeId: input.assigneeId ?? null, projectId: current.projectId },
+        automationContext: input.automationContext,
+      });
+    }
+  }
+}
+
+export interface ArchiveIssueMeta {
+  actorId: string;
+  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  originClient?: string;
+}
+
+/**
+ * Soft delete: hides the card from board/backlog/table/roadmap (see
+ * getBoard/listCandidateEpics/getEpicRoadmap's archivedAt filters) without
+ * removing the row — recoverable via restoreIssue. No automation event,
+ * notification, or reindex: there's no existing trigger vocabulary for an
+ * "archived" event, and archiving doesn't change indexed text or need
+ * live-workflow side effects. Idempotent no-op if already archived.
+ */
+export async function archiveIssue(tx: Tx, issueId: string, meta: ArchiveIssueMeta): Promise<void> {
+  const [current] = await tx.select({ archivedAt: schema.issue.archivedAt }).from(schema.issue).where(eq(schema.issue.id, issueId));
+  if (!current) throw new Error(`Issue ${issueId} not found`);
+  if (current.archivedAt) return;
+
+  const now = new Date();
+  await tx.update(schema.issue).set({ archivedAt: now, updatedAt: now }).where(eq(schema.issue.id, issueId));
+  await tx.insert(schema.issueHistory).values({
+    id: id("hist"),
+    issueId,
+    actorId: meta.actorId,
+    origin: meta.origin ?? "user",
+    originClient: meta.originClient,
+    field: "archived",
+    fromValue: null,
+    toValue: now.toISOString(),
+  });
+}
+
+/** Symmetric restore — clears archivedAt. Idempotent no-op if not archived. */
+export async function restoreIssue(tx: Tx, issueId: string, meta: ArchiveIssueMeta): Promise<void> {
+  const [current] = await tx.select({ archivedAt: schema.issue.archivedAt }).from(schema.issue).where(eq(schema.issue.id, issueId));
+  if (!current) throw new Error(`Issue ${issueId} not found`);
+  if (!current.archivedAt) return;
+
+  await tx.update(schema.issue).set({ archivedAt: null, updatedAt: new Date() }).where(eq(schema.issue.id, issueId));
+  await tx.insert(schema.issueHistory).values({
+    id: id("hist"),
+    issueId,
+    actorId: meta.actorId,
+    origin: meta.origin ?? "user",
+    originClient: meta.originClient,
+    field: "archived",
+    fromValue: current.archivedAt.toISOString(),
+    toValue: null,
+  });
 }
 
 export interface RecordHistoricalStatusChangeInput {

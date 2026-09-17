@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne, schema } from "@kompast/db";
+import { and, asc, eq, inArray, isNull, ne, schema } from "@kompast/db";
 import type { Tx } from "./types";
 
 /**
@@ -49,7 +49,7 @@ export async function getBoard(tx: Tx, boardId: string) {
             customFields: schema.issue.customFields,
           })
           .from(schema.issue)
-          .where(inArray(schema.issue.statusId, statusIds))
+          .where(and(inArray(schema.issue.statusId, statusIds), isNull(schema.issue.archivedAt)))
           .orderBy(asc(schema.issue.rank))
       : [];
 

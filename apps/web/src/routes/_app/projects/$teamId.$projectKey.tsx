@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter, useNavigate, useLoaderData, ClientOnly, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Kanban, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search, Inbox } from "lucide-react";
+import { Kanban, Table2, Map as MapIcon, FileText, Zap, Download, Settings, Search, Inbox, MoreVertical } from "lucide-react";
 import {
   DndContext,
   useDraggable,
@@ -18,7 +18,8 @@ import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { normalizeTableViewConfig } from "@kompast/core/table-view-config";
 import { getProjectBoardFn, updateTableViewFn } from "@/lib/server-fns/projects";
 import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
-import { updateIssueTitleFn, updateIssueEpicFn } from "@/lib/server-fns/issue-detail";
+import { updateIssueTitleFn, updateIssueEpicFn, archiveIssueFn } from "@/lib/server-fns/issue-detail";
+import { useConfirmArm } from "@/lib/use-confirm-arm";
 import { listProjectPagesFn, createPageFn } from "@/lib/server-fns/pages";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 import { listImportRunsFn, startJiraImportFn } from "@/lib/server-fns/imports";
@@ -1547,16 +1548,24 @@ function BoardView({ data }: { data: BoardData }) {
     let toStatusId: string | undefined;
     let beforeIssueId: string | undefined;
     let afterIssueId: string | undefined;
+    // Set only in swimlane mode (droppable ids carry a `::lane` suffix, or the
+    // target card resolves to one) — stays undefined for a flat-board drag, so
+    // moveIssueFn's assigneeId is never sent and a plain column move is
+    // completely unaffected.
+    let targetSwimlaneKey: string | undefined;
 
     if (overIsCard) {
       const targetColumn = columns.find((c) => c.issues.some((i) => i.id === overId))!;
       toStatusId = targetColumn.statusIds[0];
       beforeIssueId = overId;
+      const targetIssue = targetColumn.issues.find((i) => i.id === overId);
+      if (targetIssue) targetSwimlaneKey = assigneeSwimlaneKey(targetIssue);
     } else {
       const { columnId, swimlaneKey } = parseDroppableId(overId);
       const overColumn = columns.find((c) => c.id === columnId);
       if (!overColumn) return;
       toStatusId = overColumn.statusIds[0];
+      targetSwimlaneKey = swimlaneKey;
       // rankBetween(before, after) takes before as the predecessor (sorts earlier) and after as the
       // successor (sorts later) — see sprint.ts's own rankBetween(lastRanked.rank, null) for "append to
       // end". So landing at the bottom pins the predecessor (current last card, no successor); landing
@@ -1567,11 +1576,14 @@ function BoardView({ data }: { data: BoardData }) {
     }
     if (!toStatusId) return;
 
+    const assigneeId: string | null | undefined =
+      targetSwimlaneKey === undefined ? undefined : targetSwimlaneKey === UNASSIGNED_SWIMLANE ? null : targetSwimlaneKey;
+
     setPending(true);
     setError(null);
     setAnnouncement(null);
     try {
-      await moveIssueFn({ data: { issueId: activeId, toStatusId, beforeIssueId, afterIssueId } });
+      await moveIssueFn({ data: { issueId: activeId, toStatusId, beforeIssueId, afterIssueId, assigneeId } });
       await router.invalidate();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("genericError"));
@@ -1665,6 +1677,7 @@ function BoardView({ data }: { data: BoardData }) {
             priorityLevelsByKey={priorityLevelsByKey}
             visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
             candidateEpics={data.candidateEpics}
+            canManageProject={data.canManageProject}
             onMoveToAdjacentColumn={moveToAdjacentColumn}
             registerCardRef={registerCardRef}
             addingIssueTarget={addingIssueTarget}
@@ -1694,6 +1707,7 @@ function BoardView({ data }: { data: BoardData }) {
                 priorityLevelsByKey={priorityLevelsByKey}
                 visibleProperties={data.propertyDefinitions.filter((p) => p.visibleOnCard)}
                 candidateEpics={data.candidateEpics}
+                canManageProject={data.canManageProject}
                 onMoveToAdjacentColumn={moveToAdjacentColumn}
                 registerCardRef={registerCardRef}
                 showAddIssue={index === 0}
@@ -1750,6 +1764,7 @@ function ColumnCell({
   priorityLevelsByKey,
   visibleProperties,
   candidateEpics,
+  canManageProject,
   onMoveToAdjacentColumn,
   registerCardRef,
   showAddIssue,
@@ -1772,6 +1787,7 @@ function ColumnCell({
   priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
   candidateEpics: BoardData["candidateEpics"];
+  canManageProject: boolean;
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next", swimlaneKey?: string) => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
   showAddIssue?: boolean;
@@ -1810,6 +1826,7 @@ function ColumnCell({
           priorityLevelsByKey={priorityLevelsByKey}
           visibleProperties={visibleProperties}
           candidateEpics={candidateEpics}
+          canManageProject={canManageProject}
           onMoveToAdjacentColumn={onMoveToAdjacentColumn}
           registerCardRef={registerCardRef}
         />
@@ -1861,6 +1878,7 @@ function Column({
   priorityLevelsByKey,
   visibleProperties,
   candidateEpics,
+  canManageProject,
   onMoveToAdjacentColumn,
   registerCardRef,
   showAddIssue,
@@ -1880,6 +1898,7 @@ function Column({
   priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
   candidateEpics: BoardData["candidateEpics"];
+  canManageProject: boolean;
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next") => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
   showAddIssue: boolean;
@@ -1905,6 +1924,7 @@ function Column({
         priorityLevelsByKey={priorityLevelsByKey}
         visibleProperties={visibleProperties}
         candidateEpics={candidateEpics}
+        canManageProject={canManageProject}
         onMoveToAdjacentColumn={onMoveToAdjacentColumn}
         registerCardRef={registerCardRef}
         showAddIssue={showAddIssue}
@@ -1922,10 +1942,11 @@ function Column({
 
 /**
  * Jira-style swimlanes: status columns stay exactly as-is, one row per
- * assignee (Unassigned last) overlays them. Dragging a card only ever
- * changes status via the column it lands in — never reassigns it — so it
- * can reappear under a different row than the one it was dropped into once
- * the board refreshes, matching its real (unchanged) assignee.
+ * assignee (Unassigned last) overlays them. Dragging a card between lanes
+ * reassigns it to match the lane it's dropped into (see handleDragEnd's
+ * targetSwimlaneKey derivation) — dropping into the Unassigned lane clears
+ * the assignee. Dragging within the same lane (a pure column change) leaves
+ * the assignee untouched, same as a flat-board drag.
  */
 function SwimlaneBoard({
   columns,
@@ -1936,6 +1957,7 @@ function SwimlaneBoard({
   priorityLevelsByKey,
   visibleProperties,
   candidateEpics,
+  canManageProject,
   onMoveToAdjacentColumn,
   registerCardRef,
   addingIssueTarget,
@@ -1954,6 +1976,7 @@ function SwimlaneBoard({
   priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
   candidateEpics: BoardData["candidateEpics"];
+  canManageProject: boolean;
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next", swimlaneKey?: string) => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
   /** Which lane's composer is open — a lane's own `key` (a real assigneeId, or UNASSIGNED_SWIMLANE), or null. */
@@ -2024,6 +2047,7 @@ function SwimlaneBoard({
                         priorityLevelsByKey={priorityLevelsByKey}
                         visibleProperties={visibleProperties}
                         candidateEpics={candidateEpics}
+                        canManageProject={canManageProject}
                         onMoveToAdjacentColumn={onMoveToAdjacentColumn}
                         registerCardRef={registerCardRef}
                         showAddIssue={showAddIssue}
@@ -2069,6 +2093,7 @@ function Card({
   priorityLevelsByKey,
   visibleProperties,
   candidateEpics,
+  canManageProject,
   onMoveToAdjacentColumn,
   registerCardRef,
 }: {
@@ -2082,6 +2107,7 @@ function Card({
   priorityLevelsByKey: Map<string, BoardData["priorityLevels"][number]>;
   visibleProperties: BoardData["propertyDefinitions"];
   candidateEpics: BoardData["candidateEpics"];
+  canManageProject: boolean;
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next", swimlaneKey?: string) => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
 }) {
@@ -2091,6 +2117,18 @@ function Card({
   const { listeners, setNodeRef, transform, isDragging } = useDraggable({ id: issue.id });
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(issue.title);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const { isArmed, arm, disarm } = useConfirmArm();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [menuOpen]);
 
   function setRefs(el: HTMLAnchorElement | null) {
     setNodeRef(el);
@@ -2133,6 +2171,19 @@ function Card({
     await router.invalidate();
   }
 
+  async function handleArchive(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isArmed(issue.id)) {
+      arm(issue.id);
+      return;
+    }
+    disarm();
+    setMenuOpen(false);
+    await archiveIssueFn({ data: { issueId: issue.id } });
+    await router.invalidate();
+  }
+
   return (
     <Link
       to="/issues/$teamId/$projectKey/$issueKeySeq"
@@ -2160,6 +2211,38 @@ function Card({
           >
             {type.name}
           </span>
+        )}
+        {canManageProject && (
+          <div ref={menuRef} className="relative ml-auto flex-none">
+            <button
+              type="button"
+              aria-label={t("card.archiveMenuLabel")}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setMenuOpen((v) => !v);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="flex h-5 w-5 items-center justify-center rounded text-text-3 hover:bg-surface-3 hover:text-text-2"
+            >
+              <MoreVertical size={13} strokeWidth={1.75} />
+            </button>
+            {menuOpen && (
+              <div
+                className="absolute right-0 top-[26px] z-10 min-w-[160px] rounded-[10px] border border-border bg-surface p-1 shadow-kp"
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={handleArchive}
+                  className="block w-full rounded-[7px] px-2.5 py-1.5 text-left type-body hover:bg-surface-3"
+                  style={isArmed(issue.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
+                >
+                  {isArmed(issue.id) ? t("card.clickAgainToArchive") : t("card.archive")}
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
       {editingTitle ? (
