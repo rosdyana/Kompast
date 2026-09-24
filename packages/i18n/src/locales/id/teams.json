@@ -29,5 +29,18 @@
   "transferMemberSelectPlaceholder": "Pilih anggota…",
   "transferringEllipsis": "Memindahkan…",
   "transfer": "Pindahkan",
-  "transferFailed": "Gagal memindahkan super admin"
+  "transferFailed": "Gagal memindahkan super admin",
+  "nameLabel": "Nama tim",
+  "removeConfirmTitle": "Keluarkan {{name}} dari tim ini?",
+  "removeConfirmBody": "Mereka tidak lagi menjadi anggota tim ini. Anda bisa menambahkannya lagi kapan saja.",
+  "transferConfirmTitle": "Alihkan super admin ke {{name}}?",
+  "transferConfirmBody": "Hak super admin Anda dicabut begitu Anda mengonfirmasi.",
+  "cancel": "Batal",
+  "transferDone": "Super admin dialihkan",
+  "memberRemoved": "Anggota dikeluarkan",
+  "memberAdded": "Anggota ditambahkan",
+  "teams": "Tim",
+  "settings": "Pengaturan",
+  "noAccessTitle": "Hanya super admin yang dapat membuat tim",
+  "goHome": "Kembali ke beranda"
 }

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
 import { createWorkflow, listWorkflows, getWorkflow, updateWorkflow, deleteWorkflow, listWorkflowRuns, getWorkflowRun, withAuthorizedTenant } from "@kompast/core";
+import { and, desc, inArray, like, schema, type Json } from "@kompast/db";
 import { requireAuthContext } from "../session";
 
 // Duplicated locally rather than imported from @kompast/core at module scope
@@ -36,7 +37,33 @@ export const listWorkflowsFn = createServerFn({ method: "GET" })
   .validator((projectId: string) => projectId)
   .handler(async ({ data: projectId }) => {
     const ctx = await requireAuthContext();
-    return withAuthorizedTenant(ctx, (tx) => listWorkflows(tx, projectId));
+    return withAuthorizedTenant(ctx, async (tx) => {
+      const workflows = await listWorkflows(tx, projectId);
+      const ids = workflows.map((w) => w.id);
+      if (ids.length === 0) return [];
+      // List-row context only (read side): each workflow's trigger node and
+      // its most recent run, so the list can show "When issue.created · last
+      // run 2h ago · failed" without opening every canvas.
+      const [triggers, runs] = await Promise.all([
+        tx
+          .select({ workflowId: schema.automationNode.workflowId, type: schema.automationNode.type, config: schema.automationNode.config })
+          .from(schema.automationNode)
+          .where(and(inArray(schema.automationNode.workflowId, ids), like(schema.automationNode.type, "trigger_%"))),
+        tx
+          .select({ workflowId: schema.automationWorkflowRun.workflowId, status: schema.automationWorkflowRun.status, createdAt: schema.automationWorkflowRun.createdAt })
+          .from(schema.automationWorkflowRun)
+          .where(inArray(schema.automationWorkflowRun.workflowId, ids))
+          .orderBy(desc(schema.automationWorkflowRun.createdAt))
+          .limit(500),
+      ]);
+      return workflows
+        .map((w) => {
+          const trigger = triggers.find((tr) => tr.workflowId === w.id) ?? null;
+          const lastRun = runs.find((r) => r.workflowId === w.id) ?? null;
+          return { ...w, trigger: trigger ? { type: trigger.type, config: trigger.config as { [key: string]: Json } } : null, lastRun };
+        })
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    });
   });
 
 export const getWorkflowFn = createServerFn({ method: "GET" })

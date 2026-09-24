@@ -9,5 +9,10 @@
   "noEligibleTeamTitle": "Anda memerlukan tim terlebih dahulu",
   "noEligibleTeamSuperAdmin": "Setiap proyek termasuk dalam sebuah tim, dan Anda belum menjadi admin tim mana pun. Buat tim pertama.",
   "noEligibleTeamMember": "Setiap proyek termasuk dalam sebuah tim, dan Anda belum menjadi admin tim mana pun. Minta admin workspace menjadikan Anda admin tim.",
-  "createTeam": "Buat tim"
+  "createTeam": "Buat tim",
+  "teamLabel": "Tim",
+  "nameLabel": "Nama proyek",
+  "keyLabel": "Kunci",
+  "keyHint": "Awalan kunci issue, mis. {{key}}-12. Maksimal 10 karakter.",
+  "projects": "Proyek"
 }

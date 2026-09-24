@@ -1,5 +1,15 @@
 {
-  "tabs": { "notifications": "通知", "members": "成員", "teams": "團隊", "roles": "角色與權限", "integrations": "整合" },
+  "tabs": {
+    "notifications": "通知",
+    "members": "成員",
+    "teams": "團隊",
+    "roles": "角色與權限",
+    "integrations": "整合",
+    "ai": "AI",
+    "mail": "電子郵件",
+    "embedding": "嵌入向量",
+    "entra": "Microsoft Entra ID"
+  },
   "pageTitle": "工作區設定",
   "teamsNonAdminNote": "只有超級管理員可以在此管理工作區的團隊清單。",
   "integrations": {
@@ -31,7 +41,8 @@
       "savingEllipsis": "儲存中…",
       "save": "儲存",
       "saved": "已儲存。",
-      "saveFailed": "儲存 Entra ID 設定失敗"
+      "saveFailed": "儲存 Entra ID 設定失敗",
+      "description": "為此工作區所有成員提供單一登入。"
     },
     "ai": {
       "heading": "AI",
@@ -47,7 +58,8 @@
       "baseUrlLabel": "Base URL",
       "savingEllipsis": "儲存中…",
       "save": "儲存",
-      "saved": "已儲存。"
+      "saved": "已儲存。",
+      "description": "提供文件寫作輔助、AI 議題草稿與衝刺摘要。"
     },
     "mail": {
       "heading": "Email",
@@ -58,7 +70,8 @@
       "apiKeyLabel": "API key",
       "savingEllipsis": "儲存中…",
       "save": "儲存",
-      "saved": "已儲存。"
+      "saved": "已儲存。",
+      "description": "寄送通知與邀請電子郵件。"
     }
   },
   "members": {
@@ -72,7 +85,16 @@
     "cancel": "取消",
     "currentMembersHeading": "目前成員",
     "memberRoleLabel": "成員",
-    "adminRoleLabel": "管理員"
+    "adminRoleLabel": "管理員",
+    "tableName": "名稱",
+    "tableRole": "角色",
+    "roleOwner": "擁有者",
+    "memberCount_one": "{{count}} 位成員",
+    "memberCount_other": "{{count}} 位成員",
+    "invitedAs": "以{{role}}身分邀請",
+    "inviteSent": "已寄送邀請至 {{email}}",
+    "inviteHint": "對方會收到含有加入此工作區連結的電子郵件。",
+    "cancelFailed": "無法取消邀請"
   },
   "roles": {
     "intro": "Kompast 目前實際生效的角色階層 —— 並非可設定的權限矩陣，只是程式碼中既有規則的摘要。",
@@ -101,5 +123,15 @@
       "scope": "依專案",
       "desc": "可依專案指派的角色（project_member.role）。目前程式碼中尚未實際套用此權限限制 —— 目前僅能指派。"
     }
-  }
+  },
+  "groupAccount": "帳戶",
+  "groupWorkspace": "工作區",
+  "groupIntegrations": "整合",
+  "configured": "已設定",
+  "notConfigured": "尚未設定",
+  "enabled": "開啟",
+  "disabled": "關閉",
+  "saveFailed": "無法儲存：{{message}}",
+  "savedToast": "已儲存{{section}}設定",
+  "sectionPicker": "設定區段"
 }

@@ -11,5 +11,13 @@
   "digest_hourly": "每小時",
   "digest_daily": "每日",
   "digest_off": "關閉",
-  "digestNote": "備註：每小時／每日批次寄送尚未實作 —— 在該功能完成前，此偏好設定不會寄送電子郵件。"
+  "digestNote": "備註：每小時／每日批次寄送尚未實作 —— 在該功能完成前，此偏好設定不會寄送電子郵件。",
+  "eventHeading": "活動",
+  "event": {
+    "issue.assigned": "被指派到議題",
+    "issue.commented": "您關注的議題有新留言",
+    "issue.mentioned": "在議題中被提及"
+  },
+  "savedToast": "已儲存偏好設定",
+  "saveFailed": "無法儲存偏好設定"
 }

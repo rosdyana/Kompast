@@ -201,7 +201,7 @@ export async function listBacklogIssues(tx: Tx, projectId: string) {
   return tx
     .select()
     .from(schema.issue)
-    .where(and(eq(schema.issue.projectId, projectId), isNull(schema.issue.sprintId)))
+    .where(and(eq(schema.issue.projectId, projectId), isNull(schema.issue.sprintId), isNull(schema.issue.archivedAt)))
     .orderBy(asc(schema.issue.rank));
 }
 
@@ -219,7 +219,7 @@ export async function listSprintIssues(tx: Tx, sprintId: string) {
   const issues = await tx
     .select()
     .from(schema.issue)
-    .where(inArray(schema.issue.id, members.map((m) => m.issueId)))
+    .where(and(inArray(schema.issue.id, members.map((m) => m.issueId)), isNull(schema.issue.archivedAt)))
     .orderBy(asc(schema.issue.rank));
   // sprintRank is this sprint's own manual-reorder rank (sprint_issue.rank),
   // distinct from issue.rank — see reorderSprintIssue/the schema doc comment

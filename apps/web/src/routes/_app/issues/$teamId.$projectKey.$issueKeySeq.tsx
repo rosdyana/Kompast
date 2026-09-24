@@ -1,12 +1,29 @@
 import { createFileRoute, Link, useRouter, ClientOnly } from "@tanstack/react-router";
-import { Fragment, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, Paperclip, X } from "lucide-react";
+import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Block, PartialBlock } from "@blocknote/core";
-import { Avatar } from "@kompast/ui/Avatar";
-import { Button } from "@kompast/ui/Button";
-import { PageContainer } from "@kompast/ui/PageContainer";
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  Eye,
+  Link2,
+  ListTree,
+  MoreHorizontal,
+  Paperclip,
+  Sparkles,
+} from "lucide-react";
+import { Avatar, UnassignedAvatar } from "@kompast/ui/Avatar";
+import { Button, IconButton } from "@kompast/ui/Button";
+import { Dialog } from "@kompast/ui/Dialog";
+import { IssueTypeIcon } from "@kompast/ui/IssueTypeIcon";
+import { Lozenge, StatusDot } from "@kompast/ui/Lozenge";
+import { MenuItem, MenuList } from "@kompast/ui/Menu";
+import { Popover } from "@kompast/ui/Popover";
+import { PriorityIcon } from "@kompast/ui/PriorityIcon";
+import { SelectMenu, type SelectOption } from "@kompast/ui/SelectMenu";
 import { Tabs } from "@kompast/ui/Tabs";
-import { useTranslation, type SupportedLocale } from "@kompast/i18n";
+import { useToast } from "@kompast/ui/Toast";
+import { useTranslation } from "@kompast/i18n";
 import {
   getIssueDetailFn,
   addCommentFn,
@@ -21,436 +38,353 @@ import {
   updateIssueTypeFn,
   updateIssueLabelsFn,
   updateIssueStoryPointsFn,
+  archiveIssueFn,
   restoreIssueFn,
 } from "@/lib/server-fns/issue-detail";
 import { moveIssueFn } from "@/lib/server-fns/issues";
 import { addIssueToSprintFn, removeIssueFromSprintFn } from "@/lib/server-fns/sprints";
 import { requestAttachmentUploadFn, deleteAttachmentFn } from "@/lib/server-fns/attachments";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
+import { cn } from "@/lib/cn";
 import { LiteEditor } from "@/components/shared/LiteEditor";
 import { RichTextView, normalizeToBlocks } from "@/components/shared/RichTextView";
 import { CommentThread } from "@/components/issues/CommentThread";
+import { HistoryTimeline } from "@/components/issues/HistoryTimeline";
+import { Attachments } from "@/components/issues/Attachments";
+import { ChildIssues } from "@/components/issues/ChildIssues";
+import { DetailRow, EmptyValue, InlineDate, InlineInput, InlineMultiPicker, InlinePicker, LabelsEditor } from "@/components/issues/DetailFields";
+import { fullDateTime, intlLocaleOf, relativeTime, shortDate, toDateInput } from "@/components/issues/time";
+import { ProjectIcon } from "@/components/shell/ProjectIcon";
+import { usePageChrome, useWorkbench, type Crumb } from "@/components/shell/WorkbenchContext";
+
+/** Crumb.link is typed as the generic Link props (every route's params), so
+ * route-specific params need a cast at the boundary. */
+const crumbLink = (link: object) => link as unknown as Crumb["link"];
+
+type FromTab = "board" | "backlog" | "table";
+const FROM_TABS: FromTab[] = ["board", "backlog", "table"];
 
 export const Route = createFileRoute("/_app/issues/$teamId/$projectKey/$issueKeySeq")({
-  // Which project tab to return to on "back" — set by the Link that opened
-  // this issue (the Board tab's kanban card, the Backlog tab's issue rows);
-  // any other entry point (search, doc mentions, ...) has no opinion and
-  // falls back to Backlog, matching this page's pre-existing behavior.
-  validateSearch: (search: Record<string, unknown>): { from?: "board" | "backlog" } => ({
-    from: search.from === "board" ? "board" : undefined,
+  // Which project tab "back" returns to — set by the Link that opened this
+  // issue (board card, backlog row, sprint table). Any other entry point
+  // (search, mentions, palette) falls back to Backlog.
+  validateSearch: (search: Record<string, unknown>): { from?: FromTab } => ({
+    from: FROM_TABS.includes(search.from as FromTab) ? (search.from as FromTab) : undefined,
   }),
   loader: ({ params }) =>
     getIssueDetailFn({ data: { teamId: params.teamId, projectKey: params.projectKey, issueKeySeq: Number(params.issueKeySeq) } }),
-  component: IssueDetailPage,
+  component: IssueDetailRoute,
 });
 
-const INTL_LOCALE: Record<SupportedLocale, string> = { en: "en-US", id: "id-ID", "zh-Hant": "zh-Hant-TW" };
+type IssueData = Awaited<ReturnType<typeof getIssueDetailFn>>;
 
-function initialsOf(name: string) {
-  return name
-    .split(/\s+/)
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
-
-function IssueDetailPage() {
-  const { t, i18n } = useTranslation("issue");
-  const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
+/**
+ * The route component instance is reused when navigating between two
+ * issues (same route, new params), so every piece of local state — title
+ * draft, watch toggle, editor drafts, uncontrolled inputs — would otherwise
+ * carry over from the previous issue. Keying the view on the issue id gives
+ * each issue a fresh instance.
+ */
+function IssueDetailRoute() {
   const data = Route.useLoaderData();
   const from = Route.useSearch().from ?? "backlog";
+  return <IssueView key={data.issue.id} data={data} from={from} />;
+}
+
+function IssueView({ data, from }: { data: IssueData; from: FromTab }) {
+  const { t, i18n } = useTranslation(["issue", "common"]);
+  const intlLocale = intlLocaleOf(i18n.language);
   const router = useRouter();
+  const toast = useToast();
+  const { openCreateIssue } = useWorkbench();
+
+  const teamId = data.project.teamId ?? "none";
+  const issueKey = `${data.project.key}-${data.issue.keySeq}`;
+  const usersById = useMemo(() => {
+    const m = new Map<string, { id: string; name: string }>(data.users.map((u) => [u.id, { id: u.id, name: u.name }]));
+    for (const om of data.orgMembers) if (!m.has(om.userId)) m.set(om.userId, { id: om.userId, name: om.name });
+    return m;
+  }, [data.users, data.orgMembers]);
+  const typesById = useMemo(() => new Map(data.allTypes.map((tp) => [tp.id, tp])), [data.allTypes]);
+  const statusesById = useMemo(() => new Map(data.statuses.map((s) => [s.id, s])), [data.statuses]);
+  const priorityByKey = useMemo(() => new Map(data.priorityLevels.map((p) => [p.key, p])), [data.priorityLevels]);
+  const currentUserName = usersById.get(data.currentUserId)?.name;
+  const isEpic = data.type?.hierarchyLevel === 0;
+  const subtaskType = data.allTypes.find((tp) => tp.isSubtask);
+
   const [watching, setWatching] = useState(data.isWatching);
-  const [uploading, setUploading] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [activityTab, setActivityTab] = useState<"comments" | "history">("comments");
+  const [uploading, setUploading] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<"comments" | "activity">("comments");
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(data.issue.title);
+  const [detailsOpen, setDetailsOpen] = useState(true);
 
-  const hasDescription = normalizeToBlocks(data.issue.descriptionJson) !== undefined;
-  const [editingDescription, setEditingDescription] = useState(false);
-  const [descriptionDraft, setDescriptionDraft] = useState<Block[]>([]);
-  const [descriptionInitialContent, setDescriptionInitialContent] = useState<PartialBlock[] | undefined>(undefined);
-  const [descriptionEditorKey, setDescriptionEditorKey] = useState(0);
-  const [savingDescription, setSavingDescription] = useState(false);
-  const [aiDraftBusy, setAiDraftBusy] = useState(false);
-  const [labelDraft, setLabelDraft] = useState("");
-
-  const usersById = new Map(data.users.map((u) => [u.id, u]));
-  const currentUserName = data.orgMembers.find((m) => m.userId === data.currentUserId)?.name;
-  const [changingStatus, setChangingStatus] = useState(false);
+  /** Every field mutation: run, refresh loader data, surface failures as a toast. */
+  async function save(fn: () => Promise<unknown>) {
+    try {
+      await fn();
+      await router.invalidate();
+    } catch (err) {
+      toast.show({ tone: "error", title: t("saveFailed", { message: err instanceof Error ? err.message : String(err) }) });
+    }
+  }
 
   async function toggleWatch() {
     const next = !watching;
     setWatching(next);
-    await toggleWatchFn({ data: { issueId: data.issue.id, watching: next } });
-  }
-
-  async function setStatus(statusId: string) {
-    setChangingStatus(true);
     try {
-      await moveIssueFn({ data: { issueId: data.issue.id, toStatusId: statusId } });
-      await router.invalidate();
-    } finally {
-      setChangingStatus(false);
-    }
-  }
-
-  async function setAssignee(assigneeId: string) {
-    await updateIssueAssigneeFn({ data: { issueId: data.issue.id, assigneeId: assigneeId || null } });
-    await router.invalidate();
-  }
-
-  async function setPriority(priority: string) {
-    await updateIssuePriorityFn({ data: { issueId: data.issue.id, priority: priority as typeof data.issue.priority } });
-    await router.invalidate();
-  }
-
-  async function setCustomField(key: string, value: string | number | boolean | string[] | null) {
-    await updateIssueCustomFieldFn({ data: { issueId: data.issue.id, key, value } });
-    await router.invalidate();
-  }
-
-  async function uploadFile(file: File) {
-    setUploading(true);
-    try {
-      const { uploadUrl, headers } = await requestAttachmentUploadFn({
-        data: {
-          issueId: data.issue.id,
-          fileName: file.name,
-          contentType: file.type || "application/octet-stream",
-          sizeBytes: file.size,
-        },
-      });
-      const res = await fetch(uploadUrl, { method: "PUT", headers, body: file });
-      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-      await router.invalidate();
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
-
-  async function removeAttachment(attachmentId: string) {
-    await deleteAttachmentFn({ data: { attachmentId, issueId: data.issue.id } });
-    await router.invalidate();
-  }
-
-  async function saveDescription() {
-    setSavingDescription(true);
-    try {
-      await updateIssueDescriptionFn({
-        data: { issueId: data.issue.id, descriptionJson: descriptionDraft.length > 0 ? descriptionDraft : null },
-      });
-      setEditingDescription(false);
-      await router.invalidate();
-    } finally {
-      setSavingDescription(false);
-    }
-  }
-
-  /**
-   * The AI draft streams plain-text deltas (see streamAiCompletion), but
-   * LiteEditor only reads `initialContent` once at mount time — it has no
-   * mechanism to accept live external content updates. Rather than attempt
-   * live token-by-token editor updates (which would require reaching into
-   * BlockNote's imperative API), this accumulates the stream into a plain
-   * local string exactly like the old plain-textarea version did, and only
-   * converts+loads it into the editor once streaming finishes, by bumping
-   * `descriptionEditorKey` to force a remount with fresh `initialContent`.
-   * Simpler and safer than live-updating a mounted BlockNote instance, at
-   * the cost of not showing AI text appear incrementally in the editor
-   * itself (the button's busy label is the only progress indicator while
-   * streaming).
-   */
-  async function generateAiDescriptionDraft() {
-    setAiDraftBusy(true);
-    let accumulated = "";
-    try {
-      await streamAiCompletion({ feature: "issue-description", title: data.issue.title }, (delta) => {
-        accumulated += delta;
-      });
+      await toggleWatchFn({ data: { issueId: data.issue.id, watching: next } });
     } catch (err) {
-      accumulated = err instanceof Error ? t("aiDraftFailed", { message: err.message }) : t("aiDraftFailedGeneric");
-    } finally {
-      const blocks: PartialBlock[] = accumulated
-        ? [{ type: "paragraph", content: [{ type: "text", text: accumulated, styles: {} }] }]
-        : [];
-      setDescriptionInitialContent(blocks);
-      setDescriptionDraft(blocks as Block[]);
-      setDescriptionEditorKey((k) => k + 1);
-      setAiDraftBusy(false);
+      setWatching(!next);
+      toast.show({ tone: "error", title: t("saveFailed", { message: err instanceof Error ? err.message : String(err) }) });
     }
   }
 
-  async function setStartDate(value: string | null) {
-    await updateIssueDatesFn({ data: { issueId: data.issue.id, startDate: value ? new Date(value).toISOString() : null } });
-    await router.invalidate();
-  }
-
-  async function setDueDate(value: string | null) {
-    await updateIssueDatesFn({ data: { issueId: data.issue.id, dueDate: value ? new Date(value).toISOString() : null } });
-    await router.invalidate();
-  }
-
-  async function setEpic(epicId: string | null) {
-    await updateIssueEpicFn({ data: { issueId: data.issue.id, epicId } });
-    await router.invalidate();
-  }
-
-  async function setType(typeId: string) {
-    await updateIssueTypeFn({ data: { issueId: data.issue.id, typeId } });
-    await router.invalidate();
-  }
-
-  async function setLabels(labels: string[]) {
-    await updateIssueLabelsFn({ data: { issueId: data.issue.id, labels } });
-    await router.invalidate();
-  }
-
-  async function setStoryPoints(storyPoints: number | null) {
-    await updateIssueStoryPointsFn({ data: { issueId: data.issue.id, storyPoints } });
-    await router.invalidate();
-  }
-
-  async function saveTitle() {
-    const trimmed = titleDraft.trim();
-    setEditingTitle(false);
-    if (!trimmed || trimmed === data.issue.title) return;
-    await updateIssueTitleFn({ data: { issueId: data.issue.id, title: trimmed } });
-    await router.invalidate();
-  }
-
-  /**
-   * Automation-driven rows are attributed to `rule.createdBy` at write time
-   * (see packages/core/src/automation.ts) — the rule's author, not "the
-   * automation" — so origin (not actorId alone) is what decides whether the
-   * activity feed shows a person's name or a generic "System" label here.
-   */
-  function historyActorLabel(h: (typeof data.history)[number]): string {
-    if (h.origin === "automation") return t("historyActorSystem");
-    const actor = h.actorId ? usersById.get(h.actorId) : undefined;
-    return actor?.name ?? t("unknownAuthor");
-  }
-
-  function resolveHistoryValue(field: string, raw: string | null): string {
-    if (raw == null) return "—";
-    if (field === "assigneeId") return usersById.get(raw)?.name ?? raw;
-    if (field === "typeId") return data.allTypes.find((tp) => tp.id === raw)?.name ?? raw;
-    if (field === "epicId") {
-      const epic = data.candidateEpics.find((e) => e.id === raw);
-      return epic ? `${data.project.key}-${epic.keySeq} ${epic.title}` : raw;
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.origin + window.location.pathname);
+      toast.show({ title: t("linkCopied"), description: issueKey });
+    } catch {
+      toast.show({ tone: "error", title: t("common:somethingWentWrong") });
     }
-    if (field === "sprint") return data.boardSprints.find((s) => s.id === raw)?.name ?? raw;
-    if (field === "status") return data.statuses.find((s) => s.id === raw)?.name ?? raw;
-    if (field === "priority") return data.priorityLevels.find((p) => p.key === raw)?.name ?? raw;
-    if (field === "dueDate" || field === "startDate") {
-      const d = new Date(raw);
-      return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString(intlLocale, { day: "numeric", month: "short", year: "numeric" });
-    }
-    return raw;
   }
 
-  function describeHistoryChange(h: (typeof data.history)[number]): string {
-    const label = t(`historyField.${h.field}`, { defaultValue: h.field });
-    return `${label}: ${resolveHistoryValue(h.field, h.fromValue)} → ${resolveHistoryValue(h.field, h.toValue)}`;
+  async function archive() {
+    setConfirmArchive(false);
+    await save(() => archiveIssueFn({ data: { issueId: data.issue.id } }));
+    toast.show({ title: t("archivedToast", { key: issueKey }) });
   }
 
   async function restore() {
-    await restoreIssueFn({ data: { issueId: data.issue.id } });
+    setMoreOpen(false);
+    await save(() => restoreIssueFn({ data: { issueId: data.issue.id } }));
+    toast.show({ title: t("restoredToast", { key: issueKey }) });
+  }
+
+  async function uploadFiles(files: File[]) {
+    for (const file of files) {
+      setUploading((u) => [...u, file.name]);
+      try {
+        const { uploadUrl, headers } = await requestAttachmentUploadFn({
+          data: { issueId: data.issue.id, fileName: file.name, contentType: file.type || "application/octet-stream", sizeBytes: file.size },
+        });
+        const res = await fetch(uploadUrl, { method: "PUT", headers, body: file });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } catch (err) {
+        toast.show({ tone: "error", title: t("uploadFailed", { message: err instanceof Error ? err.message : String(err) }), description: file.name });
+      } finally {
+        setUploading((u) => u.filter((n) => n !== file.name));
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
     await router.invalidate();
   }
 
-  async function setSprint(sprintId: string | null) {
-    if (sprintId) {
-      await addIssueToSprintFn({ data: { sprintId, issueId: data.issue.id } });
-    } else {
-      await removeIssueFromSprintFn({ data: data.issue.id });
-    }
-    await router.invalidate();
-  }
+  const epicCrumb = data.epic ?? null;
+  const parentCrumb = data.parent ?? null;
+
+  usePageChrome(
+    {
+      crumbs: [
+        { label: t("breadcrumbProjects") },
+        {
+          label: data.project.name,
+          icon: <ProjectIcon projectKey={data.project.key} size={16} />,
+          link: crumbLink({ to: "/projects/$teamId/$projectKey", params: { teamId, projectKey: data.project.key }, search: { tab: from } }),
+        },
+        ...(epicCrumb
+          ? [
+              {
+                label: `${data.project.key}-${epicCrumb.keySeq}`,
+                icon: <IssueTypeIcon type={{ name: "Epic", hierarchyLevel: 0 }} size={14} />,
+                link: crumbLink({ to: "/issues/$teamId/$projectKey/$issueKeySeq", params: { teamId, projectKey: data.project.key, issueKeySeq: String(epicCrumb.keySeq) } }),
+              },
+            ]
+          : []),
+        ...(parentCrumb
+          ? [
+              {
+                label: `${data.project.key}-${parentCrumb.keySeq}`,
+                icon: <IssueTypeIcon type={typesById.get(parentCrumb.typeId)} size={14} />,
+                link: crumbLink({ to: "/issues/$teamId/$projectKey/$issueKeySeq", params: { teamId, projectKey: data.project.key, issueKeySeq: String(parentCrumb.keySeq) } }),
+              },
+            ]
+          : []),
+        { label: issueKey, icon: <IssueTypeIcon type={data.type} size={14} /> },
+      ],
+      actions: (
+        <>
+          <Button variant="ghost" size="sm" onClick={toggleWatch} aria-pressed={watching} title={watching ? t("watching") : t("watch")}>
+            <Eye size={15} className={watching ? "text-accent" : undefined} />
+            <span className="hidden sm:inline">{watching ? t("watching") : t("watch")}</span>
+          </Button>
+          <IconButton aria-label={t("copyLink")} title={t("copyLink")} onClick={copyLink}>
+            <Link2 size={16} />
+          </IconButton>
+          {data.canManageProject && (
+            <IconButton ref={moreRef} aria-label={t("moreActions")} title={t("moreActions")} onClick={() => setMoreOpen((v) => !v)}>
+              <MoreHorizontal size={16} />
+            </IconButton>
+          )}
+        </>
+      ),
+    },
+    [data.issue.id, data.issue.archivedAt, data.project.name, watching, from, epicCrumb?.id, parentCrumb?.id, data.canManageProject, i18n.language],
+  );
 
   return (
-    <PageContainer width="dense">
-      <Link
-        to="/projects/$teamId/$projectKey"
-        params={{ teamId: data.project.teamId ?? "none", projectKey: data.project.key }}
-        search={{ tab: from }}
-        className="mb-4 inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-2"
+    <div className="mx-auto w-full max-w-[1240px] px-4 pb-20 pt-5 sm:px-8">
+      <Popover open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={moreRef} placement="bottom-end" width={220} role="menu">
+        <MenuList>
+          {data.issue.archivedAt ? (
+            <MenuItem icon={<ArchiveRestore size={15} />} onClick={restore}>
+              {t("restore")}
+            </MenuItem>
+          ) : (
+            <MenuItem
+              icon={<Archive size={15} />}
+              danger
+              onClick={() => {
+                setMoreOpen(false);
+                setConfirmArchive(true);
+              }}
+            >
+              {t("archiveAction")}
+            </MenuItem>
+          )}
+        </MenuList>
+      </Popover>
+
+      <Dialog
+        open={confirmArchive}
+        onClose={() => setConfirmArchive(false)}
+        size="sm"
+        title={t("archiveConfirmTitle", { key: issueKey })}
+        description={t("archiveConfirmBody")}
+        closeLabel={t("common:close")}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmArchive(false)}>
+              {t("cancel")}
+            </Button>
+            <Button variant="danger" onClick={archive} data-autofocus>
+              {t("archiveAction")}
+            </Button>
+          </>
+        }
       >
-        <ArrowLeft size={13} strokeWidth={1.75} /> {data.project.name}
-      </Link>
+        <span />
+      </Dialog>
 
       {data.issue.archivedAt && (
-        <div className="mb-4 flex items-center gap-2 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">
-          <span>{t("archivedBanner.message")}</span>
+        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-[8px] border border-amber/30 bg-amber-soft px-4 py-2.5 text-[13.5px] text-amber">
+          <Archive size={16} className="flex-none" />
+          <span className="min-w-0 flex-1">{t("archivedBanner.message")}</span>
           {data.canManageProject && (
-            <Button variant="outline" onClick={restore} className="ml-auto">
+            <Button variant="outline" size="sm" onClick={restore}>
               {t("restore")}
             </Button>
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_260px]">
-        <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-2">
-            <span className="type-label text-text-3">
-              {data.project.key}-{data.issue.keySeq}
-            </span>
-            {data.status && (
-              <StatusSelect
-                statuses={data.statuses}
-                value={data.issue.statusId}
-                disabled={changingStatus}
-                onChange={setStatus}
-                label={t("statusLabel")}
-              />
-            )}
-          </div>
-          {editingTitle ? (
-            <input
-              autoFocus
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={saveTitle}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") saveTitle();
-                if (e.key === "Escape") {
-                  setTitleDraft(data.issue.title);
-                  setEditingTitle(false);
-                }
-              }}
-              className="mb-1 w-full rounded-[7px] border border-border-2 bg-surface px-1.5 py-0.5 type-title outline-none"
-            />
-          ) : (
-            <h1
-              onClick={() => {
-                setTitleDraft(data.issue.title);
-                setEditingTitle(true);
-              }}
-              title={t("renameHint")}
-              className="mb-1 cursor-text type-title"
-            >
-              {data.issue.title}
-            </h1>
-          )}
-          <p className="mb-8 type-label text-text-3">
-            {t("createdUpdatedMeta", {
-              created: new Date(data.issue.createdAt).toLocaleDateString(intlLocale, { day: "numeric", month: "short", year: "numeric" }),
-              updated: new Date(data.issue.updatedAt).toLocaleDateString(intlLocale, { day: "numeric", month: "short", year: "numeric" }),
-            })}
-          </p>
+      <div className="grid grid-cols-1 items-start gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        {/* Main column */}
+        <div className="order-1 min-w-0 max-w-[780px]">
+          <IssueTitle
+            title={data.issue.title}
+            onSave={(title) => save(() => updateIssueTitleFn({ data: { issueId: data.issue.id, title } }))}
+          />
 
-          <section className="mb-8">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="type-headline">{t("descriptionHeading")}</h2>
-              {!editingDescription && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const blocks = normalizeToBlocks(data.issue.descriptionJson) ?? [];
-                    setDescriptionInitialContent(blocks);
-                    setDescriptionDraft(blocks as Block[]);
-                    setDescriptionEditorKey((k) => k + 1);
-                    setEditingDescription(true);
-                  }}
-                >
-                  {hasDescription ? t("edit") : t("addDescription")}
-                </Button>
-              )}
-            </div>
-            {editingDescription ? (
-              <div className="flex flex-col gap-2">
-                <ClientOnly fallback={<div className="min-h-[140px] rounded-[7px] border border-border bg-surface" />}>
-                  <LiteEditor
-                    key={descriptionEditorKey}
-                    initialContent={descriptionInitialContent}
-                    onChange={setDescriptionDraft}
-                    autoFocus
-                    placeholder={t("descriptionPlaceholder")}
-                    className="min-h-[140px] rounded-[7px] border border-border bg-surface p-3 outline-none focus-within:border-border-2"
-                  />
-                </ClientOnly>
-                <div className="flex items-center gap-2">
-                  <Button variant="primary" onClick={saveDescription} disabled={savingDescription}>
-                    {savingDescription ? t("savingEllipsis") : t("save")}
-                  </Button>
-                  <Button variant="outline" onClick={() => setEditingDescription(false)} disabled={savingDescription}>
-                    {t("cancel")}
-                  </Button>
-                  <Button variant="outline" onClick={generateAiDescriptionDraft} disabled={aiDraftBusy}>
-                    {aiDraftBusy ? t("aiDraftingEllipsis") : t("aiDraftButton")}
-                  </Button>
-                </div>
-              </div>
-            ) : hasDescription ? (
-              <ClientOnly fallback={<div className="min-h-[24px]" />}>
-                <div className="rounded-[7px] border border-border bg-surface p-3">
-                  <RichTextView content={data.issue.descriptionJson} className="type-body leading-snug text-text-2" />
-                </div>
-              </ClientOnly>
-            ) : (
-              <p className="type-body text-text-3">{t("noDescriptionYet")}</p>
-            )}
-          </section>
-
-          <section className="mb-8">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="type-headline">{t("attachmentsHeading")}</h2>
-              <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                {uploading ? t("uploadingEllipsis") : t("attachButton")}
+          <div className="mb-6 mt-3 flex flex-wrap items-center gap-1.5">
+            <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
+              <Paperclip size={14} />
+              {t("attachButton")}
+            </Button>
+            {!isEpic && subtaskType && !data.type?.isSubtask && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => openCreateIssue({ projectId: data.project.id, parentId: data.issue.id, typeId: subtaskType.id })}
+              >
+                <ListTree size={14} />
+                {t("createSubtask")}
               </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadFile(file);
-                }}
-              />
-            </div>
-            {data.attachments.length === 0 ? (
-              <p className="type-body text-text-3">{t("noAttachmentsYet")}</p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {data.attachments.map((a) => (
-                  <div key={a.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2">
-                    <Paperclip size={14} strokeWidth={1.75} className="flex-none text-text-3" />
-                    <a
-                      href={a.downloadUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="min-w-0 flex-1 truncate type-body text-accent hover:underline"
-                    >
-                      {a.fileName}
-                    </a>
-                    <span className="type-label text-text-3">{(a.sizeBytes / 1024).toFixed(0)} KB</span>
-                    <button
-                      onClick={() => removeAttachment(a.id)}
-                      className="rounded-[7px] px-1 py-0.5 text-text-3 hover:bg-danger-soft hover:text-danger"
-                    >
-                      <X size={13} strokeWidth={1.75} />
-                    </button>
-                  </div>
-                ))}
-              </div>
             )}
-          </section>
-
-          <div className="rounded-xl border border-border bg-surface p-4">
-            <Tabs
-              items={[
-                { key: "comments", label: t("commentsHeading") },
-                { key: "activity", label: t("activityHeading") },
-              ]}
-              active={activeTab}
-              onChange={(key) => setActiveTab(key as "comments" | "activity")}
-              className="mb-4"
+            {isEpic && (
+              <Button variant="secondary" size="sm" onClick={() => openCreateIssue({ projectId: data.project.id, epicId: data.issue.id })}>
+                <ListTree size={14} />
+                {t("addChildIssue")}
+              </Button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])];
+                if (files.length) uploadFiles(files);
+              }}
             />
-            {activeTab === "comments" && (
+          </div>
+
+          <Section title={t("descriptionHeading")}>
+            <DescriptionEditor
+              issueId={data.issue.id}
+              issueTitle={data.issue.title}
+              descriptionJson={data.issue.descriptionJson}
+              onSaved={() => router.invalidate()}
+            />
+          </Section>
+
+          {(data.children.length > 0 || isEpic || (subtaskType && !data.type?.isSubtask)) && (
+            <Section title={isEpic ? t("epicChildren") : t("childIssuesHeading")}>
+              <ChildIssues
+                children={data.children}
+                typesById={typesById}
+                statusesById={statusesById}
+                priorityByKey={priorityByKey}
+                teamId={teamId}
+                projectKey={data.project.key}
+              />
+            </Section>
+          )}
+
+          {(data.attachments.length > 0 || uploading.length > 0) && (
+            <Section title={`${t("attachmentsHeading")} · ${data.attachments.length}`}>
+              <Attachments
+                attachments={data.attachments}
+                uploading={uploading}
+                onUpload={uploadFiles}
+                onRemove={(attachmentId) => save(() => deleteAttachmentFn({ data: { attachmentId, issueId: data.issue.id } }))}
+                intlLocale={intlLocale}
+              />
+            </Section>
+          )}
+
+          {/* On mobile the details panel sits here, above activity. */}
+          <div className="mb-8 lg:hidden">
+            {renderSidePanel()}
+          </div>
+
+          <Section
+            title={t("activityHeading")}
+            aside={
+              <Tabs
+                variant="pill"
+                items={[
+                  { key: "comments", label: t("commentsHeading") },
+                  { key: "history", label: t("historyTab") },
+                ]}
+                active={activityTab}
+                onChange={(k) => setActivityTab(k as "comments" | "history")}
+              />
+            }
+          >
+            {activityTab === "comments" ? (
               <CommentThread
                 comments={data.comments}
                 usersById={usersById}
@@ -461,376 +395,670 @@ function IssueDetailPage() {
                   await router.invalidate();
                 }}
               />
+            ) : (
+              <HistoryTimeline
+                entries={data.history}
+                intlLocale={intlLocale}
+                actorName={(h) => (h.origin === "automation" ? t("historyActorSystem") : (h.actorId && usersById.get(h.actorId)?.name) || t("unknownAuthor"))}
+                renderValue={renderHistoryValue}
+              />
             )}
-            {activeTab === "activity" && (
-              <div className="flex flex-col gap-2">
-                {data.history.length === 0 && <p className="type-body text-text-3">{t("noActivityYet")}</p>}
-                {data.history.map((h) => (
-                  <p key={h.id} className="text-[12px] text-text-2">
-                    <span className="font-mono text-text-3">{new Date(h.createdAt).toLocaleString(intlLocale)}</span>{" "}
-                    <span className="font-medium text-text">{historyActorLabel(h)}</span>{" "}
-                    {h.field === "created"
-                      ? t("historyCreated")
-                      : h.field === "description"
-                        ? t("historyDescriptionUpdated")
-                        : describeHistoryChange(h)}
-                    {h.origin !== "user" && <span className="ml-1 text-text-3">{t("historyOrigin", { origin: h.originClient ?? h.origin })}</span>}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
+          </Section>
         </div>
 
-        <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4 text-[12.5px]">
-          <Button variant={watching ? "primary" : "outline"} onClick={toggleWatch} className="w-full">
-            {watching ? t("watching") : t("watch")}
-          </Button>
+        {/* Right sidebar (desktop) */}
+        <aside className="order-2 hidden lg:sticky lg:top-5 lg:block">
+          {renderSidePanel()}
+        </aside>
+      </div>
+    </div>
+  );
 
-          {(() => {
-            const coreFieldRenderers: Record<string, () => ReactNode> = {
-              assignee: () => (
-                <div>
-                  <p className="mb-1 text-text-3">{t("assigneeLabel")}</p>
-                  <select
-                    value={data.issue.assigneeId ?? ""}
-                    onChange={(e) => setAssignee(e.target.value)}
-                    className="kp-select kp-field w-full"
-                  >
-                    <option value="">{t("unassigned")}</option>
-                    {data.orgMembers.map((m) => (
-                      <option key={m.userId} value={m.userId}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ),
-              reporter: () => (
-                <div>
-                  <p className="mb-1 text-text-3">{t("reporterLabel")}</p>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Avatar initials={initialsOf(usersById.get(data.issue.reporterId)?.name ?? "?")} size={18} />
-                    {usersById.get(data.issue.reporterId)?.name ?? "—"}
+  function renderHistoryValue(field: string, raw: string | null): ReactNode {
+    if (raw == null || raw === "") return <span className="text-text-3">{t("none")}</span>;
+    if (field === "status") {
+      const s = statusesById.get(raw);
+      return s ? <Lozenge color={s.color}>{s.name}</Lozenge> : raw;
+    }
+    if (field === "assigneeId") {
+      const u = usersById.get(raw);
+      return u ? (
+        <span className="inline-flex items-center gap-1.5">
+          <Avatar name={u.name} size={18} />
+          {u.name}
+        </span>
+      ) : (
+        raw
+      );
+    }
+    if (field === "typeId") {
+      const tp = typesById.get(raw);
+      return tp ? (
+        <span className="inline-flex items-center gap-1.5">
+          <IssueTypeIcon type={tp} size={14} />
+          {tp.name}
+        </span>
+      ) : (
+        raw
+      );
+    }
+    if (field === "priority") {
+      const p = priorityByKey.get(raw);
+      return p ? <PriorityIcon priority={p} showLabel /> : raw;
+    }
+    if (field === "epicId" || field === "parentId") {
+      const epic = data.candidateEpics.find((e) => e.id === raw);
+      return epic ? `${data.project.key}-${epic.keySeq} ${epic.title}` : raw;
+    }
+    if (field === "sprint") return data.boardSprints.find((s) => s.id === raw)?.name ?? raw;
+    if (field === "dueDate" || field === "startDate") {
+      const d = new Date(raw);
+      return Number.isNaN(d.getTime()) ? raw : shortDate(d, intlLocale);
+    }
+    return raw;
+  }
+
+  function renderSidePanel() {
+    const status = statusesById.get(data.issue.statusId);
+    const statusOptions: SelectOption[] = data.statuses.map((s) => ({ value: s.id, label: s.name, icon: <StatusDot color={s.color} /> }));
+    const assignee = data.issue.assigneeId ? usersById.get(data.issue.assigneeId) : undefined;
+    const reporter = usersById.get(data.issue.reporterId);
+    const priority = priorityByKey.get(data.issue.priority);
+    const due = data.issue.dueDate ? new Date(data.issue.dueDate) : null;
+    const overdue = !!due && status?.category !== "done" && due.getTime() < Date.now() - 86_400_000;
+    const epic = data.candidateEpics.find((e) => e.id === data.issue.epicId);
+
+    const memberOptions: SelectOption[] = [
+      { value: "", label: t("unassigned"), icon: <UnassignedAvatar size={20} /> },
+      ...[...data.orgMembers].sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: m.userId, label: m.name, icon: <Avatar name={m.name} size={20} /> })),
+    ];
+
+    const core: Record<string, () => ReactNode> = {
+      assignee: () => (
+        <DetailRow label={t("assigneeLabel")} align="start">
+          <InlinePicker
+            ariaLabel={t("assigneeLabel")}
+            options={memberOptions}
+            value={data.issue.assigneeId ?? ""}
+            onSelect={(v) => save(() => updateIssueAssigneeFn({ data: { issueId: data.issue.id, assigneeId: v || null } }))}
+            display={
+              assignee ? (
+                <>
+                  <Avatar name={assignee.name} size={22} />
+                  <span className="truncate">{assignee.name}</span>
+                </>
+              ) : (
+                <>
+                  <UnassignedAvatar size={22} />
+                  <EmptyValue>{t("unassigned")}</EmptyValue>
+                </>
+              )
+            }
+          />
+          {data.issue.assigneeId !== data.currentUserId && (
+            <button
+              type="button"
+              onClick={() => save(() => updateIssueAssigneeFn({ data: { issueId: data.issue.id, assigneeId: data.currentUserId } }))}
+              className="ml-2 text-[12.5px] font-medium text-accent-text hover:underline"
+            >
+              {t("assignToMe")}
+            </button>
+          )}
+        </DetailRow>
+      ),
+      reporter: () => (
+        <DetailRow label={t("reporterLabel")}>
+          <span className="flex min-h-8 items-center gap-2 px-2 text-[14px]">
+            {reporter ? (
+              <>
+                <Avatar name={reporter.name} size={22} />
+                <span className="truncate">{reporter.name}</span>
+              </>
+            ) : (
+              <EmptyValue>—</EmptyValue>
+            )}
+          </span>
+        </DetailRow>
+      ),
+      priority: () => (
+        <DetailRow label={t("priorityLabel")}>
+          <InlinePicker
+            ariaLabel={t("priorityLabel")}
+            options={[...data.priorityLevels].sort((a, b) => a.order - b.order).map((p) => ({ value: p.key, label: p.name, icon: <PriorityIcon priority={p} /> }))}
+            value={data.issue.priority}
+            onSelect={(v) => save(() => updateIssuePriorityFn({ data: { issueId: data.issue.id, priority: v } }))}
+            display={priority ? <PriorityIcon priority={priority} showLabel /> : <EmptyValue>{data.issue.priority}</EmptyValue>}
+          />
+        </DetailRow>
+      ),
+      type: () => {
+        const sameLevel = data.allTypes.filter((tp) => tp.hierarchyLevel === data.type?.hierarchyLevel);
+        return (
+          <DetailRow label={t("typeLabel")}>
+            <InlinePicker
+              ariaLabel={t("typeLabel")}
+              disabled={sameLevel.length < 2}
+              options={sameLevel.map((tp) => ({ value: tp.id, label: tp.name, icon: <IssueTypeIcon type={tp} size={16} /> }))}
+              value={data.issue.typeId}
+              onSelect={(v) => save(() => updateIssueTypeFn({ data: { issueId: data.issue.id, typeId: v } }))}
+              display={
+                <>
+                  <IssueTypeIcon type={data.type} size={16} />
+                  <span className="truncate">{data.type?.name}</span>
+                </>
+              }
+            />
+          </DetailRow>
+        );
+      },
+      sprint: () =>
+        isEpic ? null : (
+          <DetailRow label={t("sprintLabel")}>
+            <InlinePicker
+              ariaLabel={t("sprintLabel")}
+              options={[
+                { value: "", label: t("backlogLabel") },
+                ...data.boardSprints
+                  .filter((s) => s.state !== "closed" || s.id === data.issue.sprintId)
+                  .map((s) => ({ value: s.id, label: s.name, hint: s.state === "active" ? "●" : undefined })),
+              ]}
+              value={data.issue.sprintId ?? ""}
+              onSelect={(v) =>
+                save(() => (v ? addIssueToSprintFn({ data: { sprintId: v, issueId: data.issue.id } }) : removeIssueFromSprintFn({ data: data.issue.id })))
+              }
+              display={
+                data.issue.sprintId ? (
+                  <span className="truncate">{data.boardSprints.find((s) => s.id === data.issue.sprintId)?.name}</span>
+                ) : (
+                  <EmptyValue>{t("backlogLabel")}</EmptyValue>
+                )
+              }
+            />
+          </DetailRow>
+        ),
+      epic: () =>
+        isEpic ? null : (
+          <DetailRow label={t("epicLabel")}>
+            <InlinePicker
+              ariaLabel={t("epicLabel")}
+              options={[
+                { value: "", label: t("noEpic") },
+                ...data.candidateEpics.map((e) => ({ value: e.id, label: e.title, hint: `${data.project.key}-${e.keySeq}` })),
+              ]}
+              value={data.issue.epicId ?? ""}
+              onSelect={(v) => save(() => updateIssueEpicFn({ data: { issueId: data.issue.id, epicId: v || null } }))}
+              display={
+                epic ? (
+                  <span className="inline-flex h-6 min-w-0 items-center gap-1.5 rounded-[4px] bg-violet-soft px-1.5 text-[13px] font-medium text-violet">
+                    <IssueTypeIcon type={{ name: "Epic", hierarchyLevel: 0 }} size={14} />
+                    <span className="truncate">{epic.title}</span>
                   </span>
-                </div>
-              ),
-              priority: () => (
-                <div>
-                  <p className="mb-1 text-text-3">{t("priorityLabel")}</p>
-                  <div className="relative">
-                    <span
-                      className="pointer-events-none absolute left-2.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full"
-                      style={{ background: data.priorityLevels.find((p) => p.key === data.issue.priority)?.color }}
-                    />
-                    <select
-                      value={data.issue.priority}
-                      onChange={(e) => setPriority(e.target.value)}
-                      className="kp-select kp-field w-full"
-                      style={{ paddingLeft: 22 }}
-                    >
-                      {[...data.priorityLevels].sort((a, b) => a.order - b.order).map((p) => (
-                        <option key={p.key} value={p.key}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ),
-              startDate: () => (
-                <div>
-                  <p className="mb-1 text-text-3">{t("startDateLabel")}</p>
-                  <input
-                    type="date"
-                    value={data.issue.startDate ? new Date(data.issue.startDate).toISOString().slice(0, 10) : ""}
-                    onChange={(e) => setStartDate(e.target.value || null)}
-                    className="kp-field w-full"
-                  />
-                </div>
-              ),
-              dueDate: () => (
-                <div>
-                  <p className="mb-1 text-text-3">{t("dueDateLabel")}</p>
-                  <input
-                    type="date"
-                    value={data.issue.dueDate ? new Date(data.issue.dueDate).toISOString().slice(0, 10) : ""}
-                    onChange={(e) => setDueDate(e.target.value || null)}
-                    className="kp-field w-full"
-                  />
-                </div>
-              ),
-              epic: () =>
-                data.type?.hierarchyLevel !== 0 ? (
-                  <div>
-                    <p className="mb-1 text-text-3">{t("epicLabel")}</p>
-                    <select
-                      value={data.issue.epicId ?? ""}
-                      onChange={(e) => setEpic(e.target.value || null)}
-                      className="kp-select kp-field w-full"
-                    >
-                      <option value="">{t("noEpic")}</option>
-                      {data.candidateEpics.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {data.project.key}-{e.keySeq} {e.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null,
-              sprint: () => (
-                <div>
-                  <p className="mb-1 text-text-3">{t("sprintLabel")}</p>
-                  <select
-                    value={data.issue.sprintId ?? ""}
-                    onChange={(e) => setSprint(e.target.value || null)}
-                    className="kp-select kp-field w-full"
-                  >
-                    <option value="">{t("backlogLabel")}</option>
-                    {data.boardSprints
-                      .filter((s) => s.state !== "closed" || s.id === data.issue.sprintId)
-                      .map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              ),
-              storyPoints: () => (
-                <div>
-                  <p className="mb-1 text-text-3">{t("pointsLabel")}</p>
-                  <input
-                    type="number"
-                    defaultValue={data.issue.storyPoints ?? ""}
-                    onBlur={(e) => setStoryPoints(e.target.value === "" ? null : Number(e.target.value))}
-                    className="kp-field w-full"
-                  />
-                </div>
-              ),
-              type: () => {
-                const sameLevelTypes = data.allTypes.filter((tp) => tp.hierarchyLevel === data.type?.hierarchyLevel);
-                return (
-                  <div>
-                    <p className="mb-1 text-text-3">{t("typeLabel")}</p>
-                    <select value={data.issue.typeId} onChange={(e) => setType(e.target.value)} className="kp-select kp-field w-full">
-                      {sameLevelTypes.map((tp) => (
-                        <option key={tp.id} value={tp.id}>
-                          {tp.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              },
-              labels: () => (
-                <div>
-                  <p className="mb-1 text-text-3">{t("labelsLabel")}</p>
-                  <div className="mb-1.5 flex flex-wrap gap-1.5">
-                    {data.issue.labels.map((label) => (
-                      <span
-                        key={label}
-                        className="inline-flex items-center gap-1 rounded bg-surface-3 px-1.5 py-0.5 text-[11px] text-text-2"
-                      >
-                        {label}
-                        <button
-                          type="button"
-                          onClick={() => setLabels(data.issue.labels.filter((l) => l !== label))}
-                          className="text-text-3 hover:text-danger"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <input
-                    value={labelDraft}
-                    onChange={(e) => setLabelDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if ((e.key === "Enter" || e.key === ",") && labelDraft.trim()) {
-                        e.preventDefault();
-                        const trimmed = labelDraft.trim();
-                        if (!data.issue.labels.includes(trimmed)) setLabels([...data.issue.labels, trimmed]);
-                        setLabelDraft("");
-                      }
-                    }}
-                    placeholder={t("addLabelPlaceholder")}
-                    className="kp-field w-full"
-                  />
-                </div>
-              ),
-            };
+                ) : (
+                  <EmptyValue>{t("noEpic")}</EmptyValue>
+                )
+              }
+            />
+          </DetailRow>
+        ),
+      storyPoints: () => (
+        <DetailRow label={t("pointsLabel")}>
+          <InlineInput
+            type="number"
+            ariaLabel={t("pointsLabel")}
+            placeholder={t("none")}
+            value={data.issue.storyPoints == null ? "" : String(data.issue.storyPoints)}
+            onCommit={(v) => {
+              const n = v === "" ? null : Number(v);
+              if (n !== null && (Number.isNaN(n) || n < 0)) return;
+              save(() => updateIssueStoryPointsFn({ data: { issueId: data.issue.id, storyPoints: n } }));
+            }}
+          />
+        </DetailRow>
+      ),
+      startDate: () => (
+        <DetailRow label={t("startDateLabel")}>
+          <InlineDate
+            ariaLabel={t("startDateLabel")}
+            value={toDateInput(data.issue.startDate)}
+            onCommit={(v) => save(() => updateIssueDatesFn({ data: { issueId: data.issue.id, startDate: v ? new Date(v).toISOString() : null } }))}
+          />
+        </DetailRow>
+      ),
+      dueDate: () => (
+        <DetailRow label={t("dueDateLabel")}>
+          <div className="flex items-center gap-1.5">
+            <InlineDate
+              ariaLabel={t("dueDateLabel")}
+              tone={overdue ? "danger" : undefined}
+              value={toDateInput(data.issue.dueDate)}
+              onCommit={(v) => save(() => updateIssueDatesFn({ data: { issueId: data.issue.id, dueDate: v ? new Date(v).toISOString() : null } }))}
+            />
+            {overdue && <span className="flex-none rounded-[4px] bg-danger-soft px-1.5 text-[11.5px] font-semibold text-danger">{t("overdue")}</span>}
+          </div>
+        </DetailRow>
+      ),
+      labels: () => (
+        <DetailRow label={t("labelsLabel")} align="start">
+          <LabelsEditor labels={data.issue.labels} onChange={(labels) => save(() => updateIssueLabelsFn({ data: { issueId: data.issue.id, labels } }))} />
+        </DetailRow>
+      ),
+    };
 
-            return (
-              <div className="flex flex-col gap-4 border-t border-border pt-4">
-                {data.propertyDefinitions.map((def) => {
-                  if (def.isCore) {
-                    const render = coreFieldRenderers[def.key];
-                    return render ? <Fragment key={def.id}>{render()}</Fragment> : null;
-                  }
-                  return (
-                    <CustomPropertyField
-                      key={def.id}
-                      def={def}
-                      value={((data.issue.customFields ?? {}) as Record<string, unknown>)[def.key]}
-                      onChange={(v) => setCustomField(def.key, v)}
-                    />
-                  );
-                })}
-              </div>
-            );
-          })()}
+    const customValues = (data.issue.customFields ?? {}) as Record<string, unknown>;
+
+    return (
+      <div className="flex flex-col gap-3">
+        <StatusControl
+          status={status}
+          options={statusOptions}
+          value={data.issue.statusId}
+          label={t("changeStatus")}
+          onSelect={(v) => save(() => moveIssueFn({ data: { issueId: data.issue.id, toStatusId: v } }))}
+        />
+        <div className="overflow-hidden rounded-[10px] border border-border bg-surface">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((v) => !v)}
+            aria-expanded={detailsOpen}
+            className="flex h-11 w-full items-center justify-between border-b border-border px-4 text-left text-[14px] font-semibold hover:bg-surface-2"
+          >
+            {t("detailsHeading")}
+            <ChevronDown size={16} className={cn("text-text-3 transition-transform", !detailsOpen && "-rotate-90")} />
+          </button>
+          {detailsOpen && (
+            <div className="flex flex-col gap-1.5 px-3 py-3">
+              {data.propertyDefinitions.map((def) => {
+                if (def.isCore) {
+                  const render = core[def.key];
+                  return render ? <Fragment key={def.id}>{render()}</Fragment> : null;
+                }
+                return (
+                  <CustomPropertyRow
+                    key={def.id}
+                    def={def}
+                    value={customValues[def.key]}
+                    members={data.orgMembers}
+                    onChange={(v) => save(() => updateIssueCustomFieldFn({ data: { issueId: data.issue.id, key: def.key, value: v } }))}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-0.5 px-1 text-[12.5px] text-text-3">
+          <span title={fullDateTime(data.issue.createdAt, intlLocale)}>{t("createdAgo", { time: relativeTime(data.issue.createdAt, intlLocale) })}</span>
+          <span title={fullDateTime(data.issue.updatedAt, intlLocale)}>{t("updatedAgo", { time: relativeTime(data.issue.updatedAt, intlLocale) })}</span>
         </div>
       </div>
-    </PageContainer>
+    );
+  }
+}
+
+function Section({ title, aside, children }: { title: ReactNode; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="mb-8">
+      <div className="mb-2.5 flex min-h-8 items-center justify-between gap-3">
+        <h2 className="type-headline">{title}</h2>
+        {aside}
+      </div>
+      {children}
+    </section>
   );
 }
 
-type StatusOption = Awaited<ReturnType<typeof getIssueDetailFn>>["statuses"][number];
+/** Notion-like title: reads as a heading, becomes an input on click. */
+function IssueTitle({ title, onSave }: { title: string; onSave: (title: string) => void }) {
+  const { t } = useTranslation("issue");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+
+  function commit() {
+    const trimmed = draft.trim();
+    setEditing(false);
+    if (trimmed && trimmed !== title) onSave(trimmed);
+    else setDraft(title);
+  }
+
+  if (editing) {
+    return (
+      <textarea
+        autoFocus
+        rows={1}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value.replace(/\n/g, ""))}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
+          if (e.key === "Escape") {
+            setDraft(title);
+            setEditing(false);
+          }
+        }}
+        className="-mx-2 block w-[calc(100%+16px)] resize-none rounded-[6px] border border-accent bg-surface px-2 py-1 text-[24px] font-semibold leading-tight tracking-[-0.015em] shadow-[0_0_0_3px_var(--accent-soft)] outline-none [field-sizing:content]"
+      />
+    );
+  }
+  return (
+    <h1
+      onClick={() => {
+        setDraft(title);
+        setEditing(true);
+      }}
+      title={t("clickToEdit")}
+      className="-mx-2 cursor-text rounded-[6px] px-2 py-1 text-[24px] font-semibold leading-tight tracking-[-0.015em] text-text hover:bg-surface-3"
+    >
+      {title}
+    </h1>
+  );
+}
+
+function StatusControl({
+  status,
+  options,
+  value,
+  label,
+  onSelect,
+}: {
+  status: { name: string; color: string } | undefined;
+  options: SelectOption[];
+  value: string;
+  label: string;
+  onSelect: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const color = status?.color ?? "var(--text2)";
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="inline-flex h-9 w-fit items-center gap-2 rounded-[6px] px-3 text-[13px] font-bold uppercase tracking-[0.03em] transition-[filter] hover:brightness-95"
+        style={{ color, backgroundColor: `color-mix(in srgb, ${color} 16%, var(--surface))` }}
+      >
+        {status?.name ?? "—"}
+        <ChevronDown size={15} strokeWidth={2.5} />
+      </button>
+      <SelectMenu open={open} onClose={() => setOpen(false)} anchorRef={ref} width={240} options={options} value={value} onSelect={(v) => v !== value && onSelect(v)} />
+    </>
+  );
+}
 
 /**
- * A colored, pill-shaped status dropdown — mirrors how Card.tsx colors the
- * board's priority dot from DB-stored hex, since workflow statuses are
- * per-project/admin-configurable and can't be limited to Badge's six fixed
- * tones. Uses backgroundColor (not the `background` shorthand) in the
- * inline style so it doesn't blank out .kp-select's own background-image
- * chevron.
+ * Click-to-edit description: rendered rich text, click anywhere to switch to
+ * the editor. AI draft streams into a plain buffer and loads into the
+ * editor when finished (LiteEditor only reads initialContent at mount).
  */
-function StatusSelect({
-  statuses,
-  value,
-  disabled,
-  onChange,
-  label,
+function DescriptionEditor({
+  issueId,
+  issueTitle,
+  descriptionJson,
+  onSaved,
 }: {
-  statuses: StatusOption[];
-  value: string;
-  disabled?: boolean;
-  onChange: (statusId: string) => void;
-  label: string;
+  issueId: string;
+  issueTitle: string;
+  descriptionJson: unknown;
+  onSaved: () => Promise<void>;
 }) {
-  const color = statuses.find((s) => s.id === value)?.color ?? "var(--text-3)";
+  const { t } = useTranslation("issue");
+  const hasDescription = normalizeToBlocks(descriptionJson) !== undefined;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Block[]>([]);
+  const [initial, setInitial] = useState<PartialBlock[] | undefined>(undefined);
+  const [editorKey, setEditorKey] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function startEditing() {
+    const blocks = normalizeToBlocks(descriptionJson) ?? [];
+    setInitial(blocks);
+    setDraft(blocks as Block[]);
+    setEditorKey((k) => k + 1);
+    setError(null);
+    setEditing(true);
+  }
+
+  async function saveDescription() {
+    setSaving(true);
+    setError(null);
+    try {
+      const empty = draft.length === 0 || (draft.length === 1 && draft[0]!.type === "paragraph" && (!Array.isArray(draft[0]!.content) || draft[0]!.content.length === 0));
+      await updateIssueDescriptionFn({ data: { issueId, descriptionJson: empty ? null : (draft as unknown as Record<string, unknown>[]) } });
+      await onSaved();
+      setEditing(false);
+    } catch (err) {
+      setError(t("saveFailed", { message: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function aiDraft() {
+    setAiBusy(true);
+    let accumulated = "";
+    try {
+      await streamAiCompletion({ feature: "issue-description", title: issueTitle }, (delta) => {
+        accumulated += delta;
+      });
+    } catch (err) {
+      accumulated = err instanceof Error ? t("aiDraftFailed", { message: err.message }) : t("aiDraftFailedGeneric");
+    } finally {
+      const blocks: PartialBlock[] = accumulated ? [{ type: "paragraph", content: [{ type: "text", text: accumulated, styles: {} }] }] : [];
+      setInitial(blocks);
+      setDraft(blocks as Block[]);
+      setEditorKey((k) => k + 1);
+      setAiBusy(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div
+        className="flex flex-col gap-2"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            saveDescription();
+          }
+        }}
+      >
+        <ClientOnly fallback={<div className="min-h-[160px] rounded-[6px] border border-border-2 bg-surface" />}>
+          <LiteEditor
+            key={editorKey}
+            initialContent={initial}
+            onChange={setDraft}
+            autoFocus
+            placeholder={t("descriptionPlaceholder")}
+            className="min-h-[160px] rounded-[6px] border border-accent bg-surface px-3 py-2 shadow-[0_0_0_3px_var(--accent-soft)]"
+          />
+        </ClientOnly>
+        {error && <p className="text-[13px] text-danger">{error}</p>}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="primary" size="sm" onClick={saveDescription} disabled={saving}>
+            {saving ? t("savingEllipsis") : t("save")}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={saving}>
+            {t("cancel")}
+          </Button>
+          <Button variant="subtle" size="sm" onClick={aiDraft} disabled={aiBusy} className="ml-auto">
+            <Sparkles size={14} />
+            {aiBusy ? t("aiDraftingEllipsis") : t("aiDraftButton")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasDescription) {
+    return (
+      <button
+        type="button"
+        onClick={startEditing}
+        className="-mx-2 flex min-h-10 w-[calc(100%+16px)] items-center rounded-[6px] px-2 text-left text-[14px] text-text-3 hover:bg-surface-3"
+      >
+        {t("addDescription")}
+      </button>
+    );
+  }
+
   return (
-    <select
-      aria-label={label}
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-      className="kp-select kp-pill-select rounded-full py-0.5 pl-2.5 text-[10.5px] font-semibold uppercase tracking-[0.05em]"
-      style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, var(--surface))`, color }}
+    <div
+      role="button"
+      tabIndex={0}
+      title={t("clickToEdit")}
+      onClick={(e) => {
+        // Let links (mentions) inside the description work.
+        if ((e.target as HTMLElement).closest("a")) return;
+        startEditing();
+      }}
+      onKeyDown={(e) => e.key === "Enter" && startEditing()}
+      className="-mx-2 cursor-text rounded-[6px] px-2 py-1 hover:bg-surface-2"
     >
-      {statuses.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.name}
-        </option>
-      ))}
-    </select>
+      <ClientOnly fallback={<div className="min-h-[24px]" />}>
+        <RichTextView content={descriptionJson} className="text-text" />
+      </ClientOnly>
+    </div>
   );
 }
 
-type PropertyDefinition = Awaited<ReturnType<typeof getIssueDetailFn>>["propertyDefinitions"][number];
+type PropertyDefinition = IssueData["propertyDefinitions"][number];
 
-function CustomPropertyField({
+function CustomPropertyRow({
   def,
   value,
+  members,
   onChange,
 }: {
   def: PropertyDefinition;
   value: unknown;
+  members: { userId: string; name: string }[];
   onChange: (value: string | number | boolean | string[] | null) => void;
 }) {
+  const { t } = useTranslation("issue");
   const options = (def.options as { value: string; label: string }[] | null) ?? [];
 
   if (def.type === "checkbox") {
     return (
-      <label className="flex items-center gap-1.5">
-        <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
-        {def.name}
-      </label>
+      <DetailRow label={def.name}>
+        <label className="flex min-h-8 cursor-pointer items-center gap-2 px-2 text-[14px]">
+          <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4" />
+          <span className="text-text-2">{value ? t("yes") : t("no")}</span>
+        </label>
+      </DetailRow>
     );
   }
 
   if (def.type === "select") {
+    const current = options.find((o) => o.value === value);
     return (
-      <div>
-        <p className="mb-1 text-text-3">{def.name}</p>
-        <select
+      <DetailRow label={def.name}>
+        <InlinePicker
+          ariaLabel={def.name}
+          options={[{ value: "", label: t("none") }, ...options]}
           value={(value as string) ?? ""}
-          onChange={(e) => onChange(e.target.value || null)}
-          className="kp-select kp-field w-full"
-        >
-          <option value="">—</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </div>
+          onSelect={(v) => onChange(v || null)}
+          display={current ? <span className="truncate">{current.label}</span> : <EmptyValue>{t("none")}</EmptyValue>}
+        />
+      </DetailRow>
     );
   }
 
   if (def.type === "multiSelect") {
     const selected = Array.isArray(value) ? (value as string[]) : [];
     return (
-      <div>
-        <p className="mb-1 text-text-3">{def.name}</p>
-        <div className="flex flex-wrap gap-1.5">
-          {options.map((o) => {
-            const isOn = selected.includes(o.value);
-            return (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => onChange(isOn ? selected.filter((v) => v !== o.value) : [...selected, o.value])}
-                className={`rounded-full border px-2 py-0.5 text-[11px] ${isOn ? "border-indigo bg-indigo-soft text-indigo" : "border-border-2 text-text-2"}`}
-              >
-                {o.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <DetailRow label={def.name} align="start">
+        <InlineMultiPicker
+          ariaLabel={def.name}
+          options={options}
+          values={selected}
+          onChange={(v) => onChange(v)}
+          display={
+            selected.length ? (
+              selected.map((v) => (
+                <span key={v} className="inline-flex h-6 items-center rounded-[4px] bg-indigo-soft px-1.5 text-[12.5px] font-medium text-indigo">
+                  {options.find((o) => o.value === v)?.label ?? v}
+                </span>
+              ))
+            ) : (
+              <EmptyValue>{t("none")}</EmptyValue>
+            )
+          }
+        />
+      </DetailRow>
     );
   }
 
-  if (def.type === "number") {
+  if (def.type === "person") {
+    const person = members.find((m) => m.userId === value);
     return (
-      <div>
-        <p className="mb-1 text-text-3">{def.name}</p>
-        <input
-          type="number"
-          defaultValue={typeof value === "number" ? value : ""}
-          onBlur={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-          className="kp-field w-full"
+      <DetailRow label={def.name}>
+        <InlinePicker
+          ariaLabel={def.name}
+          options={[{ value: "", label: t("none") }, ...members.map((m) => ({ value: m.userId, label: m.name, icon: <Avatar name={m.name} size={20} /> }))]}
+          value={(value as string) ?? ""}
+          onSelect={(v) => onChange(v || null)}
+          display={
+            person ? (
+              <>
+                <Avatar name={person.name} size={22} />
+                <span className="truncate">{person.name}</span>
+              </>
+            ) : typeof value === "string" && value ? (
+              <span className="truncate">{value}</span>
+            ) : (
+              <EmptyValue>{t("none")}</EmptyValue>
+            )
+          }
         />
-      </div>
+      </DetailRow>
     );
   }
 
   if (def.type === "date") {
     return (
-      <div>
-        <p className="mb-1 text-text-3">{def.name}</p>
-        <input
-          type="date"
-          defaultValue={typeof value === "string" ? value : ""}
-          onBlur={(e) => onChange(e.target.value || null)}
-          className="kp-field"
-        />
-      </div>
+      <DetailRow label={def.name}>
+        <InlineDate ariaLabel={def.name} value={typeof value === "string" ? value.slice(0, 10) : ""} onCommit={(v) => onChange(v)} />
+      </DetailRow>
     );
   }
 
-  // text, textarea, url, person — all a plain text input for this pass
+  if (def.type === "number") {
+    return (
+      <DetailRow label={def.name}>
+        <InlineInput
+          type="number"
+          ariaLabel={def.name}
+          placeholder={t("none")}
+          value={typeof value === "number" ? String(value) : ""}
+          onCommit={(v) => {
+            if (v === "") return onChange(null);
+            const n = Number(v);
+            if (!Number.isNaN(n)) onChange(n);
+          }}
+        />
+      </DetailRow>
+    );
+  }
+
+  // text, textarea, url
   return (
-    <div>
-      <p className="mb-1 text-text-3">{def.name}</p>
-      <input
-        defaultValue={typeof value === "string" ? value : ""}
-        onBlur={(e) => onChange(e.target.value || null)}
-        className="kp-field w-full"
+    <DetailRow label={def.name}>
+      <InlineInput
+        type={def.type === "url" ? "url" : "text"}
+        ariaLabel={def.name}
+        placeholder={t("none")}
+        value={typeof value === "string" ? value : ""}
+        onCommit={(v) => onChange(v || null)}
       />
-    </div>
+    </DetailRow>
   );
 }

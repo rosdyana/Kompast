@@ -1,8 +1,12 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
+import { Card } from "@kompast/ui/Card";
+import { FormField, TextField } from "@kompast/ui/Input";
 import { useTranslation } from "@kompast/i18n";
 import { getSetupStatusFn, completeSetupFn } from "@/lib/server-fns/setup";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 export const Route = createFileRoute("/setup")({
   loader: async () => {
@@ -21,6 +25,10 @@ function SetupPage() {
   const [clientSecret, setClientSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [redirectUri, setRedirectUri] = useState("<APP_URL>/api/auth/callback/microsoft-entra-id");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => setRedirectUri(`${window.location.origin}/api/auth/callback/microsoft-entra-id`), []);
 
   async function submit() {
     setError(null);
@@ -35,74 +43,65 @@ function SetupPage() {
     }
   }
 
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(redirectUri);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard blocked — the URI stays visible to select manually
+    }
+  }
+
+  const steps = [t("setupStep1"), t("setupStep2"), t("setupStep3")];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg px-6">
-      <div className="w-full max-w-[440px]">
-        <div className="mb-7 flex items-center gap-2.5">
-          <div className="grid h-[30px] w-[30px] place-items-center rounded-[9px] bg-accent">
-            <div className="h-2 w-2 rotate-45 rounded-sm bg-white" />
-          </div>
-          <span className="type-headline">Kompast</span>
-        </div>
+    <AuthLayout>
+      <h2 className="type-title">{t("setupTitle")}</h2>
+      <p className="mt-2 type-body text-text-2">{t("setupSubtitle")}</p>
 
-        <h1 className="mb-2 type-title">{t("setupTitle")}</h1>
-        <p className="mb-7 type-body leading-relaxed text-text-2">{t("setupSubtitle")}</p>
+      <ol className="mt-6 flex flex-col gap-2">
+        {steps.map((s, i) => (
+          <li key={i} className="flex items-center gap-3 text-[14px] text-text-2">
+            <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-accent-soft text-[12px] font-semibold text-accent-text">{i + 1}</span>
+            {s}
+          </li>
+        ))}
+      </ol>
 
-        <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
-          <Field label={t("tenantIdLabel")} value={tenantId} onChange={setTenantId} placeholder="00000000-0000-0000-0000-000000000000" />
-          <Field label={t("clientIdLabel")} value={clientId} onChange={setClientId} placeholder={t("clientIdPlaceholder")} />
-          <Field
-            label={t("clientSecretLabel")}
-            value={clientSecret}
-            onChange={setClientSecret}
-            placeholder={t("clientSecretPlaceholder")}
-            type="password"
-          />
-
-          {error && <p className="type-body text-danger">{error}</p>}
-
-          <Button
-            variant="primary"
-            onClick={submit}
-            disabled={submitting || !tenantId || !clientId || !clientSecret}
-            className="w-full py-2.5"
-          >
-            {submitting ? t("savingEllipsis") : t("saveAndContinue")}
+      <div className="mt-5 rounded-[8px] border border-border bg-surface-2 p-3">
+        <p className="mb-2 text-[12.5px] text-text-2">{t("redirectUriNote")}</p>
+        <div className="flex items-center gap-2">
+          <code className="min-w-0 flex-1 break-all font-mono text-[12px] text-text">{redirectUri}</code>
+          <Button size="sm" variant="outline" onClick={copy}>
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            {copied ? t("copied") : t("copy")}
           </Button>
         </div>
-
-        <p className="mt-5 type-body leading-relaxed text-text-3">
-          {t("redirectUriNote")}{" "}
-          <code className="rounded bg-surface-3 px-1 py-0.5">{"<APP_URL>"}/api/auth/callback/microsoft-entra-id</code>
-        </p>
       </div>
-    </div>
-  );
-}
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  type?: string;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-[12px] font-medium text-text-2">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none focus:border-text-3"
-      />
-    </label>
+      <Card className="mt-5">
+        <form
+          className="flex flex-col gap-4 p-5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <FormField label={t("tenantIdLabel")} htmlFor="setup-tenant" required>
+            <TextField id="setup-tenant" value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" className="font-mono text-[13px]" />
+          </FormField>
+          <FormField label={t("clientIdLabel")} htmlFor="setup-client" required>
+            <TextField id="setup-client" value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder={t("clientIdPlaceholder")} className="font-mono text-[13px]" />
+          </FormField>
+          <FormField label={t("clientSecretLabel")} htmlFor="setup-secret" required error={error ?? undefined}>
+            <TextField id="setup-secret" type="password" autoComplete="off" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder={t("clientSecretPlaceholder")} />
+          </FormField>
+          <Button type="submit" variant="primary" size="lg" disabled={submitting || !tenantId.trim() || !clientId.trim() || !clientSecret} className="w-full">
+            {submitting ? t("savingEllipsis") : t("saveAndContinue")}
+          </Button>
+        </form>
+      </Card>
+    </AuthLayout>
   );
 }

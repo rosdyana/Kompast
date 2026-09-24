@@ -31,7 +31,8 @@ export const getSharedPageContentFn = createServerFn({ method: "POST" })
     const content = await getSharedPageContent(data.token, data.password);
     if (!content) return { ok: false as const };
 
-    let html = "<p><em>Halaman ini masih kosong.</em></p>";
+    // Empty string = empty page; the client renders its own localized empty state.
+    let html = "";
     if (content.ydocState) {
       const ydoc = new Y.Doc();
       Y.applyUpdate(ydoc, content.ydocState);

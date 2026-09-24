@@ -71,6 +71,10 @@ Every route redirects to `/setup` until Microsoft Entra ID is configured:
 
 ⚠️ A wrong Tenant ID — or a brief Microsoft outage — currently takes down the whole app at boot, with no UI-level fix. See `docs/ENGINEERING-NOTES.md` for the workaround.
 
+## Workspace UI
+
+A Notion-style sidebar (page tree, favorites, projects grouped by team), a ⌘K command palette (jump to any project view, page, issue or person), a global Jira-style **Create issue** dialog (`C`), and keyboard shortcuts (`/` search, `⌘\` toggle sidebar, `?` shortcut list). Light and dark themes share one token set in `packages/ui/src/theme.css`; see `DESIGN.md`.
+
 ## Settings (`/settings`, admin-only)
 
 Once a workspace exists, an admin can configure, without touching `.env`:
@@ -82,9 +86,9 @@ All secrets are encrypted at rest and never echoed back to the client.
 
 ## Features
 
-**Docs** — real-time collaborative pages (BlockNote + Hocuspocus), workspace-level or filed under a project. Page permissions, version history, templates, trash/restore, guest share links, `@mention` backlinks, and a live read-only board embed inside a doc.
+**Docs** — Notion-style real-time collaborative pages (BlockNote + Hocuspocus) with emoji icons, nested page tree, favorites and breadcrumbs, workspace-level or filed under a project. Page permissions, version history, templates, trash/restore, guest share links, `@mention` backlinks, and a live read-only board embed inside a doc.
 
-**Boards & sprints** — kanban boards with configurable sprint cycles, a backlog view, burndown/cumulative-flow reports, velocity history, and epics rolled up into a simple progress-bar roadmap. Inline-cell editing in the table view isn't built yet.
+**Boards & sprints** — Jira-style backlog (sprint containers with drag-and-drop between sprints and backlog, inline quick-create, start/complete sprint with carry-over), kanban boards with configurable sprint cycles and assignee swimlanes, a sprint hub table with inline-cell editing (status, assignee, priority, type, points, due date, title), burndown/cumulative-flow reports, velocity history, and an epic roadmap timeline.
 
 **REST API + MCP** — every mutation lives once in `packages/core`, so the UI, REST (`/api/v1`), and MCP (`/mcp`) can never drift apart in what they allow. Personal access tokens (`/tokens`) scope both surfaces.
 

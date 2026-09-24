@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject, setSprintMinutesTemplate, setSprintRetroTemplate } from "../project";
-import { createIssue } from "../issue";
+import { createIssue, archiveIssue } from "../issue";
 import { createPage, getSprintMinutesPage } from "../page";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
@@ -142,6 +142,26 @@ describe("sprint lifecycle", () => {
     await withAuthorizedTenant(ctx, (tx) => removeIssueFromSprint(tx, issueId));
     backlog = await withAuthorizedTenant(ctx, (tx) => listBacklogIssues(tx, projectId));
     expect(backlog.map((i) => i.id)).toContain(issueId);
+  });
+
+  it("hides archived issues from both the backlog and a sprint's issue list (and so from its scope)", async () => {
+    const { projectId, boardId, issueTypes, statuses } = await seedProject();
+    const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));
+    const inBacklog = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id, 2));
+    const inSprint = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id, 5));
+    await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, sprintId, inSprint));
+
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await archiveIssue(tx, inBacklog, { actorId: userId });
+      await archiveIssue(tx, inSprint, { actorId: userId });
+    });
+
+    const backlog = await withAuthorizedTenant(ctx, (tx) => listBacklogIssues(tx, projectId));
+    expect(backlog.map((i) => i.id)).not.toContain(inBacklog);
+    const members = await withAuthorizedTenant(ctx, (tx) => listSprintIssues(tx, sprintId));
+    expect(members).toHaveLength(0);
+    const report = await withAuthorizedTenant(ctx, (tx) => getSprintReport(tx, sprintId));
+    expect(report.scopePoints).toBe(0);
   });
 
   it("logs a 'sprint' issue_history row only when an actor is given, for both add and remove", async () => {

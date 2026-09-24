@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or, schema } from "@kompast/db";
+import { and, desc, eq, ilike, isNull, or, schema } from "@kompast/db";
 import type { Tx } from "./types";
 
 export interface WorkspaceSearchResult {
@@ -49,6 +49,7 @@ export async function searchWorkspace(
       .where(
         and(
           eq(schema.issue.organizationId, organizationId),
+          isNull(schema.issue.archivedAt),
           keyMatch
             ? or(
                 ilike(schema.issue.title, `%${q}%`),

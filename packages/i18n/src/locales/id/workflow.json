@@ -13,79 +13,121 @@
   "nodeTypes": {
     "trigger_event": {
       "label": "Trigger event",
-      "fields": { "eventType": "Ketika" },
+      "fields": {
+        "eventType": "Ketika"
+      },
       "summary": "Ketika {{eventType}}"
     },
     "trigger_schedule": {
       "label": "Trigger jadwal",
-      "fields": { "cron": "Ekspresi cron" },
+      "fields": {
+        "cron": "Ekspresi cron"
+      },
       "summary": "Cron {{cron}}"
     },
     "condition_property": {
       "label": "Jika properti",
-      "fields": { "property": "Properti", "operator": "Operator", "value": "Nilai" },
+      "fields": {
+        "property": "Properti",
+        "operator": "Operator",
+        "value": "Nilai"
+      },
       "propertyPlaceholder": "mis. priority, status, atau kunci custom field",
       "valuePlaceholder": "tinggi, atau {{expr}}",
       "summary": "Jika {{property}} {{operator}} {{value}}"
     },
     "condition_switch": {
       "label": "Switch berdasarkan properti",
-      "fields": { "property": "Properti", "cases": "Kasus (dipisah koma)" },
+      "fields": {
+        "property": "Properti",
+        "cases": "Kasus (dipisah koma)"
+      },
       "propertyPlaceholder": "mis. priority, status, atau kunci custom field",
       "casesPlaceholder": "tinggi, sedang, rendah",
       "summary": "Switch berdasarkan {{property}}"
     },
     "action_set_property": {
       "label": "Atur properti",
-      "fields": { "property": "Properti", "value": "Nilai" },
+      "fields": {
+        "property": "Properti",
+        "value": "Nilai"
+      },
       "propertyPlaceholder": "mis. status, assigneeId, atau kunci custom field",
       "valuePlaceholder": "nilai literal, atau {{expr}}",
       "summary": "Atur {{property}}"
     },
     "action_add_label": {
       "label": "Tambah label",
-      "fields": { "label": "Label" },
+      "fields": {
+        "label": "Label"
+      },
       "summary": "Tambah label \"{{label}}\""
     },
     "action_comment": {
       "label": "Tambah komentar",
-      "fields": { "text": "Isi komentar" },
+      "fields": {
+        "text": "Isi komentar"
+      },
       "textPlaceholder": "Mendukung {{expr1}} / {{expr2}}",
       "summary": "Komentar: {{text}}"
     },
     "action_notify": {
       "label": "Beri tahu pengguna",
-      "fields": { "userId": "ID pengguna", "title": "Judul", "body": "Isi" },
+      "fields": {
+        "userId": "ID pengguna",
+        "title": "Judul",
+        "body": "Isi"
+      },
       "summary": "Beri tahu: {{title}}"
     },
     "action_link_issue": {
       "label": "Tautkan tiket",
-      "fields": { "issueId": "ID tiket tujuan" },
+      "fields": {
+        "issueId": "ID tiket tujuan"
+      },
       "summary": "Tautkan ke {{issueId}}"
     },
     "action_create_subtask": {
       "label": "Buat subtask",
-      "fields": { "typeId": "ID tipe tiket", "title": "Judul" },
+      "fields": {
+        "typeId": "ID tipe tiket",
+        "title": "Judul"
+      },
       "summary": "Subtask: {{title}}"
     },
     "action_webhook": {
       "label": "Webhook",
-      "fields": { "url": "URL", "method": "Method", "headers": "Headers (JSON)", "bodyTemplate": "Body (JSON)" },
+      "fields": {
+        "url": "URL",
+        "method": "Method",
+        "headers": "Headers (JSON)",
+        "bodyTemplate": "Body (JSON)"
+      },
       "summary": "{{method}} {{url}}"
     },
     "find_issues": {
       "label": "Cari tiket",
-      "fields": { "statusId": "ID status", "assigneeId": "ID penerima tugas", "label": "Label" },
+      "fields": {
+        "statusId": "ID status",
+        "assigneeId": "ID penerima tugas",
+        "label": "Label"
+      },
       "summary": "Cari tiket di proyek ini"
     },
     "loop_each": {
       "label": "Ulangi untuk setiap item",
-      "fields": { "source": "Ekspresi sumber", "itemType": "Tipe item" },
+      "fields": {
+        "source": "Ekspresi sumber",
+        "itemType": "Tipe item"
+      },
       "summary": "Ulangi untuk {{source}}"
     },
     "delay": {
       "label": "Jeda",
-      "fields": { "amount": "Jumlah", "unit": "Satuan" },
+      "fields": {
+        "amount": "Jumlah",
+        "unit": "Satuan"
+      },
       "summary": "Tunggu {{amount}} {{unit}}"
     }
   },
@@ -98,7 +140,8 @@
   "runHistory": {
     "loading": "Memuat riwayat berjalan…",
     "heading": "Riwayat berjalan",
-    "empty": "Belum ada riwayat berjalan."
+    "empty": "Belum ada riwayat berjalan.",
+    "steps": "Langkah"
   },
   "canvas": {
     "backLabel": "Kembali ke Automation",
@@ -110,7 +153,14 @@
     "deleteWorkflow": "Hapus workflow",
     "saveFailed": "Gagal menyimpan",
     "toggleFailed": "Gagal mengubah status aktif",
-    "discardChangesConfirm": "Batalkan perubahan yang belum disimpan?"
+    "discardChangesConfirm": "Batalkan perubahan yang belum disimpan?",
+    "addNode": "Tambah langkah",
+    "palette": "Langkah",
+    "unsaved": "Ada perubahan belum disimpan",
+    "saved": "Semua perubahan tersimpan",
+    "configTitle": "Pengaturan langkah",
+    "close": "Tutup",
+    "disarm": "Batal"
   },
   "list": {
     "loading": "Memuat…",
@@ -120,6 +170,22 @@
     "createFailed": "Gagal membuat workflow",
     "enabledBadge": "Aktif",
     "disabledBadge": "Nonaktif",
-    "dryRunBadge": "Uji coba"
+    "dryRunBadge": "Uji coba",
+    "heading": "Otomasi",
+    "subtitle": "Workflow berjalan saat ada event issue atau sesuai jadwal, dan bertindak pada issue di proyek ini.",
+    "colName": "Workflow",
+    "colTrigger": "Pemicu",
+    "colLastRun": "Terakhir berjalan",
+    "colStatus": "Aktif",
+    "never": "Belum pernah",
+    "createTitle": "Workflow baru",
+    "createPlaceholder": "mis. Beri tahu lead saat bug dibuat",
+    "emptyTitle": "Belum ada workflow",
+    "emptyBody": "Otomatiskan pekerjaan rutin: beri label bug baru, beri tahu lead, atau rapikan issue lama secara terjadwal.",
+    "toggleLabel": "Aktifkan {{name}}",
+    "run_running": "Berjalan",
+    "run_completed": "Berhasil",
+    "run_failed": "Gagal",
+    "updated": "Diubah {{when}}"
   }
 }

@@ -9,5 +9,20 @@
   "send": "Send",
   "askFailed": "Ask Kompast failed",
   "hideConversationsTitle": "Hide conversations",
-  "showConversationsTitle": "Show conversations"
+  "showConversationsTitle": "Show conversations",
+  "newChat": "New chat",
+  "chats": "Chats",
+  "emptyHeading": "What do you want to know?",
+  "emptySubtitle": "Answers come from issue titles, descriptions and comments in this workspace.",
+  "suggestion1": "Which issues are blocked right now?",
+  "suggestion2": "Summarize the discussion on recent bugs",
+  "suggestion3": "What is still open in the current sprint?",
+  "stop": "Stop",
+  "sources": "Sources",
+  "sourceIssue": "Issue",
+  "sourceComment": "Comment",
+  "sourcePage": "Page",
+  "composerHint": "Enter to send · Shift+Enter for a new line",
+  "thinking": "Thinking…",
+  "stopped": "Stopped."
 }

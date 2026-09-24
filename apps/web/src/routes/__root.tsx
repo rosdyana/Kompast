@@ -1,5 +1,7 @@
 import { HeadContent, Scripts, Outlet, createRootRoute, redirect, Link } from "@tanstack/react-router";
 import { useMemo, type ReactNode } from "react";
+import { Compass } from "lucide-react";
+import { EmptyState } from "@kompast/ui/EmptyState";
 import themeCss from "@kompast/ui/theme.css?url";
 import { ThemeProvider, type Theme } from "@kompast/ui/theme";
 import { I18nextProvider, createI18nInstance, useTranslation, type SupportedLocale } from "@kompast/i18n";
@@ -35,7 +37,7 @@ export const Route = createRootRoute({
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap",
       },
       { rel: "stylesheet", href: themeCss },
       { rel: "icon", href: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
@@ -50,12 +52,18 @@ export const Route = createRootRoute({
 function NotFoundComponent() {
   const { t } = useTranslation("common");
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-bg px-6 text-center">
-      <h1 className="text-xl font-semibold text-text">{t("notFoundTitle")}</h1>
-      <p className="max-w-[380px] text-sm text-text-2">{t("notFoundSubtext")}</p>
-      <Link to="/" className="mt-3 text-sm font-medium text-accent hover:underline">
-        {t("notFoundGoHome")}
-      </Link>
+    <div className="flex min-h-screen items-center justify-center bg-bg px-6">
+      <EmptyState
+        variant="plain"
+        icon={<Compass size={18} />}
+        title={t("notFoundTitle")}
+        description={t("notFoundSubtext")}
+        action={
+          <Link to="/" className="inline-flex h-8 items-center rounded-[6px] bg-accent px-3 text-[14px] font-medium text-white hover:bg-accent-hover">
+            {t("notFoundGoHome")}
+          </Link>
+        }
+      />
     </div>
   );
 }
@@ -86,6 +94,7 @@ function RootDocument({
   return (
     <html lang={locale} data-theme={theme}>
       <head>
+        <meta name="theme-color" content={theme === "dark" ? "#1f1f1e" : "#fbfbfa"} />
         <HeadContent />
       </head>
       <body>

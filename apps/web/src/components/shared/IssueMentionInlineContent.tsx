@@ -7,9 +7,9 @@ export const issueMentionInlineSpec = createReactInlineContentSpec(issueMentionI
     <Link
       to="/issues/$teamId/$projectKey/$issueKeySeq"
       params={{ teamId: inlineContent.props.teamId || "none", projectKey: inlineContent.props.projectKey, issueKeySeq: inlineContent.props.keySeq }}
-      className="rounded bg-accent-soft px-1 py-0.5 text-accent no-underline hover:underline"
+      className="rounded-[4px] bg-accent-soft px-1 py-px font-medium text-accent-text no-underline decoration-accent-text/40 hover:underline"
     >
-      {inlineContent.props.projectKey}-{inlineContent.props.keySeq} {inlineContent.props.title}
+      <span className="font-mono text-[0.88em]">{inlineContent.props.projectKey}-{inlineContent.props.keySeq}</span> {inlineContent.props.title}
     </Link>
   ),
 });

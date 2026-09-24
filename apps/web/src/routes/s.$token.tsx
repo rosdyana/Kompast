@@ -1,20 +1,42 @@
+import "@blocknote/core/style.css";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Eye, Lock } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
+import { Spinner } from "@kompast/ui/EmptyState";
 import { useTranslation } from "@kompast/i18n";
 import { getSharedPageMetaFn, getSharedPageContentFn } from "@/lib/server-fns/share";
+import { CompassMark } from "@/components/shell/ProjectIcon";
 
 export const Route = createFileRoute("/s/$token")({
   loader: ({ params }) => getSharedPageMetaFn({ data: params.token }),
   component: SharedPage,
 });
 
-function Centered({ children }: { children: React.ReactNode }) {
+function Shell({ children, title }: { children: ReactNode; title?: string }) {
+  const { t } = useTranslation("share");
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg px-6">
-      <div className="w-full max-w-[380px] text-center">{children}</div>
+    <div className="flex min-h-screen flex-col bg-bg">
+      <header className="flex h-12 flex-none items-center gap-2.5 border-b border-border px-4 sm:px-6">
+        <CompassMark size={20} />
+        <span className="text-[14px] font-semibold text-text">Kompast</span>
+        {title && <span className="min-w-0 truncate text-[14px] text-text-3">/ {title}</span>}
+        <span className="ml-auto flex flex-none items-center gap-1.5 text-[12.5px] text-text-3">
+          <Eye size={14} strokeWidth={1.75} />
+          <span className="hidden sm:inline">{t("sharedFooter")}</span>
+        </span>
+      </header>
+      <main className="flex-1">{children}</main>
     </div>
   );
+}
+
+function Centered({ children }: { children: ReactNode }) {
+  return <div className="mx-auto flex min-h-[70vh] w-full max-w-[380px] flex-col items-center justify-center px-6 text-center">{children}</div>;
+}
+
+function Icon({ icon, size }: { icon: string | null; size: number }) {
+  return icon ? <span style={{ fontSize: size, lineHeight: 1 }}>{icon}</span> : null;
 }
 
 function SharedPage() {
@@ -30,9 +52,10 @@ function SharedPage() {
     if (meta && !meta.requiresPassword) {
       getSharedPageContentFn({ data: { token } }).then((res) => {
         if (res.ok) setContent(res);
+        else setError(t("invalidLink"));
       });
     }
-  }, [meta, token]);
+  }, [meta, token, t]);
 
   async function submitPassword() {
     setLoading(true);
@@ -48,54 +71,77 @@ function SharedPage() {
 
   if (!meta) {
     return (
-      <Centered>
-        <p className="type-body text-text-3">{t("invalidLink")}</p>
-      </Centered>
+      <Shell>
+        <Centered>
+          <p className="text-[15px] text-text-2">{t("invalidLink")}</p>
+        </Centered>
+      </Shell>
     );
   }
 
   if (meta.requiresPassword && !content) {
     return (
-      <Centered>
-        <div className="mb-4 text-3xl">{meta.icon || "▤"}</div>
-        <h1 className="mb-1 text-lg font-semibold">{meta.title || t("untitled")}</h1>
-        <p className="mb-4 type-body text-text-3">{t("passwordProtected")}</p>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submitPassword()}
-          placeholder={t("passwordPlaceholder")}
-          className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] outline-none focus:border-border-2"
-        />
-        {error && <p className="mb-2 type-body text-danger">{error}</p>}
-        <Button variant="primary" className="w-full" onClick={submitPassword} disabled={loading || !password}>
-          {t("open")}
-        </Button>
-      </Centered>
+      <Shell>
+        <Centered>
+          <span className="mb-4 grid h-11 w-11 place-items-center rounded-full bg-surface-3 text-text-2">
+            {meta.icon ? <Icon icon={meta.icon} size={22} /> : <Lock size={18} />}
+          </span>
+          <h1 className="mb-1 text-[18px] font-semibold">{meta.title || t("untitled")}</h1>
+          <p className="mb-5 text-[14px] text-text-2">{t("passwordProtected")}</p>
+          <form
+            className="flex w-full flex-col gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitPassword();
+            }}
+          >
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={t("passwordPlaceholder")}
+              aria-label={t("passwordPlaceholder")}
+              aria-invalid={!!error}
+              autoFocus
+              className="kp-input"
+            />
+            {error && <p className="text-left text-[13px] text-danger">{error}</p>}
+            <Button type="submit" variant="primary" className="w-full" disabled={loading || !password}>
+              {t("open")}
+            </Button>
+          </form>
+        </Centered>
+      </Shell>
     );
   }
 
   if (!content) {
     return (
-      <Centered>
-        <p className="type-body text-text-3">{t("loadingEllipsis")}</p>
-      </Centered>
+      <Shell title={meta.title}>
+        <Centered>{error ? <p className="text-[15px] text-text-2">{error}</p> : <Spinner size={18} />}</Centered>
+      </Shell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-bg">
-      <header className="border-b border-border bg-surface-2 px-6 py-3 text-center text-[11.5px] text-text-3">
-        {t("sharedFooter")}
-      </header>
-      <div className="mx-auto max-w-[820px] px-8 py-12">
-        <h1 className="mb-6 flex items-center gap-2.5 type-title">
-          <span>{content.icon || "▤"}</span>
-          {content.title || t("untitled")}
-        </h1>
-        <div className="bn-shared-content text-[15px] leading-relaxed" dangerouslySetInnerHTML={{ __html: content.html }} />
-      </div>
-    </div>
+    <Shell title={content.title || t("untitled")}>
+      <article className="mx-auto w-full max-w-[760px] px-6 pb-24 pt-12 sm:px-[30px] sm:pt-16">
+        {content.icon && (
+          <div className="mb-3">
+            <Icon icon={content.icon} size={60} />
+          </div>
+        )}
+        <h1 className="mb-6 text-[40px] font-bold leading-[1.2] tracking-[-0.02em] text-text">{content.title || t("untitled")}</h1>
+        {content.html ? (
+          <div className="kp-doc kp-doc-static bn-default-styles" dangerouslySetInnerHTML={{ __html: content.html }} />
+        ) : (
+          <p className="text-[15px] text-text-3">{t("emptyPage")}</p>
+        )}
+        <p className="mt-16 flex items-center gap-2 border-t border-border pt-5 text-[12.5px] text-text-3">
+          <CompassMark size={14} />
+          {t("poweredBy")}
+        </p>
+      </article>
+    </Shell>
   );
 }

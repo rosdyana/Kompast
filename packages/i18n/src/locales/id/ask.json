@@ -9,5 +9,20 @@
   "send": "Kirim",
   "askFailed": "Ask Kompast gagal",
   "hideConversationsTitle": "Sembunyikan percakapan",
-  "showConversationsTitle": "Tampilkan percakapan"
+  "showConversationsTitle": "Tampilkan percakapan",
+  "newChat": "Obrolan baru",
+  "chats": "Obrolan",
+  "emptyHeading": "Apa yang ingin Anda ketahui?",
+  "emptySubtitle": "Jawaban diambil dari judul, deskripsi, dan komentar issue di workspace ini.",
+  "suggestion1": "Issue mana yang sedang terhambat?",
+  "suggestion2": "Ringkas diskusi tentang bug terbaru",
+  "suggestion3": "Apa yang masih terbuka di sprint saat ini?",
+  "stop": "Berhenti",
+  "sources": "Sumber",
+  "sourceIssue": "Issue",
+  "sourceComment": "Komentar",
+  "sourcePage": "Halaman",
+  "composerHint": "Enter untuk kirim · Shift+Enter untuk baris baru",
+  "thinking": "Berpikir…",
+  "stopped": "Dihentikan."
 }

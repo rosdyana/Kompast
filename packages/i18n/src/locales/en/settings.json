@@ -1,5 +1,15 @@
 {
-  "tabs": { "notifications": "Notifications", "members": "Members", "teams": "Teams", "roles": "Roles & Permissions", "integrations": "Integrations" },
+  "tabs": {
+    "notifications": "Notifications",
+    "members": "Members",
+    "teams": "Teams",
+    "roles": "Roles & Permissions",
+    "integrations": "Integrations",
+    "ai": "AI",
+    "mail": "Email",
+    "embedding": "Embeddings",
+    "entra": "Microsoft Entra ID"
+  },
   "pageTitle": "Workspace settings",
   "teamsNonAdminNote": "Only super admins can manage the workspace's team list here.",
   "integrations": {
@@ -31,7 +41,8 @@
       "savingEllipsis": "Saving…",
       "save": "Save",
       "saved": "Saved.",
-      "saveFailed": "Failed to save Entra ID configuration"
+      "saveFailed": "Failed to save Entra ID configuration",
+      "description": "Single sign-on for everyone in this workspace."
     },
     "ai": {
       "heading": "AI",
@@ -47,7 +58,8 @@
       "baseUrlLabel": "Base URL",
       "savingEllipsis": "Saving…",
       "save": "Save",
-      "saved": "Saved."
+      "saved": "Saved.",
+      "description": "Powers writing assist in docs, AI issue drafts and sprint summaries."
     },
     "mail": {
       "heading": "Email",
@@ -58,7 +70,8 @@
       "apiKeyLabel": "API key",
       "savingEllipsis": "Saving…",
       "save": "Save",
-      "saved": "Saved."
+      "saved": "Saved.",
+      "description": "Delivers notification and invitation emails."
     }
   },
   "members": {
@@ -72,7 +85,16 @@
     "cancel": "Cancel",
     "currentMembersHeading": "Current members",
     "memberRoleLabel": "Member",
-    "adminRoleLabel": "Admin"
+    "adminRoleLabel": "Admin",
+    "tableName": "Name",
+    "tableRole": "Role",
+    "roleOwner": "Owner",
+    "memberCount_one": "{{count}} member",
+    "memberCount_other": "{{count}} members",
+    "invitedAs": "Invited as {{role}}",
+    "inviteSent": "Invitation sent to {{email}}",
+    "inviteHint": "They'll get an email with a link to join this workspace.",
+    "cancelFailed": "Couldn't cancel the invitation"
   },
   "roles": {
     "intro": "The role hierarchy currently in effect in Kompast — not a configurable permission matrix, just a summary of the rules already in the code.",
@@ -101,5 +123,15 @@
       "scope": "Per project",
       "desc": "A role that can be assigned per project (project_member.role). Not enforced anywhere in the code yet — it can currently only be assigned."
     }
-  }
+  },
+  "groupAccount": "Account",
+  "groupWorkspace": "Workspace",
+  "groupIntegrations": "Integrations",
+  "configured": "Configured",
+  "notConfigured": "Not configured",
+  "enabled": "On",
+  "disabled": "Off",
+  "saveFailed": "Couldn't save: {{message}}",
+  "savedToast": "{{section}} settings saved",
+  "sectionPicker": "Settings section"
 }

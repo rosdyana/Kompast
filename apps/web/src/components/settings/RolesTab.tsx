@@ -1,6 +1,7 @@
 import { Card } from "@kompast/ui/Card";
 import { Badge } from "@kompast/ui/Badge";
 import { useTranslation } from "@kompast/i18n";
+import { SettingsSection } from "./SettingsSection";
 
 /**
  * Static/informational only — deliberately NOT a configurable
@@ -14,19 +15,18 @@ const ROLE_KEYS = ["superAdmin", "workspaceOwner", "teamAdmin", "teamMember", "p
 export function RolesTab() {
   const { t } = useTranslation("settings");
   return (
-    <div>
-      <p className="mb-6 type-body text-text-2">{t("roles.intro")}</p>
+    <SettingsSection title={t("tabs.roles")} description={t("roles.intro")}>
       <Card className="overflow-hidden">
         {ROLE_KEYS.map((key) => (
-          <div key={key} className="border-b border-border px-4 py-3 last:border-b-0">
-            <div className="mb-1 flex items-center gap-2">
-              <span className="type-body font-semibold">{t(`roles.${key}.name`)}</span>
-              <Badge tone="neutral">{t(`roles.${key}.scope`)}</Badge>
+          <div key={key} className="flex flex-col gap-1 border-b border-border px-4 py-3.5 last:border-b-0 sm:flex-row sm:gap-6">
+            <div className="flex flex-none items-start gap-2 sm:w-[240px] sm:flex-col sm:gap-1.5">
+              <span className="text-[14px] font-medium">{t(`roles.${key}.name`)}</span>
+              <Badge>{t(`roles.${key}.scope`)}</Badge>
             </div>
-            <p className="type-body leading-relaxed text-text-2">{t(`roles.${key}.desc`)}</p>
+            <p className="type-body text-text-2">{t(`roles.${key}.desc`)}</p>
           </div>
         ))}
       </Card>
-    </div>
+    </SettingsSection>
   );
 }

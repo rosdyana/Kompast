@@ -1,36 +1,36 @@
 import { useState } from "react";
 import { useRouter } from "@tanstack/react-router";
-import { Button } from "@kompast/ui/Button";
+import { Mail, X } from "lucide-react";
+import { Button, IconButton } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
 import { Badge } from "@kompast/ui/Badge";
 import { Avatar } from "@kompast/ui/Avatar";
+import { NativeSelect, TextField } from "@kompast/ui/Input";
+import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
 import { inviteMemberFn, cancelInvitationFn, type listMembersFn } from "@/lib/server-fns/members";
-
-function initialsOf(name: string) {
-  return name
-    .split(/\s+/)
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
+import { SettingsSection } from "./SettingsSection";
 
 export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembersFn>> }) {
   const { t } = useTranslation("settings");
   const router = useRouter();
+  const toast = useToast();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"member" | "admin">("member");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const roleLabel = (r: string) => (r === "owner" ? t("members.roleOwner") : r === "admin" ? t("members.adminRoleLabel") : t("members.memberRoleLabel"));
+
   async function invite() {
-    if (!email.trim()) return;
+    const address = email.trim();
+    if (!address) return;
     setInviting(true);
     setError(null);
     try {
-      await inviteMemberFn({ data: { email: email.trim(), role } });
+      await inviteMemberFn({ data: { email: address, role } });
       setEmail("");
+      toast.show({ title: t("members.inviteSent", { email: address }) });
       await router.invalidate();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("members.inviteFailed"));
@@ -40,72 +40,97 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
   }
 
   async function cancel(invitationId: string) {
-    await cancelInvitationFn({ data: invitationId });
-    await router.invalidate();
+    try {
+      await cancelInvitationFn({ data: invitationId });
+      await router.invalidate();
+    } catch {
+      toast.show({ tone: "error", title: t("members.cancelFailed") });
+    }
   }
 
   return (
-    <div>
-      <p className="mb-6 type-body text-text-2">{t("members.subtitle")}</p>
-
-      <section className="mb-8">
-        <h2 className="mb-3 type-headline">{t("members.inviteHeading")}</h2>
-        <Card className="flex flex-col gap-3 p-4">
-          <div className="flex gap-2">
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && invite()}
-              placeholder={t("members.emailPlaceholder")}
-              className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-            />
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as typeof role)}
-              className="kp-select rounded-[7px] border border-border-2 bg-surface px-2.5 py-2 text-[12.5px] outline-none"
-            >
-              <option value="member">{t("members.memberRoleLabel")}</option>
-              <option value="admin">{t("members.adminRoleLabel")}</option>
-            </select>
-            <Button variant="primary" onClick={invite} disabled={inviting || !email.trim()}>
-              {inviting ? t("members.invitingEllipsis") : t("members.invite")}
-            </Button>
-          </div>
-          {error && <p className="type-body text-danger">{error}</p>}
-        </Card>
-      </section>
+    <SettingsSection title={t("tabs.members")} description={t("members.subtitle")} aside={<Badge>{t("members.memberCount", { count: data.members.length })}</Badge>}>
+      <Card className="mb-8 p-4">
+        <p className="mb-1 text-[14px] font-medium">{t("members.inviteHeading")}</p>
+        <p className="mb-3 text-[13px] text-text-2">{t("members.inviteHint")}</p>
+        <form
+          className="flex flex-col gap-2 sm:flex-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            invite();
+          }}
+        >
+          <TextField
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={t("members.emailPlaceholder")}
+            aria-label={t("members.emailPlaceholder")}
+            aria-invalid={!!error}
+            className="sm:flex-1"
+          />
+          <NativeSelect value={role} onChange={(e) => setRole(e.target.value as typeof role)} className="sm:w-[130px]" aria-label={t("members.tableRole")}>
+            <option value="member">{t("members.memberRoleLabel")}</option>
+            <option value="admin">{t("members.adminRoleLabel")}</option>
+          </NativeSelect>
+          <Button type="submit" variant="primary" disabled={inviting || !email.trim()}>
+            {inviting ? t("members.invitingEllipsis") : t("members.invite")}
+          </Button>
+        </form>
+        {error && <p className="mt-2 text-[13px] text-danger">{error}</p>}
+      </Card>
 
       {data.invitations.length > 0 && (
-        <section className="mb-8">
-          <h2 className="mb-3 type-headline">{t("members.pendingInvitesHeading")}</h2>
-          <div className="flex flex-col gap-1.5">
+        <div className="mb-8">
+          <h3 className="mb-2 text-[14px] font-medium">{t("members.pendingInvitesHeading")}</h3>
+          <Card className="overflow-hidden">
             {data.invitations.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between rounded-[9px] border border-border bg-surface px-3 py-2 text-[12.5px]">
-                <span>
-                  {inv.email} <span className="text-text-3">· {inv.role}</span>
+              <div key={inv.id} className="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-b-0">
+                <span className="grid h-7 w-7 flex-none place-items-center rounded-full bg-surface-3 text-text-3">
+                  <Mail size={14} />
                 </span>
-                <button onClick={() => cancel(inv.id)} className="rounded-[7px] px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger">
-                  {t("members.cancel")}
-                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px]">{inv.email}</p>
+                  <p className="text-[12.5px] text-text-3">{t("members.invitedAs", { role: roleLabel(inv.role ?? "member") })}</p>
+                </div>
+                <IconButton aria-label={t("members.cancel")} title={t("members.cancel")} onClick={() => cancel(inv.id)} className="hover:text-danger">
+                  <X size={15} />
+                </IconButton>
               </div>
             ))}
-          </div>
-        </section>
+          </Card>
+        </div>
       )}
 
-      <section>
-        <h2 className="mb-3 type-headline">{t("members.currentMembersHeading")}</h2>
-        <div className="flex flex-col gap-1.5">
-          {data.members.map((m) => (
-            <div key={m.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2 text-[12.5px]">
-              <Avatar initials={initialsOf(m.name)} size={22} />
-              <span className="min-w-0 flex-1 truncate">{m.name}</span>
-              <span className="text-text-3">{m.email}</span>
-              <Badge tone="neutral">{m.role}</Badge>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
+      <h3 className="mb-2 text-[14px] font-medium">{t("members.currentMembersHeading")}</h3>
+      <Card className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-left text-[14px]">
+          <thead>
+            <tr className="border-b border-border text-[12.5px] text-text-3">
+              <th className="px-4 py-2 font-medium">{t("members.tableName")}</th>
+              <th className="px-4 py-2 font-medium">{t("members.tableRole")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.members.map((m) => (
+              <tr key={m.id} className="border-b border-border last:border-b-0 hover:bg-surface-2">
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={m.name} size={28} />
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{m.name}</p>
+                      <p className="truncate text-[12.5px] text-text-3">{m.email}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-2.5">
+                  <Badge tone={m.role === "owner" ? "indigo" : m.role === "admin" ? "accent" : "neutral"}>{roleLabel(m.role)}</Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </SettingsSection>
   );
 }

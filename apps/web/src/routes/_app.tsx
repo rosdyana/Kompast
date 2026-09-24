@@ -1,463 +1,140 @@
-import { createFileRoute, Outlet, Link, redirect, useRouter } from "@tanstack/react-router";
-import {
-  ChevronDown,
-  ChevronRight,
-  ChevronsLeft,
-  Settings,
-  Plus,
-  FolderKanban,
-  Home,
-  Search,
-  Sparkles,
-  Trash2,
-  KeyRound,
-  BookOpen,
-  LogOut,
-  Moon,
-  Sun,
-} from "lucide-react";
-import { Avatar } from "@kompast/ui/Avatar";
-import { Button } from "@kompast/ui/Button";
-import { SidebarShell, useSidebarCollapsed } from "@kompast/ui/SidebarShell";
-import { useTheme } from "@kompast/ui/theme";
+import { createFileRoute, Outlet, redirect, useRouter } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { SidebarProvider, SidebarShell, useSidebarCollapsed } from "@kompast/ui/SidebarShell";
+import { ToastProvider, useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
-import { useState } from "react";
 import { getWorkspaceShellFn } from "@/lib/server-fns/workspace";
 import { listPageTreeFn, createPageFn } from "@/lib/server-fns/pages";
-import { GlobalSearch } from "@/components/GlobalSearch";
-import { NotificationBell } from "@/components/NotificationBell";
-import { LocaleSwitcher } from "@/components/LocaleSwitcher";
-import { DocsTree } from "@/components/docs/DocsTree";
-import { authClient } from "@/lib/auth-client";
+import { AppSidebar, type SidebarShellData } from "@/components/shell/AppSidebar";
+import { Topbar } from "@/components/shell/Topbar";
+import { CommandPalette } from "@/components/shell/CommandPalette";
+import { CreateIssueDialog } from "@/components/shell/CreateIssueDialog";
+import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
+import { WorkbenchContext, type CreateIssueDefaults, type PageChrome } from "@/components/shell/WorkbenchContext";
 
 export const Route = createFileRoute("/_app")({
   loader: async () => {
     const shell = await getWorkspaceShellFn();
     if (!shell) throw redirect({ to: "/login" });
     const pageTree = await listPageTreeFn();
-    return { ...shell, pages: pageTree.pages };
+    return { ...shell, pages: pageTree.pages, favoriteIds: pageTree.favoriteIds };
   },
   component: AppShell,
 });
 
-function initialsOf(name: string) {
-  return name
-    .split(/\s+/)
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+function isTypingTarget(target: EventTarget | null) {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable || !!el.closest?.("[contenteditable='true']");
 }
 
 function AppShell() {
-  const shell = Route.useLoaderData();
-  const { t } = useTranslation("nav");
-
   return (
-    <div className="flex h-screen overflow-hidden bg-bg">
-      <Sidebar shell={shell} />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <Topbar workspaceName={shell.organization?.name ?? t("workspaceFallback")} />
-        <div className="min-h-0 flex-1 overflow-auto">
-          <Outlet />
-        </div>
-      </main>
-    </div>
+    <ToastProvider>
+      <SidebarProvider>
+        <Workbench />
+      </SidebarProvider>
+    </ToastProvider>
   );
 }
 
-type Shell = NonNullable<Awaited<ReturnType<typeof getWorkspaceShellFn>>> & {
-  pages: Awaited<ReturnType<typeof listPageTreeFn>>["pages"];
-};
-
-function Sidebar({ shell }: { shell: Shell }) {
+function Workbench() {
+  const shell = Route.useLoaderData() as SidebarShellData;
   const router = useRouter();
-  const [creatingPage, setCreatingPage] = useState(false);
+  const toast = useToast();
+  const { t } = useTranslation(["nav", "common"]);
+  const { toggle } = useSidebarCollapsed();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [createDefaults, setCreateDefaults] = useState<CreateIssueDefaults | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [chrome, setChrome] = useState<PageChrome | null>(null);
 
-  async function handleSignOut() {
-    await authClient.signOut();
-    await router.navigate({ to: "/login" });
-  }
+  const openCreateIssue = useCallback((defaults?: CreateIssueDefaults) => {
+    setPaletteOpen(false);
+    setCreateDefaults(defaults ?? null);
+    setCreateOpen(true);
+  }, []);
 
-  async function newPage() {
-    setCreatingPage(true);
-    try {
-      const page = await createPageFn({ data: {} });
-      await router.navigate({ to: "/docs/$pageId", params: { pageId: page.id } });
-    } finally {
-      setCreatingPage(false);
+  const createPage = useCallback(
+    async (opts?: { parentPageId?: string | null; projectId?: string | null }) => {
+      try {
+        const page = await createPageFn({ data: { parentPageId: opts?.parentPageId ?? undefined, projectId: opts?.projectId ?? undefined } });
+        await router.navigate({ to: "/docs/$pageId", params: { pageId: page.id } });
+        await router.invalidate();
+      } catch (err) {
+        toast.show({ tone: "error", title: t("common:somethingWentWrong"), description: err instanceof Error ? err.message : undefined });
+      }
+    },
+    [router, toast, t],
+  );
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+        return;
+      }
+      if (mod && e.key === "\\") {
+        e.preventDefault();
+        toggle();
+        return;
+      }
+      if (mod || e.altKey || isTypingTarget(e.target)) return;
+      if (document.querySelector("[role='dialog'][aria-modal='true']")) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        setPaletteOpen(true);
+      } else if (e.key === "c" || e.key === "C") {
+        if (shell.projects.length === 0) return;
+        e.preventDefault();
+        openCreateIssue();
+      } else if (e.key === "?") {
+        e.preventDefault();
+        setShortcutsOpen(true);
+      }
     }
-  }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggle, openCreateIssue, shell.projects.length]);
 
-  return (
-    <SidebarShell>
-      <SidebarBody shell={shell} creatingPage={creatingPage} newPage={newPage} handleSignOut={handleSignOut} />
-    </SidebarShell>
+  const workbench = useMemo(
+    () => ({
+      openPalette: () => setPaletteOpen(true),
+      openCreateIssue,
+      openShortcuts: () => setShortcutsOpen(true),
+      createPage,
+      chrome,
+      setChrome,
+    }),
+    [openCreateIssue, createPage, chrome],
   );
-}
-
-type TeamRow = Shell["teams"][number];
-type ProjectRow = Shell["projects"][number];
-
-function TeamNode({
-  team,
-  projects,
-  isSuperAdmin,
-}: {
-  team: TeamRow;
-  projects: ProjectRow[];
-  isSuperAdmin: boolean;
-}) {
-  const { t } = useTranslation("nav");
-  const [expanded, setExpanded] = useState(true);
-  const isUnassigned = team.id === "__unassigned";
-  const canCreateProject = isSuperAdmin || team.myRole === "admin";
-  // Same condition as canCreateProject today — named independently so the
-  // two can diverge later if a more granular role split is ever needed.
-  const canManageTeam = (isSuperAdmin || team.myRole === "admin") && !isUnassigned;
 
   return (
-    <div>
-      <div className="flex items-center gap-1.5 rounded-[7px] px-2 py-1 hover:bg-surface-3">
-        <button
-          onClick={() => setExpanded((e) => !e)}
-          className="grid h-4 w-4 flex-none place-items-center text-text-3"
-        >
-          {expanded ? <ChevronDown size={13} strokeWidth={1.75} /> : <ChevronRight size={13} strokeWidth={1.75} />}
-        </button>
-        <span className="min-w-0 flex-1 truncate type-body font-medium">{team.name}</span>
-        {canManageTeam && (
-          <Link
-            to="/teams/$teamId"
-            params={{ teamId: team.id }}
-            title={t("manageTeam")}
-            className="grid h-4 w-4 flex-none place-items-center text-text-3 hover:text-text"
-          >
-            <Settings size={12} strokeWidth={1.75} />
-          </Link>
-        )}
-        {canCreateProject && (
-          <Link
-            to="/projects/new"
-            search={{ teamId: isUnassigned ? undefined : team.id }}
-            title={t("newProject")}
-            className="grid h-4 w-4 flex-none place-items-center text-text-3 hover:text-text"
-          >
-            <Plus size={12} strokeWidth={1.75} />
-          </Link>
-        )}
+    <WorkbenchContext.Provider value={workbench}>
+      <div className="flex h-screen overflow-hidden bg-bg">
+        <SidebarShell>
+          <AppSidebar shell={shell} />
+        </SidebarShell>
+        <main className="flex min-w-0 flex-1 flex-col">
+          <Topbar canCreateIssue={shell.projects.length > 0} />
+          <div id="kp-main-scroll" className="min-h-0 flex-1 overflow-auto">
+            <Outlet />
+          </div>
+        </main>
       </div>
-      {expanded && (
-        <div className="pl-5">
-          {projects.length === 0 && <p className="px-2 py-1 text-[11.5px] text-text-3">{t("noProjectsInTeam")}</p>}
-          {projects.map((project) => (
-            <Link
-              key={project.id}
-              to="/projects/$teamId/$projectKey"
-              params={{ teamId: isUnassigned ? "none" : team.id, projectKey: project.key }}
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
-            >
-              <FolderKanban size={13} strokeWidth={1.75} className="w-3.5 flex-none text-text-3" />
-              <span className="min-w-0 flex-1 truncate">{project.name}</span>
-              <span className="type-label text-text-3">{project.key}</span>
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SidebarBody({
-  shell,
-  creatingPage,
-  newPage,
-  handleSignOut,
-}: {
-  shell: Shell;
-  creatingPage: boolean;
-  newPage: () => void;
-  handleSignOut: () => void;
-}) {
-  const { collapsed, setCollapsed } = useSidebarCollapsed();
-  const { t } = useTranslation(["nav", "common"]);
-  const workspaceName = shell.organization?.name ?? t("workspaceFallback");
-
-  if (collapsed) {
-    return (
-      <SidebarRail
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
         shell={shell}
-        workspaceName={workspaceName}
-        handleSignOut={handleSignOut}
-        onExpand={() => setCollapsed(false)}
+        onCreateIssue={() => openCreateIssue()}
+        onCreatePage={() => createPage()}
       />
-    );
-  }
-
-  return (
-    <>
-      <div className="flex items-center border-b border-border">
-        <button
-          title={workspaceName}
-          className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-3.5 text-left hover:bg-surface-3"
-        >
-          <div className="grid h-[26px] w-[26px] flex-none place-items-center rounded-[7px] bg-indigo">
-            <div className="h-1.5 w-1.5 rotate-45 rounded-sm bg-accent" />
-          </div>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate type-body font-semibold tracking-tight">{workspaceName}</span>
-            <span className="block type-label text-text-3">{t("memberCount", { count: shell.memberCount })}</span>
-          </span>
-        </button>
-        <button
-          onClick={() => setCollapsed(true)}
-          title={t("collapseSidebar")}
-          className="mr-1.5 grid h-[30px] w-[30px] flex-none place-items-center rounded-md text-text-3 hover:bg-surface-3 hover:text-text"
-        >
-          <ChevronsLeft size={16} strokeWidth={1.75} />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-2 pb-2 pt-2.5">
-        <div className="mb-4 flex flex-col gap-px">
-          <Link
-            to="/"
-            title={t("home")}
-            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
-          >
-            <Home size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
-            {t("home")}
-          </Link>
-          <button
-            title={t("search")}
-            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body text-text-2 hover:bg-surface-3"
-          >
-            <Search size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
-            {t("search")}
-            <span className="ml-auto type-label text-text-3">⌘K</span>
-          </button>
-          <Link
-            to="/ask"
-            title={t("askKompast")}
-            className="flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:font-semibold [&.active]:bg-surface-3"
-          >
-            <Sparkles size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
-            {t("askKompast")}
-          </Link>
-        </div>
-
-        <div className="flex items-center justify-between px-2 pb-1.5">
-          <span className="type-label-overline text-text-3">{t("teams")}</span>
-          {shell.isSuperAdmin && (
-            <Link
-              to="/teams/new"
-              title={t("newTeam")}
-              className="grid h-[19px] w-[19px] place-items-center rounded-md text-text-3 hover:bg-surface-3 hover:text-text"
-            >
-              <Plus size={12} strokeWidth={1.75} />
-            </Link>
-          )}
-        </div>
-
-        <div className="mb-4 flex flex-col gap-px">
-          {shell.teams.length === 0 && (
-            <p className="px-2 py-1.5 type-body text-text-3">
-              {shell.isSuperAdmin ? t("noTeamsYetSuperAdmin") : t("noTeamsYetMember")}
-            </p>
-          )}
-          {shell.teams.map((team) => (
-            <TeamNode
-              key={team.id}
-              team={team}
-              projects={shell.projects.filter((p) => p.teamId === team.id)}
-              isSuperAdmin={shell.isSuperAdmin}
-            />
-          ))}
-          {shell.projects.some((p) => !p.teamId) && (
-            <TeamNode
-              team={{ id: "__unassigned", name: t("unassignedTeam"), memberCount: 0, projectCount: 0, myRole: null }}
-              projects={shell.projects.filter((p) => !p.teamId)}
-              isSuperAdmin={shell.isSuperAdmin}
-            />
-          )}
-        </div>
-
-        <div className="flex items-center justify-between px-2 pb-1.5">
-          <span className="type-label-overline text-text-3">{t("docs")}</span>
-          <div className="flex items-center gap-1">
-            <Link
-              to="/docs/trash"
-              title={t("trash")}
-              className="grid h-[19px] w-[19px] place-items-center rounded-md text-text-3 hover:bg-surface-3 hover:text-text"
-            >
-              <Trash2 size={12} strokeWidth={1.75} />
-            </Link>
-            <Button variant="outline" className="h-[19px] px-1.5" onClick={newPage} disabled={creatingPage}>
-              <Plus size={12} strokeWidth={1.75} />
-            </Button>
-          </div>
-        </div>
-        <DocsTree pages={shell.pages} />
-      </div>
-
-      <div className="border-t border-border p-2">
-        {shell.isAdmin && (
-          <Link
-            to="/settings"
-            title={t("settings")}
-            className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:bg-surface-3"
-          >
-            <Settings size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
-            {t("settings")}
-          </Link>
-        )}
-        <Link
-          to="/tokens"
-          title={t("apiToken")}
-          className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3 [&.active]:bg-surface-3"
-        >
-          <KeyRound size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
-          {t("apiToken")}
-        </Link>
-        <a
-          href="/api/docs"
-          target="_blank"
-          rel="noreferrer"
-          title={t("apiDocs")}
-          className="flex w-full items-center gap-2.5 rounded-[7px] px-2 py-1.5 type-body hover:bg-surface-3"
-        >
-          <BookOpen size={15} strokeWidth={1.75} className="w-[15px] flex-none text-text-3" />
-          {t("apiDocs")}
-        </a>
-        <div className="flex items-center gap-2.5 px-2 pb-0.5 pt-1.5">
-          <Avatar initials={initialsOf(shell.user.name)} tone="violet" size={24} />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate type-body font-semibold">{shell.user.name}</span>
-          </span>
-          <button
-            onClick={handleSignOut}
-            title={t("logOut")}
-            className="rounded-md px-1 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text"
-          >
-            <LogOut size={13} strokeWidth={1.75} />
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-/**
- * Icon-only "rail" mode — matches the approved design mockup's railMode
- * (62px, the default state), a structurally distinct layout from the
- * expanded tree, not just the tree with labels hidden. Clicking the
- * workspace icon expands; there is no floating/absolutely-positioned
- * button here (that was the source of the original collapse bug).
- */
-function SidebarRail({
-  shell,
-  workspaceName,
-  handleSignOut,
-  onExpand,
-}: {
-  shell: Shell;
-  workspaceName: string;
-  handleSignOut: () => void;
-  onExpand: () => void;
-}) {
-  const { t } = useTranslation(["nav", "common"]);
-
-  return (
-    <div className="flex h-full w-full flex-col items-center gap-1 pb-2 pt-2.5">
-      <button
-        onClick={onExpand}
-        title={t("expandSidebar", { name: workspaceName })}
-        className="grid h-[38px] w-[38px] flex-none place-items-center rounded-[11px] bg-indigo hover:opacity-90"
-      >
-        <span className="h-[9px] w-[9px] rotate-45 rounded-sm bg-accent" />
-      </button>
-
-      <div className="my-2 h-px w-6 flex-none bg-border" />
-
-      <div className="flex flex-none flex-col gap-1">
-        <Link
-          to="/"
-          title={t("home")}
-          className="grid h-9 w-10 place-items-center rounded-[10px] text-text-3 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
-        >
-          <Home size={16} strokeWidth={1.75} />
-        </Link>
-        <button
-          title={t("search")}
-          className="grid h-9 w-10 place-items-center rounded-[10px] text-text-2 hover:bg-surface-3 hover:text-text"
-        >
-          <Search size={16} strokeWidth={1.75} />
-        </button>
-        <Link
-          to="/ask"
-          title={t("askKompast")}
-          className="grid h-9 w-10 place-items-center rounded-[10px] text-text-3 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
-        >
-          <Sparkles size={16} strokeWidth={1.75} />
-        </Link>
-      </div>
-
-      <div className="my-2 h-px w-6 flex-none bg-border" />
-
-      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto">
-        {shell.projects.map((project) => (
-          <Link
-            key={project.id}
-            to="/projects/$teamId/$projectKey"
-            params={{ teamId: project.teamId ?? "none", projectKey: project.key }}
-            title={project.name}
-            className="grid h-9 w-10 flex-none place-items-center rounded-[10px] text-[10.5px] font-semibold text-text-2 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
-          >
-            {project.key.slice(0, 2)}
-          </Link>
-        ))}
-      </div>
-
-      {shell.isAdmin && (
-        <Link
-          to="/settings"
-          title={t("settings")}
-          className="grid h-9 w-10 flex-none place-items-center rounded-[10px] text-text-3 hover:bg-surface-3 hover:text-text [&.active]:bg-surface-3 [&.active]:text-text"
-        >
-          <Settings size={16} strokeWidth={1.75} />
-        </Link>
-      )}
-      <button
-        onClick={handleSignOut}
-        title={`${shell.user.name} · ${t("logOut")}`}
-        className="mt-1 flex-none rounded-full hover:opacity-85"
-      >
-        <Avatar initials={initialsOf(shell.user.name)} tone="violet" size={28} />
-      </button>
-    </div>
-  );
-}
-
-function Topbar({ workspaceName }: { workspaceName: string }) {
-  const { theme, toggleTheme } = useTheme();
-  const { t } = useTranslation("nav");
-  return (
-    <header className="flex h-[47px] flex-none items-center gap-3.5 border-b border-border bg-surface-2 px-4">
-      <div className="flex min-w-0 items-center gap-1.5 type-body text-text-2">
-        <span className="truncate font-semibold text-text">{workspaceName}</span>
-      </div>
-      <div className="ml-auto flex items-center gap-2">
-        <GlobalSearch />
-        <NotificationBell />
-        <LocaleSwitcher />
-        <button
-          onClick={toggleTheme}
-          title={theme === "dark" ? t("themeToLight") : t("themeToDark")}
-          className="grid h-[29px] w-[29px] place-items-center rounded-[7px] border border-border bg-surface hover:bg-surface-3"
-        >
-          {theme === "dark" ? <Moon size={15} strokeWidth={1.75} /> : <Sun size={15} strokeWidth={1.75} />}
-        </button>
-      </div>
-    </header>
+      <CreateIssueDialog open={createOpen} onClose={() => setCreateOpen(false)} defaults={createDefaults} shell={shell} />
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+    </WorkbenchContext.Provider>
   );
 }

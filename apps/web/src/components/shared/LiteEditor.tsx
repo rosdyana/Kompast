@@ -52,6 +52,15 @@ export function LiteEditor({ initialContent, onChange, autoFocus, className, pla
     dictionary,
   });
 
+  // BlockNoteView's own autoFocus doesn't reliably land when the editor
+  // mounts after a click (e.g. an expanding comment box) — without this,
+  // focus stays on <body> and the first keystrokes hit global shortcuts.
+  useEffect(() => {
+    if (!autoFocus) return;
+    const id = requestAnimationFrame(() => editor.focus());
+    return () => cancelAnimationFrame(id);
+  }, [editor, autoFocus]);
+
   useEffect(() => {
     // ed.document is typed against this file's own (issueMention/userMention-extended)
     // schema, which isn't structurally assignable to the generic default `Block[]` the
@@ -74,7 +83,7 @@ export function LiteEditor({ initialContent, onChange, autoFocus, className, pla
     // one element; BlockNoteView itself only ever gets the bare
     // "kp-lite-editor" marker class both copies already share harmlessly.
     <div className={className}>
-      <BlockNoteView editor={editor} editable theme={theme} autoFocus={autoFocus} className="kp-lite-editor">
+      <BlockNoteView editor={editor} editable theme={theme} autoFocus={autoFocus} className="kp-lite-editor [&_.bn-editor]:bg-transparent!">
         <SuggestionMenuController
           triggerCharacter="@"
           getItems={async (query) => {

@@ -1,0 +1,172 @@
+/* Docs surface (Notion-style page + DocEditor). Scope every rule under .kp-doc or a docs-only class. */
+
+/* The editor's text column aligns flush with the page title; BlockNote's
+   drag handle / "+" side menu floats into the gutter to the left, exactly
+   where Notion puts it. */
+.kp-doc .bn-editor {
+  padding-inline: 0;
+}
+.kp-doc .bn-container,
+.kp-doc .bn-editor {
+  background: transparent;
+}
+
+.kp-doc .bn-default-styles,
+.kp-doc.bn-default-styles {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text);
+}
+.kp-doc .bn-block-outer {
+  line-height: 1.65;
+}
+.kp-doc .bn-block-content {
+  padding: 3px 0;
+}
+
+/* Headings: Notion's scale (30 / 24 / 20), semibold, more air above than below. */
+.kp-doc [data-content-type="heading"] {
+  --level: 1.875em;
+  padding-top: 30px;
+  padding-bottom: 2px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.kp-doc [data-content-type="heading"][data-level="2"] {
+  --level: 1.5em;
+  padding-top: 22px;
+}
+.kp-doc [data-content-type="heading"][data-level="3"] {
+  --level: 1.25em;
+  padding-top: 16px;
+}
+.kp-doc [data-prev-level="1"] {
+  --prev-level: 1.875em;
+}
+.kp-doc [data-prev-level="2"] {
+  --prev-level: 1.5em;
+}
+.kp-doc [data-prev-level="3"] {
+  --prev-level: 1.25em;
+}
+.kp-doc .bn-block-outer:not([data-prev-type]) > .bn-block > .bn-block-content[data-content-type="heading"] {
+  font-weight: 650;
+}
+/* A heading as the very first block shouldn't push the doc away from its title. */
+.kp-doc .bn-block-group > .bn-block-outer:first-child > .bn-block > [data-content-type="heading"] {
+  padding-top: 4px;
+}
+
+/* Quote: a calm 3px ink rule, full-strength text (Notion). */
+.kp-doc [data-content-type="quote"] blockquote {
+  border-left: 3px solid var(--text);
+  color: var(--text);
+  padding-left: 14px;
+  margin: 2px 0;
+}
+
+.kp-doc [data-content-type="divider"] hr {
+  border-top: 1px solid var(--border2);
+  margin: 10px 0;
+}
+
+/* Inline code + code blocks: soft warm tint instead of BlockNote's black slab. */
+.kp-doc code {
+  font-family: var(--font-mono);
+}
+.kp-doc .bn-inline-content code,
+.kp-doc-static code:not(pre code) {
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface3));
+  color: var(--danger);
+  border-radius: 4px;
+  padding: 0.12em 0.36em;
+  font-size: 0.86em;
+}
+.kp-doc .bn-block-content[data-content-type="codeBlock"] {
+  background-color: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 4px 0;
+}
+.kp-doc .bn-block-content[data-content-type="codeBlock"] > pre {
+  padding: 16px 18px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.kp-doc .bn-block-content[data-content-type="codeBlock"] > div > select {
+  color: var(--text3);
+}
+
+/* Lists: tighter rhythm between items of the same list. */
+.kp-doc [data-content-type="bulletListItem"],
+.kp-doc [data-content-type="numberedListItem"],
+.kp-doc [data-content-type="checkListItem"] {
+  padding: 1px 0;
+}
+.kp-doc [data-content-type="checkListItem"][data-checked="true"] .bn-inline-content {
+  color: var(--text3);
+  text-decoration-color: var(--text3);
+}
+
+/* Tables: hairline grid, quiet header. */
+.kp-doc table {
+  border-collapse: collapse;
+}
+.kp-doc .bn-block-content[data-content-type="table"] th,
+.kp-doc .bn-block-content[data-content-type="table"] td {
+  border: 1px solid var(--border2);
+  padding: 6px 10px;
+}
+.kp-doc .bn-block-content[data-content-type="table"] th {
+  background: var(--surface2);
+  font-weight: 600;
+}
+
+/* Links read as links, softly. */
+.kp-doc a:not([data-kp-mention]) {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--text) 35%, transparent);
+  text-underline-offset: 3px;
+}
+.kp-doc a:not([data-kp-mention]):hover {
+  text-decoration-color: var(--text);
+}
+
+/* Empty-block placeholder ("Type / for commands"). */
+.kp-doc .bn-block-content:has(.ProseMirror-trailingBreak:only-child):after,
+.kp-doc .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child):before {
+  color: var(--text3);
+  font-style: normal;
+}
+
+/* Side menu (drag handle / add block): subtle until hovered. */
+.kp-doc .bn-side-menu {
+  opacity: 0.75;
+}
+.kp-doc .bn-side-menu:hover {
+  opacity: 1;
+}
+
+/* Collaboration cursors: small, rounded name flags. */
+.kp-doc .collaboration-cursor__label {
+  border-radius: 4px 4px 4px 0;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 5px;
+}
+
+/* Page title: grows with its content, never shows a resize handle. */
+.kp-doc-title {
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+}
+
+/* Guest share page renders BlockNote's static HTML; same reading scale. */
+.kp-doc-static .bn-block-content[data-content-type="checkListItem"] input {
+  pointer-events: none;
+}

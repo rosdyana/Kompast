@@ -1,17 +1,73 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 
-const STORAGE_KEY = "kompast-sidebar-collapsed";
+const STORAGE_KEY = "kompast-sidebar-hidden";
 
-interface SidebarCollapsedApi {
+interface SidebarApi {
+  /** Desktop: sidebar hidden entirely (Notion's "close sidebar"). */
   collapsed: boolean;
   setCollapsed: (next: boolean) => void;
+  /** Mobile (<768px): drawer open over the content. */
+  mobileOpen: boolean;
+  setMobileOpen: (next: boolean) => void;
+  /** Toggles whichever mode applies at the current width. */
+  toggle: () => void;
 }
 
-const SidebarCollapsedContext = createContext<SidebarCollapsedApi>({ collapsed: true, setCollapsed: () => {} });
+const SidebarContext = createContext<SidebarApi>({
+  collapsed: false,
+  setCollapsed: () => {},
+  mobileOpen: false,
+  setMobileOpen: () => {},
+  toggle: () => {},
+});
 
 export function useSidebarCollapsed() {
-  return useContext(SidebarCollapsedContext);
+  return useContext(SidebarContext);
+}
+
+function isNarrow() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+}
+
+/**
+ * State provider for the app sidebar. Wrap the whole shell (sidebar AND
+ * main column) so the topbar's toggle can reach it.
+ */
+export function SidebarProvider({ children }: { children: ReactNode }) {
+  const [collapsed, setCollapsedState] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      setCollapsedState(window.localStorage.getItem(STORAGE_KEY) === "true");
+    } catch {
+      // storage blocked — default stays expanded
+    }
+  }, []);
+
+  function setCollapsed(next: boolean) {
+    setCollapsedState(next);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, String(next));
+    } catch {
+      // not persisted; nothing depends on it
+    }
+  }
+
+  return (
+    <SidebarContext.Provider
+      value={{
+        collapsed,
+        setCollapsed,
+        mobileOpen,
+        setMobileOpen,
+        toggle: () => (isNarrow() ? setMobileOpen(!mobileOpen) : setCollapsed(!collapsed)),
+      }}
+    >
+      {children}
+    </SidebarContext.Provider>
+  );
 }
 
 export interface SidebarShellProps {
@@ -20,52 +76,35 @@ export interface SidebarShellProps {
 }
 
 /**
- * Pure width/collapse-state shell — matches the approved design mockup's
- * railMode (62px, collapsed, the DEFAULT) vs treeMode (252px, expanded)
- * split. The actual expand/collapse triggers (clicking the workspace icon
- * to expand, a "«" button to collapse) live inside the consumer's content
- * via useSidebarCollapsed()'s setCollapsed — this component only owns the
- * width/persistence, not any button, so there's nothing here that can end
- * up clipped by overflow-hidden (a real bug this file used to have).
+ * The sidebar column: 248px on desktop (hideable), an overlay drawer on
+ * mobile. The width transition is gated behind mount so first paint never
+ * animates.
  */
 export function SidebarShell({ children, className }: SidebarShellProps) {
-  const [collapsed, setCollapsedState] = useState(() => {
-    // No stored preference yet -> collapsed ("rail" mode) by default.
-    if (typeof window === "undefined") return true;
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      return stored === null ? true : stored === "true";
-    } catch {
-      return true;
-    }
-  });
-  // Gate the width transition behind mount so the initial render never
-  // animates — only a user-triggered toggle after mount should visibly slide.
+  const { collapsed, mobileOpen, setMobileOpen } = useSidebarCollapsed();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  function setCollapsed(next: boolean) {
-    setCollapsedState(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, String(next));
-    } catch {
-      // localStorage unavailable (private mode, blocked) — collapse state
-      // just won't persist across reloads, nothing else depends on it.
-    }
-  }
-
   return (
-    <SidebarCollapsedContext.Provider value={{ collapsed, setCollapsed }}>
+    <>
+      {mobileOpen && (
+        <div className="kp-anim-fade fixed inset-0 z-40 bg-[var(--overlay)] md:hidden" onClick={() => setMobileOpen(false)} />
+      )}
       <aside
         className={clsx(
-          "flex flex-none flex-col overflow-hidden border-r border-border bg-surface-2",
-          collapsed ? "w-[62px]" : "w-[252px]",
-          mounted && "transition-[width] duration-200 ease-out",
+          "group/sidebar z-50 flex h-full flex-none flex-col overflow-hidden bg-surface-2",
+          // mobile drawer
+          "fixed inset-y-0 left-0 w-[272px] border-r border-border shadow-kp md:shadow-none",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          // desktop column
+          "md:static md:translate-x-0",
+          collapsed ? "md:w-0 md:border-r-0" : "md:w-[248px] md:border-r",
+          mounted && "transition-[width,transform] duration-200 ease-out",
           className,
         )}
       >
-        {children}
+        <div className="flex h-full w-[272px] flex-col md:w-[248px]">{children}</div>
       </aside>
-    </SidebarCollapsedContext.Provider>
+    </>
   );
 }

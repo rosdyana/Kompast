@@ -6,5 +6,7 @@
   "wrongPassword": "密碼錯誤。",
   "open": "開啟",
   "loadingEllipsis": "載入中…",
-  "sharedFooter": "由 Kompast 分享 —— 僅供檢視"
+  "sharedFooter": "由 Kompast 分享 · 僅供檢視",
+  "emptyPage": "此頁面是空白的。",
+  "poweredBy": "以 Kompast 製作"
 }

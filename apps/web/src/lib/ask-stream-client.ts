@@ -10,8 +10,12 @@ export interface AskKompastResult {
 }
 
 /** Same frame contract/parsing shape as ai-stream-client.ts's streamAiCompletion, extended with the threadId/citations the final frame carries here. */
-export async function streamAskKompast(body: { threadId?: string; question: string }, onDelta: (delta: string) => void): Promise<AskKompastResult> {
-  const res = await fetch("/api/ask/stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+export async function streamAskKompast(
+  body: { threadId?: string; question: string },
+  onDelta: (delta: string) => void,
+  signal?: AbortSignal,
+): Promise<AskKompastResult> {
+  const res = await fetch("/api/ask/stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal });
   if (!res.ok || !res.body) {
     const detail = await res.text().catch(() => "");
     throw new Error(detail || `Ask Kompast request failed (${res.status})`);

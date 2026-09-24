@@ -1,11 +1,17 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect, useLoaderData, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
+import { UserMinus, UsersRound } from "lucide-react";
 import { Card } from "@kompast/ui/Card";
-import { Button } from "@kompast/ui/Button";
+import { Button, IconButton } from "@kompast/ui/Button";
+import { Avatar } from "@kompast/ui/Avatar";
+import { NativeSelect } from "@kompast/ui/Input";
 import { PageContainer } from "@kompast/ui/PageContainer";
 import { PageHeader } from "@kompast/ui/PageHeader";
+import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
 import { getTeamManagementFn, addTeamMemberFn, removeTeamMemberFn, setTeamMemberRoleFn } from "@/lib/server-fns/teams";
+import { ConfirmDialog } from "@/components/settings/ConfirmDialog";
+import { usePageChrome } from "@/components/shell/WorkbenchContext";
 
 export const Route = createFileRoute("/_app/teams/$teamId")({
   loader: async ({ params }) => {
@@ -23,11 +29,25 @@ export const Route = createFileRoute("/_app/teams/$teamId")({
 function TeamManagementPage() {
   const { t } = useTranslation("teams");
   const data = Route.useLoaderData();
+  const shell = useLoaderData({ from: "/_app" });
   const { teamId } = Route.useParams();
   const router = useRouter();
+  const toast = useToast();
   const [candidateUserId, setCandidateUserId] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<{ userId: string; name: string } | null>(null);
+  const teamName = shell.teams.find((tm) => tm.id === teamId)?.name ?? t("manageTeamHeading");
+
+  usePageChrome(
+    {
+      crumbs: [
+        { label: t("settings"), link: { to: "/settings", search: { tab: "teams" } } },
+        { label: teamName, icon: <UsersRound size={15} strokeWidth={1.75} className="text-text-3" /> },
+      ],
+    },
+    [teamName, t],
+  );
 
   const adminCount = data.members.filter((m) => m.role === "admin").length;
 
@@ -38,6 +58,7 @@ function TeamManagementPage() {
     try {
       await addTeamMemberFn({ data: { teamId, userId: candidateUserId } });
       setCandidateUserId("");
+      toast.show({ title: t("memberAdded") });
       await router.invalidate();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("addMemberFailed"));
@@ -46,76 +67,99 @@ function TeamManagementPage() {
     }
   }
 
-  async function remove(userId: string) {
-    await removeTeamMemberFn({ data: { teamId, userId } });
-    await router.invalidate();
-  }
-
   async function setRole(userId: string, role: "admin" | "member") {
-    await setTeamMemberRoleFn({ data: { teamId, userId, role } });
-    await router.invalidate();
+    try {
+      await setTeamMemberRoleFn({ data: { teamId, userId, role } });
+      await router.invalidate();
+    } catch (err) {
+      toast.show({ tone: "error", title: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   return (
     <PageContainer width="standard">
-      <PageHeader title={t("manageTeamHeading")} subtitle={t("manageTeamSubtitle")} />
+      <PageHeader
+        title={teamName}
+        subtitle={t("manageTeamSubtitle")}
+        icon={
+          <span className="grid h-10 w-10 place-items-center rounded-[10px] bg-indigo-soft text-indigo">
+            <UsersRound size={20} />
+          </span>
+        }
+      />
 
-      <section className="mb-8">
-        <h2 className="mb-3 type-headline">{t("addMemberHeading")}</h2>
-        <Card className="flex flex-col gap-3 p-4">
-          <div className="flex gap-2">
-            <select
-              value={candidateUserId}
-              onChange={(e) => setCandidateUserId(e.target.value)}
-              className="kp-select min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-            >
+      <Card className="mb-8 p-4">
+        <p className="mb-3 text-[14px] font-medium">{t("addMemberHeading")}</p>
+        {data.candidates.length === 0 ? (
+          <p className="type-body text-text-3">{t("allMembersAlready")}</p>
+        ) : (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <NativeSelect value={candidateUserId} onChange={(e) => setCandidateUserId(e.target.value)} className="sm:flex-1" aria-label={t("teamMemberSelectPlaceholder")}>
               <option value="">{t("teamMemberSelectPlaceholder")}</option>
               {data.candidates.map((c) => (
                 <option key={c.userId} value={c.userId}>
                   {c.name} ({c.email})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             <Button variant="primary" onClick={addMember} disabled={adding || !candidateUserId}>
               {adding ? t("addingEllipsis") : t("add")}
             </Button>
           </div>
-          {data.candidates.length === 0 && (
-            <p className="type-body text-text-3">{t("allMembersAlready")}</p>
-          )}
-          {error && <p className="type-body text-danger">{error}</p>}
-        </Card>
-      </section>
+        )}
+        {error && <p className="mt-2 text-[13px] text-danger">{error}</p>}
+      </Card>
 
-      <section>
-        <h2 className="mb-3 type-headline">{t("teamMembersHeading")}</h2>
-        <div className="flex flex-col gap-1.5">
-          {data.members.map((m) => (
-            <div key={m.id} className="flex items-center gap-2.5 rounded-[9px] border border-border bg-surface px-3 py-2 text-[12.5px]">
-              <span className="min-w-0 flex-1 truncate">{m.name}</span>
-              <span className="text-text-3">{m.email}</span>
+      <h2 className="mb-2 type-headline">{t("teamMembersHeading")}</h2>
+      <Card className="overflow-hidden">
+        {data.members.map((m) => {
+          const lastAdmin = m.role === "admin" && adminCount <= 1;
+          return (
+            <div key={m.id} className="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-b-0 hover:bg-surface-2">
+              <Avatar name={m.name} size={28} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[14px] font-medium">{m.name}</p>
+                <p className="truncate text-[12.5px] text-text-3">{m.email}</p>
+              </div>
               <select
                 value={m.role}
                 onChange={(e) => setRole(m.userId, e.target.value as "admin" | "member")}
-                disabled={m.role === "admin" && adminCount <= 1}
-                title={m.role === "admin" && adminCount <= 1 ? t("needsAdminTitle") : undefined}
-                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
+                disabled={lastAdmin}
+                title={lastAdmin ? t("needsAdminTitle") : undefined}
+                aria-label={`${m.name} role`}
+                className="kp-field kp-select disabled:opacity-60"
               >
                 <option value="member">{t("memberRoleLabel")}</option>
                 <option value="admin">{t("adminRoleLabel")}</option>
               </select>
-              <button
-                onClick={() => remove(m.userId)}
-                disabled={m.role === "admin" && adminCount <= 1}
-                title={m.role === "admin" && adminCount <= 1 ? t("needsAdminTitle") : undefined}
-                className="rounded-[7px] px-1.5 py-0.5 text-[11px] text-text-3 hover:bg-danger-soft hover:text-danger disabled:pointer-events-none disabled:opacity-40"
+              <IconButton
+                aria-label={t("remove")}
+                title={lastAdmin ? t("needsAdminTitle") : t("remove")}
+                disabled={lastAdmin}
+                onClick={() => setRemoving({ userId: m.userId, name: m.name })}
+                className="hover:text-danger"
               >
-                {t("remove")}
-              </button>
+                <UserMinus size={15} />
+              </IconButton>
             </div>
-          ))}
-        </div>
-      </section>
+          );
+        })}
+      </Card>
+
+      <ConfirmDialog
+        open={removing !== null}
+        onClose={() => setRemoving(null)}
+        title={t("removeConfirmTitle", { name: removing?.name ?? "" })}
+        body={t("removeConfirmBody")}
+        confirmLabel={t("remove")}
+        cancelLabel={t("cancel")}
+        onConfirm={async () => {
+          if (!removing) return;
+          await removeTeamMemberFn({ data: { teamId, userId: removing.userId } });
+          toast.show({ title: t("memberRemoved") });
+          await router.invalidate();
+        }}
+      />
     </PageContainer>
   );
 }
