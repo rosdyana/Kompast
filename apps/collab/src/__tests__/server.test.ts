@@ -60,6 +60,8 @@ describe("collab server", () => {
   it("persists a real client's Yjs update to ydoc_state, round-trippable", async () => {
     const pageId = "test-collab-page-persist";
     const token = signCollabToken({ userId, organizationId: orgId, pageId, role: "edit" });
+    const stale = new Date("2020-01-01T00:00:00Z");
+    await adminDb.update(schema.page).set({ updatedAt: stale }).where(eq(schema.page.id, pageId));
     const doc = new Y.Doc();
     const provider = connect(pageId, doc, token);
 
@@ -75,6 +77,15 @@ describe("collab server", () => {
       const restored = new Y.Doc();
       Y.applyUpdate(restored, row!.state);
       expect(restored.getText("content").toString()).toBe("hello from a real client");
+
+      // A body edit must bump the page's own updatedAt ("Edited …", recent pages).
+      let pageRow: { updatedAt: Date } | undefined;
+      for (let i = 0; i < 40; i++) {
+        [pageRow] = await adminDb.select({ updatedAt: schema.page.updatedAt }).from(schema.page).where(eq(schema.page.id, pageId));
+        if (pageRow && pageRow.updatedAt > stale) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(pageRow!.updatedAt.getTime()).toBeGreaterThan(stale.getTime());
     } finally {
       provider.destroy();
     }

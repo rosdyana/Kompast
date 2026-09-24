@@ -1,5 +1,15 @@
 {
-  "tabs": { "notifications": "Notifikasi", "members": "Anggota", "teams": "Tim", "roles": "Peran & Izin", "integrations": "Integrasi" },
+  "tabs": {
+    "notifications": "Notifikasi",
+    "members": "Anggota",
+    "teams": "Tim",
+    "roles": "Peran & Izin",
+    "integrations": "Integrasi",
+    "ai": "AI",
+    "mail": "Email",
+    "embedding": "Embedding",
+    "entra": "Microsoft Entra ID"
+  },
   "pageTitle": "Pengaturan workspace",
   "teamsNonAdminNote": "Hanya super admin yang bisa mengelola daftar tim workspace di sini.",
   "integrations": {
@@ -31,7 +41,8 @@
       "savingEllipsis": "Menyimpan…",
       "save": "Simpan",
       "saved": "Tersimpan.",
-      "saveFailed": "Gagal menyimpan konfigurasi Entra ID"
+      "saveFailed": "Gagal menyimpan konfigurasi Entra ID",
+      "description": "Single sign-on untuk semua orang di workspace ini."
     },
     "ai": {
       "heading": "AI",
@@ -47,7 +58,8 @@
       "baseUrlLabel": "Base URL",
       "savingEllipsis": "Menyimpan…",
       "save": "Simpan",
-      "saved": "Tersimpan."
+      "saved": "Tersimpan.",
+      "description": "Menjalankan bantuan menulis di dokumen, draf issue AI, dan ringkasan sprint."
     },
     "mail": {
       "heading": "Email",
@@ -58,7 +70,8 @@
       "apiKeyLabel": "API key",
       "savingEllipsis": "Menyimpan…",
       "save": "Simpan",
-      "saved": "Tersimpan."
+      "saved": "Tersimpan.",
+      "description": "Mengirim email notifikasi dan undangan."
     }
   },
   "members": {
@@ -72,7 +85,16 @@
     "cancel": "Batalkan",
     "currentMembersHeading": "Anggota saat ini",
     "memberRoleLabel": "Member",
-    "adminRoleLabel": "Admin"
+    "adminRoleLabel": "Admin",
+    "tableName": "Nama",
+    "tableRole": "Peran",
+    "roleOwner": "Pemilik",
+    "memberCount_one": "{{count}} anggota",
+    "memberCount_other": "{{count}} anggota",
+    "invitedAs": "Diundang sebagai {{role}}",
+    "inviteSent": "Undangan dikirim ke {{email}}",
+    "inviteHint": "Mereka akan menerima email berisi tautan untuk bergabung ke workspace ini.",
+    "cancelFailed": "Gagal membatalkan undangan"
   },
   "roles": {
     "intro": "Hierarki peran yang berlaku saat ini di Kompast — bukan matriks izin yang bisa dikonfigurasi, hanya rangkuman dari aturan yang sudah ada di kode.",
@@ -101,5 +123,15 @@
       "scope": "Per proyek",
       "desc": "Peran yang bisa ditetapkan per proyek (project_member.role). Belum ditegakkan di mana pun dalam kode saat ini — baru sebatas bisa diberikan."
     }
-  }
+  },
+  "groupAccount": "Akun",
+  "groupWorkspace": "Workspace",
+  "groupIntegrations": "Integrasi",
+  "configured": "Terkonfigurasi",
+  "notConfigured": "Belum dikonfigurasi",
+  "enabled": "Aktif",
+  "disabled": "Nonaktif",
+  "saveFailed": "Gagal menyimpan: {{message}}",
+  "savedToast": "Pengaturan {{section}} disimpan",
+  "sectionPicker": "Bagian pengaturan"
 }

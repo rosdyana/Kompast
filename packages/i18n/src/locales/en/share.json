@@ -6,5 +6,7 @@
   "wrongPassword": "Incorrect password.",
   "open": "Open",
   "loadingEllipsis": "Loading…",
-  "sharedFooter": "Shared from Kompast — view only"
+  "sharedFooter": "Shared from Kompast · view only",
+  "emptyPage": "This page is empty.",
+  "poweredBy": "Made with Kompast"
 }

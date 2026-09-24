@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -6,6 +6,7 @@ import {
   useEdgesState,
   addEdge,
   Background,
+  BackgroundVariant,
   Controls,
   type Connection,
   type NodeTypes,
@@ -13,8 +14,10 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
-import { Button } from "@kompast/ui/Button";
+import { ArrowLeft, Check, Trash2 } from "lucide-react";
+import { Button, IconButton } from "@kompast/ui/Button";
+import { Badge } from "@kompast/ui/Badge";
+import { Switch } from "@kompast/ui/Switch";
 import { useTranslation } from "@kompast/i18n";
 import { AutomationNodeCard } from "./AutomationNodeCard";
 import { NodePalette } from "./NodePalette";
@@ -97,7 +100,15 @@ function WorkflowCanvasInner({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [runsRefreshSignal, setRunsRefreshSignal] = useState(0);
-  const { isArmed, arm } = useDeleteArm();
+  const { isArmed, arm, disarm } = useDeleteArm();
+
+  // Warn before a tab close/reload would drop unsaved graph edits.
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
 
   const markDirty = useCallback(() => setDirty(true), []);
 
@@ -166,6 +177,7 @@ function WorkflowCanvasInner({
       arm();
       return;
     }
+    disarm();
     await deleteWorkflowFn({ data: workflowId });
     navigate({ to: "/projects/$teamId/$projectKey", params: { teamId, projectKey }, search: { tab: "automation" } });
   }
@@ -178,42 +190,64 @@ function WorkflowCanvasInner({
   const selectedNode = (nodes as WorkflowNode[]).find((n) => n.id === selectedNodeId) ?? null;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
-        <button
-          type="button"
-          onClick={handleBack}
-          aria-label={t("canvas.backLabel")}
-          className="flex flex-none items-center gap-1 text-xs text-text-3 hover:text-text-2"
-        >
-          <ArrowLeft size={13} strokeWidth={1.75} />
-        </button>
-        <input value={name} onChange={(e) => { setName(e.target.value); markDirty(); }} className="rounded-[7px] border border-border bg-surface px-2 py-1.5 text-[13px] font-semibold" />
-        <label className="flex items-center gap-1.5 text-[11.5px] text-text-3">
-          <input type="checkbox" checked={enabled} onChange={(e) => handleToggleEnabled(e.target.checked)} />
-          {t("canvas.enabledLabel")}
-        </label>
-        <label className="flex items-center gap-1.5 text-[11.5px] text-text-3">
-          <input type="checkbox" checked={dryRun} onChange={(e) => { setDryRun(e.target.checked); markDirty(); }} />
-          {t("canvas.dryRunLabel")}
-        </label>
+    <div className="kp-flow flex h-full flex-col">
+      <div className="flex min-h-12 flex-none flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-surface px-3 py-2">
+        <IconButton aria-label={t("canvas.backLabel")} title={t("canvas.backLabel")} onClick={handleBack}>
+          <ArrowLeft size={16} strokeWidth={1.75} />
+        </IconButton>
+        <input
+          value={name}
+          aria-label={t("list.colName")}
+          onChange={(e) => {
+            setName(e.target.value);
+            markDirty();
+          }}
+          className="kp-quiet h-8 min-w-[160px] max-w-[360px] flex-1 text-[15px] font-semibold"
+        />
+        <Switch className="gap-2 text-[13px] text-text-2" checked={enabled} onChange={handleToggleEnabled} label={t("canvas.enabledLabel")} />
+        <Switch
+          className="gap-2 text-[13px] text-text-2"
+          checked={dryRun}
+          onChange={(v) => {
+            setDryRun(v);
+            markDirty();
+          }}
+          label={t("canvas.dryRunLabel")}
+        />
+        {dryRun && <Badge tone="amber">{t("list.dryRunBadge")}</Badge>}
         <div className="ml-auto flex items-center gap-2">
-          {saveError && <span className="type-body text-danger">{saveError}</span>}
-          <Button variant="primary" onClick={handleSave} disabled={!dirty || saving}>
+          {saveError ? (
+            <span role="alert" className="text-[13px] text-danger">{saveError}</span>
+          ) : dirty ? (
+            <span className="text-[13px] text-text-3">{t("canvas.unsaved")}</span>
+          ) : (
+            <span className="hidden items-center gap-1 text-[13px] text-text-3 sm:inline-flex">
+              <Check size={14} /> {t("canvas.saved")}
+            </span>
+          )}
+          {isArmed ? (
+            <>
+              <Button variant="ghost" size="sm" onClick={disarm}>
+                {t("canvas.disarm")}
+              </Button>
+              <Button variant="danger" size="sm" onClick={handleDelete}>
+                <Trash2 size={14} />
+                {t("canvas.clickAgainToDelete")}
+              </Button>
+            </>
+          ) : (
+            <IconButton aria-label={t("canvas.deleteWorkflow")} title={t("canvas.deleteWorkflow")} onClick={handleDelete} className="hover:bg-danger-soft hover:text-danger">
+              <Trash2 size={16} strokeWidth={1.75} />
+            </IconButton>
+          )}
+          <Button variant="primary" size="sm" onClick={handleSave} disabled={!dirty || saving}>
             {saving ? t("canvas.saving") : t("canvas.save")}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleDelete}
-            style={isArmed ? { color: "var(--danger)", borderColor: "var(--danger)" } : undefined}
-          >
-            {isArmed ? t("canvas.clickAgainToDelete") : t("canvas.deleteWorkflow")}
           </Button>
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
         <NodePalette onAdd={handleAddNode} />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 bg-surface-2">
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -230,13 +264,20 @@ function WorkflowCanvasInner({
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
             onPaneClick={() => setSelectedNodeId(null)}
             fitView
+            fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
           >
-            <Background />
-            <Controls />
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="var(--border2)" />
+            <Controls showInteractive={false} />
           </ReactFlow>
         </div>
         {selectedNode ? (
-          <NodeConfigPanel node={selectedNode} onChangeConfig={handleChangeConfig} onChangeName={handleChangeName} onDelete={handleDeleteNode} />
+          <NodeConfigPanel
+            node={selectedNode}
+            onChangeConfig={handleChangeConfig}
+            onChangeName={handleChangeName}
+            onDelete={handleDeleteNode}
+            onClose={() => setSelectedNodeId(null)}
+          />
         ) : (
           <RunHistoryPanel workflowId={workflowId} refreshSignal={runsRefreshSignal} />
         )}
@@ -245,7 +286,13 @@ function WorkflowCanvasInner({
   );
 }
 
+/** Two-step delete that auto-disarms after a few seconds, so a stray first click can't linger armed. */
 function useDeleteArm() {
   const [armed, setArmed] = useState(false);
-  return { isArmed: armed, arm: () => setArmed(true) };
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), 4000);
+    return () => clearTimeout(timer);
+  }, [armed]);
+  return { isArmed: armed, arm: () => setArmed(true), disarm: () => setArmed(false) };
 }

@@ -11,5 +11,13 @@
   "digest_hourly": "Per jam",
   "digest_daily": "Harian",
   "digest_off": "Nonaktif",
-  "digestNote": "Catatan: batching per jam/hari belum berjalan — email untuk preferensi ini belum dikirim sampai fitur itu dibangun."
+  "digestNote": "Catatan: batching per jam/hari belum berjalan — email untuk preferensi ini belum dikirim sampai fitur itu dibangun.",
+  "eventHeading": "Aktivitas",
+  "event": {
+    "issue.assigned": "Ditugaskan ke sebuah issue",
+    "issue.commented": "Komentar baru di issue yang Anda ikuti",
+    "issue.mentioned": "Disebut di sebuah issue"
+  },
+  "savedToast": "Preferensi disimpan",
+  "saveFailed": "Gagal menyimpan preferensi"
 }

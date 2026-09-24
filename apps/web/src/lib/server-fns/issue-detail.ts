@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { and, asc, desc, eq, inArray, schema, type Json } from "@kompast/db";
+import { and, asc, desc, eq, inArray, isNull, or, schema, type Json } from "@kompast/db";
 import {
   addComment,
   archiveIssue,
@@ -108,6 +108,50 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         })(),
       ]);
 
+      // Child issues: subtasks (parentId = this) and, for an epic, the issues
+      // filed under it (epicId = this). Archived children stay hidden, same
+      // as everywhere else archived issues are filtered out.
+      const [children, parent, epic] = await Promise.all([
+        tx
+          .select({
+            id: schema.issue.id,
+            keySeq: schema.issue.keySeq,
+            title: schema.issue.title,
+            typeId: schema.issue.typeId,
+            statusId: schema.issue.statusId,
+            priority: schema.issue.priority,
+            storyPoints: schema.issue.storyPoints,
+            assigneeId: schema.issue.assigneeId,
+            assigneeName: schema.user.name,
+            parentId: schema.issue.parentId,
+            epicId: schema.issue.epicId,
+          })
+          .from(schema.issue)
+          .leftJoin(schema.user, eq(schema.user.id, schema.issue.assigneeId))
+          .where(
+            and(
+              eq(schema.issue.projectId, project.id),
+              or(eq(schema.issue.parentId, issue.id), eq(schema.issue.epicId, issue.id)),
+              isNull(schema.issue.archivedAt),
+            ),
+          )
+          .orderBy(asc(schema.issue.keySeq)),
+        issue.parentId
+          ? tx
+              .select({ id: schema.issue.id, keySeq: schema.issue.keySeq, title: schema.issue.title, typeId: schema.issue.typeId })
+              .from(schema.issue)
+              .where(eq(schema.issue.id, issue.parentId))
+              .then((r) => r[0] ?? null)
+          : Promise.resolve(null),
+        issue.epicId
+          ? tx
+              .select({ id: schema.issue.id, keySeq: schema.issue.keySeq, title: schema.issue.title })
+              .from(schema.issue)
+              .where(eq(schema.issue.id, issue.epicId))
+              .then((r) => r[0] ?? null)
+          : Promise.resolve(null),
+      ]);
+
       const canManageProject = await requireProjectAdmin(tx, { ...ctx, projectId: project.id })
         .then(() => true)
         .catch((err) => {
@@ -134,6 +178,9 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         candidateEpics,
         boardSprints,
         canManageProject,
+        children,
+        parent,
+        epic,
       };
     });
   });

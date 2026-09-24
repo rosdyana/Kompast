@@ -5,23 +5,20 @@ export interface PageHeaderProps {
   title: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  icon?: ReactNode;
   className?: string;
 }
 
-/**
- * The title+subtitle pattern repeated (identically) across every non-hero
- * page — settings, notifications, tokens, teams. Not used by the dashboard,
- * whose serif "welcome" headline is a deliberate hero moment, not this
- * pattern's drift.
- */
-export function PageHeader({ title, subtitle, actions, className }: PageHeaderProps) {
+/** Title row for workspace-level pages (settings, tokens, teams, docs index). */
+export function PageHeader({ title, subtitle, actions, icon, className }: PageHeaderProps) {
   return (
-    <div className={clsx(subtitle ? "mb-8" : "mb-6", className)}>
-      <div className={clsx("flex items-start justify-between gap-4", subtitle ? "mb-1" : "")}>
+    <div className={clsx("mb-6 flex flex-wrap items-start gap-x-4 gap-y-3", className)}>
+      {icon && <div className="flex-none">{icon}</div>}
+      <div className="min-w-0 flex-1">
         <h1 className="type-title">{title}</h1>
-        {actions}
+        {subtitle && <p className="mt-1 max-w-[680px] type-body text-text-2">{subtitle}</p>}
       </div>
-      {subtitle && <p className="type-body text-text-2">{subtitle}</p>}
+      {actions && <div className="flex flex-none flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

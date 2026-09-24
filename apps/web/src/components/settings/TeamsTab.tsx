@@ -1,11 +1,17 @@
 import { useState } from "react";
 import { Link, useRouter } from "@tanstack/react-router";
+import { ChevronRight, Plus, UsersRound } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
 import { Badge } from "@kompast/ui/Badge";
+import { EmptyState } from "@kompast/ui/EmptyState";
+import { NativeSelect } from "@kompast/ui/Input";
+import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
 import { transferSuperAdminFn, type listTeamsFn } from "@/lib/server-fns/teams";
 import type { listMembersFn } from "@/lib/server-fns/members";
+import { SettingsSection } from "./SettingsSection";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 export function TeamsTab({
   teams,
@@ -17,80 +23,87 @@ export function TeamsTab({
   const { t } = useTranslation("teams");
 
   return (
-    <div>
-      <div className="mb-4 flex items-baseline justify-between">
-        <p className="type-body text-text-2">{t("overviewSubtitle")}</p>
-        <Link to="/teams/new" className="type-body text-accent">
-          {t("newTeamLink")}
-        </Link>
-      </div>
-
-      <Card className="mb-8 overflow-hidden">
-        {teams.length === 0 && <p className="p-4 type-body text-text-3">{t("noTeamsYet")}</p>}
-        {teams.map((team) => (
-          <Link
-            key={team.id}
-            to="/teams/$teamId"
-            params={{ teamId: team.id }}
-            className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-2"
-          >
-            <span className="min-w-0 flex-1 truncate type-body font-medium">{team.name}</span>
-            <span className="type-label text-text-3">{t("teamMemberCount", { count: team.memberCount })}</span>
-            <span className="type-label text-text-3">{t("teamProjectCount", { count: team.projectCount })}</span>
-            {team.myRole === "admin" && <Badge tone="neutral">{t("adminBadge")}</Badge>}
+    <>
+      <SettingsSection
+        title={t("teams")}
+        description={t("overviewSubtitle")}
+        aside={
+          <Link to="/teams/new" className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-border-2 bg-surface px-3 text-[14px] font-medium hover:bg-surface-2">
+            <Plus size={15} />
+            {t("newTeamPageTitle")}
           </Link>
-        ))}
-      </Card>
+        }
+      >
+        {teams.length === 0 ? (
+          <EmptyState icon={<UsersRound size={18} />} title={t("noTeamsYet")} />
+        ) : (
+          <Card className="overflow-hidden">
+            {teams.map((team) => (
+              <Link
+                key={team.id}
+                to="/teams/$teamId"
+                params={{ teamId: team.id }}
+                className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0 hover:bg-surface-2"
+              >
+                <span className="grid h-8 w-8 flex-none place-items-center rounded-[8px] bg-indigo-soft text-indigo">
+                  <UsersRound size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-medium">{team.name}</p>
+                  <p className="text-[12.5px] text-text-3">
+                    {t("teamMemberCount", { count: team.memberCount })} · {t("teamProjectCount", { count: team.projectCount })}
+                  </p>
+                </div>
+                {team.myRole === "admin" && <Badge tone="accent">{t("adminBadge")}</Badge>}
+                <ChevronRight size={16} className="flex-none text-text-3" />
+              </Link>
+            ))}
+          </Card>
+        )}
+      </SettingsSection>
 
       <TransferSuperAdmin members={members} />
-    </div>
+    </>
   );
 }
 
 function TransferSuperAdmin({ members }: { members: Awaited<ReturnType<typeof listMembersFn>>["members"] }) {
   const { t } = useTranslation("teams");
   const router = useRouter();
+  const toast = useToast();
   const [newHolderUserId, setNewHolderUserId] = useState("");
-  const [transferring, setTransferring] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function transfer() {
-    if (!newHolderUserId) return;
-    setTransferring(true);
-    setError(null);
-    try {
-      await transferSuperAdminFn({ data: { newHolderUserId } });
-      setNewHolderUserId("");
-      await router.invalidate();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("transferFailed"));
-    } finally {
-      setTransferring(false);
-    }
-  }
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const target = members.find((m) => m.userId === newHolderUserId);
 
   return (
-    <section>
-      <h2 className="mb-3 type-headline">{t("transferHeading")}</h2>
-      <p className="mb-3 type-body text-text-2">{t("transferSubtitle")}</p>
-      <Card className="flex items-center gap-2 p-4">
-        <select
-          value={newHolderUserId}
-          onChange={(e) => setNewHolderUserId(e.target.value)}
-          className="kp-select min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-        >
+    <SettingsSection title={t("transferHeading")} description={t("transferSubtitle")}>
+      <Card className="flex flex-col gap-2 p-4 sm:flex-row">
+        <NativeSelect value={newHolderUserId} onChange={(e) => setNewHolderUserId(e.target.value)} className="sm:flex-1" aria-label={t("transferMemberSelectPlaceholder")}>
           <option value="">{t("transferMemberSelectPlaceholder")}</option>
           {members.map((m) => (
             <option key={m.id} value={m.userId}>
               {m.name} ({m.email})
             </option>
           ))}
-        </select>
-        <Button variant="outline" onClick={transfer} disabled={transferring || !newHolderUserId}>
-          {transferring ? t("transferringEllipsis") : t("transfer")}
+        </NativeSelect>
+        <Button variant="outline" onClick={() => setConfirmOpen(true)} disabled={!newHolderUserId}>
+          {t("transfer")}
         </Button>
       </Card>
-      {error && <p className="mt-2 type-body text-danger">{error}</p>}
-    </section>
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title={t("transferConfirmTitle", { name: target?.name ?? "" })}
+        body={t("transferConfirmBody")}
+        confirmLabel={t("transfer")}
+        cancelLabel={t("cancel")}
+        onConfirm={async () => {
+          await transferSuperAdminFn({ data: { newHolderUserId } });
+          setNewHolderUserId("");
+          toast.show({ title: t("transferDone") });
+          await router.invalidate();
+        }}
+      />
+    </SettingsSection>
   );
 }

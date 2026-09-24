@@ -4,5 +4,18 @@
   "logOut": "Log out",
   "notFoundTitle": "Page not found",
   "notFoundSubtext": "The page you're looking for doesn't exist or may have moved.",
-  "notFoundGoHome": "Go home"
+  "notFoundGoHome": "Go home",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "edit": "Edit",
+  "close": "Close",
+  "loading": "Loading…",
+  "saving": "Saving…",
+  "retry": "Try again",
+  "none": "None",
+  "more": "More",
+  "copyLink": "Copy link",
+  "linkCopied": "Link copied",
+  "somethingWentWrong": "Something went wrong."
 }

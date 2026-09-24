@@ -50,6 +50,10 @@ export function createCollabServer(port: number) {
         .insert(schema.ydocState)
         .values({ pageId, state })
         .onConflictDoUpdate({ target: schema.ydocState.pageId, set: { state, updatedAt: new Date() } });
+      // Body edits live only in ydoc_state; bump the page row too so
+      // "Edited …", recent-pages lists and sorting reflect content changes,
+      // not just title/icon edits.
+      await adminDb.update(schema.page).set({ updatedAt: new Date() }).where(eq(schema.page.id, pageId));
 
       const now = Date.now();
       const last = lastSnapshotAt.get(pageId) ?? 0;

@@ -31,5 +31,18 @@
   "transferMemberSelectPlaceholder": "Select a member…",
   "transferringEllipsis": "Transferring…",
   "transfer": "Transfer",
-  "transferFailed": "Failed to transfer super admin"
+  "transferFailed": "Failed to transfer super admin",
+  "nameLabel": "Team name",
+  "removeConfirmTitle": "Remove {{name}} from this team?",
+  "removeConfirmBody": "They'll no longer be a member of this team. You can add them back at any time.",
+  "transferConfirmTitle": "Transfer super admin to {{name}}?",
+  "transferConfirmBody": "Your own super admin rights are revoked as soon as you confirm.",
+  "cancel": "Cancel",
+  "transferDone": "Super admin transferred",
+  "memberRemoved": "Member removed",
+  "memberAdded": "Member added",
+  "teams": "Teams",
+  "settings": "Settings",
+  "noAccessTitle": "Only super admins can create teams",
+  "goHome": "Go home"
 }

@@ -1,4 +1,8 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute, notFound, useLoaderData } from "@tanstack/react-router";
+import { useTranslation } from "@kompast/i18n";
+import { Zap } from "lucide-react";
+import { usePageChrome } from "@/components/shell/WorkbenchContext";
+import { ProjectIcon } from "@/components/shell/ProjectIcon";
 import { getWorkflowFn } from "@/lib/server-fns/automation-workflows";
 import { WorkflowCanvas } from "@/components/automation-workflow/WorkflowCanvas";
 
@@ -14,9 +18,31 @@ export const Route = createFileRoute("/_app/workflows/$teamId/$projectKey/$workf
 function WorkflowCanvasPage() {
   const { teamId, projectKey } = Route.useParams();
   const { workflow } = Route.useLoaderData();
+  const { t } = useTranslation("board");
+  const shell = useLoaderData({ from: "/_app" });
+  const project = shell.projects.find((p) => p.key === projectKey && (p.teamId ?? "none") === teamId);
+
+  usePageChrome(
+    {
+      crumbs: [
+        {
+          label: project?.name ?? projectKey,
+          icon: <ProjectIcon projectKey={projectKey} size={16} />,
+          link: { to: "/projects/$teamId/$projectKey", params: { teamId, projectKey }, search: { tab: "backlog" } },
+        },
+        {
+          label: t("tabs.automation"),
+          icon: <Zap size={14} className="text-text-3" />,
+          link: { to: "/projects/$teamId/$projectKey", params: { teamId, projectKey }, search: { tab: "automation" } },
+        },
+        { label: workflow.name },
+      ],
+    },
+    [teamId, projectKey, project?.name, workflow.name],
+  );
 
   return (
-    <div className="h-[calc(100vh-var(--topbar-h,0px))] w-full">
+    <div className="h-full w-full">
       <WorkflowCanvas
         workflowId={workflow.id}
         projectId={workflow.projectId}

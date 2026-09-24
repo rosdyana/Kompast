@@ -1,6 +1,6 @@
 import "@blocknote/core/style.css";
 import "@blocknote/shadcn/style.css";
-import { useEffect, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
@@ -11,6 +11,7 @@ import { BlockNoteView } from "@blocknote/shadcn";
 import { useTranslation } from "@kompast/i18n";
 import { useTheme } from "@kompast/ui/theme";
 import { VersionHistory } from "./VersionHistory";
+import { PageIcon } from "./DocsTree";
 import { kompastViewBlockSpec } from "./KompastViewBlock";
 import { mentionInlineSpec } from "./MentionInlineContent";
 import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
@@ -65,7 +66,9 @@ function aiSlashItems(t: TFunction): { title: string; mode: DocAiMode; targetLan
   ];
 }
 
-const CURSOR_COLORS = ["#f97066", "#f79009", "#f5d90a", "#66c61c", "#15b8a6", "#2e90fa", "#875bf7", "#ee46bc"];
+// Collaborator cursor colors: distinct from each other but muted to sit with
+// the low-chroma palette (eye-comfort rule), not neon.
+const CURSOR_COLORS = ["#d27a6e", "#cf9551", "#bba55a", "#6ea878", "#56a39b", "#6b93d4", "#9280cf", "#c77ba6"];
 
 function colorForUser(userId: string) {
   let hash = 0;
@@ -80,34 +83,83 @@ const schema = BlockNoteSchema.create({
   inlineContentSpecs: { ...defaultInlineContentSpecs, mention: mentionInlineSpec as any, issueMention: issueMentionInlineSpec as any },
 });
 
+/** The slice of the BlockNote editor the doc page drives directly. */
+export interface DocEditorHandle {
+  document: unknown[];
+  replaceBlocks(blocksToRemove: unknown[], blocksToInsert: unknown[]): void;
+  focus(): void;
+  setTextCursorPosition?(block: unknown, placement?: "start" | "end"): void;
+}
+
 function blockPlainText(block: { content?: unknown }): string {
   const content = Array.isArray(block.content) ? block.content : [];
   return content.map((c: any) => (c.type === "text" ? c.text : "")).join("").trim();
 }
 
-export function DocEditor({
-  pageId,
-  collabToken,
-  collabWsUrl,
-  canEdit,
-  userId,
-  userName,
-}: {
+type DocEditorProps = {
   pageId: string;
   collabToken: string;
   collabWsUrl: string;
   canEdit: boolean;
   userId: string;
   userName: string;
-}) {
+  /** Render the inline "History" button above the editor (embedded uses). The full doc page puts history in its ⋯ menu instead. */
+  historyButton?: boolean;
+  /** Hands the live editor to the page (title Enter → focus, version restore from the ⋯ menu). */
+  onEditorReady?: (editor: DocEditorHandle) => void;
+};
+
+/**
+ * Owns the Hocuspocus connection's lifecycle in an effect (create on
+ * mount/page change, destroy in cleanup) and only then mounts the editor.
+ * It used to live in a useMemo destroyed by an effect cleanup: any effect
+ * re-run (dev StrictMode double-invoke, HMR) destroyed the provider while
+ * the memo kept handing back the dead instance, so edits silently never
+ * reached apps/collab. It was also keyed on the collab token, which is
+ * re-signed on every loader run — every router.invalidate() (a comment, a
+ * favorite, a title save) tore down and reconnected the Yjs session,
+ * dropping the caret and undo history. Now the provider lives for the
+ * page and the freshest token is assigned onto its configuration, used on
+ * the next (re)authentication. It must stay a plain string: the
+ * function-form `token` option did not authenticate against apps/collab
+ * (verified: edits were never stored).
+ */
+export function DocEditor(props: DocEditorProps) {
+  const { pageId, collabToken, collabWsUrl } = props;
+  const tokenRef = useRef(collabToken);
+  tokenRef.current = collabToken;
+  const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
+
+  useEffect(() => {
+    const p = new HocuspocusProvider({ url: collabWsUrl, name: pageId, document: new Y.Doc(), token: tokenRef.current });
+    setProvider(p);
+    return () => {
+      setProvider(null);
+      p.destroy();
+    };
+  }, [pageId, collabWsUrl]);
+
+  useEffect(() => {
+    // Assign, don't call setConfiguration(): without a websocketProvider
+    // argument that method builds a second, misconfigured socket.
+    if (provider) provider.configuration.token = collabToken;
+  }, [provider, collabToken]);
+
+  if (!provider) return <div className="kp-doc min-h-[40vh]" />;
+  return <CollabEditor key={`${pageId}`} provider={provider} {...props} />;
+}
+
+function CollabEditor({
+  provider,
+  pageId,
+  canEdit,
+  userId,
+  userName,
+  historyButton = true,
+  onEditorReady,
+}: DocEditorProps & { provider: HocuspocusProvider }) {
   const { t } = useTranslation("docs");
   const { theme } = useTheme();
-  const provider = useMemo(
-    () => new HocuspocusProvider({ url: collabWsUrl, name: pageId, document: new Y.Doc(), token: collabToken }),
-    [pageId, collabToken, collabWsUrl],
-  );
-
-  useEffect(() => () => provider.destroy(), [provider]);
 
   const editor = useCreateBlockNote(
     withCollaboration({
@@ -124,14 +176,19 @@ export function DocEditor({
     [provider],
   );
 
+  useEffect(() => {
+    onEditorReady?.(editor as unknown as DocEditorHandle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
+
   return (
-    <div>
-      {canEdit && (
-        <div className="sticky top-[88px] z-10 mb-2 flex justify-end">
+    <div className="kp-doc">
+      {canEdit && historyButton && (
+        <div className="mb-2 flex justify-end">
           <VersionHistory pageId={pageId} editor={editor} />
         </div>
       )}
-      <BlockNoteView editor={editor} editable={canEdit} theme={theme} slashMenu={false} className="min-h-[60vh] px-2 py-4">
+      <BlockNoteView editor={editor} editable={canEdit} theme={theme} slashMenu={false} className="min-h-[40vh] pb-8 pt-1">
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={async (query) =>
@@ -194,7 +251,7 @@ export function DocEditor({
               .map((p) => ({
                 title: p.title || t("untitled"),
                 subtext: undefined,
-                icon: <span>{p.icon || "▭"}</span>,
+                icon: <PageIcon icon={p.icon} size={16} />,
                 onItemClick: () => {
                   editor.insertInlineContent([
                     { type: "mention", props: { pageId: p.id, title: p.title || t("untitled"), icon: p.icon ?? "" } },

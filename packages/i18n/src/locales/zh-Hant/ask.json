@@ -9,5 +9,20 @@
   "send": "傳送",
   "askFailed": "Ask Kompast 失敗",
   "hideConversationsTitle": "隱藏對話",
-  "showConversationsTitle": "顯示對話"
+  "showConversationsTitle": "顯示對話",
+  "newChat": "新對話",
+  "chats": "對話",
+  "emptyHeading": "您想知道什麼？",
+  "emptySubtitle": "答案來自此工作區中議題的標題、描述與留言。",
+  "suggestion1": "目前有哪些議題被卡住？",
+  "suggestion2": "摘要最近錯誤的討論內容",
+  "suggestion3": "目前衝刺中還有哪些未完成？",
+  "stop": "停止",
+  "sources": "來源",
+  "sourceIssue": "議題",
+  "sourceComment": "留言",
+  "sourcePage": "頁面",
+  "composerHint": "Enter 送出 · Shift+Enter 換行",
+  "thinking": "思考中…",
+  "stopped": "已停止。"
 }

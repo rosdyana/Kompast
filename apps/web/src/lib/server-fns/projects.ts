@@ -166,12 +166,22 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
         .innerJoin(schema.user, eq(schema.user.id, schema.projectMember.userId))
         .where(eq(schema.projectMember.projectId, project.id));
 
+      // Every workspace member (not just current assignees in `users`) — the
+      // table view's inline assignee picker must offer anyone assignable,
+      // same list/shape getIssueDetailFn's assignee picker uses.
+      const orgMembers = await tx
+        .select({ userId: schema.member.userId, name: schema.user.name })
+        .from(schema.member)
+        .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
+        .where(eq(schema.member.organizationId, ctx.organizationId));
+
       return {
         project,
         board,
         issueTypes,
         users,
         projectMembers,
+        orgMembers,
         tableView,
         canManageProject,
         propertyDefinitions,

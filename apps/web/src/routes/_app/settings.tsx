@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Bell, Bot, Database, KeyRound, Mail, Settings as SettingsIcon, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
+import { Badge } from "@kompast/ui/Badge";
 import { Card } from "@kompast/ui/Card";
-import { Tabs } from "@kompast/ui/Tabs";
-import { PageContainer } from "@kompast/ui/PageContainer";
-import { PageHeader } from "@kompast/ui/PageHeader";
+import { FormField, NativeSelect, TextField } from "@kompast/ui/Input";
+import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
 import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn } from "@/lib/server-fns/settings";
 import { listMembersFn } from "@/lib/server-fns/members";
@@ -14,8 +15,12 @@ import { MembersTab } from "@/components/settings/MembersTab";
 import { TeamsTab } from "@/components/settings/TeamsTab";
 import { RolesTab } from "@/components/settings/RolesTab";
 import { NotificationsTab } from "@/components/settings/NotificationsTab";
+import { SettingsSection, Switch } from "@/components/settings/SettingsSection";
+import { usePageChrome } from "@/components/shell/WorkbenchContext";
+import { cn } from "@/lib/cn";
 
-const TAB_KEYS = ["notifications", "members", "teams", "roles", "integrations"] as const;
+/** "integrations" is kept as a legacy alias (old links) and resolves to the AI section. */
+const TAB_KEYS = ["notifications", "members", "teams", "roles", "integrations", "ai", "mail", "embedding", "entra"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 export const Route = createFileRoute("/_app/settings")({
@@ -24,10 +29,8 @@ export const Route = createFileRoute("/_app/settings")({
   }),
   loader: async () => {
     // Notification preferences are per-user, not admin-gated — every member
-    // can see this tab. members/teams/roles/integrations are owner/admin
-    // only; a non-admin who hits this route directly (the sidebar already
-    // hides the link for them) just doesn't get those tabs' data, same as
-    // before, but still gets their own notification settings.
+    // can see this section. The rest are owner/admin only; a non-admin who
+    // hits this route directly just doesn't get that data.
     const [notificationPrefs, adminData] = await Promise.all([
       listNotificationPrefsFn(),
       Promise.all([getIntegrationSettingsFn(), listMembersFn(), listTeamsFn()])
@@ -39,61 +42,174 @@ export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
 });
 
+type Integrations = Awaited<ReturnType<typeof getIntegrationSettingsFn>>;
+
 function SettingsPage() {
   const { t } = useTranslation("settings");
   const data = Route.useLoaderData();
   const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const isAdmin = data.adminData !== null;
-  const active: TabKey = tab ?? (isAdmin ? "members" : "notifications");
+  const requested: TabKey = tab === "integrations" ? "ai" : (tab ?? (isAdmin ? "members" : "notifications"));
+  const active: TabKey = !isAdmin ? "notifications" : requested;
 
-  const items = [
-    { key: "notifications", label: t("tabs.notifications") },
-    ...(isAdmin
+  const groups: { label: string; items: { key: TabKey; label: string; icon: ReactNode; status?: boolean }[] }[] = [
+    { label: t("groupAccount"), items: [{ key: "notifications", label: t("tabs.notifications"), icon: <Bell size={15} /> }] },
+    ...(data.adminData
       ? [
-          { key: "members", label: t("tabs.members") },
-          { key: "teams", label: t("tabs.teams") },
-          { key: "roles", label: t("tabs.roles") },
-          { key: "integrations", label: t("tabs.integrations") },
+          {
+            label: t("groupWorkspace"),
+            items: [
+              { key: "members" as const, label: t("tabs.members"), icon: <Users size={15} /> },
+              { key: "teams" as const, label: t("tabs.teams"), icon: <UsersRound size={15} /> },
+              { key: "roles" as const, label: t("tabs.roles"), icon: <ShieldCheck size={15} /> },
+            ],
+          },
+          {
+            label: t("groupIntegrations"),
+            items: [
+              { key: "ai" as const, label: t("tabs.ai"), icon: <Bot size={15} />, status: data.adminData.integrations.ai.hasApiKey && data.adminData.integrations.ai.featuresEnabled },
+              { key: "mail" as const, label: t("tabs.mail"), icon: <Mail size={15} />, status: !!data.adminData.integrations.mail.from && (data.adminData.integrations.mail.hasApiKey || data.adminData.integrations.mail.hasSmtpUrl) },
+              { key: "embedding" as const, label: t("tabs.embedding"), icon: <Database size={15} />, status: data.adminData.integrations.embedding.hasApiKey && data.adminData.integrations.embedding.featuresEnabled },
+              { key: "entra" as const, label: t("tabs.entra"), icon: <KeyRound size={15} />, status: !!data.adminData.integrations.entra.tenantId && data.adminData.integrations.entra.hasClientSecret },
+            ],
+          },
         ]
       : []),
   ];
+  const allItems = groups.flatMap((g) => g.items);
+  const activeItem = allItems.find((i) => i.key === active);
 
-  return (
-    <PageContainer width="wide">
-      <PageHeader title={t("pageTitle")} />
-      <Tabs items={items} active={active} onChange={(key) => navigate({ search: { tab: key as TabKey } })} className="mb-6 border-b border-border" />
-
-      {active === "notifications" && <NotificationsTab data={data.notificationPrefs} />}
-      {active === "members" && data.adminData && <MembersTab data={data.adminData.members} />}
-      {active === "teams" && data.adminData?.integrations.isSuperAdmin && <TeamsTab teams={data.adminData.teams} members={data.adminData.members.members} />}
-      {active === "teams" && data.adminData && !data.adminData.integrations.isSuperAdmin && (
-        <p className="type-body text-text-3">{t("teamsNonAdminNote")}</p>
-      )}
-      {active === "roles" && data.adminData && <RolesTab />}
-      {active === "integrations" && data.adminData && <IntegrationsTab data={data.adminData.integrations} />}
-    </PageContainer>
+  usePageChrome(
+    {
+      crumbs: [
+        { label: t("pageTitle"), icon: <SettingsIcon size={15} strokeWidth={1.75} className="text-text-3" />, link: { to: "/settings" } },
+        { label: activeItem?.label ?? "" },
+      ],
+    },
+    [active, t],
   );
-}
 
-function IntegrationsTab({ data }: { data: Awaited<ReturnType<typeof getIntegrationSettingsFn>> }) {
-  const { t } = useTranslation("settings");
+  const go = (key: string) => navigate({ search: { tab: key as TabKey } });
+
   return (
-    <div>
-      <p className="mb-6 type-body text-text-2">{t("integrations.subtitle")}</p>
-      <Card className="divide-y divide-border overflow-hidden">
-        <EntraSection initial={data.entra} />
-        <AiSection initial={data.ai} />
-        <EmbeddingSection initial={data.embedding} />
-        <MailSection initial={data.mail} />
-      </Card>
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-5 pb-16 pt-6 md:flex-row md:gap-10 md:px-8 md:pt-8">
+      <nav aria-label={t("pageTitle")} className="flex-none md:w-[220px]">
+        <h1 className="mb-4 type-title">{t("pageTitle")}</h1>
+        <div className="md:hidden">
+          <NativeSelect aria-label={t("sectionPicker")} value={active} onChange={(e) => go(e.target.value)}>
+            {groups.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.items.map((i) => (
+                  <option key={i.key} value={i.key}>
+                    {i.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </NativeSelect>
+        </div>
+        <div className="hidden flex-col gap-4 md:flex">
+          {groups.map((g) => (
+            <div key={g.label}>
+              <p className="mb-1 px-2 text-[12px] font-semibold text-text-3">{g.label}</p>
+              <div className="flex flex-col gap-px">
+                {g.items.map((i) => (
+                  <button
+                    key={i.key}
+                    onClick={() => go(i.key)}
+                    aria-current={i.key === active ? "page" : undefined}
+                    className={cn(
+                      "flex h-8 items-center gap-2 rounded-[6px] px-2 text-left text-[14px] transition-colors",
+                      i.key === active ? "bg-surface-4 font-medium text-text" : "text-text-2 hover:bg-surface-3 hover:text-text",
+                    )}
+                  >
+                    <span className="text-text-3">{i.icon}</span>
+                    <span className="min-w-0 flex-1 truncate">{i.label}</span>
+                    {i.status !== undefined && (
+                      <span
+                        title={i.status ? t("configured") : t("notConfigured")}
+                        className={cn("h-1.5 w-1.5 flex-none rounded-full", i.status ? "bg-green" : "bg-border-2")}
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </nav>
+
+      <main className="min-w-0 flex-1">
+        {active === "notifications" && <NotificationsTab data={data.notificationPrefs} />}
+        {active === "members" && data.adminData && <MembersTab data={data.adminData.members} />}
+        {active === "teams" && data.adminData?.integrations.isSuperAdmin && <TeamsTab teams={data.adminData.teams} members={data.adminData.members.members} />}
+        {active === "teams" && data.adminData && !data.adminData.integrations.isSuperAdmin && (
+          <SettingsSection title={t("tabs.teams")}>
+            <p className="type-body text-text-2">{t("teamsNonAdminNote")}</p>
+          </SettingsSection>
+        )}
+        {active === "roles" && data.adminData && <RolesTab />}
+        {active === "ai" && data.adminData && <AiSection initial={data.adminData.integrations.ai} />}
+        {active === "embedding" && data.adminData && <EmbeddingSection initial={data.adminData.integrations.embedding} />}
+        {active === "mail" && data.adminData && <MailSection initial={data.adminData.integrations.mail} />}
+        {active === "entra" && data.adminData && <EntraSection initial={data.adminData.integrations.entra} />}
+      </main>
     </div>
   );
 }
 
-function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["embedding"] }) {
+/** Shared save plumbing: busy flag, success toast, inline error, router refresh. */
+function useSave(section: string) {
   const { t } = useTranslation("settings");
   const router = useRouter();
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function run(fn: () => Promise<unknown>) {
+    setSaving(true);
+    setError(null);
+    try {
+      await fn();
+      toast.show({ title: t("savedToast", { section }) });
+      await router.invalidate();
+      return true;
+    } catch (err) {
+      setError(t("saveFailed", { message: err instanceof Error ? err.message : String(err) }));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+  return { saving, error, run };
+}
+
+function StatusBadge({ ok }: { ok: boolean }) {
+  const { t } = useTranslation("settings");
+  return <Badge tone={ok ? "green" : "neutral"}>{ok ? t("configured") : t("notConfigured")}</Badge>;
+}
+
+function SecretLabel({ label, saved, note }: { label: string; saved: boolean; note: string }) {
+  return (
+    <span>
+      {label} {saved && <span className="font-normal text-text-3">{note}</span>}
+    </span>
+  );
+}
+
+function SaveRow({ saving, error, onSave, disabled, label, savingLabel }: { saving: boolean; error: string | null; onSave: () => void; disabled?: boolean; label: string; savingLabel: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-3">
+      <Button variant="primary" onClick={onSave} disabled={saving || disabled}>
+        {saving ? savingLabel : label}
+      </Button>
+      {error && <span className="text-[13px] text-danger">{error}</span>}
+    </div>
+  );
+}
+
+function EmbeddingSection({ initial }: { initial: Integrations["embedding"] }) {
+  const { t } = useTranslation("settings");
   const [provider, setProvider] = useState(initial.provider ?? "azure-openai");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState(initial.model ?? "");
@@ -101,13 +217,10 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
   const [azureDeployment, setAzureDeployment] = useState(initial.azureDeployment ?? "");
   const [baseUrl, setBaseUrl] = useState(initial.openAiCompatibleBaseUrl ?? "");
   const [enabled, setEnabled] = useState(initial.featuresEnabled);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { saving, error, run } = useSave(t("tabs.embedding"));
 
-  async function save() {
-    setSaving(true);
-    setSaved(false);
-    try {
+  const save = () =>
+    run(async () => {
       await updateEmbeddingSettingsFn({
         data: {
           provider,
@@ -120,175 +233,95 @@ function EmbeddingSection({ initial }: { initial: Awaited<ReturnType<typeof getI
         },
       });
       setApiKey("");
-      setSaved(true);
-      await router.invalidate();
-    } finally {
-      setSaving(false);
-    }
-  }
+    });
 
   return (
-    <div className="p-4">
-      <h2 className="mb-3 type-headline">{t("integrations.embedding.heading")}</h2>
-      <p className="mb-3 type-body text-text-2">{t("integrations.embedding.description")}</p>
-      <div className="flex flex-col gap-4">
-        <label className="flex items-center gap-2 type-body">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          {t("integrations.embedding.enable")}
-        </label>
-
-        <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.providerLabel")}</span>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value as typeof provider)}
-            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-          >
-            <option value="azure-openai">Azure OpenAI</option>
-            <option value="openai-compatible">OpenAI-compatible</option>
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-            {t("integrations.embedding.apiKeyLabel")} {initial.hasApiKey && <span className="text-text-3">{t("integrations.embedding.savedNoteLong")}</span>}
-          </span>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={initial.hasApiKey ? "••••••••" : "sk-…"}
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-          />
-        </label>
-
-        {provider === "azure-openai" ? (
-          <>
-            <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.azureEndpointLabel")}</span>
-              <input
-                value={azureEndpoint}
-                onChange={(e) => setAzureEndpoint(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.azureDeploymentEmbeddingsLabel")}</span>
-              <input
-                value={azureDeployment}
-                onChange={(e) => setAzureDeployment(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-              />
-            </label>
-          </>
-        ) : (
-          <>
-            <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.baseUrlLabel")}</span>
-              <input
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.embedding.modelLabel")}</span>
-              <input
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="text-embedding-3-small"
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-              />
-            </label>
-          </>
-        )}
-
-        <div className="flex items-center gap-2.5">
-          <Button variant="primary" onClick={save} disabled={saving}>
-            {saving ? t("integrations.embedding.savingEllipsis") : t("integrations.embedding.save")}
-          </Button>
-          {saved && <span className="type-body text-green">{t("integrations.embedding.saved")}</span>}
+    <SettingsSection title={t("integrations.embedding.heading")} description={t("integrations.embedding.description")} aside={<StatusBadge ok={initial.hasApiKey && initial.featuresEnabled} />}>
+      <Card>
+        <div className="flex flex-col gap-4 p-5">
+          <Switch checked={enabled} onChange={setEnabled} label={t("integrations.embedding.enable")} />
+          <FormField label={t("integrations.embedding.providerLabel")}>
+            <NativeSelect value={provider} onChange={(e) => setProvider(e.target.value as typeof provider)}>
+              <option value="azure-openai">Azure OpenAI</option>
+              <option value="openai-compatible">OpenAI-compatible</option>
+            </NativeSelect>
+          </FormField>
+          <FormField label={<SecretLabel label={t("integrations.embedding.apiKeyLabel")} saved={initial.hasApiKey} note={t("integrations.embedding.savedNoteLong")} />}>
+            <TextField type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={initial.hasApiKey ? "••••••••" : "sk-…"} />
+          </FormField>
+          {provider === "azure-openai" ? (
+            <>
+              <FormField label={t("integrations.embedding.azureEndpointLabel")}>
+                <TextField value={azureEndpoint} onChange={(e) => setAzureEndpoint(e.target.value)} placeholder="https://<resource>.openai.azure.com" />
+              </FormField>
+              <FormField label={t("integrations.embedding.azureDeploymentEmbeddingsLabel")}>
+                <TextField value={azureDeployment} onChange={(e) => setAzureDeployment(e.target.value)} />
+              </FormField>
+            </>
+          ) : (
+            <>
+              <FormField label={t("integrations.embedding.baseUrlLabel")}>
+                <TextField value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
+              </FormField>
+              <FormField label={t("integrations.embedding.modelLabel")}>
+                <TextField value={model} onChange={(e) => setModel(e.target.value)} placeholder="text-embedding-3-small" />
+              </FormField>
+            </>
+          )}
         </div>
-      </div>
-    </div>
+        <SaveRow saving={saving} error={error} onSave={save} label={t("integrations.embedding.save")} savingLabel={t("integrations.embedding.savingEllipsis")} />
+      </Card>
+    </SettingsSection>
   );
 }
 
-function EntraSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["entra"] }) {
+function EntraSection({ initial }: { initial: Integrations["entra"] }) {
   const { t } = useTranslation("settings");
-  const router = useRouter();
   const [tenantId, setTenantId] = useState(initial.tenantId ?? "");
   const [clientId, setClientId] = useState(initial.clientId ?? "");
   const [clientSecret, setClientSecret] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { saving, error, run } = useSave(t("tabs.entra"));
 
-  async function save() {
-    setSaving(true);
-    setSaved(false);
-    setError(null);
-    try {
+  const save = () =>
+    run(async () => {
       await updateMicrosoftAuthFn({ data: { tenantId: tenantId.trim(), clientId: clientId.trim(), clientSecret: clientSecret || undefined } });
       setClientSecret("");
-      setSaved(true);
-      await router.invalidate();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("integrations.entra.saveFailed"));
-    } finally {
-      setSaving(false);
-    }
-  }
+    });
 
   return (
-    <div className="p-4">
-      <h2 className="mb-3 type-headline">{t("integrations.entra.heading")}</h2>
-      <div className="flex flex-col gap-4">
-        <p className="rounded-[7px] border border-dashed border-border-2 bg-surface-2 p-3 type-body leading-relaxed text-text-2">
-          {t("integrations.entra.warningPart1")}
-          <strong>{t("integrations.entra.warningBold")}</strong>
-          {t("integrations.entra.warningPart2")}
-        </p>
-        <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.entra.tenantIdLabel")}</span>
-          <input
-            value={tenantId}
-            onChange={(e) => setTenantId(e.target.value)}
-            placeholder="11111111-1111-1111-1111-111111111111"
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.entra.clientIdLabel")}</span>
-          <input value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none" />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-            {t("integrations.entra.clientSecretLabel")} {initial.hasClientSecret && <span className="text-text-3">{t("integrations.entra.savedNoteLong")}</span>}
-          </span>
-          <input
-            type="password"
-            value={clientSecret}
-            onChange={(e) => setClientSecret(e.target.value)}
-            placeholder={initial.hasClientSecret ? "••••••••" : ""}
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-          />
-        </label>
-        <div className="flex items-center gap-2.5">
-          <Button variant="primary" onClick={save} disabled={saving || !tenantId.trim() || !clientId.trim()}>
-            {saving ? t("integrations.entra.savingEllipsis") : t("integrations.entra.save")}
-          </Button>
-          {saved && <span className="type-body text-green">{t("integrations.entra.saved")}</span>}
-          {error && <span className="type-body text-danger">{error}</span>}
+    <SettingsSection title={t("integrations.entra.heading")} description={t("integrations.entra.description")} aside={<StatusBadge ok={!!initial.tenantId && initial.hasClientSecret} />}>
+      <p className="mb-4 rounded-[8px] border border-amber/30 bg-amber-soft px-4 py-3 text-[13.5px] leading-relaxed text-text">
+        {t("integrations.entra.warningPart1").replace(/^⚠️\s*/, "")}
+        <strong>{t("integrations.entra.warningBold")}</strong>
+        {t("integrations.entra.warningPart2")}
+      </p>
+      <Card>
+        <div className="flex flex-col gap-4 p-5">
+          <FormField label={t("integrations.entra.tenantIdLabel")}>
+            <TextField value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="11111111-1111-1111-1111-111111111111" className="font-mono text-[13px]" />
+          </FormField>
+          <FormField label={t("integrations.entra.clientIdLabel")}>
+            <TextField value={clientId} onChange={(e) => setClientId(e.target.value)} className="font-mono text-[13px]" />
+          </FormField>
+          <FormField label={<SecretLabel label={t("integrations.entra.clientSecretLabel")} saved={initial.hasClientSecret} note={t("integrations.entra.savedNoteLong")} />}>
+            <TextField type="password" autoComplete="off" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder={initial.hasClientSecret ? "••••••••" : ""} />
+          </FormField>
         </div>
-      </div>
-    </div>
+        <SaveRow
+          saving={saving}
+          error={error}
+          onSave={save}
+          disabled={!tenantId.trim() || !clientId.trim()}
+          label={t("integrations.entra.save")}
+          savingLabel={t("integrations.entra.savingEllipsis")}
+        />
+      </Card>
+    </SettingsSection>
   );
 }
 
-function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["ai"] }) {
+function AiSection({ initial }: { initial: Integrations["ai"] }) {
   const { t } = useTranslation("settings");
-  const router = useRouter();
   const [provider, setProvider] = useState(initial.provider ?? "anthropic");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState(initial.model ?? "");
@@ -296,13 +329,10 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
   const [azureDeployment, setAzureDeployment] = useState(initial.azureDeployment ?? "");
   const [baseUrl, setBaseUrl] = useState(initial.openAiCompatibleBaseUrl ?? "");
   const [enabled, setEnabled] = useState(initial.featuresEnabled);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { saving, error, run } = useSave(t("tabs.ai"));
 
-  async function save() {
-    setSaving(true);
-    setSaved(false);
-    try {
+  const save = () =>
+    run(async () => {
       await updateAiSettingsFn({
         data: {
           provider,
@@ -315,194 +345,101 @@ function AiSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrat
         },
       });
       setApiKey("");
-      setSaved(true);
-      await router.invalidate();
-    } finally {
-      setSaving(false);
-    }
-  }
+    });
 
   return (
-    <div className="p-4">
-      <h2 className="mb-3 type-headline">{t("integrations.ai.heading")}</h2>
-      <div className="flex flex-col gap-4">
-        <label className="flex items-center gap-2 type-body">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          {t("integrations.ai.enable")}
-        </label>
-
-        <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.ai.providerLabel")}</span>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value as typeof provider)}
-            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-          >
-            <option value="anthropic">Anthropic</option>
-            <option value="azure-openai">Azure OpenAI</option>
-            <option value="openai-compatible">OpenAI-compatible</option>
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-            {t("integrations.ai.apiKeyLabel")} {initial.hasApiKey && <span className="text-text-3">{t("integrations.ai.savedNoteLong")}</span>}
-          </span>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={initial.hasApiKey ? "••••••••" : "sk-…"}
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-          />
-        </label>
-
-        {provider !== "azure-openai" && (
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-              {t("integrations.ai.modelLabel")} {provider === "anthropic" && <span className="text-text-3">{t("integrations.ai.modelBlankNote")}</span>}
-            </span>
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder={provider === "anthropic" ? "claude-sonnet-5" : t("integrations.ai.modelPlaceholderOther")}
-              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-            />
-          </label>
-        )}
-
-        {provider === "azure-openai" && (
-          <>
-            <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.ai.azureEndpointLabel")}</span>
-              <input
-                value={azureEndpoint}
-                onChange={(e) => setAzureEndpoint(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.ai.azureDeploymentLabel")}</span>
-              <input
-                value={azureDeployment}
-                onChange={(e) => setAzureDeployment(e.target.value)}
-                className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-              />
-            </label>
-          </>
-        )}
-
-        {provider === "openai-compatible" && (
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.ai.baseUrlLabel")}</span>
-            <input
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-            />
-          </label>
-        )}
-
-        <div className="flex items-center gap-2.5">
-          <Button variant="primary" onClick={save} disabled={saving}>
-            {saving ? t("integrations.ai.savingEllipsis") : t("integrations.ai.save")}
-          </Button>
-          {saved && <span className="type-body text-green">{t("integrations.ai.saved")}</span>}
+    <SettingsSection title={t("integrations.ai.heading")} description={t("integrations.ai.description")} aside={<StatusBadge ok={initial.hasApiKey && initial.featuresEnabled} />}>
+      <Card>
+        <div className="flex flex-col gap-4 p-5">
+          <Switch checked={enabled} onChange={setEnabled} label={t("integrations.ai.enable")} />
+          <FormField label={t("integrations.ai.providerLabel")}>
+            <NativeSelect value={provider} onChange={(e) => setProvider(e.target.value as typeof provider)}>
+              <option value="anthropic">Anthropic</option>
+              <option value="azure-openai">Azure OpenAI</option>
+              <option value="openai-compatible">OpenAI-compatible</option>
+            </NativeSelect>
+          </FormField>
+          <FormField label={<SecretLabel label={t("integrations.ai.apiKeyLabel")} saved={initial.hasApiKey} note={t("integrations.ai.savedNoteLong")} />}>
+            <TextField type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={initial.hasApiKey ? "••••••••" : "sk-…"} />
+          </FormField>
+          {provider !== "azure-openai" && (
+            <FormField
+              label={
+                <span>
+                  {t("integrations.ai.modelLabel")} {provider === "anthropic" && <span className="font-normal text-text-3">{t("integrations.ai.modelBlankNote")}</span>}
+                </span>
+              }
+            >
+              <TextField value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider === "anthropic" ? "claude-sonnet-5" : t("integrations.ai.modelPlaceholderOther")} />
+            </FormField>
+          )}
+          {provider === "azure-openai" && (
+            <>
+              <FormField label={t("integrations.ai.azureEndpointLabel")}>
+                <TextField value={azureEndpoint} onChange={(e) => setAzureEndpoint(e.target.value)} placeholder="https://<resource>.openai.azure.com" />
+              </FormField>
+              <FormField label={t("integrations.ai.azureDeploymentLabel")}>
+                <TextField value={azureDeployment} onChange={(e) => setAzureDeployment(e.target.value)} />
+              </FormField>
+            </>
+          )}
+          {provider === "openai-compatible" && (
+            <FormField label={t("integrations.ai.baseUrlLabel")}>
+              <TextField value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
+            </FormField>
+          )}
         </div>
-      </div>
-    </div>
+        <SaveRow saving={saving} error={error} onSave={save} label={t("integrations.ai.save")} savingLabel={t("integrations.ai.savingEllipsis")} />
+      </Card>
+    </SettingsSection>
   );
 }
 
-function MailSection({ initial }: { initial: Awaited<ReturnType<typeof getIntegrationSettingsFn>>["mail"] }) {
+function MailSection({ initial }: { initial: Integrations["mail"] }) {
   const { t } = useTranslation("settings");
-  const router = useRouter();
   const [driver, setDriver] = useState(initial.driver ?? "resend");
   const [from, setFrom] = useState(initial.from ?? "");
   const [apiKey, setApiKey] = useState("");
   const [smtpUrl, setSmtpUrl] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { saving, error, run } = useSave(t("tabs.mail"));
 
-  async function save() {
-    setSaving(true);
-    setSaved(false);
-    try {
-      await updateMailSettingsFn({
-        data: { driver, from, apiKey: apiKey || undefined, smtpUrl: smtpUrl || undefined },
-      });
+  const save = () =>
+    run(async () => {
+      await updateMailSettingsFn({ data: { driver, from, apiKey: apiKey || undefined, smtpUrl: smtpUrl || undefined } });
       setApiKey("");
       setSmtpUrl("");
-      setSaved(true);
-      await router.invalidate();
-    } finally {
-      setSaving(false);
-    }
-  }
+    });
 
   return (
-    <div className="p-4">
-      <h2 className="mb-3 type-headline">{t("integrations.mail.heading")}</h2>
-      <div className="flex flex-col gap-4">
-        <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.mail.driverLabel")}</span>
-          <select
-            value={driver}
-            onChange={(e) => setDriver(e.target.value as typeof driver)}
-            className="kp-select w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-          >
-            <option value="resend">Resend</option>
-            <option value="brevo">Brevo</option>
-            <option value="smtp">SMTP</option>
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="mb-1.5 block text-[12px] font-medium text-text-2">{t("integrations.mail.fromAddressLabel")}</span>
-          <input
-            type="email"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            placeholder="noreply@example.com"
-            className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-          />
-        </label>
-
-        {driver === "smtp" ? (
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-              {t("integrations.mail.smtpUrlLabel")} {initial.hasSmtpUrl && <span className="text-text-3">{t("integrations.mail.savedNoteShort")}</span>}
-            </span>
-            <input
-              type="password"
-              value={smtpUrl}
-              onChange={(e) => setSmtpUrl(e.target.value)}
-              placeholder="smtp://user:pass@host:587"
-              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-            />
-          </label>
-        ) : (
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-text-2">
-              {t("integrations.mail.apiKeyLabel")} {initial.hasApiKey && <span className="text-text-3">{t("integrations.mail.savedNoteShort")}</span>}
-            </span>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="••••••••"
-              className="w-full rounded-[7px] border border-border-2 bg-surface px-3 py-2 text-[12.5px] outline-none"
-            />
-          </label>
-        )}
-
-        <div className="flex items-center gap-2.5">
-          <Button variant="primary" onClick={save} disabled={saving}>
-            {saving ? t("integrations.mail.savingEllipsis") : t("integrations.mail.save")}
-          </Button>
-          {saved && <span className="type-body text-green">{t("integrations.mail.saved")}</span>}
+    <SettingsSection
+      title={t("integrations.mail.heading")}
+      description={t("integrations.mail.description")}
+      aside={<StatusBadge ok={!!initial.from && (initial.hasApiKey || initial.hasSmtpUrl)} />}
+    >
+      <Card>
+        <div className="flex flex-col gap-4 p-5">
+          <FormField label={t("integrations.mail.driverLabel")}>
+            <NativeSelect value={driver} onChange={(e) => setDriver(e.target.value as typeof driver)}>
+              <option value="resend">Resend</option>
+              <option value="brevo">Brevo</option>
+              <option value="smtp">SMTP</option>
+            </NativeSelect>
+          </FormField>
+          <FormField label={t("integrations.mail.fromAddressLabel")}>
+            <TextField type="email" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="noreply@example.com" />
+          </FormField>
+          {driver === "smtp" ? (
+            <FormField label={<SecretLabel label={t("integrations.mail.smtpUrlLabel")} saved={initial.hasSmtpUrl} note={t("integrations.mail.savedNoteShort")} />}>
+              <TextField type="password" autoComplete="off" value={smtpUrl} onChange={(e) => setSmtpUrl(e.target.value)} placeholder="smtp://user:pass@host:587" />
+            </FormField>
+          ) : (
+            <FormField label={<SecretLabel label={t("integrations.mail.apiKeyLabel")} saved={initial.hasApiKey} note={t("integrations.mail.savedNoteShort")} />}>
+              <TextField type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="••••••••" />
+            </FormField>
+          )}
         </div>
-      </div>
-    </div>
+        <SaveRow saving={saving} error={error} onSave={save} disabled={!from.trim()} label={t("integrations.mail.save")} savingLabel={t("integrations.mail.savingEllipsis")} />
+      </Card>
+    </SettingsSection>
   );
 }

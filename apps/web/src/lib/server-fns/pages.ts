@@ -107,6 +107,29 @@ export const getPageDetailFn = createServerFn({ method: "GET" })
       ]);
       const isFavorited = favoriteIds.includes(pageId);
 
+      // Breadcrumb trail, root first. Walked server-side because the shell's
+      // tree only holds workspace-level pages, not project-filed ones; the
+      // visited-set guards against a (core-prevented) parent cycle.
+      const ancestors: { id: string; title: string; icon: string | null }[] = [];
+      const seen = new Set<string>([page.id]);
+      let parentId = page.parentPageId;
+      while (parentId && !seen.has(parentId) && ancestors.length < 12) {
+        seen.add(parentId);
+        const [parent] = await tx
+          .select({ id: schema.page.id, title: schema.page.title, icon: schema.page.icon, parentPageId: schema.page.parentPageId })
+          .from(schema.page)
+          .where(eq(schema.page.id, parentId));
+        if (!parent) break;
+        ancestors.unshift({ id: parent.id, title: parent.title, icon: parent.icon });
+        parentId = parent.parentPageId;
+      }
+      const [project] = page.projectId
+        ? await tx
+            .select({ id: schema.project.id, key: schema.project.key, name: schema.project.name, teamId: schema.project.teamId })
+            .from(schema.project)
+            .where(eq(schema.project.id, page.projectId))
+        : [];
+
       const commentAuthorIds = [...new Set(comments.map((c) => c.authorId))];
       const users = commentAuthorIds.length > 0 ? await tx.select().from(schema.user).where(inArray(schema.user.id, commentAuthorIds)) : [];
 
@@ -139,6 +162,8 @@ export const getPageDetailFn = createServerFn({ method: "GET" })
 
       return {
         page,
+        ancestors,
+        project: project ?? null,
         children,
         comments,
         users,
@@ -217,7 +242,7 @@ export const duplicatePageFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, (tx) =>
-      duplicatePage(tx, data.pageId, { actorUserId: ctx.userId, titleSuffix: data.titleSuffix ?? " (salinan)" }),
+      duplicatePage(tx, data.pageId, { actorUserId: ctx.userId, titleSuffix: data.titleSuffix ?? "" }),
     );
   });
 
@@ -327,7 +352,18 @@ export const permanentlyDeletePageFn = createServerFn({ method: "POST" })
 
 export const listTemplatePagesFn = createServerFn({ method: "GET" }).handler(async () => {
   const ctx = await requireAuthContext();
-  return withAuthorizedTenant(ctx, (tx) => listTemplatePages(tx, ctx.organizationId));
+  return withAuthorizedTenant(ctx, async (tx) => {
+    const templates = await listTemplatePages(tx, ctx.organizationId);
+    // Every project seeds its own "Sprint Minutes Template" — without the
+    // owning project's name, the picker shows identical-looking rows.
+    const projectIds = [...new Set(templates.map((t) => t.projectId).filter((v): v is string => !!v))];
+    const projects =
+      projectIds.length > 0
+        ? await tx.select({ id: schema.project.id, key: schema.project.key, name: schema.project.name }).from(schema.project).where(inArray(schema.project.id, projectIds))
+        : [];
+    const byId = new Map(projects.map((p) => [p.id, p]));
+    return templates.map((t) => ({ ...t, project: t.projectId ? byId.get(t.projectId) ?? null : null }));
+  });
 });
 
 const setTemplateSchema = z.object({ pageId: z.string(), isTemplate: z.boolean() });

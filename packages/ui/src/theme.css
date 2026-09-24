@@ -1,4 +1,9 @@
 @import "tailwindcss";
+/* Surface-owned stylesheets. Each is scoped to its own root class so the
+   shell, docs, and board surfaces can evolve without editing this file. */
+@import "./styles/docs.css";
+@import "./styles/board.css";
+@import "./styles/table.css";
 
 /* @blocknote/shadcn's own menus/toolbars/dropdowns (slash menu, formatting
    toolbar, block-type select, color picker) are styled entirely by Tailwind
@@ -9,88 +14,125 @@
    renders with no background, no clipping, and no max-height, spilling over
    the rest of the page instead of floating as a small bounded card. */
 @source "../../../apps/web/node_modules/@blocknote/shadcn/dist/*.{js,cjs}";
+/* This package's own components: Vite's root is apps/web, so Tailwind's
+   automatic scan never reaches packages/ui — without this, any utility used
+   only inside a @kompast/ui component silently doesn't exist. */
+@source "./components";
 
 /*
- * Design tokens extracted verbatim from Kompast.dc.html (the approved
- * Claude Design mockup), with --accent/--indigo since retuned to match the
- * Kompast logo's blue/navy gradient (see --accent's comment below) and
- * --danger split out as its own token. Don't further hand-tune the rest —
- * if the base design changes, re-import via DesignSync and diff this file
- * against the new :root block, re-applying the brand-color overrides after.
+ * Kompast tokens — "Workbench" world: Notion's calm warm-gray canvas for
+ * reading and writing, Jira's dense, color-coded vocabulary (lozenges, type
+ * glyphs, priority arrows) for tracking, tied together by the Kompast navy +
+ * cobalt brand pair from the compass mark.
+ *
+ * The raw token NAMES (--text3, --indigo, --amber, ...) are load-bearing:
+ * issue types, statuses, columns and priority levels store their color in
+ * the database as `var(--name)` strings (see packages/core/src/project.ts
+ * and priority.ts seeds), so renaming one silently uncolors existing data.
+ * Retune values freely; never rename or remove a name.
  */
 :root {
-  --bg: #f6f4ef;
+  color-scheme: light;
+  /* Eye-comfort tuning: no pure white canvas, no pure black ink, a calm
+     mid-saturation blue, and low-chroma status hues. Body text sits around
+     11:1 on the canvas — clearly readable without the glare of 21:1. */
+  --bg: #fbfbfa;
   --surface: #ffffff;
-  --surface2: #fbf9f5;
-  --surface3: #efece4;
-  --text: #191a1d;
-  --text2: #5b5d63;
-  --text3: #8f9198;
-  --border: #e4e0d8;
-  --border2: #d3cec3;
-  /* Brand blue, sampled from the Kompast compass-mark logo's gradient
-     (lighter cyan-blue stop → deep navy stop). --indigo doubles as the
-     "brand mark surface" navy (login hero panel, workspace-switcher swatch)
-     — retune these two if the sampled logo hex ever drifts from this. */
-  --accent: #2f6fea;
-  --accent-soft: #e8f0fe;
-  --indigo: #1b3a6b;
-  --indigo-soft: #e7eaf3;
-  --green: #1c7a54;
-  --green-soft: #dff0e8;
-  --amber: #9a6410;
-  --amber-soft: #faedd4;
-  --violet: #584a86;
-  --violet-soft: #ebe7f6;
-  /* Error/destructive-action color — split out from --accent (which used to
-     double as both brand color and error color) so rebranding --accent to
-     blue doesn't make error states read as less alarming. Values are the
-     OLD --accent/--accent-soft, unchanged in appearance. */
-  --danger: #c9432a;
-  --danger-soft: #fae9e4;
-  --shadow: 0 1px 2px rgba(25, 26, 29, 0.06), 0 8px 20px -10px rgba(25, 26, 29, 0.16);
-  --grid: rgba(25, 26, 29, 0.05);
+  --surface2: #f6f5f2;
+  --surface3: #efede9;
+  --surface4: #e6e4df;
+  --text: #2f2e2a;
+  --text2: #605e59;
+  --text3: #75736d;
+  --border: #eae8e3;
+  --border2: #dbd8d1;
+  --accent: #3a70dc;
+  --accent-hover: #3063c8;
+  --accent-text: #2d62c9;
+  --accent-soft: #ebf1fc;
+  --indigo: #2a4674;
+  --indigo-soft: #e9ecf3;
+  --green: #2d7a58;
+  --green-soft: #e4f1ea;
+  --amber: #93661d;
+  --amber-soft: #f7eedc;
+  --violet: #6953b3;
+  --violet-soft: #efecf8;
+  --danger: #bf4a3b;
+  --danger-soft: #f8eae7;
+  --overlay: rgba(40, 38, 33, 0.32);
+  --shadow: 0 0 0 1px rgba(40, 38, 33, 0.05), 0 4px 10px -2px rgba(40, 38, 33, 0.08), 0 16px 36px -12px rgba(40, 38, 33, 0.18);
+  --shadow-card: 0 1px 1px rgba(40, 38, 33, 0.05), 0 0 0 1px rgba(40, 38, 33, 0.06);
+  --shadow-lift: 0 0 0 1px rgba(40, 38, 33, 0.05), 0 10px 24px -6px rgba(40, 38, 33, 0.22);
+  --grid: rgba(40, 38, 33, 0.045);
+  /* Project tile fills (ProjectIcon). Deep enough for a white letter in
+     both themes; not DB-stored, so these names may change freely. */
+  --tile-1: #2a4674;
+  --tile-2: #3a70dc;
+  --tile-3: #2d7a58;
+  --tile-4: #6953b3;
+  --tile-5: #93661d;
+  --tile-6: #bf4a3b;
+  --tile-7: #2f7f86;
 }
 
 [data-theme="dark"] {
-  --bg: #101115;
-  --surface: #191b20;
-  --surface2: #1f2229;
-  --surface3: #282c34;
-  --text: #eceef2;
-  --text2: #a3a8b2;
-  --text3: #70757e;
-  --border: #2a2e36;
-  --border2: #3a3f49;
-  --accent: #6c9bff;
-  --accent-soft: #1b2a4a;
-  --indigo: #9fb8f0;
-  --indigo-soft: #1d2331;
-  --green: #5cc394;
-  --green-soft: #11261d;
-  --amber: #e0aa4d;
-  --amber-soft: #2a2113;
-  --violet: #ab97e2;
-  --violet-soft: #211b33;
-  --danger: #ff7a55;
-  --danger-soft: #38201a;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
-  --grid: rgba(255, 255, 255, 0.045);
+  color-scheme: dark;
+  /* Soft charcoal, not black; text off-white, not #fff. */
+  --bg: #1f1f1e;
+  --surface: #272726;
+  --surface2: #232322;
+  --surface3: #2f2f2d;
+  --surface4: #393936;
+  --text: #dfded9;
+  --text2: #aba9a3;
+  --text3: #8e8c86;
+  --border: #323230;
+  --border2: #41413d;
+  --accent: #6f9bef;
+  --accent-hover: #83aaf2;
+  --accent-text: #8bb0f3;
+  --accent-soft: #22314d;
+  --indigo: #a9bee9;
+  --indigo-soft: #252b3a;
+  --green: #6bb893;
+  --green-soft: #1d2d25;
+  --amber: #d4ab62;
+  --amber-soft: #302819;
+  --violet: #ac9ae0;
+  --violet-soft: #2b2540;
+  --danger: #e38a7a;
+  --danger-soft: #3a2420;
+  --overlay: rgba(0, 0, 0, 0.5);
+  --shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 4px 10px -2px rgba(0, 0, 0, 0.45), 0 16px 36px -12px rgba(0, 0, 0, 0.6);
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-lift: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 12px 28px -6px rgba(0, 0, 0, 0.7);
+  --grid: rgba(255, 255, 255, 0.04);
+  --tile-1: #3d5c90;
+  --tile-2: #4a79d6;
+  --tile-3: #3a8765;
+  --tile-4: #7561bd;
+  --tile-5: #9c7330;
+  --tile-6: #bd594b;
+  --tile-7: #3a8a90;
 }
 
 /* Tailwind v4 CSS-first theme: exposes the tokens above as utilities
-   (bg-bg, text-text2, border-border2, bg-accent, text-accent, shadow-kp, ...). */
+   (bg-bg, text-text-2, border-border-2, bg-accent, text-accent, shadow-kp, ...). */
 @theme {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface2);
   --color-surface-3: var(--surface3);
+  --color-surface-4: var(--surface4);
   --color-text: var(--text);
   --color-text-2: var(--text2);
   --color-text-3: var(--text3);
   --color-border: var(--border);
   --color-border-2: var(--border2);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-text);
   --color-accent-soft: var(--accent-soft);
   --color-indigo: var(--indigo);
   --color-indigo-soft: var(--indigo-soft);
@@ -107,23 +149,12 @@
      generates the utilities @blocknote/shadcn's compiled classes use
      (bg-popover, text-muted-foreground, ring-ring, ...), aliased straight
      to Kompast tokens. Direct aliases, not a runtime var scoped to
-     .bn-shadcn below: a custom property that itself contains var(--x)
-     substitutes using --x's value at THIS declaring rule (:root) and
-     inherits that already-resolved result — a later rule that redeclares
-     only --x, without redeclaring --color-popover itself, never reaches
-     descendants of that rule, no matter how deep. (First shipped as
-     `--color-popover: var(--popover)` with --popover only ever set
-     inside .bn-shadcn — --popover had no :root definition to substitute,
-     so every one of these computed to the guaranteed-invalid value at
-     :root and inherited that everywhere: the slash-menu popover rendered
-     fully transparent, not white.) Safe to alias globally, not just
-     inside the editor — grepping the app for every one of these class
-     names (bg-primary, bg-popover, bg-card, bg-secondary, bg-muted,
-     text-muted-foreground, bg-destructive, border-input, ring-ring) turns
-     up no other consumer; nothing outside @blocknote/shadcn's own
-     compiled bundle uses this shadcn/ui naming convention. --color-accent
-     is the one deliberate exception, left untouched here — see the
-     .bn-shadcn-scoped override below for why. */
+     .bn-shadcn: a custom property that itself contains var(--x) substitutes
+     using --x's value at THIS declaring rule and inherits that resolved
+     result, so a later rule that redeclares only --x never reaches
+     descendants. Nothing outside @blocknote/shadcn's compiled bundle uses
+     these names. --color-accent is the one deliberate exception — see the
+     .bn-shadcn-scoped override below. */
   --color-background: var(--surface);
   --color-foreground: var(--text);
   --color-popover: var(--surface);
@@ -140,67 +171,83 @@
   --color-destructive: var(--danger);
   --color-destructive-foreground: var(--bg);
   --color-input: var(--border2);
-  --color-ring: var(--indigo);
+  --color-ring: var(--accent);
 
-  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Instrument Serif", Georgia, serif;
-  --font-mono: "JetBrains Mono", monospace;
+  /* System UI stack, like Notion and Jira: native rendering, zero font
+     download, and first-class CJK/Latin-extended coverage for the
+     zh-Hant and id locales. */
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Helvetica, Arial, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-serif: ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --shadow-kp: var(--shadow);
+  --shadow-card: var(--shadow-card);
+  --shadow-lift: var(--shadow-lift);
 
-  /* Tighter than Tailwind's stock tracking-tight (-0.025em); matches
-     DESIGN.md's display/title tracking exactly. */
-  --tracking-tightest: -0.01em;
-  --tracking-label: 0.1em;
+  --tracking-tightest: -0.015em;
+  --tracking-label: 0.04em;
 }
 
-/* Typography roles from DESIGN.md's Hierarchy table, bundled as single
-   utilities so a role is applied identically everywhere it's used instead
-   of being re-typed as arbitrary values at each call site. */
+/* Typography roles, one utility each so a role is applied identically
+   everywhere. Product scale: fixed rem steps, ~1.15 ratio, one family. */
 @utility type-display {
-  font-family: var(--font-serif);
-  font-size: clamp(2.5rem, 5vw, 3.25rem);
-  font-weight: 400;
-  line-height: 1.04;
-  letter-spacing: var(--tracking-tightest);
+  font-family: var(--font-sans);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 @utility type-title {
   font-family: var(--font-sans);
-  font-size: clamp(1.1rem, 2vw, 1.5625rem);
-  font-weight: 600;
-  line-height: 1.2;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.25;
   letter-spacing: var(--tracking-tightest);
 }
 @utility type-headline {
   font-family: var(--font-sans);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: var(--tracking-tightest);
+  line-height: 1.35;
+  letter-spacing: -0.005em;
 }
 @utility type-body {
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
 }
-/* Split from type-label (rather than composed with Tailwind's normal-case/
-   uppercase) since Tailwind's utility output order can't be relied on to
-   let a caller's normal-case win over this utility's own text-transform. */
+@utility type-small {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+/* Small metadata (counts, dates, story points): sans, tabular numerals. */
 @utility type-label {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-family: var(--font-sans);
+  font-size: 12px;
   font-weight: 500;
   line-height: 1.3;
-  letter-spacing: var(--tracking-label);
+  font-variant-numeric: tabular-nums;
 }
+/* Section labels (sidebar groups, "BACKLOG", table group headers). */
 @utility type-label-overline {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.3;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
+}
+/* Issue keys (KPT-12): the one place mono stays — it is literal data. */
+@utility type-key {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes kp-blink {
@@ -220,78 +267,209 @@
 @keyframes kp-rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
+@keyframes kp-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes kp-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes kp-shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+.kp-anim-pop {
+  animation: kp-pop 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top center;
+}
+.kp-anim-fade {
+  animation: kp-fade 140ms ease-out;
+}
+.kp-skeleton {
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--surface3) 25%, var(--surface2) 50%, var(--surface3) 75%);
+  background-size: 200% 100%;
+  animation: kp-shimmer 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kp-anim-pop,
+  .kp-anim-fade,
+  .kp-skeleton {
+    animation: none;
+  }
+}
 
+html,
+body {
+  height: 100%;
+}
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   text-wrap: pretty;
+  caret-color: var(--accent);
+}
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+a {
+  text-underline-offset: 3px;
+}
+/* One visible keyboard-focus treatment for every control that doesn't
+   draw its own. Mouse focus stays quiet (focus-visible only). */
+:where(a, button, [role="button"], [role="menuitem"], [role="option"], [role="tab"], summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text3);
+  opacity: 1;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
 }
 
+@layer components {
 /* Native <select> with the OS arrow suppressed in favor of a themed chevron
-   — keeps native keyboard/screen-reader select semantics (better than a
-   custom listbox would be) while matching the hand-styled system visually. */
+   — keeps native keyboard/screen-reader select semantics while matching the
+   system visually. */
 .kp-select {
   appearance: none;
   -webkit-appearance: none;
   background-repeat: no-repeat;
   background-position: right 8px center;
-  background-size: 11px;
+  background-size: 12px;
   padding-right: 26px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238f9198' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2375736d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 [data-theme="dark"] .kp-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2370757e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8c86' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
-/* Shared bordered field control for plain <input>/<select> property rows
-   (issue sidebar, custom properties). These were hand-repeated per field
-   with no :focus state at all — centralizing here gives every field a
-   real focus ring in one place instead of ten near-identical class strings. */
-.kp-field {
-  border-radius: 7px;
+/* Standard text field: inputs, selects, textareas in forms and panels.
+   32px tall, 6px radius, accent focus ring. */
+.kp-input {
+  width: 100%;
+  min-height: 32px;
+  border-radius: 6px;
   border: 1px solid var(--border2);
   /* background-color, not the `background` shorthand: the shorthand resets
-     unmentioned sub-properties to their initial values, which silently wiped
-     out .kp-select's background-image/-repeat/-position/-size (its chevron)
-     on every select carrying both classes — background-color alone can't
-     touch those siblings. */
+     .kp-select's background-image chevron on elements carrying both. */
   background-color: var(--surface);
-  padding: 4px 8px;
-  font-size: 12.5px;
+  color: var(--text);
+  padding: 5px 10px;
+  font-size: 14px;
+  line-height: 20px;
   outline: none;
-  transition: border-color 0.1s ease;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+textarea.kp-input {
+  resize: vertical;
+}
+.kp-input:hover:not(:focus):not(:disabled) {
+  border-color: var(--text3);
+}
+.kp-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.kp-input:disabled {
+  opacity: 0.6;
+  background-color: var(--surface2);
+}
+.kp-input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.kp-input.kp-select {
+  padding-right: 28px;
+}
+
+/* Compact bordered field (dense property rows, toolbars). */
+.kp-field {
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+  background-color: var(--surface);
+  color: var(--text);
+  padding: 3px 8px;
+  font-size: 13px;
+  line-height: 20px;
+  outline: none;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .kp-field:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .kp-field:hover:not(:focus) {
-  border-color: var(--border);
+  border-color: var(--text3);
 }
-/* .kp-field's shorthand `padding` is declared after .kp-select in source
-   order, so on an element carrying both classes it would otherwise clobber
-   .kp-select's own padding-right (reserved for the chevron icon) even
-   though .kp-select is the more semantically specific one — pin it back
-   with a same-file, higher-specificity combined selector rather than
-   depending on declaration order. */
 .kp-field.kp-select {
   padding-right: 26px;
 }
 
-/* Colored, pill-shaped native <select> (issue detail's status control) —
-   background/text color comes from the status's own DB-stored hex via an
-   inline style, since workflow statuses are admin-configurable and can't
-   be limited to the six fixed Badge tones. */
+/* "Quiet" field: borderless until hovered/focused — Jira's inline-edit
+   look for detail panels and table cells. */
+.kp-quiet {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--text);
+  padding: 4px 8px;
+  outline: none;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+.kp-quiet:hover:not(:focus):not(:disabled) {
+  background-color: var(--surface3);
+}
+.kp-quiet:focus {
+  background-color: var(--surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Colored, pill-shaped native <select> (status control) — background/text
+   come from the status's own DB-stored color via inline style. */
 .kp-pill-select {
   border: none;
   cursor: pointer;
@@ -305,17 +483,20 @@ body {
   cursor: default;
 }
 
-/* BlockNote bridge (LiteEditor / RichTextView): reroutes @blocknote/react's
-   own CSS custom properties onto Kompast's tokens so the description and
-   comment editors read as part of this system instead of BlockNote's stock
-   shadcn skin (Inter font, generic grays). Unscoped since every
-   BlockNoteView in the app carries the same drift and these are
-   colors/radii only — never layout — so there's no risk to DocEditor's
-   own full-document layout. --bn-colors-* already track light/dark for
-   free since they resolve through this file's own :root/[data-theme] vars. */
+}
+
+/* Native checkbox/radio tint. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+/* BlockNote bridge (LiteEditor / RichTextView / DocEditor): reroutes
+   @blocknote/react's own CSS custom properties onto Kompast tokens.
+   Colors/radii only — never layout. */
 .bn-root {
   --bn-font-family: var(--font-sans);
-  --bn-border-radius: 7px;
+  --bn-border-radius: 6px;
   --bn-colors-editor-text: var(--text);
   --bn-colors-editor-background: transparent;
   --bn-colors-menu-text: var(--text);
@@ -324,7 +505,7 @@ body {
   --bn-colors-tooltip-background: var(--text);
   --bn-colors-hovered-text: var(--text);
   --bn-colors-hovered-background: var(--surface3);
-  --bn-colors-selected-text: var(--accent);
+  --bn-colors-selected-text: var(--accent-text);
   --bn-colors-selected-background: var(--accent-soft);
   --bn-colors-disabled-text: var(--text3);
   --bn-colors-disabled-background: var(--surface3);
@@ -333,51 +514,25 @@ body {
   --bn-colors-side-menu: var(--text3);
 }
 
-/* @blocknote/shadcn's menus/toolbars/dropdown items also use Tailwind's
-   accent/accent-foreground utilities (bg-accent, aria-selected:bg-accent,
-   hover:bg-accent) for their hovered/selected row — but --color-accent is
-   left at its global Cobalt Focus value above deliberately, unlike every
-   other shadcn token: it's the same "accent" the @mention/issue-mention
-   pills (IssueMentionInlineContent/UserMentionInlineContent) use for their
-   brand-blue chip, and those pills render inside this exact BlockNote
-   document — the editable content and every floating menu share the same
-   .bn-shadcn ancestor (BlockNote portals menus as children of its own
-   .bn-container, not document.body). Redefining --color-accent globally
-   would recolor the mention chips gray along with the menus. Scoped
-   instead to just the popover/dropdown containers below, so only a
-   hovered/selected MENU row gets the neutral tint — shadcn's "accent" here
-   is a hover-fill role, not a brand color, and painting it solid Cobalt
-   Focus on every row you arrow through would be exactly the wash of blue
-   the One Loud Color Rule bans. (Redeclaring --color-accent, not the bare
-   --accent runtime token, is what makes this actually reach descendants —
-   see the comment on --color-background above for why the bare-token
-   version silently didn't.) */
+/* @blocknote/shadcn's menu rows use bg-accent for their hovered/selected
+   state. --color-accent stays the brand blue globally (mention chips inside
+   the document use it), so only the popover/dropdown containers get the
+   neutral hover fill. */
 .bn-shadcn [role="listbox"],
 .bn-shadcn [role="menu"] {
   --color-accent: var(--surface3);
   --color-accent-foreground: var(--text);
 }
 
-/* Slash menu, @mention menu, and the formatting toolbar's dropdowns
-   (block-type select, color picker) all render through @floating-ui/react
-   or Base UI positioners that set an inline max-height reactively — but
-   only on their own wrapper element, not on the scrollable content div
-   nested inside it. Without an explicit bound on the content div itself,
-   it sizes to its full item list and can render past the wrapper's clipped
-   box instead of scrolling internally. Belt-and-suspenders on top of the
-   @source fix above (which restores Tailwind's own overflow-y-auto /
-   max-h-(--available-height) utilities): guarantee every such popup stays
-   within the viewport and scrolls, regardless of which mechanism applies. */
+/* Keep every BlockNote popup inside the viewport and scrolling. */
 .bn-shadcn [role="listbox"],
 .bn-shadcn [role="menu"] {
   max-height: min(70vh, 420px);
   overflow-y: auto;
 }
 
-/* .kp-lite-editor scopes the layout-sensitive fixes (BlockNote copies
-   `className` onto its floating-menu portal too, so this reaches both):
-   the 54px doc-margin and 16px/Inter prose defaults only make sense for a
-   full document page, not a small inline description/comment field. */
+/* .kp-lite-editor: small inline description/comment editors. BlockNote
+   copies `className` onto its floating-menu portal too, so this reaches both. */
 .kp-lite-editor .bn-editor {
   padding-inline: 0;
 }
@@ -385,31 +540,19 @@ body {
 .kp-lite-editor .bn-default-styles p,
 .kp-lite-editor .bn-default-styles li {
   font-family: var(--font-sans);
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.55;
 }
 .kp-lite-editor .bn-block-content:has(.ProseMirror-trailingBreak:only-child):after {
   color: var(--text3);
   font-style: normal;
 }
 
-/* Read-only description/comment rendering only (see RichTextView.tsx's
-   extra "kp-lite-editor-readonly" class — LiteEditor's active editing
-   surface intentionally keeps BlockNote's native compact 6px block gap,
-   which suits a denser editing interaction). BlockNote's own CSS gives
-   blocks only 6px total gap (.bn-block-content's 3px top+bottom padding),
-   tuned for its compact editing UI, not for reading prose at this
-   component's 12.5px/1.5 line-height (~18.75px line box) — multi-paragraph
-   descriptions read as having no gap at all. +8px brings the total gap to
-   ~14px (~0.75x line-height), enough to read as intentional spacing. */
+/* Read-only description/comment rendering: a little more air between
+   blocks than BlockNote's compact 6px editing gap. */
 .kp-lite-editor-readonly .bn-block-outer + .bn-block-outer {
-  margin-top: 8px;
+  margin-top: 6px;
 }
-/* Consecutive items of the *same* list keep BlockNote's native tight gap —
-   only a paragraph-after-list / list-after-paragraph / list-type-change
-   boundary gets the wider spacing above. data-prev-type/data-content-type
-   are BlockNote's own attributes (already used for its list-numbering CSS
-   in @blocknote/core/src/editor/Block.css). */
 .kp-lite-editor-readonly .bn-block-outer[data-prev-type="bulletListItem"]:has(> .bn-block > .bn-block-content[data-content-type="bulletListItem"]),
 .kp-lite-editor-readonly .bn-block-outer[data-prev-type="numberedListItem"]:has(> .bn-block > .bn-block-content[data-content-type="numberedListItem"]),
 .kp-lite-editor-readonly .bn-block-outer[data-prev-type="checkListItem"]:has(> .bn-block > .bn-block-content[data-content-type="checkListItem"]) {
@@ -417,18 +560,24 @@ body {
 }
 
 ::selection {
-  background: var(--accent-soft);
-  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: inherit;
+}
+* {
+  scrollbar-color: var(--border2) transparent;
 }
 *::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
 }
 *::-webkit-scrollbar-thumb {
   background: var(--border2);
-  border-radius: 9px;
-  border: 2px solid transparent;
+  border-radius: 10px;
+  border: 3px solid transparent;
   background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text3);
 }
 *::-webkit-scrollbar-track {
   background: transparent;

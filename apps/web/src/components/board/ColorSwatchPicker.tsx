@@ -1,74 +1,81 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { HexColorPicker, HexColorInput } from "react-colorful";
+import { Check, ChevronDown } from "lucide-react";
+import { Popover } from "@kompast/ui/Popover";
 import { useTranslation } from "@kompast/i18n";
+import { cn } from "@/lib/cn";
 
 /**
- * Theme-variable tokens (not raw hex) so these 6 presets keep adapting to
- * light/dark mode — see packages/ui/src/theme.css. A custom pick below
- * writes a raw #rrggbb hex instead, which won't adapt; an accepted,
- * explicit tradeoff for choosing something outside the theme palette.
+ * Theme-variable tokens (not raw hex) so these presets keep adapting to
+ * light/dark mode — see packages/ui/src/theme.css. A custom pick writes a
+ * raw #rrggbb hex instead, which won't adapt; an accepted, explicit
+ * tradeoff for choosing something outside the theme palette.
  */
-export const COLUMN_TONES = ["var(--indigo)", "var(--violet)", "var(--amber)", "var(--green)", "var(--danger)", "var(--text3)"];
+export const COLUMN_TONES = ["var(--indigo)", "var(--accent)", "var(--violet)", "var(--amber)", "var(--green)", "var(--danger)", "var(--text3)"];
 
-const DEFAULT_CUSTOM_COLOR = "#6366f1";
+const DEFAULT_CUSTOM_COLOR = "#5b6ee1";
 
-export function ColorSwatchPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+/** One swatch button showing the current color; presets + a custom picker in a popover. */
+export function ColorSwatchPicker({ value, onChange, label }: { value: string; onChange: (color: string) => void; label?: string }) {
   const { t } = useTranslation("board");
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const isCustom = !COLUMN_TONES.includes(value);
   const [draft, setDraft] = useState(isCustom ? value : DEFAULT_CUSTOM_COLOR);
 
-  useEffect(() => {
-    if (!open) return;
-    function onOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
-  }, [open]);
-
   return (
-    <span className="flex items-center gap-1">
-      {COLUMN_TONES.map((tone) => (
-        <button
-          key={tone}
-          type="button"
-          onClick={() => onChange(tone)}
-          title={tone}
-          className="h-[15px] w-[15px] flex-none rounded-full"
-          style={{ background: tone, boxShadow: value === tone ? "0 0 0 2px var(--border-2)" : undefined }}
-        />
-      ))}
-      <span ref={ref} className="relative">
-        <button
-          type="button"
-          title={t("colorPicker.customTitle")}
-          onClick={() => {
-            setDraft(isCustom ? value : DEFAULT_CUSTOM_COLOR);
-            setOpen((v) => !v);
-          }}
-          className="h-[15px] w-[15px] flex-none rounded-full border border-border-2"
-          style={{
-            background: isCustom ? value : "conic-gradient(from 0deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)",
-            boxShadow: isCustom ? "0 0 0 2px var(--border-2)" : undefined,
-          }}
-        />
-        {open && (
-          <div className="absolute left-0 top-[22px] z-10 w-[180px] rounded-[10px] border border-border bg-surface p-2.5 shadow-kp">
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        aria-label={label ?? t("colorPicker.chooseColor")}
+        title={label ?? t("colorPicker.chooseColor")}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => {
+          setDraft(isCustom ? value : DEFAULT_CUSTOM_COLOR);
+          setOpen((v) => !v);
+        }}
+        className="inline-flex h-7 flex-none items-center gap-1 rounded-[6px] border border-border-2 bg-surface px-1.5 hover:border-text-3"
+      >
+        <span className="h-4 w-4 rounded-[4px]" style={{ background: value }} />
+        <ChevronDown size={12} strokeWidth={2} className="text-text-3" />
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} width={216} ariaLabel={t("colorPicker.chooseColor")}>
+        <div className="flex flex-col gap-2.5 p-2.5">
+          <div className="grid grid-cols-7 gap-1.5">
+            {COLUMN_TONES.map((tone) => (
+              <button
+                key={tone}
+                type="button"
+                onClick={() => {
+                  onChange(tone);
+                  setOpen(false);
+                }}
+                aria-label={tone.replace(/var\(--|\)/g, "")}
+                className={cn("grid h-6 w-6 place-items-center rounded-[5px] text-white ring-offset-2 ring-offset-surface", value === tone && "ring-2 ring-text-3")}
+                style={{ background: tone }}
+              >
+                {value === tone && <Check size={13} strokeWidth={3} />}
+              </button>
+            ))}
+          </div>
+          <div className="border-t border-border pt-2.5">
+            <p className="mb-1.5 text-[12px] font-medium text-text-3">{t("colorPicker.customTitle")}</p>
             <HexColorPicker color={draft} onChange={setDraft} onChangeEnd={onChange} style={{ width: "100%", height: 120 }} />
             <HexColorInput
               color={draft}
+              aria-label={t("colorPicker.hexLabel")}
               onChange={(hex) => {
                 setDraft(hex);
                 onChange(hex);
               }}
               prefixed
-              className="mt-2 w-full rounded-[7px] border border-border-2 bg-surface px-2 py-1 font-mono text-[12px] outline-none"
+              className="kp-field mt-2 w-full font-mono text-[12.5px]"
             />
           </div>
-        )}
-      </span>
-    </span>
+        </div>
+      </Popover>
+    </>
   );
 }

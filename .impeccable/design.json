@@ -1,143 +1,177 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-05T23:08:18Z",
+  "generatedAt": "2026-09-24T00:00:00Z",
   "title": "Design System: Kompast",
   "extensions": {
     "colorMeta": {
-      "bg": { "role": "neutral", "displayName": "Warm Paper", "canonical": "#f6f4ef", "tonalRamp": ["#191713", "#2e2a24", "#47413a", "#6b6459", "#948c7e", "#bdb6a8", "#ded8cd", "#f6f4ef"] },
-      "surface": { "role": "neutral", "displayName": "Surface White", "canonical": "#ffffff" },
-      "surface-2": { "role": "neutral", "displayName": "Surface Cream", "canonical": "#fbf9f5" },
-      "surface-3": { "role": "neutral", "displayName": "Surface Tan", "canonical": "#efece4" },
-      "text": { "role": "neutral", "displayName": "Ink Black", "canonical": "#191a1d", "tonalRamp": ["#191a1d", "#2b2d31", "#45484d", "#63666c", "#85888e", "#a9acb1", "#cdd0d3", "#eceef0"] },
-      "text-2": { "role": "neutral", "displayName": "Ink Gray", "canonical": "#5b5d63" },
-      "text-3": { "role": "neutral", "displayName": "Ink Mist", "canonical": "#8f9198" },
-      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "#e4e0d8" },
-      "border-2": { "role": "neutral", "displayName": "Hairline Deep", "canonical": "#d3cec3" },
-      "accent": { "role": "primary", "displayName": "Cobalt Focus", "canonical": "#2f6fea", "tonalRamp": ["#0a1f4a", "#12326e", "#1a4590", "#2258b5", "#2f6fea", "#5f92f0", "#9bbdf7", "#d6e6fc"] },
-      "accent-soft": { "role": "primary", "displayName": "Cobalt Focus Soft", "canonical": "#e8f0fe" },
-      "indigo": { "role": "secondary", "displayName": "Deep Navy", "canonical": "#1b3a6b", "tonalRamp": ["#0a1526", "#11213d", "#1b3a6b", "#2c5490", "#4570b3", "#7098cf", "#a7c1e6", "#dbe7f5"] },
-      "indigo-soft": { "role": "secondary", "displayName": "Deep Navy Soft", "canonical": "#e7eaf3" },
-      "green": { "role": "tertiary", "displayName": "Ledger Green", "canonical": "#1c7a54", "tonalRamp": ["#0a2e20", "#113f2c", "#1c7a54", "#2a9b6c", "#4fb98a", "#82d1ad", "#b8e6cf", "#e3f5ec"] },
-      "green-soft": { "role": "tertiary", "displayName": "Ledger Green Soft", "canonical": "#dff0e8" },
-      "amber": { "role": "tertiary", "displayName": "Ledger Amber", "canonical": "#9a6410", "tonalRamp": ["#2e1e05", "#4a3008", "#6f480c", "#9a6410", "#c1841f", "#dba852", "#edc98d", "#f9e6c4"] },
-      "amber-soft": { "role": "tertiary", "displayName": "Ledger Amber Soft", "canonical": "#faedd4" },
-      "violet": { "role": "tertiary", "displayName": "Ledger Violet", "canonical": "#584a86", "tonalRamp": ["#1c1730", "#2c2450", "#423670", "#584a86", "#7565a3", "#9c8fc0", "#c3badd", "#e6e1f2"] },
-      "violet-soft": { "role": "tertiary", "displayName": "Ledger Violet Soft", "canonical": "#ebe7f6" },
-      "danger": { "role": "danger", "displayName": "Ledger Danger", "canonical": "#c9432a", "tonalRamp": ["#3a0f07", "#591808", "#7d240d", "#a53318", "#c9432a", "#dd7057", "#eda491", "#f8d9d0"] },
-      "danger-soft": { "role": "danger", "displayName": "Ledger Danger Soft", "canonical": "#fae9e4" }
+      "bg": { "role": "neutral", "displayName": "Workbench Paper", "canonical": "#fbfbfa", "dark": "#1f1f1e", "tonalRamp": ["#0b0b0b", "#252524", "#424241", "#616160", "#828281", "#a5a5a4", "#c9c9c8", "#eeeeed"] },
+      "surface": { "role": "neutral", "displayName": "Card White", "canonical": "#ffffff", "dark": "#272726" },
+      "surface2": { "role": "neutral", "displayName": "Sidebar Linen", "canonical": "#f6f5f2", "dark": "#232322" },
+      "surface3": { "role": "neutral", "displayName": "Hover Linen", "canonical": "#efede9", "dark": "#2f2f2d" },
+      "surface4": { "role": "neutral", "displayName": "Pressed Linen", "canonical": "#e6e4df", "dark": "#393936" },
+      "text": { "role": "neutral", "displayName": "Graphite Ink", "canonical": "#2f2e2a", "dark": "#dfded9", "tonalRamp": ["#0c0b08", "#262521", "#43423e", "#62615d", "#83827e", "#a6a5a0", "#cac9c4", "#f0eee9"] },
+      "text2": { "role": "neutral", "displayName": "Slate Ink", "canonical": "#605e59", "dark": "#aba9a3" },
+      "text3": { "role": "neutral", "displayName": "Stone Ink", "canonical": "#75736d", "dark": "#8e8c86" },
+      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "#eae8e3", "dark": "#323230" },
+      "border2": { "role": "neutral", "displayName": "Hairline Deep", "canonical": "#dbd8d1", "dark": "#41413d" },
+      "accent": { "role": "primary", "displayName": "Calm Cobalt", "canonical": "#3a70dc", "oklch": "oklch(56.7% 0.175 262.3)", "dark": "#6f9bef", "tonalRamp": ["#010824", "#051f58", "#0d3992", "#2559c3", "#457cea", "#67a1ff", "#94c8ff", "#caefff"] },
+      "accent-hover": { "role": "primary", "displayName": "Cobalt Pressed", "canonical": "#3063c8", "dark": "#83aaf2" },
+      "accent-text": { "role": "primary", "displayName": "Cobalt Ink", "canonical": "#2d62c9", "dark": "#8bb0f3" },
+      "accent-soft": { "role": "primary", "displayName": "Cobalt Wash", "canonical": "#ebf1fc", "dark": "#22314d" },
+      "indigo": { "role": "secondary", "displayName": "Compass Navy", "canonical": "#2a4674", "oklch": "oklch(39.6% 0.085 259.9)", "dark": "#a9bee9", "tonalRamp": ["#050b18", "#15253e", "#29426a", "#446192", "#6483b6", "#86a6db", "#aecbf9", "#dbf0ff"] },
+      "indigo-soft": { "role": "secondary", "displayName": "Navy Mist", "canonical": "#e9ecf3", "dark": "#252b3a" },
+      "green": { "role": "tertiary", "displayName": "Ledger Green", "canonical": "#2d7a58", "oklch": "oklch(52.2% 0.093 161.3)", "dark": "#6bb893", "tonalRamp": ["#000f07", "#012d1c", "#034f33", "#237150", "#499470", "#6cb792", "#9bdab9", "#cffbe3"] },
+      "green-soft": { "role": "tertiary", "displayName": "Green Mist", "canonical": "#e4f1ea", "dark": "#1d2d25" },
+      "amber": { "role": "tertiary", "displayName": "Ochre", "canonical": "#93661d", "oklch": "oklch(54.5% 0.103 74.6)", "dark": "#d4ab62", "tonalRamp": ["#140800", "#371f00", "#5e3900", "#835703", "#a67833", "#cb9b57", "#ebc188", "#ffe9c2"] },
+      "amber-soft": { "role": "tertiary", "displayName": "Ochre Mist", "canonical": "#f7eedc", "dark": "#302819" },
+      "violet": { "role": "tertiary", "displayName": "Muted Violet", "canonical": "#6953b3", "oklch": "oklch(51.3% 0.146 290.9)", "dark": "#ac9ae0", "tonalRamp": ["#0c061f", "#27194d", "#453080", "#644dad", "#846fd2", "#a693f9", "#c9bbff", "#eee5ff"] },
+      "violet-soft": { "role": "tertiary", "displayName": "Violet Mist", "canonical": "#efecf8", "dark": "#2b2540" },
+      "danger": { "role": "danger", "displayName": "Clay Red", "canonical": "#bf4a3b", "oklch": "oklch(56.4% 0.154 29.9)", "dark": "#e38a7a", "tonalRamp": ["#1d0201", "#490905", "#7a160d", "#a73326", "#ce5848", "#f67c69", "#ffa896", "#ffd9cb"] },
+      "danger-soft": { "role": "danger", "displayName": "Clay Mist", "canonical": "#f8eae7", "dark": "#3a2420" }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display (Instrument Serif)", "purpose": "Hero/landing headlines only — login hero, empty-state welcome. Never used for UI chrome." },
-      "title": { "displayName": "Title", "purpose": "Page/section headings, e.g. \"Sign in to Kompast\"." },
-      "body": { "displayName": "Body", "purpose": "The overwhelming majority of UI text — buttons, inputs, table cells, descriptions." },
-      "label": { "displayName": "Label / Mono Metadata", "purpose": "Badges, avatar initials, section overlines, and — in JetBrains Mono — issue keys, counts, timestamps, story points." }
+      "display": { "displayName": "Display", "purpose": "Largest product heading (type-display)." },
+      "doc-title": { "displayName": "Doc Title", "purpose": "Notion-style page title under the 64px emoji icon; auto-growing textarea." },
+      "title": { "displayName": "Title", "purpose": "PageHeader titles on settings, teams, tokens, docs index (type-title)." },
+      "headline": { "displayName": "Headline", "purpose": "Card headers, empty-state and dialog titles (type-headline)." },
+      "doc-body": { "displayName": "Doc Body", "purpose": "Reading column inside .kp-doc; headings at 1.875/1.5/1.25em, weight 650." },
+      "body": { "displayName": "Body", "purpose": "App default: rows, fields, buttons, descriptions (type-body)." },
+      "small": { "displayName": "Small", "purpose": "Hints, descriptions, metadata lines (type-small)." },
+      "label": { "displayName": "Label", "purpose": "Counts, dates, story points, tabular numerals (type-label)." },
+      "label-overline": { "displayName": "Label Overline", "purpose": "Uppercase section labels inside menus (type-label-overline)." },
+      "key": { "displayName": "Issue Key", "purpose": "JetBrains Mono, the only mono use besides code: issue keys like KPT-12 (type-key)." }
     },
     "shadows": [
-      { "name": "ambient-overlay", "value": "0 1px 2px rgba(25,26,29,0.06), 0 8px 20px -10px rgba(25,26,29,0.16)", "purpose": "The only shadow in the system. Floating/overlay surfaces only: dropdowns, popovers, notification panel, version history. Dark theme: 0 1px 2px rgba(0,0,0,0.5), 0 10px 28px -12px rgba(0,0,0,0.7)." }
+      { "name": "shadow-card", "value": "0 1px 1px rgba(40,38,33,0.05), 0 0 0 1px rgba(40,38,33,0.06)", "dark": "0 0 0 1px rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.35)", "purpose": "Kanban cards at rest, active pill tab, toggle knobs, canvas controls." },
+      { "name": "shadow-lift", "value": "0 0 0 1px rgba(40,38,33,0.05), 0 10px 24px -6px rgba(40,38,33,0.22)", "dark": "0 0 0 1px rgba(255,255,255,0.07), 0 12px 28px -6px rgba(0,0,0,0.7)", "purpose": "Kanban card hover and drag; backlog drag preview." },
+      { "name": "shadow-kp", "value": "0 0 0 1px rgba(40,38,33,0.05), 0 4px 10px -2px rgba(40,38,33,0.08), 0 16px 36px -12px rgba(40,38,33,0.18)", "dark": "0 0 0 1px rgba(255,255,255,0.05), 0 4px 10px -2px rgba(0,0,0,0.45), 0 16px 36px -12px rgba(0,0,0,0.6)", "purpose": "Floating surfaces: popovers, menus, dialogs, toasts, mobile sidebar drawer." },
+      { "name": "focus-halo", "value": "0 0 0 3px var(--accent-soft)", "purpose": "Focused fields, search fields, pill selects." }
     ],
     "motion": [
-      { "name": "opacity-hover", "value": "transition-opacity, hover:opacity-90", "purpose": "Default button hover — an opacity dip, never a color or position shift." },
-      { "name": "sidebar-width", "value": "transition: width 200ms ease-out (gated behind mount)", "purpose": "Sidebar rail/tree collapse toggle — only animates on a user-triggered change, never on initial render." },
-      { "name": "kp-blink", "value": "@keyframes kp-blink { 0%,100% { opacity:1 } 50% { opacity:.25 } } 2.2s infinite", "purpose": "Status/presence dot pulse (e.g. tenant-detected indicator on login)." },
-      { "name": "kp-rise", "value": "@keyframes kp-rise { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }", "purpose": "Entrance animation for newly-appearing content blocks (e.g. AI-streamed responses)." }
+      { "name": "kp-pop", "value": "140ms cubic-bezier(0.16, 1, 0.3, 1); from opacity 0, translateY(-2px) scale(0.985)", "purpose": "Popover, menu, dialog, toast entrance." },
+      { "name": "kp-fade", "value": "140ms ease-out opacity", "purpose": "Scrims behind dialogs and the mobile drawer." },
+      { "name": "kp-shimmer", "value": "1.4s linear infinite gradient sweep surface3/surface2", "purpose": "Skeleton rows." },
+      { "name": "control-transition", "value": "100-120ms ease on background-color, border-color, box-shadow", "purpose": "Buttons and fields." },
+      { "name": "sidebar-width", "value": "200ms ease-out width/transform, gated behind mount", "purpose": "Sidebar hide/show and mobile drawer slide." },
+      { "name": "reduced-motion", "value": "@media (prefers-reduced-motion: reduce) { animation: none }", "purpose": "Disables pop, fade, and shimmer." }
     ],
-    "breakpoints": []
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px", "purpose": "Sidebar switches from overlay drawer to static 248px column." },
+      { "name": "lg", "value": "1024px", "purpose": "Issue detail gains its 320px field column; sign-in splits into brand panel + form." }
+    ]
   },
   "components": [
     {
-      "name": "Button — Primary",
+      "name": "Button: Primary",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Highest-frequency call-to-action. Cobalt Focus fill, white semibold text.",
-      "html": "<button class=\"ds-btn ds-btn-primary\">Save changes</button>",
-      "css": ".ds-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius:7px; font-size:13px; font-weight:500; padding:6px 12px; border:none; cursor:pointer; transition:opacity .15s; } .ds-btn:disabled { opacity:.5; pointer-events:none; } .ds-btn-primary { background:var(--accent,#2f6fea); color:#fff; font-weight:600; } .ds-btn-primary:hover { opacity:.9; }"
+      "description": "The one main action per view (Create, Save).",
+      "html": "<button class=\"ds-btn ds-btn-primary\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M12 5v14M5 12h14\"/></svg>Create</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 6px; font-family: var(--font-sans, system-ui); font-size: 14px; font-weight: 500; border: none; cursor: pointer; transition: background-color .1s, border-color .1s, color .1s; } .ds-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; } .ds-btn-primary { background: var(--accent); color: #fff; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.12); } .ds-btn-primary:hover { background: var(--accent-hover); }"
     },
     {
-      "name": "Button — Dark",
-      "kind": "button",
-      "refersTo": "button-dark",
-      "description": "The single highest-emphasis action per screen (e.g. \"Continue with Microsoft\").",
-      "html": "<button class=\"ds-btn ds-btn-dark\">Continue with Microsoft</button>",
-      "css": ".ds-btn-dark { background:var(--text,#191a1d); color:var(--bg,#f6f4ef); font-weight:600; border-radius:7px; font-size:14.5px; padding:14px 12px; border:none; cursor:pointer; transition:opacity .15s; } .ds-btn-dark:hover { opacity:.9; }"
-    },
-    {
-      "name": "Button — Outline",
+      "name": "Button: Outline",
       "kind": "button",
       "refersTo": "button-outline",
-      "description": "Secondary action — hairline border, fills to the tertiary surface on hover.",
-      "html": "<button class=\"ds-btn ds-btn-outline\">Cancel</button>",
-      "css": ".ds-btn-outline { background:var(--surface,#fff); color:var(--text-2,#5b5d63); border:1px solid var(--border-2,#d3cec3); border-radius:7px; font-size:13px; font-weight:500; padding:6px 12px; cursor:pointer; transition:background .15s; } .ds-btn-outline:hover { background:var(--surface-3,#efece4); } .ds-btn-outline:focus-visible { outline:2px solid var(--accent,#2f6fea); outline-offset:1px; }"
+      "description": "Default button variant for secondary actions.",
+      "html": "<button class=\"ds-btn-outline\">Cancel</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border2); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color .1s; } .ds-btn-outline:hover { background: var(--surface2); } .ds-btn-outline:active { background: var(--surface3); } .ds-btn-outline:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }"
     },
     {
-      "name": "Badge — Accent",
+      "name": "Button: Ghost",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Toolbar and row actions; IconButton is its square 28px form.",
+      "html": "<button class=\"ds-btn-ghost\">Filter</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 6px; border: none; background: transparent; color: var(--text2); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color .1s, color .1s; } .ds-btn-ghost:hover { background: var(--surface3); color: var(--text); } .ds-btn-ghost:active { background: var(--surface4); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard bordered field (kp-input) with accent border and Cobalt Wash halo on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"Issue summary\" />",
+      "css": ".ds-input { width: 280px; min-height: 32px; border-radius: 6px; border: 1px solid var(--border2); background: var(--surface); color: var(--text); padding: 5px 10px; font-size: 14px; line-height: 20px; outline: none; transition: border-color .12s, box-shadow .12s; } .ds-input::placeholder { color: var(--text3); } .ds-input:hover:not(:focus) { border-color: var(--text3); } .ds-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }"
+    },
+    {
+      "name": "Status Lozenge",
       "kind": "chip",
-      "refersTo": "badge-accent",
-      "description": "Full-pill status/role tag. Six tones share this shape; only the color pair changes.",
-      "html": "<span class=\"ds-badge ds-badge-accent\">In Progress</span>",
-      "css": ".ds-badge { display:inline-flex; align-items:center; border-radius:9999px; padding:2px 8px; font-size:10.5px; font-weight:600; } .ds-badge-accent { background:var(--accent-soft,#e8f0fe); color:var(--accent,#2f6fea); }"
+      "refersTo": "lozenge",
+      "description": "Jira-style status label: stored color as text, 14% mix into surface as fill.",
+      "html": "<span class=\"ds-loz\" style=\"--c: var(--text2)\">To do</span> <span class=\"ds-loz\" style=\"--c: var(--accent-text)\">In progress</span> <span class=\"ds-loz\" style=\"--c: var(--green)\">Done</span>",
+      "css": ".ds-loz { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1; color: var(--c); background: color-mix(in srgb, var(--c) 14%, var(--surface)); }"
     },
     {
-      "name": "Avatar",
-      "kind": "custom",
-      "refersTo": "avatar",
-      "description": "Identity chip — reuses the badge tone system as a circle with bold initials instead of a pill with a label.",
-      "html": "<div class=\"ds-avatar\" title=\"Rosdyana Kusuma\">RK</div>",
-      "css": ".ds-avatar { display:grid; place-items:center; width:22px; height:22px; border-radius:9999px; background:var(--violet-soft,#ebe7f6); color:var(--violet,#584a86); font-size:9.5px; font-weight:700; flex:none; }"
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "sidebar-row",
+      "description": "248px Sidebar Linen column with 30px rows; active row on surface4.",
+      "html": "<nav class=\"ds-side\"><div class=\"ds-side-label\">Projects</div><a class=\"ds-side-row ds-active\" href=\"#\"><span class=\"ds-tile\">K</span>Kompast Platform</a><a class=\"ds-side-row\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/></svg>Onboarding guide</a></nav>",
+      "css": ".ds-side { width: 248px; background: var(--surface2); border-right: 1px solid var(--border); padding: 8px; display: flex; flex-direction: column; gap: 1px; } .ds-side-label { height: 28px; display: flex; align-items: center; padding: 8px 8px 0; font-size: 12px; font-weight: 600; color: var(--text3); } .ds-side-row { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font-size: 14px; color: var(--text2); text-decoration: none; transition: background-color .15s, color .15s; } .ds-side-row svg { color: var(--text3); flex: none; } .ds-side-row:hover { background: var(--surface3); color: var(--text); } .ds-side-row.ds-active { background: var(--surface4); color: var(--text); font-weight: 500; } .ds-side-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; } .ds-tile { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--indigo); color: #fff; font-size: 10px; font-weight: 700; }"
     },
     {
-      "name": "Card",
+      "name": "Kanban Card",
       "kind": "card",
-      "refersTo": "card",
-      "description": "Primary container. No shadow at rest — a hairline border is the only separation.",
-      "html": "<div class=\"ds-card\"><p class=\"ds-card-title\">Sprint 14</p><p class=\"ds-card-body\">8 issues · 21 points</p></div>",
-      "css": ".ds-card { background:var(--surface,#fff); border:1px solid var(--border,#e4e0d8); border-radius:12px; padding:16px; } .ds-card-title { font-size:15px; font-weight:600; color:var(--text,#191a1d); margin:0 0 4px; } .ds-card-body { font-size:13px; color:var(--text-2,#5b5d63); margin:0; font-family:'JetBrains Mono',monospace; }"
+      "refersTo": "kanban-card",
+      "description": "Raised card in a 280px lane: type tile, key, title, chips, priority, avatar. Hover lifts.",
+      "html": "<div class=\"ds-lane\"><div class=\"ds-lane-head\">In progress</div><div class=\"ds-kcard\"><p class=\"ds-kcard-title\">Sprint burndown shows wrong scope</p><div class=\"ds-kcard-chips\"><span class=\"ds-chip-epic\">Reporting</span></div><div class=\"ds-kcard-foot\"><span class=\"ds-type\" style=\"background: var(--danger)\"><svg width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2.75\"><circle cx=\"12\" cy=\"13\" r=\"6\"/><path d=\"M12 7V4M6 13H3m18 0h-3\"/></svg></span><span class=\"ds-key\">KPT-42</span><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"var(--danger)\" stroke-width=\"2.5\" style=\"margin-left:auto\"><path d=\"m17 11-5-5-5 5M17 18l-5-5-5 5\"/></svg><span class=\"ds-av\">RK</span></div></div></div>",
+      "css": ".ds-lane { width: 280px; background: var(--surface2); border-radius: 10px; padding: 8px; } .ds-lane-head { padding: 4px 6px 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text2); } .ds-kcard { background: var(--surface); border-radius: 8px; padding: 12px; box-shadow: var(--shadow-card); transition: box-shadow .15s; cursor: grab; } .ds-kcard:hover { box-shadow: var(--shadow-lift); } .ds-kcard-title { margin: 0 0 8px; font-size: 14px; line-height: 1.4; color: var(--text); } .ds-kcard-chips { display: flex; gap: 4px; margin-bottom: 10px; } .ds-chip-epic { border-radius: 4px; background: var(--violet-soft); color: var(--violet); padding: 2px 6px; font-size: 11.5px; font-weight: 500; } .ds-kcard-foot { display: flex; align-items: center; gap: 6px; } .ds-type { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; } .ds-key { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; font-weight: 500; letter-spacing: -0.01em; color: var(--text3); } .ds-av { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 9999px; background: var(--green-soft); color: var(--green); font-size: 9px; font-weight: 600; }"
     },
     {
-      "name": "Tabs",
+      "name": "Tabs: Underline",
       "kind": "nav",
       "refersTo": "tabs",
-      "description": "Underline tabs — a 2px bottom border is the only active-state signal. No pill or fill style.",
-      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-tab-active\">Board</button><button class=\"ds-tab\">Sprint</button><button class=\"ds-tab\">Docs</button></div>",
-      "css": ".ds-tabs { display:flex; gap:2px; } .ds-tab { background:none; border:none; border-bottom:2px solid transparent; padding:8px 12px; font-size:13px; font-weight:500; color:var(--text-2,#5b5d63); cursor:pointer; transition:color .15s; } .ds-tab:hover { color:var(--text,#191a1d); } .ds-tab-active { border-bottom-color:var(--text,#191a1d); color:var(--text,#191a1d); font-weight:600; }"
+      "description": "Page-level view switcher (Board, Backlog, Table) with a 2px accent bar.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-on\">Board</button><button class=\"ds-tab\">Backlog</button><button class=\"ds-tab\">Table <span class=\"ds-count\">12</span></button></div>",
+      "css": ".ds-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); } .ds-tab { position: relative; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: none; background: transparent; border-radius: 4px 4px 0 0; font-size: 14px; color: var(--text2); cursor: pointer; transition: background-color .15s, color .15s; } .ds-tab::after { content: ''; position: absolute; left: 6px; right: 6px; bottom: -1px; height: 2px; border-radius: 9999px; background: transparent; } .ds-tab:hover { background: var(--surface3); color: var(--text); } .ds-tab.ds-on { font-weight: 500; color: var(--accent-text); } .ds-tab.ds-on::after { background: var(--accent); } .ds-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; } .ds-count { border-radius: 9999px; background: var(--surface3); padding: 0 6px; font-size: 11px; font-weight: 600; color: var(--text2); }"
     },
     {
-      "name": "Compass Mark",
+      "name": "Menu / Popover",
       "kind": "custom",
-      "refersTo": "compass-mark",
-      "description": "The brand glyph — a rotated white diamond inside a rounded Cobalt Focus square. The one recurring icon the system treats as sacred; never a bitmap logo file in-app.",
-      "html": "<div class=\"ds-compass\"><div class=\"ds-compass-diamond\"></div></div>",
-      "css": ".ds-compass { display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background:var(--accent,#2f6fea); } .ds-compass-diamond { width:8px; height:8px; border-radius:2px; background:#fff; transform:rotate(45deg); }"
+      "refersTo": "menu-item",
+      "description": "Floating Card White surface with the overlay shadow; 32px rows, accent check on selected.",
+      "html": "<div class=\"ds-pop\" role=\"menu\"><div class=\"ds-menu-label\">Move to</div><button class=\"ds-mi\">Sprint 14</button><button class=\"ds-mi\">Backlog <svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"var(--accent)\" stroke-width=\"2\"><path d=\"M20 6 9 17l-5-5\"/></svg></button><div class=\"ds-sep\"></div><button class=\"ds-mi ds-danger\">Archive</button></div>",
+      "css": ".ds-pop { width: 220px; display: flex; flex-direction: column; padding: 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow); animation: ds-pop 140ms cubic-bezier(0.16,1,0.3,1); } @keyframes ds-pop { from { opacity: 0; transform: translateY(-2px) scale(0.985); } } .ds-menu-label { padding: 8px 8px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text3); } .ds-mi { display: flex; align-items: center; justify-content: space-between; min-height: 32px; padding: 4px 8px; border: none; border-radius: 5px; background: transparent; font-size: 13.5px; color: var(--text); text-align: left; cursor: pointer; } .ds-mi:hover, .ds-mi:focus-visible { background: var(--surface3); outline: none; } .ds-danger { color: var(--danger); } .ds-sep { height: 1px; margin: 4px -4px; background: var(--border); }"
     }
   ],
   "narrative": {
-    "northStar": "The Compass Ledger",
-    "overview": "Kompast reads like a precise paper instrument, not a glossy SaaS dashboard: a warm, off-white ledger page (--bg) holds dense rows of small, exact type, with a single cobalt-blue mark — sampled straight from the compass logo — as the only loud color anywhere in the system. The compass mark itself (a rotated white square inside a rounded-square cobalt tile) recurs as the system's one recognizable shape; everything else is quiet geometry — hairline borders, small pills, a diamond of negative space — never an icon library.\n\nThe system is calm, precise, and unshowy on purpose. It explicitly rejects two easy defaults: it is not a playful, illustrated Notion clone, and it is not a loud, high-contrast dark-mode developer tool. Depth comes from borders and tonal surface steps, not shadow; personality comes from one restrained accent color and a serif/mono contrast in the type, not from decoration. A full dark theme exists ([data-theme=\"dark\"]) as a disciplined token swap — same roles, same contrast relationships, inverted lightness — never a second, separately-art-directed look.",
+    "northStar": "The Workbench",
+    "overview": "Kompast is a workbench, not a showroom: two familiar tools laid on one calm, warm-gray table. Docs take Notion's structure: a labeled 248px sidebar with a page tree and favorites, a big emoji icon over a 40px bold title, and a 16px reading column with generous line height. Tracking takes Jira's vocabulary: status lozenges, colored issue-type tiles, priority chevrons, dense backlog rows inside sprint containers, kanban lanes of raised cards, an inline-editable table, a detail page with quiet click-to-edit fields, a ⌘K palette, and a global Create issue dialog. People who have used either tool daily should feel at home within seconds. That is the point, because this is a migration target.\n\nWhat makes it Kompast and not a clone is the brand pair and the temperature. A deep navy tile holding a cobalt diamond (the compass mark) anchors the shell and the sign-in panel. Everything else sits on warm neutrals tuned for eye comfort: an off-white canvas, warm dark-gray ink, one calm mid-saturation blue, and low-chroma status hues. Dark mode is soft charcoal, never black. Type is the operating system's own UI face, chosen for native rendering and first-class CJK coverage across the English, Bahasa Indonesia, and Traditional Chinese locales. JetBrains Mono appears in exactly one place: issue keys.\n\nDensity is set per surface. Docs breathe; tracking packs rows at 30 to 38px. Chrome stays quiet so that the colored data (lozenges, type tiles, priority arrows, avatars) is what the eye reads first.",
     "keyCharacteristics": [
-      "Warm-paper neutral base with exactly one loud accent color (Cobalt Focus), used sparingly.",
-      "Editorial serif reserved for display headlines only; every other piece of text is small, sans-serif, and dense.",
-      "Mono, uppercase, wide-tracked type marks anything machine-scoped: issue keys, counts, timestamps, section overlines.",
-      "Flat by default — hairline borders separate surfaces; a single soft shadow token appears only on floating overlays.",
-      "No icon library. Every glyph (the compass mark, the blinking status dot, the Microsoft tile) is hand-drawn from primitive shapes."
+      "Warm off-white canvas (never pure white) with white raised surfaces and hairline warm borders.",
+      "One blue accent for action, focus, and selection. Navy is reserved for brand.",
+      "System UI sans for everything, mono only for issue keys.",
+      "Jira-native tracking glyphs: bold uppercase lozenges, 16px type tiles, chevron priorities.",
+      "Soft, layered ambient shadows for cards and overlays only. No hard offsets.",
+      "6px controls, 8px cards and popovers, 10px containers and dialogs.",
+      "Token names are a data contract: colors are stored in the database as `var(--name)` strings."
     ],
     "rules": [
-      { "name": "The One Loud Color Rule", "body": "Cobalt Focus is the only saturated, attention-getting color in the system. Every other hue (indigo, green, amber, violet, danger) is muted and only ever appears in small doses — badges, avatar initials, status dots — never as a large fill.", "section": "colors" },
-      { "name": "The Danger Independence Rule", "body": "Danger/destructive red must never be derived from or share a value with the brand accent again — they were split apart deliberately so a rebrand of one can't accidentally soften the other.", "section": "colors" },
-      { "name": "The Serif-Is-Rare Rule", "body": "Instrument Serif appears only on true display headlines (login hero, empty-state welcome). If a component needs emphasis anywhere else, reach for sans-serif weight/size, never the serif.", "section": "typography" },
-      { "name": "The Mono Metadata Rule", "body": "Any value that is machine-scoped rather than authored prose — an issue key, a count, a timestamp, story points, a section overline — renders in JetBrains Mono, small, and usually in Ink Mist. This is how the system visually distinguishes \"data\" from \"content\" without adding an icon or a label.", "section": "typography" },
-      { "name": "The Overlay-Only Shadow Rule", "body": "If an element sits in normal document flow, it gets a border, not a shadow. Shadow is reserved for anything that visually floats above the page.", "section": "elevation" }
+      { "name": "The Stored Name Rule", "body": "Issue types, statuses, columns, and priority levels store their color in the database as `var(--name)` strings (for example `var(--text3)`, `var(--indigo)`, `var(--amber)`). Retune any value freely. Never rename or remove a token name, or existing data silently loses its color.", "section": "colors" },
+      { "name": "The Comfortable Contrast Rule", "body": "No pure-white canvas and no pure-black text. The canvas is `bg`, the ink is `text`, and dark mode is charcoal with off-white ink. Pure white appears only as the Card White surface and as the mark on saturated fills (primary and danger buttons, type tiles, project tiles).", "section": "colors" },
+      { "name": "The One Blue Rule", "body": "Cobalt means \"act here\" or \"you are here\": action, focus, selection. Navy is the brand, not a second interactive color.", "section": "colors" },
+      { "name": "The Literal Data Rule", "body": "Mono is only for things that are literally data: issue keys and code. Counts, dates, and timestamps use the sans with tabular numerals.", "section": "typography" },
+      { "name": "The One Family Rule", "body": "No webfont display face and no serif. A heading is louder because of weight and size, not because of a different family.", "section": "typography" },
+      { "name": "The Lift Means Movable Rule", "body": "A resting shadow belongs on a kanban card because it can be dragged; hover raises it to Lift. Static containers (Card, sprint containers, tables) use a border or a tonal fill, never a shadow.", "section": "elevation" }
     ],
     "dos": [
-      "Do keep Cobalt Focus rare — one primary action per view, not a wash of blue across the screen.",
-      "Do render machine-scoped values (keys, counts, timestamps, points) in JetBrains Mono per the Mono Metadata Rule, even in a brand-new component.",
-      "Do use a border for anything at rest and reserve shadow-kp strictly for floating overlays.",
-      "Do reuse the existing custom radius scale (7 / 9 / 10 / 12px / full) instead of Tailwind's stock rounded-md/rounded-lg defaults.",
-      "Do treat light/dark as one token swap — never author dark mode as a separately art-directed theme."
+      "Do read every color through its token name (`var(--accent)`, `bg-surface-3`) so light and dark mode follow automatically, and keep the raw names (`--text3`, `--indigo`, `--amber`, …) stable because the database stores them.",
+      "Do keep the canvas off-white (`#fbfbfa`) and the ink warm dark gray (`#2f2e2a`). Dark mode stays charcoal (`#1f1f1e`).",
+      "Do use Calm Cobalt for the one primary action per view, for focus, and for selection. Everything else is outline, ghost, or subtle.",
+      "Do show tracking state with the shared glyphs: Lozenge for status, IssueTypeIcon for type, PriorityIcon for priority, and Avatar for people.",
+      "Do use the quiet field (borderless until hover) for inline, click-to-edit values in detail panels and table cells.",
+      "Do use the system UI stack for all text, and `type-key` (JetBrains Mono) only for issue keys.",
+      "Do match radius to size: 4px for glyphs, 6px for controls, 8px for cards and popovers, 10px for containers and dialogs."
     ],
     "donts": [
-      "Don't use Instrument Serif outside true display headlines — it must stay rare to keep its impact.",
-      "Don't add a shadow to anything resting in normal document flow (cards, sidebars, table rows) — that's the Overlay-Only Shadow Rule.",
-      "Don't pull in an icon library (Lucide, Heroicons, etc.) — every glyph in this system is hand-drawn from primitive shapes; an imported icon set would visually clash immediately.",
-      "Don't let the destructive/danger color drift back toward sharing a value with the brand accent."
+      "Don't rename or delete a color token; retune its value instead.",
+      "Don't use a pure-white page canvas or pure-black text, and don't use black for the dark theme.",
+      "Don't introduce a second display family, serif, or webfont heading face.",
+      "Don't use mono for counts, dates, or timestamps; use tabular sans numerals.",
+      "Don't put resting shadows on static containers, and don't use hard, offset shadows anywhere.",
+      "Don't use Compass Navy as an interactive or hover color. It is the brand mark.",
+      "Don't raise status-hue saturation. The low-chroma tones are a comfort requirement, not a placeholder."
     ]
   }
 }

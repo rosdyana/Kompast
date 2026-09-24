@@ -14,6 +14,8 @@ export function ThemeProvider({ initialTheme, children }: { initialTheme: Theme;
     setTheme((prev) => {
       const next: Theme = prev === "dark" ? "light" : "dark";
       document.documentElement.setAttribute("data-theme", next);
+      // Keep the browser chrome (mobile address bar) matching the canvas.
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", next === "dark" ? "#1f1f1e" : "#fbfbfa");
       document.cookie = `${THEME_COOKIE}=${next}; path=/; max-age=${MAX_AGE}; samesite=lax`;
       return next;
     });

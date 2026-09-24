@@ -6,5 +6,7 @@
   "wrongPassword": "Kata sandi salah.",
   "open": "Buka",
   "loadingEllipsis": "Memuat…",
-  "sharedFooter": "Dibagikan dari Kompast — hanya lihat"
+  "sharedFooter": "Dibagikan dari Kompast · hanya lihat",
+  "emptyPage": "Halaman ini masih kosong.",
+  "poweredBy": "Dibuat dengan Kompast"
 }

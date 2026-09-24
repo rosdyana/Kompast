@@ -5,5 +5,10 @@
   "keyPlaceholder": "專案代碼，例如 KPT",
   "creatingEllipsis": "建立中…",
   "createProject": "建立專案",
-  "createFailed": "建立專案失敗"
+  "createFailed": "建立專案失敗",
+  "teamLabel": "團隊",
+  "nameLabel": "專案名稱",
+  "keyLabel": "代碼",
+  "keyHint": "議題代碼的前綴，例如 {{key}}-12。最多 10 個字元。",
+  "projects": "專案"
 }

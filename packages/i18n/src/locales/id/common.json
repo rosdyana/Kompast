@@ -4,5 +4,18 @@
   "logOut": "Keluar",
   "notFoundTitle": "Halaman tidak ditemukan",
   "notFoundSubtext": "Halaman yang Anda cari tidak ada atau mungkin telah dipindahkan.",
-  "notFoundGoHome": "Kembali ke beranda"
+  "notFoundGoHome": "Kembali ke beranda",
+  "save": "Simpan",
+  "cancel": "Batal",
+  "delete": "Hapus",
+  "edit": "Ubah",
+  "close": "Tutup",
+  "loading": "Memuat…",
+  "saving": "Menyimpan…",
+  "retry": "Coba lagi",
+  "none": "Tidak ada",
+  "more": "Lainnya",
+  "copyLink": "Salin tautan",
+  "linkCopied": "Tautan disalin",
+  "somethingWentWrong": "Terjadi kesalahan."
 }

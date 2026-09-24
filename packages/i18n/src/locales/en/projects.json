@@ -9,5 +9,10 @@
   "noEligibleTeamTitle": "You need a team first",
   "noEligibleTeamSuperAdmin": "Every project belongs to a team, and you're not an admin of one yet. Create the first one.",
   "noEligibleTeamMember": "Every project belongs to a team, and you're not an admin of one yet. Ask a workspace admin to make you a team admin.",
-  "createTeam": "Create team"
+  "createTeam": "Create team",
+  "teamLabel": "Team",
+  "nameLabel": "Project name",
+  "keyLabel": "Key",
+  "keyHint": "Prefix for issue keys, e.g. {{key}}-12. Up to 10 characters.",
+  "projects": "Projects"
 }

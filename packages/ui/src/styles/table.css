@@ -1,0 +1,83 @@
+/* Table view + project settings + automation canvas surfaces.
+   Scope every rule under a kp-table-* / kp-settings-* / kp-flow class. */
+
+/* Sticky header cells keep their bottom hairline while rows scroll under. */
+.kp-table-scroll thead th {
+  background: var(--surface2);
+}
+.kp-table-row > td {
+  height: 38px;
+  vertical-align: middle;
+}
+.kp-table-row:last-child > td {
+  border-bottom-color: var(--border);
+}
+
+/* React Flow (automation canvas): route its own theme variables onto
+   Kompast tokens so the canvas follows light/dark and the palette. */
+.kp-flow .react-flow {
+  --xy-edge-stroke: var(--border2);
+  --xy-edge-stroke-hover: var(--text3);
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-connectionline-stroke: var(--accent);
+  --xy-handle-background-color: var(--text3);
+  --xy-handle-border-color: var(--surface);
+  --xy-node-boxshadow-selected: none;
+  --xy-selection-background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+  --xy-selection-border: 1px dashed var(--accent);
+  --xy-background-color: var(--surface2);
+  background: var(--surface2);
+}
+.kp-flow .react-flow__edge-path {
+  stroke-width: 1.75;
+}
+.kp-flow .react-flow__node.selected,
+.kp-flow .react-flow__node:focus-visible {
+  outline: none;
+}
+.kp-flow .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+.kp-flow .react-flow__controls-button {
+  width: 28px;
+  height: 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text2);
+  fill: var(--text2);
+}
+.kp-flow .react-flow__controls-button:hover {
+  background: var(--surface3);
+  color: var(--text);
+  fill: var(--text);
+}
+.kp-flow .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+.kp-flow .react-flow__controls-button svg {
+  fill: currentColor;
+}
+.kp-flow .react-flow__attribution {
+  background: transparent;
+  color: var(--text3);
+}
+.kp-flow .react-flow__attribution a {
+  color: var(--text3);
+}
+
+/* Board embed inside a doc: the embed renders inside BlockNote's prose
+   container, whose link/typography rules would otherwise paint every row
+   as a blue underlined link. */
+.kp-embed a {
+  color: inherit;
+  text-decoration: none;
+}
+.kp-embed a:hover {
+  text-decoration: none;
+}
+.kp-embed table {
+  margin: 0;
+}

@@ -4,6 +4,7 @@ import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, type Par
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useTheme } from "@kompast/ui/theme";
+import { cn } from "@/lib/cn";
 import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
 import { userMentionInlineSpec } from "@/components/shared/UserMentionInlineContent";
 
@@ -49,7 +50,7 @@ export function RichTextView({ content, className }: { content: unknown; classNa
     // portal div, not just its real container — visual chrome belongs on
     // a wrapper, never passed straight through as BlockNoteView's own
     // className.
-    <div className={className}>
+    <div className={cn("[&_.bn-container]:bg-transparent! [&_.bn-editor]:bg-transparent!", className)}>
       <BlockNoteView editor={editor} editable={false} theme={theme} className="kp-lite-editor kp-lite-editor-readonly" />
     </div>
   );

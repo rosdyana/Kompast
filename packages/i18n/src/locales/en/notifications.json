@@ -11,5 +11,13 @@
   "digest_hourly": "Hourly",
   "digest_daily": "Daily",
   "digest_off": "Off",
-  "digestNote": "Note: hourly/daily batching isn't running yet — email for this preference won't be sent until that feature is built."
+  "digestNote": "Note: hourly/daily batching isn't running yet — email for this preference won't be sent until that feature is built.",
+  "eventHeading": "Activity",
+  "event": {
+    "issue.assigned": "Assigned to an issue",
+    "issue.commented": "New comment on an issue you follow",
+    "issue.mentioned": "Mentioned in an issue"
+  },
+  "savedToast": "Preference saved",
+  "saveFailed": "Couldn't save the preference"
 }

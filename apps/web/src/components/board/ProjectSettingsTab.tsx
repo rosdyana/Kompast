@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { Tabs } from "@kompast/ui/Tabs";
-import { Badge } from "@kompast/ui/Badge";
+import { ArrowRight, ChevronDown, ChevronUp, Columns3, Flag, GripVertical, ListTree, Lock, Plus, Trash2 } from "lucide-react";
+import type { ReactNode } from "react";
+import { Badge, CountPill } from "@kompast/ui/Badge";
 import { Button } from "@kompast/ui/Button";
+import { Card, CardHeader } from "@kompast/ui/Card";
+import { StatusDot } from "@kompast/ui/Lozenge";
+import { PriorityIcon } from "@kompast/ui/PriorityIcon";
+import { cn } from "@/lib/cn";
 import { useTranslation } from "@kompast/i18n";
 import { useConfirmArm } from "@/lib/use-confirm-arm";
 import type { getProjectBoardFn } from "@/lib/server-fns/projects";
@@ -38,24 +42,97 @@ type PriorityLevel = Awaited<ReturnType<typeof listPriorityLevelsFn>>[number];
 /** Duplicated from packages/core/src/issue-property.ts — see server-fns/issue-properties.ts's own comment on why this list isn't imported. */
 const ISSUE_PROPERTY_TYPES = ["text", "textarea", "number", "date", "checkbox", "select", "multiSelect", "url", "person"] as const;
 
+type SubTab = "columns" | "properties" | "priority";
+
 export function ProjectSettingsTab({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
-  const [subTab, setSubTab] = useState<"columns" | "properties" | "priority">("columns");
-  const subTabs = [
-    { key: "columns", label: t("settingsTab.columnsHeading") },
-    { key: "properties", label: t("settingsTab.propertiesHeading") },
-    { key: "priority", label: t("settingsTab.priorityHeading") },
+  const [subTab, setSubTab] = useState<SubTab>("columns");
+  const subTabs: { key: SubTab; label: string; icon: ReactNode }[] = [
+    { key: "columns", label: t("settingsTab.columnsHeading"), icon: <Columns3 size={16} strokeWidth={1.75} /> },
+    { key: "properties", label: t("settingsTab.propertiesHeading"), icon: <ListTree size={16} strokeWidth={1.75} /> },
+    { key: "priority", label: t("settingsTab.priorityHeading"), icon: <Flag size={16} strokeWidth={1.75} /> },
   ];
 
   return (
-    <div className="p-6">
-      <Tabs items={subTabs} active={subTab} onChange={(key) => setSubTab(key as typeof subTab)} className="mb-5" />
-      {subTab === "columns" && <ColumnsSettings data={data} />}
-      {subTab === "properties" && <PropertiesSettings projectId={data.project.id} />}
-      {subTab === "priority" && <PrioritySettings projectId={data.project.id} />}
+    <div className="kp-settings mx-auto grid w-full px-4 pb-10 md:px-0 max-w-[1120px] grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[200px_minmax(0,1fr)]">
+      <nav aria-label={t("settingsTab.navLabel")} className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
+        {subTabs.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            aria-current={subTab === item.key ? "page" : undefined}
+            onClick={() => setSubTab(item.key)}
+            className={cn(
+              "flex h-8 flex-none items-center gap-2 whitespace-nowrap rounded-[6px] px-2.5 text-left text-[14px] transition-colors",
+              subTab === item.key ? "bg-accent-soft font-medium text-accent-text" : "text-text-2 hover:bg-surface-3 hover:text-text",
+            )}
+          >
+            {item.icon}
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      <div className="min-w-0">
+        {subTab === "columns" && <ColumnsSettings data={data} />}
+        {subTab === "properties" && <PropertiesSettings projectId={data.project.id} />}
+        {subTab === "priority" && <PrioritySettings projectId={data.project.id} />}
+      </div>
     </div>
   );
 }
+
+function ErrorNote({ error }: { error: string | null }) {
+  if (!error) return null;
+  return <p role="alert" className="rounded-[6px] bg-danger-soft px-3 py-2 text-[13px] text-danger">{error}</p>;
+}
+
+function SectionIntro({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mb-4">
+      <h2 className="type-title text-[20px]">{title}</h2>
+      <p className="mt-1 max-w-[680px] type-body text-text-2">{children}</p>
+    </div>
+  );
+}
+
+/** Up/down reorder pair — the list is vertical, so direction reads as up/down. */
+function ReorderButtons({ onUp, onDown, upDisabled, downDisabled }: { onUp: () => void; onDown: () => void; upDisabled: boolean; downDisabled: boolean }) {
+  const { t } = useTranslation("board");
+  const btn = "grid h-7 w-7 place-items-center rounded-[5px] text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30";
+  return (
+    <span className="flex flex-none items-center">
+      <button type="button" onClick={onUp} disabled={upDisabled} aria-label={t("settingsTab.moveUpTitle")} title={t("settingsTab.moveUpTitle")} className={btn}>
+        <ChevronUp size={15} strokeWidth={2} />
+      </button>
+      <button type="button" onClick={onDown} disabled={downDisabled} aria-label={t("settingsTab.moveDownTitle")} title={t("settingsTab.moveDownTitle")} className={btn}>
+        <ChevronDown size={15} strokeWidth={2} />
+      </button>
+    </span>
+  );
+}
+
+function DeleteButton({ armed, onClick, title }: { armed: boolean; onClick: () => void; title: string }) {
+  const { t } = useTranslation("board");
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={armed ? t("settingsTab.confirmDelete") : title}
+      title={armed ? t("clickAgainToDelete") : title}
+      className={cn(
+        "inline-flex h-7 flex-none items-center gap-1 rounded-[5px] px-1.5 text-[12.5px] font-medium transition-colors",
+        armed ? "bg-danger text-white" : "text-text-3 hover:bg-danger-soft hover:text-danger",
+      )}
+    >
+      <Trash2 size={14} strokeWidth={1.75} />
+      {armed && t("settingsTab.confirmDelete")}
+    </button>
+  );
+}
+
+const rowCls = "group/row flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 last:border-b-0 hover:bg-surface-2";
+const nameInputCls = "kp-quiet h-8 min-w-0 flex-1 text-[14px] font-medium disabled:opacity-60";
+const addRowCls = "flex flex-wrap items-center gap-2 border-t border-border bg-surface-2 px-3 py-2.5";
 
 function ColumnsSettings({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
@@ -163,98 +240,102 @@ function ColumnsSettings({ data }: { data: BoardData }) {
   }
 
   return (
-    <div>
-      <h2 className="mb-1 text-lg font-semibold">{t("settingsTab.columnsHeading")}</h2>
-      <p className="mb-4 type-body text-text-2">
+    <div className="flex flex-col gap-4">
+      <SectionIntro title={t("settingsTab.columnsHeading")}>
         {t("settingsTab.columnsDescPart1")}
-        <strong className="text-text">{t("settingsTab.columnsDescBold")}</strong>
+        <strong className="font-medium text-text">{t("settingsTab.columnsDescBold")}</strong>
         {t("settingsTab.columnsDescPart2")}
-      </p>
-      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
-      {flowText && (
-        <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-dashed border-border-2 px-3 py-2.5 type-body text-text-2">
-          <span className="type-label-overline text-text-3">{t("settingsTab.flowLabel")}</span>
-          <span className="font-medium">{flowText}</span>
-        </div>
-      )}
-      <div className="mb-4 flex items-center gap-2 rounded-[10px] border border-dashed border-border-2 px-3 py-2.5 type-body text-text-2">
-        <span className="type-label-overline text-text-3">{t("settingsTab.newIssuePositionLabel")}</span>
-        <select
-          value={data.board.newIssuePosition}
-          onChange={(e) => setNewIssuePosition(e.target.value as "top" | "bottom")}
-          className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none"
-        >
-          <option value="top">{t("settingsTab.newIssuePositionTop")}</option>
-          <option value="bottom">{t("settingsTab.newIssuePositionBottom")}</option>
-        </select>
-      </div>
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border bg-surface-2 px-3 py-2 type-body font-semibold text-text-2">
-          {t("settingsTab.columnsCountSummary", { count: columns.length })}
-        </div>
-        {columns.map((col, i) => (
-          <div key={col.id} className="flex flex-wrap items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0">
-            <span className="flex min-w-[190px] flex-1 items-center gap-2">
-              <span className="h-2 w-2 flex-none rounded-full" style={{ background: col.color }} />
-              <input
-                defaultValue={col.name}
-                onBlur={(e) => e.target.value.trim() && e.target.value !== col.name && rename(col.id, e.target.value.trim())}
-                className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
-              />
-              <span className="type-label text-text-3">{col.issues.length}</span>
-              {col.isBacklog && <Badge>{t("fixedBadge")}</Badge>}
-            </span>
-            <ColorSwatchPicker value={col.color} onChange={(color) => recolor(col.id, color)} />
-            <input
-              defaultValue={col.wipLimit ?? ""}
-              placeholder="∞"
-              onBlur={(e) => setWip(col.id, e.target.value)}
-              className="w-[52px] rounded-[7px] border border-border-2 bg-surface px-2 py-1 font-mono text-[12.5px] outline-none"
-            />
-            {!col.isBacklog && (
-              <span className="flex gap-0.5">
-                <button
-                  onClick={() => move(col.id, "left")}
-                  disabled={i <= 1}
-                  title={t("settingsTab.moveLeftTitle")}
-                  className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
-                >
-                  <ChevronLeft size={13} strokeWidth={1.75} />
-                </button>
-                <button
-                  onClick={() => move(col.id, "right")}
-                  disabled={i === columns.length - 1}
-                  title={t("settingsTab.moveRightTitle")}
-                  className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
-                >
-                  <ChevronRight size={13} strokeWidth={1.75} />
-                </button>
-                <button
-                  onClick={() => handleDeleteClick(col.id)}
-                  title={isArmed(col.id) ? t("settingsTab.deleteColumnConfirm") : t("settingsTab.deleteColumnTitle")}
-                  className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
-                  style={isArmed(col.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
-                >
-                  {isArmed(col.id) ? t("clickAgainToDelete") : <X size={13} strokeWidth={1.75} />}
-                </button>
+      </SectionIntro>
+      <ErrorNote error={error} />
+
+      <Card>
+        <CardHeader title={t("settingsTab.workflowTitle")} description={t("settingsTab.columnsCountSummary", { count: columns.length })} />
+        {flowText && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-2.5 text-[13px] text-text-2">
+            {flowText.split(" → ").map((name, i) => (
+              <span key={`${name}-${i}`} className="inline-flex items-center gap-1.5">
+                {i > 0 && <ArrowRight size={12} className="text-text-3" />}
+                <span className="rounded-[4px] bg-surface-3 px-1.5 py-0.5 font-medium">{name}</span>
               </span>
-            )}
+            ))}
           </div>
-        ))}
-        <div className="flex items-center gap-2 px-3 py-2.5">
+        )}
+        <div>
+          {columns.map((col, i) => (
+            <div key={col.id} className={rowCls}>
+              <span className="grid w-5 flex-none place-items-center text-text-3">
+                {col.isBacklog ? <Lock size={13} strokeWidth={1.75} /> : <GripVertical size={14} strokeWidth={1.75} className="opacity-40" />}
+              </span>
+              <StatusDot color={col.color} size={10} />
+              <input
+                key={`${col.id}-${col.name}`}
+                defaultValue={col.name}
+                aria-label={t("settingsTab.nameLabel")}
+                onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== col.name && rename(col.id, e.target.value.trim())}
+                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                className={cn(nameInputCls, "min-w-[140px]")}
+              />
+              <span className="flex-none text-[12.5px] tabular-nums text-text-3">{t("settingsTab.issuesCount", { count: col.issues.length })}</span>
+              {col.isBacklog && <Badge>{t("fixedBadge")}</Badge>}
+              <ColorSwatchPicker value={col.color} onChange={(color) => recolor(col.id, color)} label={t("settingsTab.colorLabel")} />
+              <label className="flex flex-none items-center gap-1.5 text-[12.5px] text-text-3" title={t("settingsTab.wipHint")}>
+                {t("settingsTab.wipLabel")}
+                <input
+                  key={`${col.id}-wip-${col.wipLimit ?? ""}`}
+                  defaultValue={col.wipLimit ?? ""}
+                  inputMode="numeric"
+                  placeholder="∞"
+                  onBlur={(e) => e.target.value !== String(col.wipLimit ?? "") && setWip(col.id, e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                  className="kp-field h-7 w-[56px] text-center tabular-nums"
+                />
+              </label>
+              {col.isBacklog ? (
+                <span className="w-[92px] flex-none" />
+              ) : (
+                <>
+                  <ReorderButtons onUp={() => move(col.id, "left")} onDown={() => move(col.id, "right")} upDisabled={i <= 1} downDisabled={i === columns.length - 1} />
+                  <DeleteButton armed={isArmed(col.id)} onClick={() => handleDeleteClick(col.id)} title={t("settingsTab.deleteColumnTitle")} />
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className={addRowCls}>
           <input
             value={newColName}
             onChange={(e) => setNewColName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addColumn()}
             placeholder={t("settingsTab.newColumnPlaceholder")}
-            className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+            aria-label={t("settingsTab.newColumnPlaceholder")}
+            className="kp-input h-8 min-w-[180px] flex-1"
           />
           <Button variant="outline" onClick={addColumn} disabled={creating || !newColName.trim()}>
+            <Plus size={15} strokeWidth={2} />
             {t("settingsTab.addColumnButton")}
           </Button>
         </div>
-      </div>
-      <p className="mt-3 type-body text-text-3">{t("settingsTab.columnsFooterNote")}</p>
+      </Card>
+      <p className="text-[13px] text-text-3">{t("settingsTab.columnsFooterNote")}</p>
+
+      <Card>
+        <CardHeader
+          title={t("settingsTab.boardBehavior")}
+          description={t("settingsTab.boardBehaviorDesc")}
+          actions={
+            <select
+              value={data.board.newIssuePosition}
+              onChange={(e) => setNewIssuePosition(e.target.value as "top" | "bottom")}
+              aria-label={t("settingsTab.newIssuePositionLabel")}
+              className="kp-field kp-select h-8"
+            >
+              <option value="top">{t("settingsTab.newIssuePositionTop")}</option>
+              <option value="bottom">{t("settingsTab.newIssuePositionBottom")}</option>
+            </select>
+          }
+          className="border-b-0"
+        />
+      </Card>
     </div>
   );
 }
@@ -361,107 +442,83 @@ function PropertiesSettings({ projectId }: { projectId: string }) {
   const visCount = definitions.filter((d) => d.visibleOnCard).length;
 
   return (
-    <div>
-      <h2 className="mb-1 text-lg font-semibold">{t("settingsTab.propertiesHeading")}</h2>
-      <p className="mb-4 type-body text-text-2">
+    <div className="flex flex-col gap-4">
+      <SectionIntro title={t("settingsTab.propertiesHeading")}>
         {t("settingsTab.propertiesDescPart1")}
-        <strong className="text-text">{t("settingsTab.propertiesDescBold", { count: visCount })}</strong>
-      </p>
-      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border bg-surface-2 px-3 py-2 type-body font-semibold text-text-2">
-          {t("settingsTab.propertiesCountSummary", { visible: visCount, total: definitions.length })}
-        </div>
-        {definitions.map((p, i) => (
-          <div key={p.id} className="flex flex-wrap items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0">
-            <span className="flex min-w-[190px] flex-1 items-center gap-1.5">
+        <strong className="font-medium text-text">{t("settingsTab.propertiesDescBold", { count: visCount })}</strong>
+      </SectionIntro>
+      <ErrorNote error={error} />
+      <Card>
+        <CardHeader title={t("settingsTab.propertiesHeading")} description={t("settingsTab.propertiesCountSummary", { visible: visCount, total: definitions.length })} />
+        <div>
+          {definitions.map((p, i) => (
+            <div key={p.id} className={rowCls}>
               <input
+                key={`${p.id}-${p.name}`}
                 defaultValue={p.name}
                 disabled={p.isCore}
-                onBlur={(e) => e.target.value.trim() && e.target.value !== p.name && rename(p.id, e.target.value.trim())}
-                className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface disabled:opacity-60"
+                aria-label={t("settingsTab.nameLabel")}
+                onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== p.name && rename(p.id, e.target.value.trim())}
+                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                className={cn(nameInputCls, "min-w-[160px]")}
               />
               {p.isCore && <Badge>{t("settingsTab.coreBadge")}</Badge>}
-            </span>
-            <span className="flex items-center gap-1.5 text-[10px] text-text-3">
-              {t("settingsTab.typeLabel")}
-              <select
-                value={p.type}
-                disabled={p.isCore}
-                onChange={(e) => retype(p.id, e.target.value as (typeof ISSUE_PROPERTY_TYPES)[number])}
-                className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1 text-[12.5px] outline-none disabled:opacity-60"
-              >
-                {ISSUE_PROPERTY_TYPES.map((ty) => (
-                  <option key={ty} value={ty}>
-                    {ty}
-                  </option>
-                ))}
-              </select>
-            </span>
-            <label className="flex items-center gap-1.5 text-[10px] text-text-3">
-              {t("settingsTab.onCardLabel")}
-              <input
-                type="checkbox"
-                checked={p.visibleOnCard}
-                disabled={p.isCore}
-                onChange={(e) => toggleVisible(p.id, e.target.checked)}
-              />
-            </label>
-            <span className="flex gap-0.5">
-              <button
-                onClick={() => move(p.id, "left")}
-                disabled={i === 0}
-                title={t("settingsTab.moveLeftTitle")}
-                className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
-              >
-                <ChevronLeft size={13} strokeWidth={1.75} />
-              </button>
-              <button
-                onClick={() => move(p.id, "right")}
-                disabled={i === definitions.length - 1}
-                title={t("settingsTab.moveRightTitle")}
-                className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
-              >
-                <ChevronRight size={13} strokeWidth={1.75} />
-              </button>
-              {!p.isCore && (
-                <button
-                  onClick={() => handleDeleteClick(p.id)}
-                  title={isArmed(p.id) ? t("settingsTab.deletePropertyConfirm") : t("settingsTab.deletePropertyTitle")}
-                  className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
-                  style={isArmed(p.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
+              <label className="flex flex-none items-center gap-1.5 text-[12.5px] text-text-3">
+                {t("settingsTab.typeLabel")}
+                <select
+                  value={p.type}
+                  disabled={p.isCore}
+                  onChange={(e) => retype(p.id, e.target.value as (typeof ISSUE_PROPERTY_TYPES)[number])}
+                  className="kp-field kp-select h-7 w-[140px] disabled:opacity-60"
                 >
-                  {isArmed(p.id) ? t("clickAgainToDelete") : <X size={13} strokeWidth={1.75} />}
-                </button>
+                  {ISSUE_PROPERTY_TYPES.map((ty) => (
+                    <option key={ty} value={ty}>
+                      {t(`settingsTab.propType_${ty}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={cn("flex flex-none items-center gap-1.5 text-[12.5px] text-text-3", p.isCore && "opacity-60")}>
+                <input type="checkbox" checked={p.visibleOnCard} disabled={p.isCore} onChange={(e) => toggleVisible(p.id, e.target.checked)} />
+                {t("settingsTab.onCardLabel")}
+              </label>
+              <ReorderButtons onUp={() => move(p.id, "left")} onDown={() => move(p.id, "right")} upDisabled={i === 0} downDisabled={i === definitions.length - 1} />
+              {p.isCore ? (
+                <span className="w-7 flex-none" />
+              ) : (
+                <DeleteButton armed={isArmed(p.id)} onClick={() => handleDeleteClick(p.id)} title={t("settingsTab.deletePropertyTitle")} />
               )}
-            </span>
-          </div>
-        ))}
-        <div className="flex items-center gap-2 px-3 py-2.5">
+            </div>
+          ))}
+        </div>
+        <div className={addRowCls}>
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addProperty()}
             placeholder={t("settingsTab.newPropertyPlaceholder")}
-            className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+            aria-label={t("settingsTab.newPropertyPlaceholder")}
+            className="kp-input h-8 min-w-[180px] flex-1"
           />
           <select
             value={newType}
             onChange={(e) => setNewType(e.target.value as (typeof ISSUE_PROPERTY_TYPES)[number])}
-            className="kp-select rounded-[7px] border border-border-2 bg-surface px-2 py-1.5 text-[12.5px] outline-none"
+            aria-label={t("settingsTab.typeLabel")}
+            className="kp-input kp-select h-8 w-[150px]"
           >
             {ISSUE_PROPERTY_TYPES.map((ty) => (
               <option key={ty} value={ty}>
-                {ty}
+                {t(`settingsTab.propType_${ty}`)}
               </option>
             ))}
           </select>
           <Button variant="outline" onClick={addProperty} disabled={creating || !newName.trim()}>
+            <Plus size={15} strokeWidth={2} />
             {t("settingsTab.addPropertyButton")}
           </Button>
         </div>
-      </div>
-      <p className="mt-3 type-body text-text-3">{t("settingsTab.propertiesFooterNote")}</p>
+      </Card>
+      <p className="text-[13px] text-text-3">{t("settingsTab.propertiesFooterNote")}</p>
     </div>
   );
 }
@@ -556,66 +613,47 @@ function PrioritySettings({ projectId }: { projectId: string }) {
   if (!levels) return null;
 
   return (
-    <div>
-      <h2 className="mb-1 text-lg font-semibold">{t("settingsTab.priorityHeading")}</h2>
-      <p className="mb-4 type-body text-text-2">{t("settingsTab.priorityDesc")}</p>
-      {error && <p className="mb-4 rounded-[7px] border border-danger-soft bg-danger-soft px-3 py-2 type-body text-danger">{error}</p>}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="border-b border-border bg-surface-2 px-3 py-2 type-body font-semibold text-text-2">
-          {t("settingsTab.priorityCountSummary", { count: levels.length })}
-        </div>
-        {levels.map((level, i) => (
-          <div key={level.id} className="flex flex-wrap items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0">
-            <span className="flex min-w-[190px] flex-1 items-center gap-2">
-              <span className="h-2 w-2 flex-none rounded-full" style={{ background: level.color }} />
+    <div className="flex flex-col gap-4">
+      <SectionIntro title={t("settingsTab.priorityHeading")}>{t("settingsTab.priorityDesc")}</SectionIntro>
+      <ErrorNote error={error} />
+      <Card>
+        <CardHeader title={t("settingsTab.priorityHeading")} actions={<CountPill>{levels.length}</CountPill>} />
+        <div>
+          {levels.map((level, i) => (
+            <div key={level.id} className={rowCls}>
+              <span className="grid w-5 flex-none place-items-center">
+                <PriorityIcon priority={level} />
+              </span>
               <input
+                key={`${level.id}-${level.name}`}
                 defaultValue={level.name}
-                onBlur={(e) => e.target.value.trim() && e.target.value !== level.name && rename(level.id, e.target.value.trim())}
-                className="min-w-0 flex-1 rounded-[7px] border border-transparent bg-transparent px-2 py-1 text-[12.5px] font-medium outline-none focus:border-border-2 focus:bg-surface"
+                aria-label={t("settingsTab.nameLabel")}
+                onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== level.name && rename(level.id, e.target.value.trim())}
+                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                className={cn(nameInputCls, "min-w-[160px]")}
               />
-            </span>
-            <ColorSwatchPicker value={level.color} onChange={(color) => recolor(level.id, color)} />
-            <span className="flex gap-0.5">
-              <button
-                onClick={() => move(level.id, "left")}
-                disabled={i === 0}
-                title={t("settingsTab.moveLeftTitle")}
-                className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
-              >
-                <ChevronLeft size={13} strokeWidth={1.75} />
-              </button>
-              <button
-                onClick={() => move(level.id, "right")}
-                disabled={i === levels.length - 1}
-                title={t("settingsTab.moveRightTitle")}
-                className="rounded-[7px] px-1.5 py-0.5 text-text-3 hover:bg-surface-3 hover:text-text disabled:pointer-events-none disabled:opacity-30"
-              >
-                <ChevronRight size={13} strokeWidth={1.75} />
-              </button>
-              <button
-                onClick={() => handleDeleteClick(level.id)}
-                title={isArmed(level.id) ? t("clickAgainToDelete") : undefined}
-                className="rounded-[7px] px-1.5 py-0.5 text-[11px] hover:bg-danger-soft hover:text-danger"
-                style={isArmed(level.id) ? { color: "var(--danger)", background: "var(--danger-soft)" } : undefined}
-              >
-                {isArmed(level.id) ? t("clickAgainToDelete") : <X size={13} strokeWidth={1.75} />}
-              </button>
-            </span>
-          </div>
-        ))}
-        <div className="flex items-center gap-2 px-3 py-2.5">
+              <span className="type-key flex-none text-text-3">{level.key}</span>
+              <ColorSwatchPicker value={level.color} onChange={(color) => recolor(level.id, color)} label={t("settingsTab.colorLabel")} />
+              <ReorderButtons onUp={() => move(level.id, "left")} onDown={() => move(level.id, "right")} upDisabled={i === 0} downDisabled={i === levels.length - 1} />
+              <DeleteButton armed={isArmed(level.id)} onClick={() => handleDeleteClick(level.id)} title={t("settingsTab.deleteLevelTitle")} />
+            </div>
+          ))}
+        </div>
+        <div className={addRowCls}>
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addLevel()}
             placeholder={t("settingsTab.newPriorityPlaceholder")}
-            className="min-w-0 flex-1 rounded-[7px] border border-border-2 bg-surface px-2.5 py-1.5 text-[12.5px] outline-none"
+            aria-label={t("settingsTab.newPriorityPlaceholder")}
+            className="kp-input h-8 min-w-[180px] flex-1"
           />
           <Button variant="outline" onClick={addLevel} disabled={creating || !newName.trim()}>
+            <Plus size={15} strokeWidth={2} />
             {t("settingsTab.addPriorityButton")}
           </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

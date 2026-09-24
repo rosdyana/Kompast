@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useCallback, useContext, type ReactNode } from "react";
 import type { i18n as I18nInstance } from "i18next";
 
 const I18nReactContext = createContext<I18nInstance | null>(null);
@@ -28,9 +28,14 @@ export function useTranslation(ns?: string | string[]) {
   const i18n = useContext(I18nReactContext);
   if (!i18n) throw new Error("useTranslation must be used within an I18nextProvider");
 
-  function t(key: string, options?: Record<string, unknown>): string {
-    return (i18n!.t as LooseT)(key, { ns, ...options });
-  }
+  // Stable identity per (instance, namespaces): callers put `t` in effect
+  // and memo dependency lists, and a fresh function every render turned
+  // those into infinite update loops.
+  const nsKey = Array.isArray(ns) ? ns.join("|") : (ns ?? "");
+  const t = useCallback(
+    (key: string, options?: Record<string, unknown>): string => (i18n.t as LooseT)(key, { ns: nsKey.includes("|") ? nsKey.split("|") : nsKey || undefined, ...options }),
+    [i18n, nsKey],
+  );
 
   return { t, i18n };
 }

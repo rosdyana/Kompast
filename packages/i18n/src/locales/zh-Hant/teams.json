@@ -29,5 +29,18 @@
   "transferMemberSelectPlaceholder": "選擇成員…",
   "transferringEllipsis": "轉移中…",
   "transfer": "轉移",
-  "transferFailed": "轉移超級管理員失敗"
+  "transferFailed": "轉移超級管理員失敗",
+  "nameLabel": "團隊名稱",
+  "removeConfirmTitle": "要將 {{name}} 移出此團隊嗎？",
+  "removeConfirmBody": "對方將不再是此團隊成員，您隨時可以重新加入。",
+  "transferConfirmTitle": "要將超級管理員轉移給 {{name}} 嗎？",
+  "transferConfirmBody": "確認後，您的超級管理員權限會立即撤銷。",
+  "cancel": "取消",
+  "transferDone": "已轉移超級管理員",
+  "memberRemoved": "已移除成員",
+  "memberAdded": "已新增成員",
+  "teams": "團隊",
+  "settings": "設定",
+  "noAccessTitle": "只有超級管理員可以建立團隊",
+  "goHome": "回到首頁"
 }

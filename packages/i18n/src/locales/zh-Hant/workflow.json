@@ -13,79 +13,121 @@
   "nodeTypes": {
     "trigger_event": {
       "label": "事件觸發",
-      "fields": { "eventType": "當" },
+      "fields": {
+        "eventType": "當"
+      },
       "summary": "當 {{eventType}}"
     },
     "trigger_schedule": {
       "label": "排程觸發",
-      "fields": { "cron": "Cron 表達式" },
+      "fields": {
+        "cron": "Cron 表達式"
+      },
       "summary": "Cron {{cron}}"
     },
     "condition_property": {
       "label": "若屬性",
-      "fields": { "property": "屬性", "operator": "運算子", "value": "值" },
+      "fields": {
+        "property": "屬性",
+        "operator": "運算子",
+        "value": "值"
+      },
       "propertyPlaceholder": "例如 priority、status，或自訂欄位鍵",
       "valuePlaceholder": "高，或 {{expr}}",
       "summary": "若 {{property}} {{operator}} {{value}}"
     },
     "condition_switch": {
       "label": "依屬性分支",
-      "fields": { "property": "屬性", "cases": "分支值（以逗號分隔）" },
+      "fields": {
+        "property": "屬性",
+        "cases": "分支值（以逗號分隔）"
+      },
       "propertyPlaceholder": "例如 priority、status，或自訂欄位鍵",
       "casesPlaceholder": "高、中、低",
       "summary": "依 {{property}} 分支"
     },
     "action_set_property": {
       "label": "設定屬性",
-      "fields": { "property": "屬性", "value": "值" },
+      "fields": {
+        "property": "屬性",
+        "value": "值"
+      },
       "propertyPlaceholder": "例如 status、assigneeId，或自訂欄位鍵",
       "valuePlaceholder": "字面值，或 {{expr}}",
       "summary": "設定 {{property}}"
     },
     "action_add_label": {
       "label": "新增標籤",
-      "fields": { "label": "標籤" },
+      "fields": {
+        "label": "標籤"
+      },
       "summary": "新增標籤「{{label}}」"
     },
     "action_comment": {
       "label": "新增留言",
-      "fields": { "text": "留言內容" },
+      "fields": {
+        "text": "留言內容"
+      },
       "textPlaceholder": "支援 {{expr1}} / {{expr2}}",
       "summary": "留言：{{text}}"
     },
     "action_notify": {
       "label": "通知使用者",
-      "fields": { "userId": "使用者 ID", "title": "標題", "body": "內容" },
+      "fields": {
+        "userId": "使用者 ID",
+        "title": "標題",
+        "body": "內容"
+      },
       "summary": "通知：{{title}}"
     },
     "action_link_issue": {
       "label": "連結工單",
-      "fields": { "issueId": "目標工單 ID" },
+      "fields": {
+        "issueId": "目標工單 ID"
+      },
       "summary": "連結至 {{issueId}}"
     },
     "action_create_subtask": {
       "label": "建立子任務",
-      "fields": { "typeId": "工單類型 ID", "title": "標題" },
+      "fields": {
+        "typeId": "工單類型 ID",
+        "title": "標題"
+      },
       "summary": "子任務：{{title}}"
     },
     "action_webhook": {
       "label": "Webhook",
-      "fields": { "url": "URL", "method": "方法", "headers": "標頭（JSON）", "bodyTemplate": "內容（JSON）" },
+      "fields": {
+        "url": "URL",
+        "method": "方法",
+        "headers": "標頭（JSON）",
+        "bodyTemplate": "內容（JSON）"
+      },
       "summary": "{{method}} {{url}}"
     },
     "find_issues": {
       "label": "尋找工單",
-      "fields": { "statusId": "狀態 ID", "assigneeId": "受指派人 ID", "label": "標籤" },
+      "fields": {
+        "statusId": "狀態 ID",
+        "assigneeId": "受指派人 ID",
+        "label": "標籤"
+      },
       "summary": "在此專案中尋找工單"
     },
     "loop_each": {
       "label": "逐項迴圈",
-      "fields": { "source": "來源表達式", "itemType": "項目類型" },
+      "fields": {
+        "source": "來源表達式",
+        "itemType": "項目類型"
+      },
       "summary": "迴圈處理 {{source}}"
     },
     "delay": {
       "label": "延遲",
-      "fields": { "amount": "數量", "unit": "單位" },
+      "fields": {
+        "amount": "數量",
+        "unit": "單位"
+      },
       "summary": "等待 {{amount}} {{unit}}"
     }
   },
@@ -98,7 +140,8 @@
   "runHistory": {
     "loading": "載入執行紀錄中…",
     "heading": "執行紀錄",
-    "empty": "尚無執行紀錄。"
+    "empty": "尚無執行紀錄。",
+    "steps": "步驟"
   },
   "canvas": {
     "backLabel": "返回自動化",
@@ -110,7 +153,14 @@
     "deleteWorkflow": "刪除工作流程",
     "saveFailed": "儲存失敗",
     "toggleFailed": "切換啟用狀態失敗",
-    "discardChangesConfirm": "捨棄未儲存的變更？"
+    "discardChangesConfirm": "捨棄未儲存的變更？",
+    "addNode": "新增步驟",
+    "palette": "步驟",
+    "unsaved": "有未儲存的變更",
+    "saved": "所有變更已儲存",
+    "configTitle": "步驟設定",
+    "close": "關閉",
+    "disarm": "取消"
   },
   "list": {
     "loading": "載入中…",
@@ -120,6 +170,22 @@
     "createFailed": "建立工作流程失敗",
     "enabledBadge": "啟用",
     "disabledBadge": "停用",
-    "dryRunBadge": "試跑"
+    "dryRunBadge": "試跑",
+    "heading": "自動化",
+    "subtitle": "工作流程會在議題事件或排程時執行，並對此專案的議題採取動作。",
+    "colName": "工作流程",
+    "colTrigger": "觸發條件",
+    "colLastRun": "上次執行",
+    "colStatus": "啟用",
+    "never": "從未",
+    "createTitle": "新增工作流程",
+    "createPlaceholder": "例如：建立錯誤時通知負責人",
+    "emptyTitle": "尚無工作流程",
+    "emptyBody": "把瑣事自動化：為新錯誤加上標籤、通知負責人，或定期整理過期議題。",
+    "toggleLabel": "啟用 {{name}}",
+    "run_running": "執行中",
+    "run_completed": "成功",
+    "run_failed": "失敗",
+    "updated": "編輯於 {{when}}"
   }
 }

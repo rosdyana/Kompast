@@ -13,79 +13,121 @@
   "nodeTypes": {
     "trigger_event": {
       "label": "Event trigger",
-      "fields": { "eventType": "When" },
+      "fields": {
+        "eventType": "When"
+      },
       "summary": "When {{eventType}}"
     },
     "trigger_schedule": {
       "label": "Schedule trigger",
-      "fields": { "cron": "Cron expression" },
+      "fields": {
+        "cron": "Cron expression"
+      },
       "summary": "Cron {{cron}}"
     },
     "condition_property": {
       "label": "If property",
-      "fields": { "property": "Property", "operator": "Operator", "value": "Value" },
+      "fields": {
+        "property": "Property",
+        "operator": "Operator",
+        "value": "Value"
+      },
       "propertyPlaceholder": "e.g. priority, status, or a custom field key",
       "valuePlaceholder": "high, or {{expr}}",
       "summary": "If {{property}} {{operator}} {{value}}"
     },
     "condition_switch": {
       "label": "Switch on property",
-      "fields": { "property": "Property", "cases": "Cases (comma-separated)" },
+      "fields": {
+        "property": "Property",
+        "cases": "Cases (comma-separated)"
+      },
       "propertyPlaceholder": "e.g. priority, status, or a custom field key",
       "casesPlaceholder": "high, medium, low",
       "summary": "Switch on {{property}}"
     },
     "action_set_property": {
       "label": "Set property",
-      "fields": { "property": "Property", "value": "Value" },
+      "fields": {
+        "property": "Property",
+        "value": "Value"
+      },
       "propertyPlaceholder": "e.g. status, assigneeId, or a custom field key",
       "valuePlaceholder": "a literal value, or {{expr}}",
       "summary": "Set {{property}}"
     },
     "action_add_label": {
       "label": "Add label",
-      "fields": { "label": "Label" },
+      "fields": {
+        "label": "Label"
+      },
       "summary": "Add label \"{{label}}\""
     },
     "action_comment": {
       "label": "Add comment",
-      "fields": { "text": "Comment text" },
+      "fields": {
+        "text": "Comment text"
+      },
       "textPlaceholder": "Supports {{expr1}} / {{expr2}}",
       "summary": "Comment: {{text}}"
     },
     "action_notify": {
       "label": "Notify user",
-      "fields": { "userId": "User ID", "title": "Title", "body": "Body" },
+      "fields": {
+        "userId": "User ID",
+        "title": "Title",
+        "body": "Body"
+      },
       "summary": "Notify: {{title}}"
     },
     "action_link_issue": {
       "label": "Link issue",
-      "fields": { "issueId": "Target issue ID" },
+      "fields": {
+        "issueId": "Target issue ID"
+      },
       "summary": "Link to {{issueId}}"
     },
     "action_create_subtask": {
       "label": "Create subtask",
-      "fields": { "typeId": "Issue type ID", "title": "Title" },
+      "fields": {
+        "typeId": "Issue type ID",
+        "title": "Title"
+      },
       "summary": "Subtask: {{title}}"
     },
     "action_webhook": {
       "label": "Webhook",
-      "fields": { "url": "URL", "method": "Method", "headers": "Headers (JSON)", "bodyTemplate": "Body (JSON)" },
+      "fields": {
+        "url": "URL",
+        "method": "Method",
+        "headers": "Headers (JSON)",
+        "bodyTemplate": "Body (JSON)"
+      },
       "summary": "{{method}} {{url}}"
     },
     "find_issues": {
       "label": "Find issues",
-      "fields": { "statusId": "Status ID", "assigneeId": "Assignee ID", "label": "Label" },
+      "fields": {
+        "statusId": "Status ID",
+        "assigneeId": "Assignee ID",
+        "label": "Label"
+      },
       "summary": "Find issues in this project"
     },
     "loop_each": {
       "label": "Loop over items",
-      "fields": { "source": "Source expression", "itemType": "Item type" },
+      "fields": {
+        "source": "Source expression",
+        "itemType": "Item type"
+      },
       "summary": "Loop over {{source}}"
     },
     "delay": {
       "label": "Delay",
-      "fields": { "amount": "Amount", "unit": "Unit" },
+      "fields": {
+        "amount": "Amount",
+        "unit": "Unit"
+      },
       "summary": "Wait {{amount}} {{unit}}"
     }
   },
@@ -98,7 +140,8 @@
   "runHistory": {
     "loading": "Loading runs…",
     "heading": "Run history",
-    "empty": "No runs yet."
+    "empty": "No runs yet.",
+    "steps": "Steps"
   },
   "canvas": {
     "backLabel": "Back to Automation",
@@ -110,7 +153,14 @@
     "deleteWorkflow": "Delete workflow",
     "saveFailed": "Failed to save",
     "toggleFailed": "Failed to toggle enabled",
-    "discardChangesConfirm": "Discard unsaved changes?"
+    "discardChangesConfirm": "Discard unsaved changes?",
+    "addNode": "Add step",
+    "palette": "Steps",
+    "unsaved": "Unsaved changes",
+    "saved": "All changes saved",
+    "configTitle": "Step settings",
+    "close": "Close",
+    "disarm": "Cancel"
   },
   "list": {
     "loading": "Loading…",
@@ -120,6 +170,22 @@
     "createFailed": "Failed to create workflow",
     "enabledBadge": "Enabled",
     "disabledBadge": "Disabled",
-    "dryRunBadge": "Dry run"
+    "dryRunBadge": "Dry run",
+    "heading": "Automation",
+    "subtitle": "Workflows run on issue events or a schedule, and act on issues in this project.",
+    "colName": "Workflow",
+    "colTrigger": "Trigger",
+    "colLastRun": "Last run",
+    "colStatus": "On",
+    "never": "Never",
+    "createTitle": "New workflow",
+    "createPlaceholder": "e.g. Notify lead when a bug is created",
+    "emptyTitle": "No workflows yet",
+    "emptyBody": "Automate the busywork: label new bugs, notify the lead, or sweep stale issues on a schedule.",
+    "toggleLabel": "Enable {{name}}",
+    "run_running": "Running",
+    "run_completed": "Succeeded",
+    "run_failed": "Failed",
+    "updated": "Edited {{when}}"
   }
 }
