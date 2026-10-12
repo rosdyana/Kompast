@@ -43,7 +43,7 @@ describe("sendInvitationEmail", () => {
     expect(props.title).toContain("Invite Test Org");
     expect(props.body).toContain("Inviter Name");
     expect(props.actionUrl).toContain(`/invite/${invitationId}`);
-    expect(props.actionLabel).toBe("Terima undangan");
+    expect(props.actionLabel).toBe("Accept invitation");
   });
 
   it("is idempotent per invitation id — calling it twice for the same invitation enqueues only one email", async () => {

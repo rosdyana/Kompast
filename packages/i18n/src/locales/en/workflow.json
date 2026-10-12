@@ -71,6 +71,17 @@
       "textPlaceholder": "Supports {{expr1}} / {{expr2}}",
       "summary": "Comment: {{text}}"
     },
+    "action_add_description": {
+      "label": "Add description",
+      "fields": {
+        "text": "Description text",
+        "mode": "Mode"
+      },
+      "modeAppend": "Append to existing description",
+      "modeReplace": "Replace description",
+      "summary": "Description += {{text}}",
+      "summaryReplace": "Description = {{text}}"
+    },
     "action_notify": {
       "label": "Notify user",
       "fields": {

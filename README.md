@@ -13,10 +13,36 @@ A self-hosted team workspace that brings docs, project tracking, automation, and
 | Notifications + mail | Done |
 | Automation | Done |
 | AI assist + Ask Kompast (RAG chat) | Done |
+| Teams + team-scoped visibility | Done |
+| Private & Shared docs (Notion-style) | Done |
 | Importers | JIRA done, others not started |
 | Hardening + cutover | Not started |
 
 Implementation rationale, known gotchas, and verification write-ups for each area live in [`docs/ENGINEERING-NOTES.md`](docs/ENGINEERING-NOTES.md) — read the relevant section before touching that feature area.
+
+## Screenshots
+
+All taken from the seeded [demo workspace](docs/DEMO.md) (`pnpm demo`), "Lumen Labs 光譜科技".
+
+![Home: assigned issues, the active sprint and recently updated pages](docs/screenshots/home.png)
+
+| | |
+|---|---|
+| ![Kanban board for the active sprint](docs/screenshots/board.png) | ![Backlog with active and planned sprints](docs/screenshots/backlog.png) |
+| **Board.** The active sprint, with epics, labels, estimates and assignees. | **Backlog.** Plan the next sprint and start or complete sprints. |
+| ![A collaborative doc in the Workspace space](docs/screenshots/doc.png) | ![Traditional Chinese UI in dark mode](docs/screenshots/board-zh-dark.png) |
+| **Docs.** Real-time collaborative pages in a sidebar of spaces: teams, Workspace, Shared, Private. | **Localized and themed.** Marketing's board in Traditional Chinese, dark mode. |
+
+### Private & Shared docs
+
+Like Notion's sidebar, every member has a **Private** section that only they can see, workspace admins included. Inviting specific people moves a page to **Shared**. If someone leaves, the super admin can recover their private pages.
+
+| | |
+|---|---|
+| ![A private page: the breadcrumb and sidebar show it lives in Private](docs/screenshots/private-page.png) | ![Sharing a private page with one person](docs/screenshots/shared-page.png) |
+| **Private.** Daniel's review notes. Nobody else can open them, not even the super admin. | **Shared.** Daniel invites Priya to their 1:1 page, and its sub-pages come along. |
+| ![The invitee sees it under Shared](docs/screenshots/shared-invitee.png) | ![Settings: recovering a departed member's private pages](docs/screenshots/departed-pages.png) |
+| **The invitee's view.** Priya sees the page under Shared. Other team members don't see it at all. | **Departed members' pages.** The super admin takes ownership of, or moves to the Workspace, the private pages of someone who left. Each recovery is audit-logged. |
 
 ## Stack
 
@@ -67,13 +93,13 @@ Every route redirects to `/setup` until Microsoft Entra ID is configured:
 2. Open the app — you land on `/setup`.
 3. Enter your Entra ID app's **Tenant ID**, **Client ID**, and **Client Secret**. Register the redirect URI on the Azure app first: `https://<your-domain>/api/auth/callback/microsoft-entra-id`.
 4. Submitting takes effect immediately, no restart needed. `/setup` then redirects to `/login` permanently — re-editing credentials later happens from `/settings`.
-5. **The first person to sign in becomes the owner of a new workspace.** Everyone after that needs an invite from an admin (`/members`).
+5. **The first person to sign in becomes the owner and super admin of a new workspace.** Everyone after that needs an invite: from a workspace admin (Settings → Members), or from a team admin straight into their team.
 
 ⚠️ A wrong Tenant ID — or a brief Microsoft outage — currently takes down the whole app at boot, with no UI-level fix. See `docs/ENGINEERING-NOTES.md` for the workaround.
 
 ## Workspace UI
 
-A Notion-style sidebar (page tree, favorites, projects grouped by team), a ⌘K command palette (jump to any project view, page, issue or person), a global Jira-style **Create issue** dialog (`C`), and keyboard shortcuts (`/` search, `⌘\` toggle sidebar, `?` shortcut list). Light and dark themes share one token set in `packages/ui/src/theme.css`; see `DESIGN.md`.
+A Notion-style sidebar (favorites; your teams, each with its projects and team docs; other teams as locked names; shared Workspace docs), a ⌘K command palette (jump to any project view, page, issue or person), a global Jira-style **Create issue** dialog (`C`), and keyboard shortcuts (`/` search, `⌘\` toggle sidebar, `?` shortcut list). Light and dark themes share one token set in `packages/ui/src/theme.css`; see `DESIGN.md`.
 
 ## Settings (`/settings`, admin-only)
 
@@ -86,9 +112,11 @@ All secrets are encrypted at rest and never echoed back to the client.
 
 ## Features
 
-**Docs** — Notion-style real-time collaborative pages (BlockNote + Hocuspocus) with emoji icons, nested page tree, favorites and breadcrumbs, workspace-level or filed under a project. Page permissions, version history, templates, trash/restore, guest share links, `@mention` backlinks, and a live read-only board embed inside a doc.
+**Teams & visibility** — the workspace is one organization, split into teams. The **super admin** (one per workspace, transferable) creates teams, appoints team admins, sees every team's content, and assigns legacy team-less projects to a team. **Team admins** create projects, add workspace members to their team, and invite new people by email straight into it. **Everyone else sees only their own teams' projects, issues, sprints and docs**, plus the shared Workspace docs. Other teams show as locked names, and a link to hidden content shows "not found, or no access". This is enforced by Postgres row-level security, so the UI, REST, MCP and Ask Kompast all honor it. Workspace owner/admin is a settings role, not a see-everything role.
 
-**Boards & sprints** — Jira-style backlog (sprint containers with drag-and-drop between sprints and backlog, inline quick-create, start/complete sprint with carry-over), kanban boards with configurable sprint cycles and assignee swimlanes, a sprint hub table with inline-cell editing (status, assignee, priority, type, points, due date, title), burndown/cumulative-flow reports, velocity history, and an epic roadmap timeline.
+**Docs** — Notion-style real-time collaborative pages (BlockNote + Hocuspocus) with emoji icons, nested page tree, favorites and breadcrumbs. Every page lives in a space (shared Workspace, a team, a project, or your own **Private** space) and can be moved between them. Like Notion, Private pages are visible to you alone, the super admin included. Invite specific people and the page moves to **Shared**, where only they can see it. If someone leaves the workspace, the super admin can recover their private pages from Settings (audit-logged). Per-page access lists (Share → People & teams with access), version history, templates, trash/restore, guest share links, `@mention` backlinks, and a live read-only board embed inside a doc.
+
+**Boards & sprints** — Jira-style backlog (sprint containers with drag-and-drop between sprints and backlog, inline quick-create, start/complete sprint with carry-over), kanban boards with configurable sprint cycles and assignee swimlanes, a sprint hub table with inline-cell editing (status, assignee, priority, type, points, due date, title) and multi-column sort (incl. by epic and label), per-issue to-do checklists (Jira checklist-plugin style — check off/reorder on the issue page, progress badge + quick-edit popover on kanban cards), burndown/cumulative-flow reports, velocity history, and an epic roadmap timeline.
 
 **REST API + MCP** — every mutation lives once in `packages/core`, so the UI, REST (`/api/v1`), and MCP (`/mcp`) can never drift apart in what they allow. Personal access tokens (`/tokens`) scope both surfaces.
 
@@ -97,9 +125,9 @@ claude mcp add --transport http kompast https://<domain>/mcp \
   --header "Authorization: Bearer kmp_…"
 ```
 
-**Notifications & mail** — per-user, per-event preferences (in-app / email), transactional email delivery via a background queue. No digest batching or outbound webhooks yet.
+**Notifications & mail** — per-user, per-event preferences (in-app / email), transactional email delivery via a background queue; clicking a notification opens its issue/page. No digest batching or outbound webhooks yet.
 
-**Automation** — an n8n-style visual node-graph workflow builder (React Flow canvas on each project's Automation tab): triggers (issue events or cron schedules), conditions (if/else and multi-way switch), actions (set property, label, comment, notify, link, create subtask, outbound webhook), a `find_issues` + `loop_each` pair for schedule-triggered workflows to act on a set of issues, and `{{trigger.payload.x}}` / `{{steps.<name>.output.x}}` expressions for passing data between nodes. Same guardrails as before (chain-depth limit, per-workflow rate limit, dry-run mode), now with per-node run history instead of one opaque log row. This replaced an earlier flat trigger+conditions+actions rule model in the same pass that shipped this canvas — see `docs/ENGINEERING-NOTES.md` for the migration/cutover.
+**Automation** — an n8n-style visual node-graph workflow builder (React Flow canvas on each project's Automation tab): triggers (issue events or cron schedules), conditions (if/else and multi-way switch), actions (set property, label, comment, add/replace description, notify, link, create subtask, outbound webhook), a `find_issues` + `loop_each` pair for schedule-triggered workflows to act on a set of issues, and `{{trigger.payload.x}}` / `{{steps.<name>.output.x}}` expressions for passing data between nodes. Same guardrails as before (chain-depth limit, per-workflow rate limit, dry-run mode), now with per-node run history instead of one opaque log row. This replaced an earlier flat trigger+conditions+actions rule model in the same pass that shipped this canvas — see `docs/ENGINEERING-NOTES.md` for the migration/cutover.
 
 **AI assist** — writing assist in the doc editor (continue/improve/shorten/expand/summarize/translate), AI-drafted issue descriptions, and AI sprint summaries. One provider adapter shared across features, usage logged per call.
 
@@ -110,6 +138,17 @@ claude mcp add --transport http kompast https://<domain>/mcp \
 **Attachments** — pluggable storage (`local` for dev, Google Cloud Storage for production) behind one interface; file bytes never pass through the Node process for production uploads.
 
 See `docs/ENGINEERING-NOTES.md` for what's deliberately out of scope in each area, and why.
+
+## Stakeholder demo
+
+A self-contained demo with six personas across an English software team and a Traditional Chinese marketing team. It needs no Entra, AI or mail setup.
+
+```bash
+pnpm demo                                   # on your laptop → http://localhost:3000, access code "kompast-demo"
+cd infra && ./demo.sh init https://demo.example.com && ./demo.sh up   # on a server
+```
+
+See [`docs/DEMO.md`](docs/DEMO.md) for the personas, a presentation flow and the reset/status/logs commands.
 
 ## GCP storage setup
 

@@ -67,7 +67,7 @@ export function NodeConfigPanel({
                 <select id={id} value={fieldRawValue(field.key) || field.options?.[0] || ""} onChange={(e) => setField(field.key, e.target.value)} className="kp-input kp-select">
                   {field.options?.map((opt) => (
                     <option key={opt} value={opt}>
-                      {opt}
+                      {field.optionLabels?.[opt] ?? opt}
                     </option>
                   ))}
                 </select>

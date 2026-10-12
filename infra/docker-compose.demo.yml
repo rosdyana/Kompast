@@ -1,0 +1,28 @@
+# Overlay for a stakeholder-demo deployment — driven by infra/demo.sh (see
+# docs/DEMO.md). The services are the normal production images, built
+# locally from this checkout; demo behavior comes entirely from DEMO_MODE /
+# DEMO_ACCESS_CODE in .env.
+x-local-image: &local-image
+  # Built by demo.sh, never pulled: a demo usually runs an unreleased branch.
+  pull_policy: never
+  platform: ${DEMO_PLATFORM:-linux/amd64}
+
+services:
+  migrate: *local-image
+  web: *local-image
+  collab: *local-image
+  worker: *local-image
+
+  seed-demo:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.seed
+    platform: ${DEMO_PLATFORM:-linux/amd64}
+    profiles: ["seed"]
+    restart: "no"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully

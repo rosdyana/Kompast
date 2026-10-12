@@ -33,6 +33,9 @@ describe("automation workflow CRUD", () => {
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+    // The fixture user must belong to the team that owns the project, or
+    // team-scoped RLS (packages/db/rls.sql) hides it from them.
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
   });
 
   afterAll(cleanup);

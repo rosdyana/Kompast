@@ -1,26 +1,33 @@
 import { createFileRoute, ClientOnly, Link, useRouter, useLoaderData } from "@tanstack/react-router";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
+  Building2,
+  Check,
   Copy,
   CopyPlus,
   FileText,
+  FolderInput,
   Globe,
   History,
   LayoutTemplate,
+  Lock,
   Link2,
   MoreHorizontal,
   MoveHorizontal,
   Plus,
+  Share2,
   SmilePlus,
   Star,
   Trash2,
+  UsersRound,
   X,
 } from "lucide-react";
 import { Button, IconButton } from "@kompast/ui/Button";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Badge } from "@kompast/ui/Badge";
 import { Popover } from "@kompast/ui/Popover";
-import { MenuItem, MenuList, MenuSeparator } from "@kompast/ui/Menu";
+import { MenuItem, MenuLabel, MenuList, MenuSeparator } from "@kompast/ui/Menu";
+import { NativeSelect } from "@kompast/ui/Input";
 import { useToast } from "@kompast/ui/Toast";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
 import {
@@ -37,6 +44,10 @@ import {
   createShareLinkFn,
   revokeShareLinkFn,
   setPageTemplateFn,
+  getPageAccessFn,
+  grantPageAccessFn,
+  revokePageAccessFn,
+  movePageToSpaceFn,
 } from "@/lib/server-fns/pages";
 import { resolveIssueByKeyFn } from "@/lib/server-fns/issue-detail";
 import { DocEditor, type DocEditorHandle } from "@/components/docs/Editor";
@@ -46,10 +57,12 @@ import { relativeTime } from "@/components/docs/relative-time";
 import { ProjectIcon } from "@/components/shell/ProjectIcon";
 import { usePageChrome, type Crumb } from "@/components/shell/WorkbenchContext";
 import { cn } from "@/lib/cn";
+import { NoAccessState } from "@/components/shared/NoAccessState";
 
 export const Route = createFileRoute("/_app/docs/$pageId")({
   loader: ({ params }) => getPageDetailFn({ data: params.pageId }),
   component: DocPage,
+  notFoundComponent: NoAccessState,
 });
 
 type PageData = Awaited<ReturnType<typeof getPageDetailFn>>;
@@ -151,6 +164,16 @@ function DocPageBody({ data }: { data: PageData }) {
     }
   }
 
+  async function moveToSpace(space: SpaceTarget, label: string) {
+    try {
+      await movePageToSpaceFn({ data: { pageId: data.page.id, ...space } });
+      toast.show({ title: t("pageDetail.movedTo", { space: label }) });
+      await router.invalidate();
+    } catch (err) {
+      toast.show({ tone: "error", title: t("common:somethingWentWrong"), description: err instanceof Error ? err.message : undefined });
+    }
+  }
+
   async function moveToTrash() {
     const pageId = data.page.id;
     await archivePageFn({ data: pageId });
@@ -172,6 +195,20 @@ function DocPageBody({ data }: { data: PageData }) {
 
   // ── Topbar chrome ────────────────────────────────────────────────────
   const crumbs: Crumb[] = [];
+  // The space crumb leads, so where a page lives (and so who can see it) is
+  // always visible: a project, a team's own space, Private, or the shared Workspace.
+  const spaceTeam = data.page.teamId ? shell.teams.find((tm) => tm.id === data.page.teamId) : undefined;
+  if (!data.project) {
+    crumbs.push(
+      data.page.privateOwnerId && data.page.sharedWith.length > 0
+        ? { label: t("nav:sharedDocs"), icon: <Share2 size={15} strokeWidth={1.75} className="text-text-3" /> }
+        : data.page.privateOwnerId
+        ? { label: t("nav:privateDocs"), icon: <Lock size={15} strokeWidth={1.75} className="text-text-3" /> }
+        : spaceTeam
+          ? { label: spaceTeam.name, icon: <UsersRound size={15} strokeWidth={1.75} className="text-text-3" /> }
+          : { label: t("nav:workspaceDocs"), icon: <Building2 size={15} strokeWidth={1.75} className="text-text-3" /> },
+    );
+  }
   if (data.project) {
     crumbs.push({
       label: data.project.name,
@@ -218,6 +255,8 @@ function DocPageBody({ data }: { data: PageData }) {
             onHistory={() => setHistoryOpen(true)}
             onToggleFullWidth={toggleFullWidth}
             onTrash={moveToTrash}
+            currentSpace={{ projectId: data.page.projectId, teamId: data.page.teamId, private: !!data.page.privateOwnerId && data.page.sharedWith.length === 0 }}
+            onMove={moveToSpace}
           />
         </div>
       ),
@@ -436,6 +475,7 @@ function SharePopover({ data }: { data: PageData }) {
         {t("pageDetail.share")}
       </Button>
       <Popover open={open} onClose={() => setOpen(false)} anchorRef={ref} placement="bottom-end" width={360} ariaLabel={t("pageDetail.shareLinkHeading")}>
+        {open && <PageAccessSection pageId={data.page.id} />}
         <div className="border-b border-border px-4 py-3">
           <p className="flex items-center gap-2 text-[14px] font-semibold">
             <Globe size={15} strokeWidth={1.75} className="text-text-2" />
@@ -444,7 +484,9 @@ function SharePopover({ data }: { data: PageData }) {
           <p className="mt-0.5 text-[12.5px] leading-snug text-text-2">{t("pageDetail.shareDescription")}</p>
         </div>
         <div className="max-h-[240px] overflow-y-auto px-2 py-2">
-          {data.shareLinks.length === 0 && <p className="px-2 py-2 text-[13px] text-text-3">{t("pageDetail.noShareLinksYet")}</p>}
+          {data.shareLinks.length === 0 && (
+            <p className="px-2 py-2 text-[13px] text-text-3">{data.page.privateOwnerId ? t("pageDetail.noShareLinksPersonal") : t("pageDetail.noShareLinksYet")}</p>
+          )}
           {data.shareLinks.map((link) => (
             <div key={link.id} className="group/link flex h-9 items-center gap-2 rounded-[6px] px-2 hover:bg-surface-2">
               <Link2 size={14} strokeWidth={1.75} className={cn("flex-none", link.revokedAt ? "text-text-3" : "text-text-2")} />
@@ -483,6 +525,180 @@ function SharePopover({ data }: { data: PageData }) {
   );
 }
 
+type PageAccess = Awaited<ReturnType<typeof getPageAccessFn>>;
+/** A "Move to…" destination: Workspace (all null), a team, a project, or the viewer's own Private space. */
+type SpaceTarget = { projectId: string | null; teamId: string | null; private?: boolean };
+type PageRole = "view" | "comment" | "edit" | "full";
+const PAGE_ROLES: PageRole[] = ["view", "comment", "edit", "full"];
+
+/**
+ * Who can open this page, on top of its space. Zero grants = everyone who
+ * can see the space (team-scoped RLS decides that); any grant restricts it
+ * to the listed people/teams (plus the super admin). Loaded when the Share
+ * popover opens rather than with the page — most visits never open it.
+ */
+function PageAccessSection({ pageId }: { pageId: string }) {
+  const { t } = useTranslation(["docs", "common"]);
+  const toast = useToast();
+  const router = useRouter();
+  const me = useLoaderData({ from: "/_app" }).user.id;
+  const [access, setAccess] = useState<PageAccess | null>(null);
+  const [subject, setSubject] = useState("");
+  const [role, setRole] = useState<PageRole>("edit");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    setAccess(await getPageAccessFn({ data: pageId }));
+  }
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageId]);
+
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+      // Sharing a Private page (or un-sharing the last person) moves it
+      // between the sidebar's Private and Shared sections.
+      await router.invalidate();
+    } catch (err) {
+      toast.show({ tone: "error", title: t("common:somethingWentWrong"), description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function parseSubject(value: string) {
+    const [type, id] = value.split(":") as ["user" | "team", string];
+    return { type, id };
+  }
+
+  if (!access) return <div className="border-b border-border px-4 py-3 text-[13px] text-text-3">{t("common:loading")}</div>;
+
+  const granted = new Set(access.grants.map((g) => `${g.subjectType}:${g.subjectId}`));
+  // Personal pages are shared with people only (core refuses teams).
+  const addLabel = access.owner ? t("pageDetail.accessAddPersonPlaceholder") : t("pageDetail.accessAddPlaceholder");
+  const restricted = access.grants.length > 0;
+
+  return (
+    <div className="border-b border-border px-4 py-3">
+      <p className="flex items-center gap-2 text-[14px] font-semibold">
+        <Lock size={15} strokeWidth={1.75} className="text-text-2" />
+        {t("pageDetail.accessHeading")}
+      </p>
+      <p className="mt-0.5 text-[12.5px] leading-snug text-text-2">
+        {access.owner
+          ? restricted
+            ? t("pageDetail.accessShared", { owner: access.owner.id === me ? t("pageDetail.you") : access.owner.name })
+            : t("pageDetail.accessPrivate")
+          : restricted
+            ? t("pageDetail.accessRestricted")
+            : t("pageDetail.accessOpen")}
+      </p>
+
+      {access.owner && restricted && (
+        <div className="mt-2 flex h-9 items-center gap-2">
+          <Avatar name={access.owner.name} size={22} />
+          <span className="min-w-0 flex-1 truncate text-[13.5px]">{access.owner.name}</span>
+          <span className="text-[12.5px] text-text-3">{t("pageDetail.owner")}</span>
+        </div>
+      )}
+
+      {access.grants.length > 0 && (
+        <div className="mt-2 flex flex-col">
+          {access.grants.map((g) => (
+            <div key={`${g.subjectType}:${g.subjectId}`} className="flex h-9 items-center gap-2">
+              {g.subjectType === "user" ? <Avatar name={g.name} size={22} /> : <UsersRound size={16} className="mx-[3px] text-text-3" />}
+              <span className="min-w-0 flex-1 truncate text-[13.5px]" title={g.detail ?? undefined}>
+                {g.name}
+              </span>
+              {/* You can't take yourself off a Shared page (core refuses it: RLS would hide the row mid-update). */}
+              {access.canManage && !(access.owner && g.subjectId === me) ? (
+                <>
+                  <select
+                    value={g.role}
+                    disabled={busy}
+                    aria-label={t("pageDetail.accessRoleFor", { name: g.name })}
+                    onChange={(e) => run(() => grantPageAccessFn({ data: { pageId, subject: { type: g.subjectType, id: g.subjectId }, role: e.target.value as PageRole } }))}
+                    className="kp-field kp-select h-7 text-[12.5px]"
+                  >
+                    {PAGE_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {t(`pageDetail.role.${r}`)}
+                      </option>
+                    ))}
+                  </select>
+                  <IconButton
+                    aria-label={t("pageDetail.accessRemove", { name: g.name })}
+                    title={t("pageDetail.accessRemove", { name: g.name })}
+                    disabled={busy}
+                    onClick={() => run(() => revokePageAccessFn({ data: { pageId, subject: { type: g.subjectType, id: g.subjectId } } }))}
+                    className="hover:text-danger"
+                  >
+                    <X size={14} />
+                  </IconButton>
+                </>
+              ) : (
+                <span className="text-[12.5px] text-text-3">{t(`pageDetail.role.${g.role}`)}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {access.canManage && (
+        <div className="mt-2 flex gap-1.5">
+          <NativeSelect value={subject} onChange={(e) => setSubject(e.target.value)} aria-label={addLabel} className="h-8 min-w-0 flex-1 text-[13px]">
+            <option value="">{addLabel}</option>
+            {access.candidates.teams.filter((tm) => !granted.has(`team:${tm.id}`)).length > 0 && (
+              <optgroup label={t("pageDetail.accessTeams")}>
+                {access.candidates.teams
+                  .filter((tm) => !granted.has(`team:${tm.id}`))
+                  .map((tm) => (
+                    <option key={tm.id} value={`team:${tm.id}`}>
+                      {tm.name}
+                    </option>
+                  ))}
+              </optgroup>
+            )}
+            <optgroup label={t("pageDetail.accessPeople")}>
+              {access.candidates.users
+                .filter((u) => !granted.has(`user:${u.id}`))
+                .map((u) => (
+                  <option key={u.id} value={`user:${u.id}`}>
+                    {u.name}
+                  </option>
+                ))}
+            </optgroup>
+          </NativeSelect>
+          <NativeSelect value={role} onChange={(e) => setRole(e.target.value as PageRole)} aria-label={t("pageDetail.accessRole")} className="h-8 w-[104px] text-[13px]">
+            {PAGE_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {t(`pageDetail.role.${r}`)}
+              </option>
+            ))}
+          </NativeSelect>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={busy || !subject}
+            onClick={() =>
+              run(async () => {
+                await grantPageAccessFn({ data: { pageId, subject: parseSubject(subject), role } });
+                setSubject("");
+              })
+            }
+          >
+            {t("pageDetail.accessAdd")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MoreMenu(props: {
   canEdit: boolean;
   isTemplate: boolean;
@@ -493,20 +709,69 @@ function MoreMenu(props: {
   onHistory: () => void;
   onToggleFullWidth: () => void;
   onTrash: () => void;
+  currentSpace: SpaceTarget;
+  onMove: (space: SpaceTarget, label: string) => void;
 }) {
-  const { t } = useTranslation("docs");
+  const { t } = useTranslation(["docs", "nav"]);
+  const shell = useLoaderData({ from: "/_app" });
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"main" | "move">("main");
   const ref = useRef<HTMLButtonElement>(null);
   const run = (fn: () => void) => () => {
     setOpen(false);
     fn();
   };
+  // Only spaces the viewer can actually see: RLS would reject a move into
+  // anything else anyway (locked teams never appear; projects are already
+  // RLS-filtered in the shell).
+  const destinations: { key: string; label: string; icon: ReactNode; space: SpaceTarget }[] = [
+    { key: "workspace", label: t("nav:workspaceDocs"), icon: <Building2 size={15} />, space: { projectId: null, teamId: null } },
+    { key: "private", label: t("nav:privateDocs"), icon: <Lock size={15} />, space: { projectId: null, teamId: null, private: true } },
+    ...shell.teams
+      .filter((tm) => !tm.locked)
+      .map((tm) => ({ key: `team:${tm.id}`, label: tm.name, icon: <UsersRound size={15} />, space: { projectId: null, teamId: tm.id } })),
+    ...shell.projects.map((p) => ({
+      key: `project:${p.id}`,
+      label: p.name,
+      icon: <ProjectIcon projectKey={p.key} size={15} />,
+      space: { projectId: p.id, teamId: null },
+    })),
+  ];
+  const isCurrent = (space: SpaceTarget) =>
+    space.projectId === props.currentSpace.projectId && space.teamId === props.currentSpace.teamId && !!space.private === !!props.currentSpace.private;
   return (
     <>
-      <IconButton ref={ref} aria-label={t("pageDetail.moreActions")} title={t("pageDetail.moreActions")} onClick={() => setOpen(!open)} aria-expanded={open}>
+      <IconButton
+        ref={ref}
+        aria-label={t("pageDetail.moreActions")}
+        title={t("pageDetail.moreActions")}
+        onClick={() => {
+          setView("main");
+          setOpen(!open);
+        }}
+        aria-expanded={open}
+      >
         <MoreHorizontal size={18} strokeWidth={1.75} />
       </IconButton>
-      <Popover open={open} onClose={() => setOpen(false)} anchorRef={ref} placement="bottom-end" width={248} role="menu">
+      <Popover open={open && view === "move"} onClose={() => setOpen(false)} anchorRef={ref} placement="bottom-end" width={248} role="menu">
+        <MenuList>
+          <MenuLabel>{t("pageDetail.moveTo")}</MenuLabel>
+          <div className="max-h-[320px] overflow-y-auto">
+            {destinations.map((d) => (
+              <MenuItem
+                key={d.key}
+                icon={d.icon}
+                selected={isCurrent(d.space)}
+                hint={isCurrent(d.space) ? <Check size={14} /> : undefined}
+                onClick={isCurrent(d.space) ? () => setOpen(false) : run(() => props.onMove(d.space, d.label))}
+              >
+                {d.label}
+              </MenuItem>
+            ))}
+          </div>
+        </MenuList>
+      </Popover>
+      <Popover open={open && view === "main"} onClose={() => setOpen(false)} anchorRef={ref} placement="bottom-end" width={248} role="menu">
         <MenuList>
           <MenuItem icon={<Link2 size={15} />} onClick={run(props.onCopyLink)}>
             {t("pageDetail.copyLink")}
@@ -522,6 +787,11 @@ function MoreMenu(props: {
           <MenuItem icon={<History size={15} />} onClick={run(props.onHistory)}>
             {t("pageDetail.versionHistory")}
           </MenuItem>
+          {props.canEdit && (
+            <MenuItem icon={<FolderInput size={15} />} onClick={() => setView("move")}>
+              {t("pageDetail.moveTo")}
+            </MenuItem>
+          )}
           <MenuSeparator />
           <MenuItem
             icon={<MoveHorizontal size={15} />}

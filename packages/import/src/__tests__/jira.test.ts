@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { schema, eq } from "@kompast/db";
+import { schema, eq, inArray } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -36,6 +36,9 @@ describe("JIRA importer (golden fixture)", () => {
     await admin.insert(schema.user).values({ id: userId, name: "Importer", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+    // The fixture user must belong to the team that owns the project, or
+    // team-scoped RLS (packages/db/rls.sql) hides it from them.
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
   });
 
   afterAll(async () => {
@@ -170,7 +173,13 @@ describe("JIRA importer (golden fixture)", () => {
     // Passes 3-6 (comments/worklogs/links/attachments/changelog) only run for
     // issues newly created THIS run (see load.ts's newlyCreatedKeys guard) —
     // a re-run must not duplicate the one comment the fixture has.
-    const comments = await admin.select().from(schema.issueComment);
+    // Scoped to this project's issues: an unfiltered select counts every
+    // comment in the shared test database (other test files running in
+    // parallel, seeded demo data), which made this flaky.
+    const comments = await admin
+      .select()
+      .from(schema.issueComment)
+      .where(inArray(schema.issueComment.issueId, issueRows.map((i) => i.id)));
     expect(comments).toHaveLength(1);
   });
 });

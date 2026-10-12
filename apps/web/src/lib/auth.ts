@@ -7,6 +7,7 @@ import { apiKey } from "@better-auth/api-key";
 import { loadEnv, type Env } from "@kompast/env";
 import { db, schema, eq, and } from "@kompast/db";
 import { getMicrosoftAuthConfig, isOnlyUser, enqueueEmail, withAuthorizedTenant } from "@kompast/core";
+import { getDemoConfig } from "./demo";
 
 const env = loadEnv();
 
@@ -54,13 +55,13 @@ export async function sendInvitationEmail(data: {
     enqueueEmail(tx, {
       organizationId: data.organization.id,
       to: data.email,
-      subject: `Undangan bergabung ke ${data.organization.name} di Kompast`,
+      subject: `Invitation to join ${data.organization.name} on Kompast`,
       templateKey: "notification",
       templateProps: {
-        title: `Anda diundang bergabung ke ${data.organization.name}`,
-        body: `${data.inviter.user.name} mengundang Anda sebagai ${data.role}.`,
+        title: `You have been invited to join ${data.organization.name}`,
+        body: `${data.inviter.user.name} invited you as ${data.role}.`,
         actionUrl: `${env.APP_URL}/invite/${data.id}`,
-        actionLabel: "Terima undangan",
+        actionLabel: "Accept invitation",
       },
       dedupeKey: `invitation:${data.id}`,
     }),
@@ -74,7 +75,7 @@ export async function getAuth() {
   if (cached && cached.configured === configured) return cached.auth;
 
   const devAdmin = getDevAdminConfig(env);
-  const auth = buildAuth(microsoft, devAdmin.enabled);
+  const auth = buildAuth(microsoft, devAdmin.enabled, getDemoConfig(env).enabled);
   cached = { auth, configured };
 
   if (devAdmin.enabled) await seedDevAdmin(auth, devAdmin.password!);
@@ -174,7 +175,7 @@ export async function seedDevAdmin(auth: ReturnType<typeof buildAuth>, password:
   }
 }
 
-export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>, devLoginEnabled: boolean) {
+export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>, devLoginEnabled: boolean, demoModeEnabled = false) {
   return betterAuth({
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
@@ -182,7 +183,23 @@ export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthC
       provider: "pg",
       schema,
     }),
-    ...(devLoginEnabled ? { emailAndPassword: { enabled: true } } : {}),
+    // Password sign-in exists only for the dev-admin bypass (local) and the
+    // seeded demo personas (apps/web/src/lib/demo.ts). Demo mode keeps
+    // sign-up closed — it runs on a public URL, and its accounts are created
+    // by scripts/seed-demo.ts writing credential rows directly. Dev login
+    // leaves it open because seedDevAdmin itself signs up through the API.
+    ...(devLoginEnabled || demoModeEnabled ? { emailAndPassword: { enabled: true, disableSignUp: !devLoginEnabled } } : {}),
+    // Key Better Auth's (production-only) rate limiter on the real client
+    // IP. Without this it can't resolve one and falls back to a single
+    // bucket shared by EVERY user — found during the demo-mode docker run:
+    // the 4th sign-in across the whole deployment within the window got a
+    // 429. Trusting X-Forwarded-For is safe in the documented topology:
+    // every service binds 127.0.0.1 behind Caddy (infra/Caddyfile.example),
+    // and Caddy ignores client-supplied X-Forwarded-* unless
+    // `trusted_proxies` is configured, so the header is always Caddy's own.
+    // Exposing the port directly would only let a client spoof its way
+    // around rate limits, not past auth.
+    advanced: { ipAddress: { ipAddressHeaders: ["x-forwarded-for"] } },
     databaseHooks: {
       user: {
         create: {

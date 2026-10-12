@@ -173,6 +173,7 @@ export function PointsPill({
   disabled?: boolean;
   className?: string;
 }) {
+  const { t } = useTranslation("board");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value == null ? "" : String(value));
   const inputRef = useRef<HTMLInputElement>(null);
@@ -218,8 +219,8 @@ export function PointsPill({
         setEditing(true);
       }}
       onPointerDown={(e) => e.stopPropagation()}
-      aria-label="Story points"
-      title="Story points"
+      aria-label={t("nav:createDialog.storyPoints")}
+      title={t("nav:createDialog.storyPoints")}
       className={cn(
         "inline-flex h-5 min-w-[24px] flex-none items-center justify-center rounded-full px-1.5 text-[12px] font-semibold tabular-nums outline-none hover:ring-2 hover:ring-border-2 focus-visible:ring-2 focus-visible:ring-accent",
         value == null ? "bg-surface-3 text-text-3" : "bg-surface-4 text-text-2",

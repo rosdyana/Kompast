@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import { applyAcceptedTeamInvitation } from "@kompast/core";
+import { withTenant, adminDb } from "@kompast/db";
 import { getAuth } from "../auth";
 
 /**
@@ -32,7 +34,14 @@ export const acceptInvitationFn = createServerFn({ method: "POST" })
   .handler(async ({ data: invitationId }) => {
     const auth = await getAuth();
     const request = getRequest();
-    await auth.api.acceptInvitation({ body: { invitationId }, headers: request.headers });
+    const { invitation, member } = await auth.api.acceptInvitation({ body: { invitationId }, headers: request.headers });
+    // Team invitations carry a team role the plugin doesn't know about.
+    // withTenant on adminDb, not withAuthorizedTenant: invitation/team_member
+    // have no RLS, and this is the one moment the accepting user's own
+    // membership is brand new (same request) — no need to re-derive it.
+    await withTenant(adminDb, { organizationId: invitation.organizationId, userId: member.userId }, (tx) =>
+      applyAcceptedTeamInvitation(tx, { invitationId, userId: member.userId }),
+    );
     return { ok: true } as const;
   });
 

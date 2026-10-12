@@ -115,7 +115,8 @@
     "archiveMenuLabel": "Card options",
     "rename": "Rename",
     "moveToColumn": "Move to",
-    "openIssue": "Open issue"
+    "openIssue": "Open issue",
+    "checklist": "Checklist"
   },
   "colorPicker": {
     "customTitle": "Custom color",
@@ -273,6 +274,8 @@
     "sortByDueDate": "Due date",
     "sortByPoints": "Points",
     "sortByKey": "Key",
+    "sortByEpic": "Epic",
+    "sortByLabel": "Label",
     "addSortButton": "+ Add sort",
     "reorderDisabledHint": "Switch sort to Manual order to drag-and-drop reorder.",
     "filterLabel": "Filter",
@@ -305,6 +308,7 @@
     "colTitle": "Title",
     "colStatus": "Status",
     "colAssignee": "Assignee",
+    "colEpic": "Epic",
     "colPriority": "Priority",
     "colPoints": "Points",
     "colDueDate": "Due date",

@@ -71,6 +71,17 @@
       "textPlaceholder": "支援 {{expr1}} / {{expr2}}",
       "summary": "留言：{{text}}"
     },
+    "action_add_description": {
+      "label": "新增描述",
+      "fields": {
+        "text": "描述文字",
+        "mode": "模式"
+      },
+      "modeAppend": "附加到現有描述",
+      "modeReplace": "取代描述",
+      "summary": "描述 += {{text}}",
+      "summaryReplace": "描述 = {{text}}"
+    },
     "action_notify": {
       "label": "通知使用者",
       "fields": {

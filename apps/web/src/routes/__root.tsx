@@ -21,7 +21,9 @@ export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
     if (location.pathname === "/setup" || location.pathname.startsWith("/api/")) return;
     const devLogin = await getDevLoginStatusFn();
-    if (devLogin.enabled) return;
+    // Dev login and demo mode both have a working password sign-in, so
+    // neither needs a real Entra tenant to get past /setup.
+    if (devLogin.enabled || devLogin.demo.enabled) return;
     const status = await getSetupStatusFn();
     if (!status.isConfigured) throw redirect({ to: "/setup" });
   },

@@ -372,9 +372,9 @@ async function notifyAssignment(
     eventType: "issue.assigned",
     entityType: "issue",
     entityId: issueId,
-    title: `Anda ditugaskan ke ${issueKey}`,
+    title: `You were assigned to ${issueKey}`,
     body: issue.title,
-    email: { to: user.email, actionUrl: `${loadEnv().APP_URL}/issues/${project.teamId ?? "none"}/${project.key}/${issue.keySeq}`, actionLabel: "Lihat tiket" },
+    email: { to: user.email, actionUrl: `${loadEnv().APP_URL}/issues/${project.teamId ?? "none"}/${project.key}/${issue.keySeq}`, actionLabel: "View issue" },
   });
 }
 

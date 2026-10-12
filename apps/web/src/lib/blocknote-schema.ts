@@ -134,7 +134,7 @@ export function redactEmbedsForGuests(blocks: any[]): any[] {
     block.type === "kompastView"
       ? {
           type: "paragraph",
-          content: [{ type: "text", text: "📊 Tabel Kanban — buka di Kompast untuk melihat", styles: {} }],
+          content: [{ type: "text", text: "📊 Kanban table — open in Kompast to view", styles: {} }],
         }
       : { ...block, children: block.children ? redactEmbedsForGuests(block.children) : block.children },
   );

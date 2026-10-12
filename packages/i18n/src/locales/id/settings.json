@@ -1,6 +1,7 @@
 {
   "tabs": {
     "notifications": "Notifikasi",
+    "general": "Umum",
     "members": "Anggota",
     "teams": "Tim",
     "roles": "Peran & Izin",
@@ -8,7 +9,8 @@
     "ai": "AI",
     "mail": "Email",
     "embedding": "Embedding",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "departedPages": "Halaman anggota yang keluar"
   },
   "pageTitle": "Pengaturan workspace",
   "teamsNonAdminNote": "Hanya super admin yang bisa mengelola daftar tim workspace di sini.",
@@ -18,12 +20,12 @@
       "heading": "Embedding (Ask Kompast)",
       "description": "Provider terpisah dari AI di atas — Anthropic tidak memiliki API embeddings publik, jadi Ask Kompast butuh Azure OpenAI atau endpoint kompatibel-OpenAI, apa pun provider AI yang dipilih di atas.",
       "enable": "Aktifkan Ask Kompast",
-      "providerLabel": "Provider",
-      "apiKeyLabel": "API key",
+      "providerLabel": "Penyedia",
+      "apiKeyLabel": "Kunci API",
       "savedNoteLong": "(tersimpan — kosongkan untuk tidak mengubah)",
       "azureEndpointLabel": "Azure endpoint",
       "azureDeploymentEmbeddingsLabel": "Azure deployment (embeddings)",
-      "baseUrlLabel": "Base URL",
+      "baseUrlLabel": "URL dasar",
       "modelLabel": "Model",
       "savingEllipsis": "Menyimpan…",
       "save": "Simpan",
@@ -47,15 +49,15 @@
     "ai": {
       "heading": "AI",
       "enable": "Aktifkan fitur AI",
-      "providerLabel": "Provider",
-      "apiKeyLabel": "API key",
+      "providerLabel": "Penyedia",
+      "apiKeyLabel": "Kunci API",
       "savedNoteLong": "(tersimpan — kosongkan untuk tidak mengubah)",
       "modelLabel": "Model",
       "modelBlankNote": "(kosongkan untuk default)",
       "modelPlaceholderOther": "nama model di endpoint ini",
       "azureEndpointLabel": "Azure endpoint",
       "azureDeploymentLabel": "Azure deployment",
-      "baseUrlLabel": "Base URL",
+      "baseUrlLabel": "URL dasar",
       "savingEllipsis": "Menyimpan…",
       "save": "Simpan",
       "saved": "Tersimpan.",
@@ -67,7 +69,7 @@
       "fromAddressLabel": "Alamat pengirim",
       "smtpUrlLabel": "SMTP URL",
       "savedNoteShort": "(tersimpan)",
-      "apiKeyLabel": "API key",
+      "apiKeyLabel": "Kunci API",
       "savingEllipsis": "Menyimpan…",
       "save": "Simpan",
       "saved": "Tersimpan.",
@@ -84,7 +86,7 @@
     "pendingInvitesHeading": "Undangan menunggu",
     "cancel": "Batalkan",
     "currentMembersHeading": "Anggota saat ini",
-    "memberRoleLabel": "Member",
+    "memberRoleLabel": "Anggota",
     "adminRoleLabel": "Admin",
     "tableName": "Nama",
     "tableRole": "Peran",
@@ -101,27 +103,27 @@
     "superAdmin": {
       "name": "Super Admin",
       "scope": "Satu per workspace",
-      "desc": "Bisa membuat tim baru dan mengelola tim mana pun (member.isSuperAdmin). Memindahkan peran ini mencabutnya dari pemegang sebelumnya."
+      "desc": "Melihat proyek dan dokumen semua tim, termasuk proyek yang belum ditetapkan ke tim. Membuat tim, menunjuk admin tim, dan memindahkan proyek antar tim (member.isSuperAdmin). Memindahkan peran ini mencabutnya dari pemegang sebelumnya."
     },
     "workspaceOwner": {
       "name": "Pemilik / Admin Workspace",
       "scope": "Workspace",
-      "desc": "Bisa membuka Pengaturan (integrasi Entra/AI/Email) dan mengundang/mengelola anggota workspace (member.role)."
+      "desc": "Bisa membuka Pengaturan (integrasi Entra/AI/Email) dan mengundang/mengelola anggota workspace (member.role). Tidak melihat konten tim lain — hanya tim yang diikuti, ditambah dokumen Workspace."
     },
     "teamAdmin": {
       "name": "Admin Tim",
       "scope": "Per tim",
-      "desc": "Bisa membuat proyek di timnya sendiri dan mengelola keanggotaan tim tersebut (team_member.role). Tidak punya hak di tim lain atau di seluruh workspace."
+      "desc": "Membuat proyek di timnya, menambahkan anggota workspace ke tim, dan mengundang orang baru langsung ke tim lewat email (team_member.role). Hanya melihat proyek dan dokumen timnya sendiri."
     },
     "teamMember": {
       "name": "Anggota Tim",
       "scope": "Per tim",
-      "desc": "Anggota biasa sebuah tim, tanpa hak kelola."
+      "desc": "Melihat dan bekerja di proyek dan dokumen timnya, ditambah dokumen Workspace bersama. Tim lain hanya tampil sebagai nama terkunci."
     },
     "projectRole": {
       "name": "Lead / Kontributor / Viewer Proyek",
       "scope": "Per proyek",
-      "desc": "Peran yang bisa ditetapkan per proyek (project_member.role). Belum ditegakkan di mana pun dalam kode saat ini — baru sebatas bisa diberikan."
+      "desc": "Lead proyek (project_member.role = lead) dapat mengelola pengaturan proyek tersebut — kolom dan field kustom."
     }
   },
   "groupAccount": "Akun",
@@ -133,5 +135,26 @@
   "disabled": "Nonaktif",
   "saveFailed": "Gagal menyimpan: {{message}}",
   "savedToast": "Pengaturan {{section}} disimpan",
-  "sectionPicker": "Bagian pengaturan"
+  "sectionPicker": "Bagian pengaturan",
+  "general": {
+    "heading": "Ruang kerja",
+    "description": "Nama ruang kerja ini di seluruh Kompast — sidebar, undangan, dan email.",
+    "nameLabel": "Nama ruang kerja",
+    "nameHint": "Hanya nama tampilan yang berubah; tautan yang ada tetap berfungsi.",
+    "save": "Simpan",
+    "savingEllipsis": "Menyimpan…"
+  },
+  "departedPages": {
+    "description": "Halaman pribadi dan yang dibagikan milik anggota yang sudah keluar dari workspace. Tidak ada orang lain yang dapat membuka halaman pribadi, jadi ini satu-satunya cara memulihkannya. Setiap pemulihan dicatat di log audit.",
+    "empty": "Tidak ada anggota keluar yang meninggalkan halaman pribadi.",
+    "untitled": "Tanpa judul",
+    "pageCount_other": "{{count}} halaman",
+    "sharedWith_other": "Dibagikan ke {{count}}",
+    "private": "Pribadi",
+    "inTrash": "Di sampah",
+    "takeOwnership": "Ambil alih",
+    "moveToWorkspace": "Pindah ke Workspace",
+    "recoveredToMe": "Dipindahkan ke halaman Anda",
+    "recoveredToWorkspace": "Dipindahkan ke Workspace"
+  }
 }

@@ -11,7 +11,6 @@ import {
   processReindexTask,
   markReindexTaskProcessed,
   markReindexTaskFailed,
-  withAuthorizedTenant,
   claimPendingWorkflowEvents,
   markWorkflowEventProcessed,
   markWorkflowEventFailed,
@@ -85,30 +84,20 @@ async function processOutboxBatch() {
 }
 
 /**
- * processReindexTask runs entirely inside packages/core's normal
- * withAuthorizedTenant (RLS-scoped tx), same as every other mutation — it
- * writes into the (RLS-protected) embedding table, so it needs a real
- * tenant-scoped tx, not the bare admin connection claimPendingReindexTasks
- * itself uses. withAuthorizedTenant needs *some* real member of the
- * task's organization to satisfy requireMembership; which member doesn't
- * matter for correctness (RLS itself only checks organization_id) — it's
- * just the account requireMembership checks against, so any member of
- * that workspace works.
+ * processReindexTask runs on the admin connection via withTenant — the same
+ * shape the automation pollers below use — not withAuthorizedTenant as some
+ * member. Reads are team-scoped by RLS (packages/db/rls.sql), so "any
+ * member of the workspace" is no longer a neutral choice: whoever that
+ * happened to be might not see the issue/comment being indexed, and the
+ * task would fail or index nothing. Indexing has to see every entity to
+ * keep the index complete; retrieval (askKompast, run as the asking user)
+ * is where team scoping is enforced.
  */
-async function findAnyMember(organizationId: string): Promise<string | null> {
-  const [row] = await adminDb.select({ userId: schema.member.userId }).from(schema.member).where(eq(schema.member.organizationId, organizationId)).limit(1);
-  return row?.userId ?? null;
-}
 async function processReindexBatch() {
   const claimed = await claimPendingReindexTasks(adminDb, 10);
   for (const task of claimed) {
     try {
-      const memberUserId = await findAnyMember(task.organizationId);
-      if (!memberUserId) {
-        await markReindexTaskFailed(adminDb, task.id, "No member found for organization");
-        continue;
-      }
-      await withAuthorizedTenant({ userId: memberUserId, organizationId: task.organizationId }, (tx) => processReindexTask(tx, task));
+      await withTenant(adminDb, { organizationId: task.organizationId, userId: "system" }, (tx) => processReindexTask(tx, task));
       await markReindexTaskProcessed(adminDb, task.id);
     } catch (err) {
       console.error(`[worker] reindex task ${task.id} failed:`, err);
@@ -122,8 +111,7 @@ async function processReindexBatch() {
  * rows and matches them against enabled workflows' trigger_event nodes.
  * Runs inside a plain withTenant tx rather than withAuthorizedTenant —
  * there's no "acting user" concept here (a workflow run isn't attributed
- * to any one member), so this passes a synthetic "system" userId directly
- * rather than looking up a real member via findAnyMember.
+ * to any one member), so this passes a synthetic "system" userId directly.
  */
 async function processWorkflowEventBatch() {
   const events = await claimPendingWorkflowEvents(adminDb, 10);

@@ -41,6 +41,11 @@ describe("updateIssue + createIssue attribution", () => {
       { id: id("mem"), organizationId: orgId, userId: otherUserId, role: "member" },
     ]);
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+    // The fixture user must belong to the team that owns the project, or
+    // team-scoped RLS (packages/db/rls.sql) hides it from them.
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
+    // Notification recipients must be able to see the issue (notify() drops anyone outside its team).
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${otherUserId}`, teamId, userId: otherUserId, membershipKey: `${teamId}:${otherUserId}` });
   });
 
   afterAll(async () => {

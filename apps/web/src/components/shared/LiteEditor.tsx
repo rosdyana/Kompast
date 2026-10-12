@@ -2,13 +2,14 @@ import "@blocknote/core/style.css";
 import "@blocknote/shadcn/style.css";
 import { useEffect, useMemo } from "react";
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, type Block, type PartialBlock } from "@blocknote/core";
-import { en } from "@blocknote/core/locales";
 import { useCreateBlockNote, SuggestionMenuController } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useTheme } from "@kompast/ui/theme";
 import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
 import { userMentionInlineSpec } from "@/components/shared/UserMentionInlineContent";
 import { searchWorkspaceFn } from "@/lib/server-fns/search";
+import { useBlockNoteDictionary } from "@/lib/blocknote-dictionary";
+import { useTranslation } from "@kompast/i18n";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see docs/Editor.tsx's identical cast: TS's
 // structural check on mixed-shape inline content spec records rejects this merge even though it's exactly
@@ -37,20 +38,25 @@ export interface LiteEditorProps {
  * top-level `placeholders` option is `@deprecated, provide placeholders
  * via dictionary instead` in the installed `@blocknote/core` v0.54.0
  * source) rather than that deprecated prop — merged onto BlockNote's own
- * `en` dictionary so slash-menu labels etc. stay at their defaults, only
+ * locale dictionary (see useBlockNoteDictionary) so slash-menu labels etc. stay at their defaults, only
  * `placeholders.default`/`emptyDocument` are overridden.
  */
 export function LiteEditor({ initialContent, onChange, autoFocus, className, placeholder }: LiteEditorProps) {
   const { theme } = useTheme();
+  const { t } = useTranslation("common");
+  const { locale, dictionary: base } = useBlockNoteDictionary();
   const dictionary = useMemo(
-    () => (placeholder ? { ...en, placeholders: { ...en.placeholders, default: placeholder, emptyDocument: placeholder } } : en),
-    [placeholder],
+    () => (placeholder ? { ...base, placeholders: { ...base.placeholders, default: placeholder, emptyDocument: placeholder } } : base),
+    [base, placeholder],
   );
-  const editor = useCreateBlockNote({
-    schema,
-    initialContent: initialContent && initialContent.length > 0 ? initialContent : undefined,
-    dictionary,
-  });
+  const editor = useCreateBlockNote(
+    {
+      schema,
+      initialContent: initialContent && initialContent.length > 0 ? initialContent : undefined,
+      dictionary,
+    },
+    [locale],
+  );
 
   // BlockNoteView's own autoFocus doesn't reliably land when the editor
   // mounts after a click (e.g. an expanding comment box) — without this,
@@ -93,13 +99,13 @@ export function LiteEditor({ initialContent, onChange, autoFocus, className, pla
               ...people.map((p) => ({
                 title: p.name,
                 subtext: p.email,
-                group: "People",
+                group: t("mentionGroupPeople"),
                 onItemClick: () => editor.insertInlineContent([{ type: "userMention", props: { userId: p.id, name: p.name } }, " "] as any),
               })),
               ...issues.map((i) => ({
                 title: `${i.projectKey}-${i.keySeq}`,
                 subtext: i.title,
-                group: "Issues",
+                group: t("mentionGroupIssues"),
                 onItemClick: () =>
                   editor.insertInlineContent(
                     [{ type: "issueMention", props: { issueId: i.id, projectKey: i.projectKey, keySeq: String(i.keySeq), teamId: i.teamId ?? "", title: i.title } }, " "] as any,

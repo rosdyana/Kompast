@@ -24,6 +24,7 @@ import { SelectMenu, type SelectOption } from "@kompast/ui/SelectMenu";
 import { Tabs } from "@kompast/ui/Tabs";
 import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
+import { IssueChecklist } from "@/components/issues/IssueChecklist";
 import {
   getIssueDetailFn,
   addCommentFn,
@@ -56,6 +57,7 @@ import { DetailRow, EmptyValue, InlineDate, InlineInput, InlineMultiPicker, Inli
 import { fullDateTime, intlLocaleOf, relativeTime, shortDate, toDateInput } from "@/components/issues/time";
 import { ProjectIcon } from "@/components/shell/ProjectIcon";
 import { usePageChrome, useWorkbench, type Crumb } from "@/components/shell/WorkbenchContext";
+import { NoAccessState } from "@/components/shared/NoAccessState";
 
 /** Crumb.link is typed as the generic Link props (every route's params), so
  * route-specific params need a cast at the boundary. */
@@ -74,6 +76,7 @@ export const Route = createFileRoute("/_app/issues/$teamId/$projectKey/$issueKey
   loader: ({ params }) =>
     getIssueDetailFn({ data: { teamId: params.teamId, projectKey: params.projectKey, issueKeySeq: Number(params.issueKeySeq) } }),
   component: IssueDetailRoute,
+  notFoundComponent: NoAccessState,
 });
 
 type IssueData = Awaited<ReturnType<typeof getIssueDetailFn>>;
@@ -338,6 +341,10 @@ function IssueView({ data, from }: { data: IssueData; from: FromTab }) {
               descriptionJson={data.issue.descriptionJson}
               onSaved={() => router.invalidate()}
             />
+          </Section>
+
+          <Section title={t("checklist.heading")}>
+            <IssueChecklist issueId={data.issue.id} initialItems={data.checklist} />
           </Section>
 
           {(data.children.length > 0 || isEpic || (subtaskType && !data.type?.isSubtask)) && (

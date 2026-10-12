@@ -345,6 +345,14 @@ export async function executeNode(
       await addComment(tx, { issueId: requireIssueId(issueId), authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
       return { status: "succeeded" };
     }
+    if (node.type === "action_add_description") {
+      const config = resolvedConfig as { text: string; mode?: "append" | "replace" };
+      const targetIssueId = requireIssueId(issueId);
+      const [current] = await tx.select({ descriptionJson: schema.issue.descriptionJson }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
+      const descriptionJson = composeDescription(current?.descriptionJson ?? null, config.text, config.mode ?? "append");
+      await updateIssue(tx, targetIssueId, { descriptionJson, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
+      return { status: "succeeded", output: { mode: config.mode ?? "append" } };
+    }
     if (node.type === "action_notify") {
       const config = resolvedConfig as { userId: string; title: string; body?: string };
       const targetIssueId = requireIssueId(issueId);
@@ -426,4 +434,23 @@ export async function executeNode(
   } catch (err) {
     return { status: "failed", error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * action_add_description's write: one paragraph block per line of `text`,
+ * either replacing the description or appended after the existing blocks.
+ * A legacy `{ text }` description is upgraded to a paragraph first so
+ * append never drops it.
+ */
+function composeDescription(existing: Json | null, text: string, mode: "append" | "replace"): Json {
+  const added = String(text ?? "")
+    .split("\n")
+    .map((line) => ({ type: "paragraph", content: line ? [{ type: "text", text: line, styles: {} }] : [] }));
+  if (mode === "replace" || existing == null) return added as unknown as Json;
+  const prior = Array.isArray(existing)
+    ? existing
+    : typeof existing === "object" && typeof (existing as { text?: unknown }).text === "string" && (existing as { text: string }).text
+      ? [{ type: "paragraph", content: [{ type: "text", text: (existing as { text: string }).text, styles: {} }] }]
+      : [];
+  return [...prior, ...added] as unknown as Json;
 }

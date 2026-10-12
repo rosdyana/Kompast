@@ -387,7 +387,7 @@ export function BacklogView({ data, teamId }: { data: BoardData; teamId: string 
         {error && (
           <p role="alert" className="flex items-center gap-2 rounded-[6px] bg-danger-soft px-3 py-2 type-small text-danger">
             <span className="flex-1">{error}</span>
-            <button type="button" onClick={() => setError(null)} aria-label="Dismiss">
+            <button type="button" onClick={() => setError(null)} aria-label={t("common:dismiss")}>
               <X size={14} />
             </button>
           </p>
@@ -426,7 +426,7 @@ export function BacklogView({ data, teamId }: { data: BoardData; teamId: string 
                       <Button variant="ghost" size="xs" onClick={() => generateSummary(sprint.id)} disabled={aiBusy}>
                         {aiBusy ? t("sprint.writingEllipsis") : t("backlog.regenerate")}
                       </Button>
-                      <IconButton size="xs" aria-label="Close" onClick={() => setAiFor(null)}>
+                      <IconButton size="xs" aria-label={t("common:close")} onClick={() => setAiFor(null)}>
                         <X size={13} />
                       </IconButton>
                     </div>

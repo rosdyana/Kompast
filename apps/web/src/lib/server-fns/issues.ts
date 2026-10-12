@@ -9,6 +9,7 @@ import {
   listCandidateEpics,
   listPriorityLevels,
   withAuthorizedTenant,
+  listAssignableUsers,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 
@@ -135,11 +136,8 @@ export const getCreateIssueContextFn = createServerFn({ method: "GET" })
           .where(eq(schema.issueType.projectId, projectId))
           .orderBy(asc(schema.issueType.order)),
         listPriorityLevels(tx, projectId),
-        tx
-          .select({ userId: schema.member.userId, name: schema.user.name, email: schema.user.email })
-          .from(schema.member)
-          .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
-          .where(eq(schema.member.organizationId, ctx.organizationId)),
+        // The project's team plus the super admin — who can actually open the issue being created.
+        listAssignableUsers(tx, { organizationId: ctx.organizationId, projectId }),
         listCandidateEpics(tx, projectId),
         tx.select({ id: schema.board.id }).from(schema.board).where(eq(schema.board.projectId, projectId)),
       ]);

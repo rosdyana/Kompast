@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
 import { and, eq, isNull, schema } from "@kompast/db";
-import { createPage, filterAccessiblePages, listPageTree, withAuthorizedTenant, withIdempotency } from "@kompast/core";
+import { createPage, filterAccessiblePages, listPageTree, requireTeamMember, withAuthorizedTenant, withIdempotency } from "@kompast/core";
 import { requireApiAuth } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
 import { resolveProject } from "@/lib/api-resolvers";
@@ -14,6 +14,11 @@ function serializePage(page: typeof schema.page.$inferSelect) {
     icon: page.icon,
     parentPageId: page.parentPageId,
     projectId: page.projectId,
+    teamId: page.teamId,
+    /** In the caller's own Private space. Only ever true for the caller's pages: RLS hides everyone else's. */
+    private: page.privateOwnerId !== null,
+    /** A private page its owner has invited specific people into (Notion's "Shared"). */
+    shared: page.sharedWith.length > 0,
     type: page.type,
     createdAt: page.createdAt.toISOString(),
     updatedAt: page.updatedAt.toISOString(),
@@ -24,6 +29,10 @@ const createPageSchema = z.object({
   title: z.string().min(1),
   parentPageId: z.string().nullable().optional(),
   projectKey: z.string().optional(),
+  /** Team space. Mutually exclusive with projectKey; omit both for the shared Workspace space (or to inherit parentPageId's space). */
+  teamId: z.string().optional(),
+  /** The caller's own Private space (visible to them alone). Mutually exclusive with projectKey/teamId. */
+  private: z.boolean().optional(),
   content: z.string().optional(),
 });
 
@@ -58,12 +67,17 @@ export const Route = createFileRoute("/api/v1/pages")({
 
           return withAuthorizedTenant(ctx, async (tx) => {
             const run = async () => {
-              const projectId = body.projectKey ? (await resolveProject(tx, ctx.organizationId, body.projectKey)).id : null;
+              // undefined (not null) when unspecified: under a parent, that means
+              // "inherit the parent's space" rather than "force Workspace".
+              const projectId = body.projectKey ? (await resolveProject(tx, ctx.organizationId, body.projectKey)).id : undefined;
+              if (body.teamId) await requireTeamMember(tx, { ...ctx, teamId: body.teamId });
               const page = await createPage(tx, {
                 organizationId: ctx.organizationId,
                 title: body.title,
                 parentPageId: body.parentPageId,
                 projectId,
+                teamId: body.teamId,
+                privateOwnerId: body.private ? ctx.userId : undefined,
                 actorUserId: ctx.userId,
               });
 

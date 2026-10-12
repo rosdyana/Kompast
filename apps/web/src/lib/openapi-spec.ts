@@ -43,6 +43,9 @@ const page = {
     icon: { type: "string", nullable: true },
     parentPageId: { type: "string", nullable: true },
     projectId: { type: "string", nullable: true },
+    teamId: { type: "string", nullable: true },
+    private: { type: "boolean", description: "A personal page: in its owner's Private space, or Shared with specific people" },
+    shared: { type: "boolean", description: "A personal page its owner has shared with specific people (PUT /pages/{pageId}/permissions with a user subject)" },
     type: { type: "string", enum: ["doc", "template"] },
     content: { type: "string", description: "Markdown, present only on GET /pages/{pageId}" },
     createdAt: { type: "string", format: "date-time" },
@@ -219,6 +222,8 @@ export function buildOpenApiSpec(serverUrl: string) {
                     title: { type: "string" },
                     parentPageId: { type: "string", nullable: true },
                     projectKey: { type: "string" },
+                    teamId: { type: "string", description: "Team space; omit this and projectKey for the shared Workspace space" },
+                    private: { type: "boolean", description: "Create in the caller's own Private space (visible to them alone). Mutually exclusive with projectKey/teamId." },
                     content: { type: "string", description: "Initial body as Markdown. Only honored on create — see PATCH." },
                   },
                 },
@@ -272,6 +277,40 @@ export function buildOpenApiSpec(serverUrl: string) {
           summary: "Unlink a page from an issue",
           parameters: [{ name: "issueKey", in: "query", required: true, schema: { type: "string" } }],
           responses: { "200": { description: "OK" }, "400": problemJson, "401": problemJson },
+        },
+      },
+      "/api/v1/pages/{pageId}/permissions": {
+        parameters: [{ name: "pageId", in: "path", required: true, schema: { type: "string" } }],
+        get: {
+          summary: "List who can open a page (empty grants = open to everyone who can see its space)",
+          responses: { "200": { description: "OK" }, "401": problemJson, "404": problemJson },
+        },
+        put: {
+          summary: "Grant or update a user's/team's access to a page",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["subject", "role"],
+                  properties: {
+                    subject: { type: "object", required: ["type", "id"], properties: { type: { type: "string", enum: ["user", "team"] }, id: { type: "string" } } },
+                    role: { type: "string", enum: ["view", "comment", "edit", "full"] },
+                  },
+                },
+              },
+            },
+          },
+          responses: { "200": { description: "OK" }, "401": problemJson, "403": problemJson, "404": problemJson },
+        },
+        delete: {
+          summary: "Revoke a user's/team's access to a page",
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { type: "object", required: ["type", "id"], properties: { type: { type: "string", enum: ["user", "team"] }, id: { type: "string" } } } } },
+          },
+          responses: { "200": { description: "OK" }, "401": problemJson, "403": problemJson, "404": problemJson },
         },
       },
       "/api/v1/sprints": {

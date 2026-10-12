@@ -8,7 +8,7 @@
   "outputs": {
     "yes": "Ya",
     "no": "Tidak",
-    "default": "Default"
+    "default": "Bawaan"
   },
   "nodeTypes": {
     "trigger_event": {
@@ -71,6 +71,17 @@
       "textPlaceholder": "Mendukung {{expr1}} / {{expr2}}",
       "summary": "Komentar: {{text}}"
     },
+    "action_add_description": {
+      "label": "Tambah deskripsi",
+      "fields": {
+        "text": "Teks deskripsi",
+        "mode": "Mode"
+      },
+      "modeAppend": "Tambahkan ke deskripsi yang ada",
+      "modeReplace": "Ganti deskripsi",
+      "summary": "Deskripsi += {{text}}",
+      "summaryReplace": "Deskripsi = {{text}}"
+    },
     "action_notify": {
       "label": "Beri tahu pengguna",
       "fields": {
@@ -99,7 +110,7 @@
       "label": "Webhook",
       "fields": {
         "url": "URL",
-        "method": "Method",
+        "method": "Metode",
         "headers": "Headers (JSON)",
         "bodyTemplate": "Body (JSON)"
       },

@@ -44,7 +44,7 @@ describe("kompastView block schema", () => {
     const decoded = editor.yDocToBlocks(ydoc, "document-store");
     const html = await editor.blocksToFullHTML(redactEmbedsForGuests(decoded) as any);
 
-    expect(html).toContain("Tabel Kanban");
+    expect(html).toContain("Kanban table");
     expect(html).not.toContain("board_123");
     expect(html).not.toContain("view_456");
   });

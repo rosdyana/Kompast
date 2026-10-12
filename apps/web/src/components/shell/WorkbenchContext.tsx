@@ -27,13 +27,15 @@ export interface PageChrome {
   crumbs: Crumb[];
   /** Right-aligned page actions shown in the topbar (Share, ⋯, Watch…). */
   actions?: ReactNode;
+  /** Defaults the global Create issue entry points (topbar, `C`, sidebar, palette) use while this page is mounted. */
+  createDefaults?: CreateIssueDefaults;
 }
 
 export interface Workbench {
   openPalette: () => void;
   openCreateIssue: (defaults?: CreateIssueDefaults) => void;
   openShortcuts: () => void;
-  createPage: (opts?: { parentPageId?: string | null; projectId?: string | null }) => Promise<void>;
+  createPage: (opts?: { parentPageId?: string | null; projectId?: string | null; teamId?: string | null; private?: boolean }) => Promise<void>;
   chrome: PageChrome | null;
   setChrome: (chrome: PageChrome | null) => void;
 }

@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { notFound } from "@tanstack/react-router";
 import * as z from "zod";
 import { and, asc, desc, eq, inArray, isNull, or, schema, type Json } from "@kompast/db";
 import {
@@ -7,6 +8,7 @@ import {
   restoreIssue,
   listComments,
   listAttachments,
+  listChecklistItems,
   listCandidateEpics,
   listIssuePropertyDefinitions,
   listPriorityLevels,
@@ -18,6 +20,7 @@ import {
   withAuthorizedTenant,
   requireProjectAdmin,
   ForbiddenError,
+  listAssignableUsers,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 import { resolveIssue } from "../api-resolvers";
@@ -49,15 +52,16 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         teamId: data.teamId === "none" ? null : data.teamId,
         key: data.projectKey,
       });
-      if (!project) throw new Error(`Project ${data.projectKey} not found`);
+      // Hidden by team-scoped RLS or genuinely gone — same NoAccessState either way.
+      if (!project) throw notFound();
 
       const [issue] = await tx
         .select()
         .from(schema.issue)
         .where(and(eq(schema.issue.projectId, project.id), eq(schema.issue.keySeq, data.issueKeySeq)));
-      if (!issue) throw new Error(`Issue ${data.projectKey}-${data.issueKeySeq} not found`);
+      if (!issue) throw notFound();
 
-      const [type, status, comments, history, attachments] = await Promise.all([
+      const [type, status, comments, history, attachments, checklist] = await Promise.all([
         tx.select().from(schema.issueType).where(eq(schema.issueType.id, issue.typeId)).then((r) => r[0]),
         tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.id, issue.statusId)).then((r) => r[0]),
         listComments(tx, issue.id),
@@ -68,6 +72,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
           .orderBy(desc(schema.issueHistory.createdAt))
           .limit(30),
         listAttachments(tx, issue.id),
+        listChecklistItems(tx, issue.id),
       ]);
 
       const userIds = [
@@ -89,14 +94,10 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, project.id)).orderBy(asc(schema.workflowStatus.order)),
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)).orderBy(asc(schema.issueType.order)),
         listIssuePropertyDefinitions(tx, project.id),
-        // Full workspace member list (not just users already referenced by this
-        // issue) — an assignee picker needs to offer everyone assignable, not
-        // just whoever has touched this issue before.
-        tx
-          .select({ userId: schema.member.userId, name: schema.user.name })
-          .from(schema.member)
-          .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
-          .where(eq(schema.member.organizationId, ctx.organizationId)),
+        // Everyone assignable (not just users already referenced by this
+        // issue): the project's team plus the super admin — exactly who can
+        // open this issue (see listAssignableUsers).
+        listAssignableUsers(tx, { organizationId: ctx.organizationId, projectId: project.id }).then((users) => users.map(({ userId, name }) => ({ userId, name }))),
         listPriorityLevels(tx, project.id),
         listCandidateEpics(tx, project.id, issue.id),
         // A project has exactly one board today (see every schema.board
@@ -172,6 +173,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         statuses,
         allTypes,
         attachments,
+        checklist,
         propertyDefinitions,
         orgMembers,
         priorityLevels,

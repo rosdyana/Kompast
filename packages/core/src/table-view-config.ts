@@ -10,7 +10,7 @@
  */
 
 /** "manual" sorts by the table's own drag-and-drop rank (issue.rank, or sprint_issue.rank in the Sprint Review context) rather than any issue field. */
-export type SortField = "manual" | "priority" | "dueDate" | "points" | "key";
+export type SortField = "manual" | "priority" | "dueDate" | "points" | "key" | "epic" | "label";
 
 export interface SortRule {
   field: SortField;

@@ -38,6 +38,9 @@ describe("automation engine", () => {
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+    // The fixture user must belong to the team that owns the project, or
+    // team-scoped RLS (packages/db/rls.sql) hides it from them.
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
   });
 
   afterAll(cleanup);
@@ -488,6 +491,7 @@ describe("automation engine", () => {
     await admin.insert(schema.user).values({ id: userId2, name: "User B", email: `${userId2}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId2, userId: userId2, role: "member" });
     await admin.insert(schema.team).values({ id: teamId2, organizationId: orgId2, name: "Test Team B" });
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId2}`, teamId: teamId2, userId: userId2, membershipKey: `${teamId2}:${userId2}` });
     const ctx2 = { userId: userId2, organizationId: orgId2 };
     const { projectId: projectBId } = await withAuthorizedTenant(ctx2, (tx) =>
       createProject(tx, { organizationId: orgId2, teamId: teamId2, key: "enhb", name: "enhb", actorUserId: userId2 }),

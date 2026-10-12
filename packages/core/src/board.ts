@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, isNull, ne, schema } from "@kompast/db";
 import type { Tx } from "./types";
+import { getChecklistSummaries } from "./checklist";
 
 /**
  * Board data shaped for the kanban UI: columns in display order, each with
@@ -53,8 +54,14 @@ export async function getBoard(tx: Tx, boardId: string) {
           .orderBy(asc(schema.issue.rank))
       : [];
 
-  const issuesByColumn = new Map<string, typeof issues>();
-  for (const issue of issues) {
+  const checklists = await getChecklistSummaries(
+    tx,
+    issues.map((i) => i.id),
+  );
+  const withChecklist = issues.map((i) => ({ ...i, checklist: checklists.get(i.id) ?? null }));
+
+  const issuesByColumn = new Map<string, typeof withChecklist>();
+  for (const issue of withChecklist) {
     const columnId = statusToColumn.get(issue.statusId);
     if (!columnId) continue;
     const bucket = issuesByColumn.get(columnId) ?? [];

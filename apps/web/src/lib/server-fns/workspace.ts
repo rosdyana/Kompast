@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
-import { and, count, eq, schema } from "@kompast/db";
-import { listTeamsForWorkspace, withAuthorizedTenant } from "@kompast/core";
-import { getCurrentSession } from "../session";
+import * as z from "zod";
+import { and, count, db, eq, schema } from "@kompast/db";
+import { listTeamsForWorkspace, renameWorkspace, requireSystemAdmin, withAuthorizedTenant } from "@kompast/core";
+import { getCurrentSession, requireAuthContext } from "../session";
 
 export const getWorkspaceShellFn = createServerFn({ method: "GET" }).handler(async () => {
   const session = await getCurrentSession();
@@ -36,3 +37,14 @@ export const getWorkspaceShellFn = createServerFn({ method: "GET" }).handler(asy
     isSuperAdmin: membership?.isSuperAdmin ?? false,
   };
 });
+
+const renameWorkspaceSchema = z.object({ name: z.string() });
+
+/** Workspace owner/admin only — the same gate as the rest of /settings. */
+export const renameWorkspaceFn = createServerFn({ method: "POST" })
+  .validator(renameWorkspaceSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireSystemAdmin(db, ctx);
+    return withAuthorizedTenant(ctx, (tx) => renameWorkspace(tx, { organizationId: ctx.organizationId, name: data.name }));
+  });

@@ -1,6 +1,7 @@
 import { and, count, eq, isNotNull, notInArray, schema, sql } from "@kompast/db";
 import type { AnyDb, Tx } from "./types";
 import { id } from "./ids";
+import { assignProjectToTeam } from "./project";
 
 export type TeamMemberRole = "admin" | "member";
 
@@ -141,10 +142,19 @@ export async function setTeamMemberRole(
 export interface TeamSummary {
   id: string;
   name: string;
-  memberCount: number;
-  projectCount: number;
+  /** Null for a locked team — counts of a team you can't see aren't yours to know either. */
+  memberCount: number | null;
+  projectCount: number | null;
   /** This viewer's own team_member.role, or null if they aren't a member of this team at all. */
   myRole: TeamMemberRole | null;
+  /**
+   * True when the viewer is neither a member nor the super admin: the
+   * sidebar shows the team's name (D4 in the team-visibility spec) but
+   * none of its content, which RLS hides anyway.
+   */
+  locked: boolean;
+  /** Who to ask for access — shown on a locked team's row. */
+  adminNames: string[];
 }
 
 /**
@@ -156,6 +166,9 @@ export interface TeamSummary {
  * filtered explicitly on every query regardless of which table is/isn't
  * RLS'd, same defense-in-depth already used throughout
  * server-fns/members.ts and workspace.ts.
+ *
+ * Every team in the workspace is listed (locked ones included) because
+ * team/team_member have no RLS; `locked` is computed here, not by the DB.
  */
 export async function listTeamsForWorkspace(
   tx: Tx,
@@ -164,7 +177,14 @@ export async function listTeamsForWorkspace(
   const teams = await tx
     .select({ id: schema.team.id, name: schema.team.name, memberCount: schema.team.memberCount })
     .from(schema.team)
-    .where(eq(schema.team.organizationId, ctx.organizationId));
+    .where(eq(schema.team.organizationId, ctx.organizationId))
+    .orderBy(schema.team.name);
+
+  const [me] = await tx
+    .select({ isSuperAdmin: schema.member.isSuperAdmin })
+    .from(schema.member)
+    .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)));
+  const viewerIsSuperAdmin = me?.isSuperAdmin ?? false;
 
   const myMemberships = await tx
     .select({ teamId: schema.teamMember.teamId, role: schema.teamMember.role })
@@ -173,6 +193,17 @@ export async function listTeamsForWorkspace(
     .where(and(eq(schema.team.organizationId, ctx.organizationId), eq(schema.teamMember.userId, ctx.userId)));
   const myRoleByTeam = new Map(myMemberships.map((m) => [m.teamId, m.role as TeamMemberRole]));
 
+  const admins = await tx
+    .select({ teamId: schema.teamMember.teamId, name: schema.user.name })
+    .from(schema.teamMember)
+    .innerJoin(schema.team, eq(schema.team.id, schema.teamMember.teamId))
+    .innerJoin(schema.user, eq(schema.user.id, schema.teamMember.userId))
+    .where(and(eq(schema.team.organizationId, ctx.organizationId), eq(schema.teamMember.role, "admin")));
+  const adminNamesByTeam = new Map<string, string[]>();
+  for (const a of admins) adminNamesByTeam.set(a.teamId, [...(adminNamesByTeam.get(a.teamId) ?? []), a.name]);
+
+  // RLS-scoped: counts only projects the viewer can see — exactly the set
+  // a locked team's count would otherwise leak.
   const projectCounts = await tx
     .select({ teamId: schema.project.teamId, n: count() })
     .from(schema.project)
@@ -180,11 +211,306 @@ export async function listTeamsForWorkspace(
     .groupBy(schema.project.teamId);
   const projectCountByTeam = new Map(projectCounts.map((p) => [p.teamId as string, p.n]));
 
-  return teams.map((t) => ({
-    id: t.id,
-    name: t.name,
-    memberCount: t.memberCount,
-    projectCount: projectCountByTeam.get(t.id) ?? 0,
-    myRole: myRoleByTeam.get(t.id) ?? null,
-  }));
+  return teams.map((t) => {
+    const myRole = myRoleByTeam.get(t.id) ?? null;
+    const locked = !viewerIsSuperAdmin && myRole === null;
+    return {
+      id: t.id,
+      name: t.name,
+      memberCount: locked ? null : t.memberCount,
+      projectCount: locked ? null : (projectCountByTeam.get(t.id) ?? 0),
+      myRole,
+      locked,
+      adminNames: adminNamesByTeam.get(t.id) ?? [],
+    };
+  });
+}
+
+/** Better Auth's own default (organization plugin's invitationExpiresIn). */
+const TEAM_INVITATION_TTL_MS = 48 * 60 * 60 * 1000;
+
+export class TeamInvitationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TeamInvitationError";
+  }
+}
+
+/**
+ * A team admin inviting someone new into their team (and, as a consequence,
+ * into the workspace as a plain `member` — M3 in the team-visibility spec:
+ * a team admin must never be able to mint a workspace admin).
+ *
+ * Writes Better Auth's `invitation` row directly rather than calling
+ * auth.api.createInvitation, for the same reason addTeamMember above
+ * bypasses the plugin: its endpoint checks the CALLER's workspace-level
+ * member.role for "invitation:create" (owner/admin only), which can't
+ * express "this team's own admin". Caller must have passed requireTeamAdmin.
+ * Accepting still goes through the plugin's real acceptInvitation (email
+ * match, status/expiry checks, member + team_member creation) — only
+ * creation is ours. `team_role` is Kompast's own column; see
+ * applyAcceptedTeamInvitation for where it takes effect.
+ *
+ * Someone already in the workspace isn't invited — the team admin adds
+ * them from the workspace-member list instead (accepting would otherwise
+ * try to create a duplicate member row). Re-inviting a pending address is
+ * a no-op returning the existing invitation, so the email isn't re-sent
+ * by a double-click.
+ */
+export async function createTeamInvitation(
+  tx: Tx,
+  input: { organizationId: string; teamId: string; email: string; teamRole: TeamMemberRole; inviterId: string },
+): Promise<{ id: string; created: boolean }> {
+  const email = input.email.trim().toLowerCase();
+
+  const [existingMember] = await tx
+    .select({ id: schema.member.id })
+    .from(schema.member)
+    .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
+    .where(and(eq(schema.member.organizationId, input.organizationId), sql`lower(${schema.user.email}) = ${email}`))
+    .limit(1);
+  if (existingMember) {
+    throw new TeamInvitationError(`${email} is already in this workspace — add them to the team from the member list instead.`);
+  }
+
+  const [pending] = await tx
+    .select({ id: schema.invitation.id })
+    .from(schema.invitation)
+    .where(
+      and(
+        eq(schema.invitation.organizationId, input.organizationId),
+        eq(schema.invitation.teamId, input.teamId),
+        eq(schema.invitation.status, "pending"),
+        sql`lower(${schema.invitation.email}) = ${email}`,
+        sql`${schema.invitation.expiresAt} > now()`,
+      ),
+    )
+    .limit(1);
+  if (pending) return { id: pending.id, created: false };
+
+  const invitationId = id("inv");
+  await tx.insert(schema.invitation).values({
+    id: invitationId,
+    organizationId: input.organizationId,
+    email,
+    role: "member",
+    teamId: input.teamId,
+    teamRole: input.teamRole,
+    status: "pending",
+    expiresAt: new Date(Date.now() + TEAM_INVITATION_TTL_MS),
+    inviterId: input.inviterId,
+  });
+  return { id: invitationId, created: true };
+}
+
+export interface TeamInvitationView {
+  id: string;
+  email: string;
+  teamRole: TeamMemberRole;
+  expiresAt: Date;
+}
+
+/** Pending, unexpired invitations into this team — the team-management page's "Pending" list. */
+export async function listTeamInvitations(db: AnyDb, teamId: string): Promise<TeamInvitationView[]> {
+  const rows = await db
+    .select({ id: schema.invitation.id, email: schema.invitation.email, teamRole: schema.invitation.teamRole, expiresAt: schema.invitation.expiresAt })
+    .from(schema.invitation)
+    .where(and(eq(schema.invitation.teamId, teamId), eq(schema.invitation.status, "pending"), sql`${schema.invitation.expiresAt} > now()`))
+    .orderBy(schema.invitation.createdAt);
+  return rows.map((r) => ({ ...r, teamRole: (r.teamRole ?? "member") as TeamMemberRole }));
+}
+
+/** Scoped by teamId so a team admin can only cancel their own team's invitations. */
+export async function cancelTeamInvitation(db: AnyDb, input: { teamId: string; invitationId: string }): Promise<void> {
+  await db
+    .update(schema.invitation)
+    .set({ status: "canceled" })
+    .where(and(eq(schema.invitation.id, input.invitationId), eq(schema.invitation.teamId, input.teamId), eq(schema.invitation.status, "pending")));
+}
+
+/**
+ * Runs right after Better Auth's acceptInvitation succeeds. The plugin has
+ * already created the member row and (for a team invitation) the
+ * team_member row via its own findOrCreateTeamMember; this only makes the
+ * team membership exist for certain (addTeamMember is idempotent — a
+ * no-op when the plugin already did it) and applies the team role the
+ * invitation was issued with, which the plugin knows nothing about.
+ * Workspace-level invitations (no teamId) are left untouched.
+ */
+export async function applyAcceptedTeamInvitation(tx: Tx, input: { invitationId: string; userId: string }): Promise<void> {
+  const [invitation] = await tx
+    .select({ organizationId: schema.invitation.organizationId, teamId: schema.invitation.teamId, teamRole: schema.invitation.teamRole, status: schema.invitation.status })
+    .from(schema.invitation)
+    .where(eq(schema.invitation.id, input.invitationId));
+  if (!invitation?.teamId || invitation.status !== "accepted") return;
+
+  await addTeamMember(tx, { teamId: invitation.teamId, userId: input.userId, organizationId: invitation.organizationId });
+  if (invitation.teamRole === "admin") {
+    await setTeamMemberRole(tx, { teamId: invitation.teamId, userId: input.userId, role: "admin" });
+  }
+}
+
+/**
+ * Who an issue in `projectId` can be assigned to / @mentioned in (M4 in the
+ * team-visibility spec): the owning team's members plus the super admin —
+ * the same people RLS lets open the issue. Offering the whole workspace
+ * would let work be assigned to someone who then can't see it.
+ */
+export async function listAssignableUsers(
+  tx: Tx,
+  input: { organizationId: string; projectId: string },
+): Promise<{ userId: string; name: string; email: string }[]> {
+  const [project] = await tx.select({ teamId: schema.project.teamId }).from(schema.project).where(eq(schema.project.id, input.projectId));
+  const teamMembers = project?.teamId
+    ? await tx
+        .select({ userId: schema.user.id, name: schema.user.name, email: schema.user.email })
+        .from(schema.teamMember)
+        .innerJoin(schema.user, eq(schema.user.id, schema.teamMember.userId))
+        .where(eq(schema.teamMember.teamId, project.teamId))
+    : [];
+  const superAdmins = await tx
+    .select({ userId: schema.user.id, name: schema.user.name, email: schema.user.email })
+    .from(schema.member)
+    .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
+    .where(and(eq(schema.member.organizationId, input.organizationId), eq(schema.member.isSuperAdmin, true)));
+  const byId = new Map([...teamMembers, ...superAdmins].map((u) => [u.userId, u]));
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+
+export const TEAM_NAME_MAX_LENGTH = 80;
+
+export class TeamNameError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TeamNameError";
+  }
+}
+
+/**
+ * Renames a team. Caller must have passed requireTeamAdmin. Names are
+ * unique per workspace (case-insensitive) because the sidebar and the
+ * project picker identify teams by name alone — two "Platform" rows would
+ * be indistinguishable. Not enforced by a DB index since Better Auth's
+ * createTeam writes this table too and doesn't know about one.
+ */
+export async function renameTeam(tx: Tx, input: { organizationId: string; teamId: string; name: string }): Promise<{ id: string; name: string }> {
+  const name = input.name.trim();
+  if (!name) throw new TeamNameError("Team name can't be empty.");
+  if (name.length > TEAM_NAME_MAX_LENGTH) throw new TeamNameError(`Team name can't be longer than ${TEAM_NAME_MAX_LENGTH} characters.`);
+
+  const [clash] = await tx
+    .select({ id: schema.team.id })
+    .from(schema.team)
+    .where(and(eq(schema.team.organizationId, input.organizationId), sql`lower(${schema.team.name}) = ${name.toLowerCase()}`, sql`${schema.team.id} <> ${input.teamId}`))
+    .limit(1);
+  if (clash) throw new TeamNameError(`Another team is already called "${name}".`);
+
+  const updated = await tx
+    .update(schema.team)
+    .set({ name, updatedAt: new Date() })
+    .where(and(eq(schema.team.id, input.teamId), eq(schema.team.organizationId, input.organizationId)))
+    .returning({ id: schema.team.id, name: schema.team.name });
+  if (updated.length === 0) throw new Error(`Team ${input.teamId} not found`);
+  return updated[0]!;
+}
+
+export interface TeamDeletionImpact {
+  memberCount: number;
+  /** Projects owned by the team — need a new owning team before it can be deleted. */
+  projectCount: number;
+  /** Live (non-archived) team-space docs — move with the projects. */
+  docCount: number;
+  /** Team-space docs already in the trash — moved too when there's a target, otherwise deleted with the team. */
+  archivedDocCount: number;
+  pendingInvitationCount: number;
+}
+
+/**
+ * What deleting this team would touch, for the confirmation dialog. Must
+ * run as the super admin (inside withAuthorizedTenant) — project and page
+ * are RLS-scoped, and only the super admin is guaranteed to see every
+ * row a team owns.
+ */
+export async function getTeamDeletionImpact(tx: Tx, input: { organizationId: string; teamId: string }): Promise<TeamDeletionImpact> {
+  const [team] = await tx
+    .select({ memberCount: schema.team.memberCount })
+    .from(schema.team)
+    .where(and(eq(schema.team.id, input.teamId), eq(schema.team.organizationId, input.organizationId)));
+  if (!team) throw new Error(`Team ${input.teamId} not found`);
+
+  const [projects] = await tx.select({ n: count() }).from(schema.project).where(eq(schema.project.teamId, input.teamId));
+  const [docs] = await tx
+    .select({
+      live: sql<number>`count(*) filter (where ${schema.page.archivedAt} is null)`.mapWith(Number),
+      archived: sql<number>`count(*) filter (where ${schema.page.archivedAt} is not null)`.mapWith(Number),
+    })
+    .from(schema.page)
+    .where(eq(schema.page.teamId, input.teamId));
+  const [invitations] = await tx
+    .select({ n: count() })
+    .from(schema.invitation)
+    .where(and(eq(schema.invitation.teamId, input.teamId), eq(schema.invitation.status, "pending")));
+
+  return {
+    memberCount: team.memberCount,
+    projectCount: projects?.n ?? 0,
+    docCount: docs?.live ?? 0,
+    archivedDocCount: docs?.archived ?? 0,
+    pendingInvitationCount: invitations?.n ?? 0,
+  };
+}
+
+export class TeamDeleteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TeamDeleteError";
+  }
+}
+
+/**
+ * Deletes a team. Super admin only (caller must have passed
+ * requireSuperAdmin), the same gate as creating one.
+ *
+ * A team that still owns projects or live team-space docs needs
+ * `transferToTeamId`: everything it owns moves to that team first, in the
+ * same transaction. The FKs would otherwise decide their fate badly —
+ * project.team_id is SET NULL, which silently turns the projects into
+ * super-admin-only "legacy" ones the team's members lose, and
+ * page.team_id is NO ACTION, which would just fail. Projects move via
+ * assignProjectToTeam, so a project-key clash in the target team aborts
+ * the whole delete with a readable error instead of half-moving.
+ *
+ * What goes with the team: memberships (team_member CASCADE), trashed docs
+ * when there's no target, and pending team invitations — canceled
+ * explicitly because invitation.team_id is SET NULL, which would otherwise
+ * turn them into live workspace-only invitations.
+ */
+export async function deleteTeam(tx: Tx, input: { organizationId: string; teamId: string; transferToTeamId?: string }): Promise<void> {
+  const impact = await getTeamDeletionImpact(tx, input);
+  const target = input.transferToTeamId;
+  if (target === input.teamId) throw new TeamDeleteError("Pick a different team to move this team's projects and docs to.");
+  if (!target && (impact.projectCount > 0 || impact.docCount > 0)) {
+    throw new TeamDeleteError(
+      `This team still owns ${impact.projectCount} project(s) and ${impact.docCount} doc(s). Choose a team to move them to first.`,
+    );
+  }
+
+  if (target) {
+    const projects = await tx.select({ id: schema.project.id }).from(schema.project).where(eq(schema.project.teamId, input.teamId));
+    for (const p of projects) {
+      await assignProjectToTeam(tx, { projectId: p.id, teamId: target, organizationId: input.organizationId });
+    }
+    await tx.update(schema.page).set({ teamId: target }).where(eq(schema.page.teamId, input.teamId));
+  } else {
+    // One statement: a trashed team doc's children are team docs too (a
+    // subtree never straddles spaces), so the self-FK holds at statement end.
+    await tx.delete(schema.page).where(eq(schema.page.teamId, input.teamId));
+  }
+
+  await tx
+    .update(schema.invitation)
+    .set({ status: "canceled" })
+    .where(and(eq(schema.invitation.teamId, input.teamId), eq(schema.invitation.status, "pending")));
+  await tx.delete(schema.team).where(and(eq(schema.team.id, input.teamId), eq(schema.team.organizationId, input.organizationId)));
 }

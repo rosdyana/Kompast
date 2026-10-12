@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 /**
@@ -165,7 +165,12 @@ export const teamMember = pgTable("team_member", {
    */
   role: text("role").notNull().default("member"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (t) => [
+  // Backs rls.sql's kompast_my_team_ids(), evaluated on every
+  // project/issue/page read — membership_key's unique index leads with
+  // team_id, so it can't serve a lookup by user.
+  index("team_member_user_idx").on(t.userId, t.teamId),
+]);
 
 export const invitation = pgTable("invitation", {
   id: text("id").primaryKey(),
@@ -175,6 +180,14 @@ export const invitation = pgTable("invitation", {
   email: text("email").notNull(),
   role: text("role"),
   teamId: text("team_id").references(() => team.id, { onDelete: "set null" }),
+  /**
+   * Kompast-specific, like team_member.role — the team role ("admin" |
+   * "member") a team-scoped invitation grants on accept. The plugin never
+   * reads or writes it; packages/core/src/team.ts's createTeamInvitation
+   * sets it and acceptTeamInvitation applies it. Null on plain
+   * workspace-level invitations.
+   */
+  teamRole: text("team_role"),
   status: text("status").notNull().default("pending"),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),

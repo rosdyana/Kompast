@@ -5,6 +5,9 @@
   "notFoundTitle": "找不到頁面",
   "notFoundSubtext": "您要找的頁面不存在或已移動。",
   "notFoundGoHome": "回到首頁",
+  "noAccessTitle": "找不到內容，或您沒有存取權限",
+  "noAccessSubtext": "內容可能已移動或刪除，或屬於您未加入的團隊。如需存取，請聯絡該團隊的管理員。",
+  "restricted": "受限",
   "save": "儲存",
   "cancel": "取消",
   "delete": "刪除",
@@ -17,5 +20,9 @@
   "more": "更多",
   "copyLink": "複製連結",
   "linkCopied": "已複製連結",
-  "somethingWentWrong": "發生錯誤。"
+  "somethingWentWrong": "發生錯誤。",
+  "mentionGroupPeople": "成員",
+  "mentionGroupIssues": "議題",
+  "dismiss": "關閉",
+  "breadcrumb": "導覽路徑"
 }

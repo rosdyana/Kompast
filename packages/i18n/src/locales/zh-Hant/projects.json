@@ -10,5 +10,9 @@
   "nameLabel": "專案名稱",
   "keyLabel": "代碼",
   "keyHint": "議題代碼的前綴，例如 {{key}}-12。最多 10 個字元。",
-  "projects": "專案"
+  "projects": "專案",
+  "noEligibleTeamTitle": "你需要先有一個團隊",
+  "noEligibleTeamSuperAdmin": "每個專案都屬於一個團隊，而你還不是任何團隊的管理員。建立第一個團隊吧。",
+  "noEligibleTeamMember": "每個專案都屬於一個團隊，而你還不是任何團隊的管理員。請工作區管理員將你設為團隊管理員。",
+  "createTeam": "建立團隊"
 }

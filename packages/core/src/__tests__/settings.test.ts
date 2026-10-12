@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { db, schema, eq, asc, sql, adminDb } from "@kompast/db";
+import { db, schema, eq, asc, sql, adminDb, withTenant } from "@kompast/db";
 import { encryptSecret, decryptSecret } from "../crypto";
 import {
   getSetupStatus,
@@ -292,6 +292,9 @@ describe("packages/core/ai", () => {
     await db.insert(schema.user).values({ id: userId, name: "AI User", email: `${userId}@example.com` });
     await db.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
     await db.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+    // The fixture user must belong to the team that owns the project, or
+    // team-scoped RLS (packages/db/rls.sql) hides it from them.
+    await db.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
   });
 
   afterEach(async () => {
@@ -444,6 +447,9 @@ describe("packages/core/rag", () => {
     await db.insert(schema.user).values({ id: userId, name: "RAG User", email: `${userId}@example.com` });
     await db.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
     await db.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+    // The fixture user must belong to the team that owns the project, or
+    // team-scoped RLS (packages/db/rls.sql) hides it from them.
+    await db.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
   });
 
   afterEach(async () => {
@@ -453,6 +459,16 @@ describe("packages/core/rag", () => {
 
   async function seedProject() {
     return withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "rag", name: "RAG Test", actorUserId: userId }));
+  }
+
+  /**
+   * Indexing only ever runs in apps/worker, on the admin connection
+   * (bypasses RLS) — mirror that here rather than indexing as a user, whose
+   * team-scoped embedding policy (packages/db/rls.sql) would also gate the
+   * write on the entity being visible to them.
+   */
+  function asWorker<T>(fn: Parameters<typeof withTenant<T>>[2]) {
+    return withTenant(adminDb, { organizationId: orgId, userId: "system" }, fn);
   }
 
   /**
@@ -468,7 +484,7 @@ describe("packages/core/rag", () => {
   }
 
   it("indexEntity stores one row per chunk and silently does nothing when embeddings aren't configured", async () => {
-    await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "fake-1", text: "hello world" }));
+    await asWorker((tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "fake-1", text: "hello world" }));
     const rows = await adminDb.select().from(schema.embedding).where(eq(schema.embedding.entityId, "fake-1"));
     expect(rows).toHaveLength(0);
   });
@@ -482,13 +498,13 @@ describe("packages/core/rag", () => {
     });
 
     it("indexEntity stores real vectors, one row per chunk, and replaces old chunks wholesale on a later call", async () => {
-      await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "fake-1", text: "hello world" }));
+      await asWorker((tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "fake-1", text: "hello world" }));
       let rows = await adminDb.select().from(schema.embedding).where(eq(schema.embedding.entityId, "fake-1"));
       expect(rows).toHaveLength(1);
       expect(rows[0]!.content).toBe("hello world");
       expect(rows[0]!.vector).toHaveLength(EMBEDDING_DIMENSIONS);
 
-      await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "fake-1", text: "completely different text" }));
+      await asWorker((tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "fake-1", text: "completely different text" }));
       rows = await adminDb.select().from(schema.embedding).where(eq(schema.embedding.entityId, "fake-1"));
       expect(rows).toHaveLength(1);
       expect(rows[0]!.content).toBe("completely different text");
@@ -503,7 +519,7 @@ describe("packages/core/rag", () => {
       const task = await fetchPendingReindexTask(issueId);
       expect(task).toMatchObject({ organizationId: orgId, entityType: "issue", entityId: issueId, action: "index", status: "pending" });
 
-      await withAuthorizedTenant(ctx, (tx) => processReindexTask(tx, task!));
+      await asWorker((tx) => processReindexTask(tx, task!));
       await markReindexTaskProcessed(adminDb, task!.id);
 
       const rows = await adminDb.select().from(schema.embedding).where(eq(schema.embedding.entityId, issueId));
@@ -540,14 +556,21 @@ describe("packages/core/rag", () => {
     });
 
     it("searchEmbeddings ranks the chunk whose text exactly matches the query ahead of an unrelated one", async () => {
-      await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "issue-relevant", text: "database migration rollback procedure" }));
-      await withAuthorizedTenant(ctx, (tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: "issue-unrelated", text: "office coffee machine is broken" }));
+      // Real issues, not made-up ids: searchEmbeddings runs as the user, and
+      // the embedding policy only returns chunks of issues they can see.
+      const { projectId, issueTypes, statuses } = await seedProject();
+      const mk = (title: string) =>
+        withAuthorizedTenant(ctx, (tx) => createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title, reporterId: userId }));
+      const { issueId: relevantId } = await mk("Relevant");
+      const { issueId: unrelatedId } = await mk("Unrelated");
+      await asWorker((tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: relevantId, text: "database migration rollback procedure" }));
+      await asWorker((tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: unrelatedId, text: "office coffee machine is broken" }));
 
       const queryVector = fakeEmbed("database migration rollback procedure");
       const results = await withAuthorizedTenant(ctx, (tx) => searchEmbeddings(tx, { organizationId: orgId, queryVector, limit: 5 }));
 
-      expect(results[0]!.entityId).toBe("issue-relevant");
-      expect(results[0]!.distance).toBeLessThan(results.find((r) => r.entityId === "issue-unrelated")!.distance);
+      expect(results[0]!.entityId).toBe(relevantId);
+      expect(results[0]!.distance).toBeLessThan(results.find((r) => r.entityId === unrelatedId)!.distance);
     });
 
     it("askKompast retrieves relevant context, answers, and persists both the question and the answer with citations", async () => {
@@ -556,7 +579,7 @@ describe("packages/core/rag", () => {
         createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Unique searchable issue title", reporterId: userId }),
       );
       const task = await fetchPendingReindexTask(issueId);
-      await withAuthorizedTenant(ctx, (tx) => processReindexTask(tx, task!));
+      await asWorker((tx) => processReindexTask(tx, task!));
 
       const deltas: string[] = [];
       const result = await withAuthorizedTenant(ctx, (tx) => askKompast(tx, { organizationId: orgId, userId, question: "Unique searchable issue title", onDelta: (d) => deltas.push(d) }));

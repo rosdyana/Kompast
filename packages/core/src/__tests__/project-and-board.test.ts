@@ -62,6 +62,8 @@ describe("project + board service layer", () => {
         { id: id("mem"), organizationId: otherOrgId, userId, role: "member" },
       ]);
     await admin.insert(schema.team).values([{ id: teamId, organizationId: orgId, name: "Test Team" }]);
+    // The fixture user must belong to the team that owns the project, or team-scoped RLS hides it.
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
   }
 
   beforeEach(resetFixtures);

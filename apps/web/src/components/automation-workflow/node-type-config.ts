@@ -8,6 +8,7 @@ export const AUTOMATION_NODE_TYPES = [
   "action_set_property",
   "action_add_label",
   "action_comment",
+  "action_add_description",
   "action_notify",
   "action_link_issue",
   "action_create_subtask",
@@ -26,6 +27,8 @@ export interface FieldSpec {
   label: string;
   kind: "text" | "textarea" | "select" | "number" | "json";
   options?: readonly string[];
+  /** Display labels for `options`, keyed by option value; falls back to the raw value. */
+  optionLabels?: Record<string, string>;
   placeholder?: string;
   optional?: boolean;
 }
@@ -135,6 +138,29 @@ export function getNodeTypeConfigs(t: TFunction): Record<AutomationNodeType, Nod
       ],
       outputs: SINGLE_OUTPUT,
       summary: (c) => nt("action_comment.summary", { text: String(c.text ?? "").slice(0, 40) }),
+    },
+    action_add_description: {
+      label: nt("action_add_description.label"),
+      category: "action",
+      defaultConfig: { text: "", mode: "append" },
+      fields: [
+        {
+          key: "text",
+          label: nt("action_add_description.fields.text"),
+          kind: "textarea",
+          placeholder: nt("action_comment.textPlaceholder", { expr1: "{{trigger.payload.x}}", expr2: "{{steps.<name>.output.x}}" }),
+        },
+        {
+          key: "mode",
+          label: nt("action_add_description.fields.mode"),
+          kind: "select",
+          options: ["append", "replace"],
+          optionLabels: { append: nt("action_add_description.modeAppend"), replace: nt("action_add_description.modeReplace") },
+        },
+      ],
+      outputs: SINGLE_OUTPUT,
+      summary: (c) =>
+        nt(c.mode === "replace" ? "action_add_description.summaryReplace" : "action_add_description.summary", { text: String(c.text ?? "").slice(0, 40) }),
     },
     action_notify: {
       label: nt("action_notify.label"),

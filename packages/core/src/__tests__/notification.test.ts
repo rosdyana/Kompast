@@ -36,7 +36,10 @@ describe("notifications", () => {
     await cleanup();
     await admin.insert(schema.organization).values({ id: orgId, name: "Notification Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
-    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    // Super admin: these tests exercise preference/inbox mechanics against
+    // placeholder entity ids, and notify() only delivers to recipients who
+    // can see the entity — the super admin always can.
+    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member", isSuperAdmin: true });
   });
 
   afterAll(async () => {
