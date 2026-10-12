@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useLoaderData, useNavigate, useRouter } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { Bell, Bot, Database, KeyRound, Mail, Settings as SettingsIcon, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { Bell, Bot, Building2, Database, KeyRound, Mail, Settings as SettingsIcon, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { Badge } from "@kompast/ui/Badge";
 import { Card } from "@kompast/ui/Card";
@@ -10,6 +10,7 @@ import { useTranslation } from "@kompast/i18n";
 import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn } from "@/lib/server-fns/settings";
 import { listMembersFn } from "@/lib/server-fns/members";
 import { listTeamsFn } from "@/lib/server-fns/teams";
+import { renameWorkspaceFn } from "@/lib/server-fns/workspace";
 import { listNotificationPrefsFn } from "@/lib/server-fns/notifications";
 import { MembersTab } from "@/components/settings/MembersTab";
 import { TeamsTab } from "@/components/settings/TeamsTab";
@@ -20,7 +21,7 @@ import { usePageChrome } from "@/components/shell/WorkbenchContext";
 import { cn } from "@/lib/cn";
 
 /** "integrations" is kept as a legacy alias (old links) and resolves to the AI section. */
-const TAB_KEYS = ["notifications", "members", "teams", "roles", "integrations", "ai", "mail", "embedding", "entra"] as const;
+const TAB_KEYS = ["notifications", "general", "members", "teams", "roles", "integrations", "ai", "mail", "embedding", "entra"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 export const Route = createFileRoute("/_app/settings")({
@@ -50,7 +51,7 @@ function SettingsPage() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const isAdmin = data.adminData !== null;
-  const requested: TabKey = tab === "integrations" ? "ai" : (tab ?? (isAdmin ? "members" : "notifications"));
+  const requested: TabKey = tab === "integrations" ? "ai" : (tab ?? (isAdmin ? "general" : "notifications"));
   const active: TabKey = !isAdmin ? "notifications" : requested;
 
   const groups: { label: string; items: { key: TabKey; label: string; icon: ReactNode; status?: boolean }[] }[] = [
@@ -60,6 +61,7 @@ function SettingsPage() {
           {
             label: t("groupWorkspace"),
             items: [
+              { key: "general" as const, label: t("tabs.general"), icon: <Building2 size={15} /> },
               { key: "members" as const, label: t("tabs.members"), icon: <Users size={15} /> },
               { key: "teams" as const, label: t("tabs.teams"), icon: <UsersRound size={15} /> },
               { key: "roles" as const, label: t("tabs.roles"), icon: <ShieldCheck size={15} /> },
@@ -142,6 +144,7 @@ function SettingsPage() {
 
       <main className="min-w-0 flex-1">
         {active === "notifications" && <NotificationsTab data={data.notificationPrefs} />}
+        {active === "general" && data.adminData && <WorkspaceSection />}
         {active === "members" && data.adminData && <MembersTab data={data.adminData.members} />}
         {active === "teams" && data.adminData?.integrations.isSuperAdmin && <TeamsTab teams={data.adminData.teams} members={data.adminData.members.members} />}
         {active === "teams" && data.adminData && !data.adminData.integrations.isSuperAdmin && (
@@ -205,6 +208,35 @@ function SaveRow({ saving, error, onSave, disabled, label, savingLabel }: { savi
       </Button>
       {error && <span className="text-[13px] text-danger">{error}</span>}
     </div>
+  );
+}
+
+function WorkspaceSection() {
+  const { t } = useTranslation("settings");
+  const shell = useLoaderData({ from: "/_app" });
+  const current = shell?.organization?.name ?? "";
+  const [name, setName] = useState(current);
+  const { saving, error, run } = useSave(t("tabs.general"));
+  const trimmed = name.trim();
+
+  return (
+    <SettingsSection title={t("general.heading")} description={t("general.description")}>
+      <Card>
+        <div className="flex flex-col gap-4 p-5">
+          <FormField label={t("general.nameLabel")} hint={t("general.nameHint")}>
+            <TextField value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+          </FormField>
+        </div>
+        <SaveRow
+          saving={saving}
+          error={error}
+          onSave={() => run(() => renameWorkspaceFn({ data: { name: trimmed } }))}
+          disabled={!trimmed || trimmed === current}
+          label={t("general.save")}
+          savingLabel={t("general.savingEllipsis")}
+        />
+      </Card>
+    </SettingsSection>
   );
 }
 

@@ -1,6 +1,7 @@
 import { and, count, eq, isNotNull, notInArray, schema, sql } from "@kompast/db";
 import type { AnyDb, Tx } from "./types";
 import { id } from "./ids";
+import { assignProjectToTeam } from "./project";
 
 export type TeamMemberRole = "admin" | "member";
 
@@ -376,3 +377,140 @@ export async function listAssignableUsers(
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+
+export const TEAM_NAME_MAX_LENGTH = 80;
+
+export class TeamNameError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TeamNameError";
+  }
+}
+
+/**
+ * Renames a team. Caller must have passed requireTeamAdmin. Names are
+ * unique per workspace (case-insensitive) because the sidebar and the
+ * project picker identify teams by name alone — two "Platform" rows would
+ * be indistinguishable. Not enforced by a DB index since Better Auth's
+ * createTeam writes this table too and doesn't know about one.
+ */
+export async function renameTeam(tx: Tx, input: { organizationId: string; teamId: string; name: string }): Promise<{ id: string; name: string }> {
+  const name = input.name.trim();
+  if (!name) throw new TeamNameError("Team name can't be empty.");
+  if (name.length > TEAM_NAME_MAX_LENGTH) throw new TeamNameError(`Team name can't be longer than ${TEAM_NAME_MAX_LENGTH} characters.`);
+
+  const [clash] = await tx
+    .select({ id: schema.team.id })
+    .from(schema.team)
+    .where(and(eq(schema.team.organizationId, input.organizationId), sql`lower(${schema.team.name}) = ${name.toLowerCase()}`, sql`${schema.team.id} <> ${input.teamId}`))
+    .limit(1);
+  if (clash) throw new TeamNameError(`Another team is already called "${name}".`);
+
+  const updated = await tx
+    .update(schema.team)
+    .set({ name, updatedAt: new Date() })
+    .where(and(eq(schema.team.id, input.teamId), eq(schema.team.organizationId, input.organizationId)))
+    .returning({ id: schema.team.id, name: schema.team.name });
+  if (updated.length === 0) throw new Error(`Team ${input.teamId} not found`);
+  return updated[0]!;
+}
+
+export interface TeamDeletionImpact {
+  memberCount: number;
+  /** Projects owned by the team — need a new owning team before it can be deleted. */
+  projectCount: number;
+  /** Live (non-archived) team-space docs — move with the projects. */
+  docCount: number;
+  /** Team-space docs already in the trash — moved too when there's a target, otherwise deleted with the team. */
+  archivedDocCount: number;
+  pendingInvitationCount: number;
+}
+
+/**
+ * What deleting this team would touch, for the confirmation dialog. Must
+ * run as the super admin (inside withAuthorizedTenant) — project and page
+ * are RLS-scoped, and only the super admin is guaranteed to see every
+ * row a team owns.
+ */
+export async function getTeamDeletionImpact(tx: Tx, input: { organizationId: string; teamId: string }): Promise<TeamDeletionImpact> {
+  const [team] = await tx
+    .select({ memberCount: schema.team.memberCount })
+    .from(schema.team)
+    .where(and(eq(schema.team.id, input.teamId), eq(schema.team.organizationId, input.organizationId)));
+  if (!team) throw new Error(`Team ${input.teamId} not found`);
+
+  const [projects] = await tx.select({ n: count() }).from(schema.project).where(eq(schema.project.teamId, input.teamId));
+  const [docs] = await tx
+    .select({
+      live: sql<number>`count(*) filter (where ${schema.page.archivedAt} is null)`.mapWith(Number),
+      archived: sql<number>`count(*) filter (where ${schema.page.archivedAt} is not null)`.mapWith(Number),
+    })
+    .from(schema.page)
+    .where(eq(schema.page.teamId, input.teamId));
+  const [invitations] = await tx
+    .select({ n: count() })
+    .from(schema.invitation)
+    .where(and(eq(schema.invitation.teamId, input.teamId), eq(schema.invitation.status, "pending")));
+
+  return {
+    memberCount: team.memberCount,
+    projectCount: projects?.n ?? 0,
+    docCount: docs?.live ?? 0,
+    archivedDocCount: docs?.archived ?? 0,
+    pendingInvitationCount: invitations?.n ?? 0,
+  };
+}
+
+export class TeamDeleteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TeamDeleteError";
+  }
+}
+
+/**
+ * Deletes a team. Super admin only (caller must have passed
+ * requireSuperAdmin), the same gate as creating one.
+ *
+ * A team that still owns projects or live team-space docs needs
+ * `transferToTeamId`: everything it owns moves to that team first, in the
+ * same transaction. The FKs would otherwise decide their fate badly —
+ * project.team_id is SET NULL, which silently turns the projects into
+ * super-admin-only "legacy" ones the team's members lose, and
+ * page.team_id is NO ACTION, which would just fail. Projects move via
+ * assignProjectToTeam, so a project-key clash in the target team aborts
+ * the whole delete with a readable error instead of half-moving.
+ *
+ * What goes with the team: memberships (team_member CASCADE), trashed docs
+ * when there's no target, and pending team invitations — canceled
+ * explicitly because invitation.team_id is SET NULL, which would otherwise
+ * turn them into live workspace-only invitations.
+ */
+export async function deleteTeam(tx: Tx, input: { organizationId: string; teamId: string; transferToTeamId?: string }): Promise<void> {
+  const impact = await getTeamDeletionImpact(tx, input);
+  const target = input.transferToTeamId;
+  if (target === input.teamId) throw new TeamDeleteError("Pick a different team to move this team's projects and docs to.");
+  if (!target && (impact.projectCount > 0 || impact.docCount > 0)) {
+    throw new TeamDeleteError(
+      `This team still owns ${impact.projectCount} project(s) and ${impact.docCount} doc(s). Choose a team to move them to first.`,
+    );
+  }
+
+  if (target) {
+    const projects = await tx.select({ id: schema.project.id }).from(schema.project).where(eq(schema.project.teamId, input.teamId));
+    for (const p of projects) {
+      await assignProjectToTeam(tx, { projectId: p.id, teamId: target, organizationId: input.organizationId });
+    }
+    await tx.update(schema.page).set({ teamId: target }).where(eq(schema.page.teamId, input.teamId));
+  } else {
+    // One statement: a trashed team doc's children are team docs too (a
+    // subtree never straddles spaces), so the self-FK holds at statement end.
+    await tx.delete(schema.page).where(eq(schema.page.teamId, input.teamId));
+  }
+
+  await tx
+    .update(schema.invitation)
+    .set({ status: "canceled" })
+    .where(and(eq(schema.invitation.teamId, input.teamId), eq(schema.invitation.status, "pending")));
+  await tx.delete(schema.team).where(and(eq(schema.team.id, input.teamId), eq(schema.team.organizationId, input.organizationId)));
+}

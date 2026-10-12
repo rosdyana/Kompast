@@ -5,7 +5,21 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
 import { requireTeamAdmin, withAuthorizedTenant, ForbiddenError } from "../permissions";
-import { addTeamMember, listOrgMembersNotInTeam, listTeamMembers, listTeamsForWorkspace, removeTeamMember, setTeamMemberRole } from "../team";
+import {
+  addTeamMember,
+  deleteTeam,
+  getTeamDeletionImpact,
+  listOrgMembersNotInTeam,
+  listTeamMembers,
+  listTeamsForWorkspace,
+  removeTeamMember,
+  renameTeam,
+  setTeamMemberRole,
+  TeamDeleteError,
+  TeamNameError,
+} from "../team";
+import { renameWorkspace, WorkspaceNameError } from "../workspace";
+import { archivePage, createPage } from "../page";
 import { id } from "../ids";
 
 describe("team service layer", () => {
@@ -21,6 +35,8 @@ describe("team service layer", () => {
   const otherTeamId = "test-team-b";
 
   async function cleanup() {
+    await admin.delete(schema.page).where(eq(schema.page.organizationId, orgId));
+    await admin.delete(schema.invitation).where(eq(schema.invitation.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
     await admin.delete(schema.teamMember).where(eq(schema.teamMember.teamId, teamId));
     await admin.delete(schema.teamMember).where(eq(schema.teamMember.teamId, otherTeamId));
@@ -204,6 +220,103 @@ describe("team service layer", () => {
           requireTeamAdmin(tx, { userId: teamAdminId, organizationId: orgId, teamId: otherTeamId }),
         ),
       ).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe("renaming", () => {
+    const asSuperAdmin = { userId: superAdminId, organizationId: orgId };
+
+    it("renameTeam trims the name and saves it", async () => {
+      const renamed = await withAuthorizedTenant(asSuperAdmin, (tx) => renameTeam(tx, { organizationId: orgId, teamId, name: "  Platform  " }));
+      expect(renamed.name).toBe("Platform");
+      const [row] = await admin.select().from(schema.team).where(eq(schema.team.id, teamId));
+      expect(row?.name).toBe("Platform");
+    });
+
+    it("renameTeam rejects an empty name and another team's name (case-insensitive)", async () => {
+      await expect(withAuthorizedTenant(asSuperAdmin, (tx) => renameTeam(tx, { organizationId: orgId, teamId, name: "   " }))).rejects.toThrow(TeamNameError);
+      await expect(withAuthorizedTenant(asSuperAdmin, (tx) => renameTeam(tx, { organizationId: orgId, teamId, name: "team b" }))).rejects.toThrow(TeamNameError);
+      // Re-saving its own name with different casing is fine.
+      await expect(withAuthorizedTenant(asSuperAdmin, (tx) => renameTeam(tx, { organizationId: orgId, teamId, name: "TEAM A" }))).resolves.toMatchObject({ name: "TEAM A" });
+    });
+
+    it("renameWorkspace changes the name but not the slug", async () => {
+      await withAuthorizedTenant(asSuperAdmin, (tx) => renameWorkspace(tx, { organizationId: orgId, name: " Renamed Org " }));
+      const [org] = await admin.select().from(schema.organization).where(eq(schema.organization.id, orgId));
+      expect(org?.name).toBe("Renamed Org");
+      expect(org?.slug).toBe(orgId);
+      await expect(withAuthorizedTenant(asSuperAdmin, (tx) => renameWorkspace(tx, { organizationId: orgId, name: "" }))).rejects.toThrow(WorkspaceNameError);
+    });
+  });
+
+  describe("deleteTeam", () => {
+    const asSuperAdmin = { userId: superAdminId, organizationId: orgId };
+
+    async function seedTeamContent() {
+      return withAuthorizedTenant(asSuperAdmin, async (tx) => {
+        const project = await createProject(tx, { organizationId: orgId, teamId, key: "DEL", name: "Doomed Team Project", actorUserId: superAdminId });
+        const live = await createPage(tx, { organizationId: orgId, teamId, title: "Team doc", actorUserId: superAdminId });
+        const trashed = await createPage(tx, { organizationId: orgId, teamId, title: "Trashed doc", actorUserId: superAdminId });
+        await archivePage(tx, trashed.id);
+        return { project, live, trashed };
+      });
+    }
+
+    it("refuses while the team owns projects or docs and no transfer target is given", async () => {
+      await seedTeamContent();
+      await expect(withAuthorizedTenant(asSuperAdmin, (tx) => deleteTeam(tx, { organizationId: orgId, teamId }))).rejects.toThrow(TeamDeleteError);
+      const [team] = await admin.select().from(schema.team).where(eq(schema.team.id, teamId));
+      expect(team).toBeTruthy();
+    });
+
+    it("moves projects and every team doc to the target, cancels pending invitations, drops memberships", async () => {
+      const { project, live, trashed } = await seedTeamContent();
+      await admin.insert(schema.invitation).values({
+        id: id("inv"),
+        organizationId: orgId,
+        email: "pending@example.com",
+        role: "member",
+        teamId,
+        status: "pending",
+        expiresAt: new Date(Date.now() + 60_000),
+        inviterId: superAdminId,
+      });
+
+      const impact = await withAuthorizedTenant(asSuperAdmin, (tx) => getTeamDeletionImpact(tx, { organizationId: orgId, teamId }));
+      expect(impact).toEqual({ memberCount: 1, projectCount: 1, docCount: 1, archivedDocCount: 1, pendingInvitationCount: 1 });
+
+      await withAuthorizedTenant(asSuperAdmin, (tx) => deleteTeam(tx, { organizationId: orgId, teamId, transferToTeamId: otherTeamId }));
+
+      expect(await admin.select().from(schema.team).where(eq(schema.team.id, teamId))).toHaveLength(0);
+      expect(await admin.select().from(schema.teamMember).where(eq(schema.teamMember.teamId, teamId))).toHaveLength(0);
+      const [movedProject] = await admin.select().from(schema.project).where(eq(schema.project.id, project.projectId));
+      expect(movedProject?.teamId).toBe(otherTeamId);
+      const pages = await admin.select().from(schema.page).where(eq(schema.page.organizationId, orgId));
+      expect(pages.map((p) => [p.id, p.teamId]).sort()).toEqual([[live.id, otherTeamId], [trashed.id, otherTeamId]].sort());
+      const [inv] = await admin.select().from(schema.invitation).where(eq(schema.invitation.organizationId, orgId));
+      expect(inv?.status).toBe("canceled");
+    });
+
+    it("an empty team is deleted outright, taking its trashed docs with it", async () => {
+      await withAuthorizedTenant(asSuperAdmin, async (tx) => {
+        const trashed = await createPage(tx, { organizationId: orgId, teamId, title: "Trashed doc", actorUserId: superAdminId });
+        await archivePage(tx, trashed.id);
+      });
+      await withAuthorizedTenant(asSuperAdmin, (tx) => deleteTeam(tx, { organizationId: orgId, teamId }));
+      expect(await admin.select().from(schema.team).where(eq(schema.team.id, teamId))).toHaveLength(0);
+      expect(await admin.select().from(schema.page).where(eq(schema.page.organizationId, orgId))).toHaveLength(0);
+    });
+
+    it("a project-key clash in the target team aborts the whole delete", async () => {
+      const { project } = await seedTeamContent();
+      await withAuthorizedTenant(asSuperAdmin, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId: otherTeamId, key: "DEL", name: "Same key", actorUserId: superAdminId }),
+      );
+      await expect(withAuthorizedTenant(asSuperAdmin, (tx) => deleteTeam(tx, { organizationId: orgId, teamId, transferToTeamId: otherTeamId }))).rejects.toThrow();
+      const [team] = await admin.select().from(schema.team).where(eq(schema.team.id, teamId));
+      expect(team).toBeTruthy();
+      const [unmoved] = await admin.select().from(schema.project).where(eq(schema.project.id, project.projectId));
+      expect(unmoved?.teamId).toBe(teamId);
     });
   });
 });

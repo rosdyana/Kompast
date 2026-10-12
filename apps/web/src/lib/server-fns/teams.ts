@@ -6,11 +6,14 @@ import {
   addTeamMember,
   cancelTeamInvitation,
   createTeamInvitation,
+  deleteTeam,
+  getTeamDeletionImpact,
   listTeamInvitations,
   listOrgMembersNotInTeam,
   listTeamMembers,
   listTeamsForWorkspace,
   removeTeamMember,
+  renameTeam,
   requireSuperAdmin,
   requireTeamAdmin,
   setTeamMemberRole,
@@ -70,6 +73,39 @@ export const getTeamManagementFn = createServerFn({ method: "GET" })
       candidates: await listOrgMembersNotInTeam(tx, ctx, data.teamId),
       invitations: await listTeamInvitations(tx, data.teamId),
     }));
+  });
+
+const renameTeamSchema = z.object({ teamId: z.string(), name: z.string() });
+
+/** Team admins can rename their own team; the super admin any team. */
+export const renameTeamFn = createServerFn({ method: "POST" })
+  .validator(renameTeamSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireTeamAdmin(db, { ...ctx, teamId: data.teamId });
+    return withAuthorizedTenant(ctx, (tx) => renameTeam(tx, { organizationId: ctx.organizationId, teamId: data.teamId, name: data.name }));
+  });
+
+/** Backs the delete-team confirmation dialog — super admin only, like deleteTeamFn itself. */
+export const getTeamDeletionImpactFn = createServerFn({ method: "GET" })
+  .validator(teamIdSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireSuperAdmin(db, ctx);
+    return withAuthorizedTenant(ctx, (tx) => getTeamDeletionImpact(tx, { organizationId: ctx.organizationId, teamId: data.teamId }));
+  });
+
+const deleteTeamSchema = z.object({ teamId: z.string(), transferToTeamId: z.string().optional() });
+
+export const deleteTeamFn = createServerFn({ method: "POST" })
+  .validator(deleteTeamSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireSuperAdmin(db, ctx);
+    await withAuthorizedTenant(ctx, (tx) =>
+      deleteTeam(tx, { organizationId: ctx.organizationId, teamId: data.teamId, transferToTeamId: data.transferToTeamId }),
+    );
+    return { ok: true } as const;
   });
 
 const addTeamMemberSchema = z.object({ teamId: z.string(), userId: z.string() });

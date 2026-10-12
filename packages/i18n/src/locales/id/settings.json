@@ -1,6 +1,7 @@
 {
   "tabs": {
     "notifications": "Notifikasi",
+    "general": "Umum",
     "members": "Anggota",
     "teams": "Tim",
     "roles": "Peran & Izin",
@@ -133,5 +134,13 @@
   "disabled": "Nonaktif",
   "saveFailed": "Gagal menyimpan: {{message}}",
   "savedToast": "Pengaturan {{section}} disimpan",
-  "sectionPicker": "Bagian pengaturan"
+  "sectionPicker": "Bagian pengaturan",
+  "general": {
+    "heading": "Ruang kerja",
+    "description": "Nama ruang kerja ini di seluruh Kompast — sidebar, undangan, dan email.",
+    "nameLabel": "Nama ruang kerja",
+    "nameHint": "Hanya nama tampilan yang berubah; tautan yang ada tetap berfungsi.",
+    "save": "Simpan",
+    "savingEllipsis": "Menyimpan…"
+  }
 }

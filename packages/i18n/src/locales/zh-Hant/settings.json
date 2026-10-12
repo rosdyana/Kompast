@@ -1,6 +1,7 @@
 {
   "tabs": {
     "notifications": "通知",
+    "general": "一般",
     "members": "成員",
     "teams": "團隊",
     "roles": "角色與權限",
@@ -133,5 +134,13 @@
   "disabled": "關閉",
   "saveFailed": "無法儲存：{{message}}",
   "savedToast": "已儲存{{section}}設定",
-  "sectionPicker": "設定區段"
+  "sectionPicker": "設定區段",
+  "general": {
+    "heading": "工作區",
+    "description": "此工作區在 Kompast 各處（側邊欄、邀請與電子郵件）顯示的名稱。",
+    "nameLabel": "工作區名稱",
+    "nameHint": "只會變更顯示名稱；既有連結仍可正常使用。",
+    "save": "儲存",
+    "savingEllipsis": "儲存中…"
+  }
 }

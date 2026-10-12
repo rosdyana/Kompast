@@ -3,6 +3,7 @@ export * from "./rank";
 export * from "./permissions";
 export * from "./project";
 export * from "./team";
+export * from "./workspace";
 export * from "./issue";
 export * from "./issue-property";
 export * from "./priority";
