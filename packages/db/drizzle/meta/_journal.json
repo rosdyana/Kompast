@@ -246,6 +246,20 @@
       "when": 1791815487238,
       "tag": "0034_issue_checklist",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791842618375,
+      "tag": "0035_page_private_space",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791843876461,
+      "tag": "0036_page_shared_space",
+      "breakpoints": true
     }
   ]
 }

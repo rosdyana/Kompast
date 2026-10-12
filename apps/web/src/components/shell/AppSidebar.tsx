@@ -415,8 +415,14 @@ export function AppSidebar({ shell }: { shell: SidebarShellData }) {
   const { openPalette, openCreateIssue, createPage } = useWorkbench();
   const { setMobileOpen } = useSidebarCollapsed();
   const favorites = shell.pages.filter((p) => shell.favoriteIds.includes(p.id));
-  // shell.pages is every visible non-project page; team-space ones go under their team.
-  const workspacePages = shell.pages.filter((p) => !p.teamId);
+  // shell.pages is every visible non-project page; team-space ones go under
+  // their team. Personal pages: my unshared ones under Private, shared trees
+  // I own or was invited into under Shared. RLS also hands the super admin
+  // departed members' private pages; those live in Settings, not here.
+  const workspacePages = shell.pages.filter((p) => !p.teamId && !p.privateOwnerId);
+  const isShared = (p: DocsTreePage) => (p.sharedWith?.length ?? 0) > 0;
+  const privatePages = shell.pages.filter((p) => p.privateOwnerId === shell.user.id && !isShared(p));
+  const sharedPages = shell.pages.filter((p) => isShared(p) && (p.privateOwnerId === shell.user.id || p.sharedWith!.includes(shell.user.id)));
   const openTeams = shell.teams.filter((team) => !team.locked);
   const lockedTeams = shell.teams.filter((team) => team.locked);
 
@@ -530,6 +536,30 @@ export function AppSidebar({ shell }: { shell: SidebarShellData }) {
             <Plus size={16} strokeWidth={1.75} className="w-[18px] flex-none" />
             <span className="truncate">{t("newPage")}</span>
           </button>
+        </div>
+
+        {sharedPages.length > 0 && (
+          <div className="mt-2">
+            <SectionHeader label={t("sharedDocs")} />
+            <DocsTree pages={sharedPages} onAddChild={(parentPageId) => createPage({ parentPageId })} />
+          </div>
+        )}
+
+        <div className="mt-2">
+          <SectionHeader label={t("privateDocs")}>
+            <HoverAction label={t("newPrivatePage")} onClick={() => createPage({ private: true })}>
+              <Plus size={14} strokeWidth={2} />
+            </HoverAction>
+          </SectionHeader>
+          {/* Children inherit the parent's space (core resolveSpace), so onAddChild needs no flag. */}
+          {privatePages.length > 0 ? (
+            <DocsTree pages={privatePages} onAddChild={(parentPageId) => createPage({ parentPageId })} />
+          ) : (
+            <button type="button" onClick={() => createPage({ private: true })} className={cn(row, "text-text-3")} title={t("privateDocsHint")}>
+              <Lock size={14} strokeWidth={1.75} className="w-[18px] flex-none" />
+              <span className="truncate">{t("newPrivatePage")}</span>
+            </button>
+          )}
         </div>
       </div>
 

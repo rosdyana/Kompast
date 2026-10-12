@@ -23,6 +23,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   { eventType: "issue.assigned", label: "Assigned to an issue" },
   { eventType: "issue.commented", label: "New comment on an issue you follow" },
   { eventType: "issue.mentioned", label: "Mentioned in an issue" },
+  { eventType: "page.shared", label: "A private page was shared with you" },
 ] as const;
 
 const DEFAULT_PREF: NotificationPrefView = { inApp: true, email: true, digest: "instant" };

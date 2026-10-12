@@ -61,10 +61,15 @@ function Workbench() {
   }, []);
 
   const createPage = useCallback(
-    async (opts?: { parentPageId?: string | null; projectId?: string | null; teamId?: string | null }) => {
+    async (opts?: { parentPageId?: string | null; projectId?: string | null; teamId?: string | null; private?: boolean }) => {
       try {
         const page = await createPageFn({
-          data: { parentPageId: opts?.parentPageId ?? undefined, projectId: opts?.projectId ?? undefined, teamId: opts?.teamId ?? undefined },
+          data: {
+            parentPageId: opts?.parentPageId ?? undefined,
+            projectId: opts?.projectId ?? undefined,
+            teamId: opts?.teamId ?? undefined,
+            private: opts?.private || undefined,
+          },
         });
         await router.navigate({ to: "/docs/$pageId", params: { pageId: page.id } });
         await router.invalidate();

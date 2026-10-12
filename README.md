@@ -14,10 +14,35 @@ A self-hosted team workspace that brings docs, project tracking, automation, and
 | Automation | Done |
 | AI assist + Ask Kompast (RAG chat) | Done |
 | Teams + team-scoped visibility | Done |
+| Private & Shared docs (Notion-style) | Done |
 | Importers | JIRA done, others not started |
 | Hardening + cutover | Not started |
 
 Implementation rationale, known gotchas, and verification write-ups for each area live in [`docs/ENGINEERING-NOTES.md`](docs/ENGINEERING-NOTES.md) — read the relevant section before touching that feature area.
+
+## Screenshots
+
+All taken from the seeded [demo workspace](docs/DEMO.md) (`pnpm demo`), "Lumen Labs 光譜科技".
+
+![Home: assigned issues, the active sprint and recently updated pages](docs/screenshots/home.png)
+
+| | |
+|---|---|
+| ![Kanban board for the active sprint](docs/screenshots/board.png) | ![Backlog with active and planned sprints](docs/screenshots/backlog.png) |
+| **Board.** The active sprint, with epics, labels, estimates and assignees. | **Backlog.** Plan the next sprint and start or complete sprints. |
+| ![A collaborative doc in the Workspace space](docs/screenshots/doc.png) | ![Traditional Chinese UI in dark mode](docs/screenshots/board-zh-dark.png) |
+| **Docs.** Real-time collaborative pages in a sidebar of spaces: teams, Workspace, Shared, Private. | **Localized and themed.** Marketing's board in Traditional Chinese, dark mode. |
+
+### Private & Shared docs
+
+Like Notion's sidebar, every member has a **Private** section that only they can see, workspace admins included. Inviting specific people moves a page to **Shared**. If someone leaves, the super admin can recover their private pages.
+
+| | |
+|---|---|
+| ![A private page: the breadcrumb and sidebar show it lives in Private](docs/screenshots/private-page.png) | ![Sharing a private page with one person](docs/screenshots/shared-page.png) |
+| **Private.** Daniel's review notes. Nobody else can open them, not even the super admin. | **Shared.** Daniel invites Priya to their 1:1 page, and its sub-pages come along. |
+| ![The invitee sees it under Shared](docs/screenshots/shared-invitee.png) | ![Settings: recovering a departed member's private pages](docs/screenshots/departed-pages.png) |
+| **The invitee's view.** Priya sees the page under Shared. Other team members don't see it at all. | **Departed members' pages.** The super admin takes ownership of, or moves to the Workspace, the private pages of someone who left. Each recovery is audit-logged. |
 
 ## Stack
 
@@ -89,7 +114,7 @@ All secrets are encrypted at rest and never echoed back to the client.
 
 **Teams & visibility** — the workspace is one organization, split into teams. The **super admin** (one per workspace, transferable) creates teams, appoints team admins, sees every team's content, and assigns legacy team-less projects to a team. **Team admins** create projects, add workspace members to their team, and invite new people by email straight into it. **Everyone else sees only their own teams' projects, issues, sprints and docs**, plus the shared Workspace docs. Other teams show as locked names, and a link to hidden content shows "not found, or no access". This is enforced by Postgres row-level security, so the UI, REST, MCP and Ask Kompast all honor it. Workspace owner/admin is a settings role, not a see-everything role.
 
-**Docs** — Notion-style real-time collaborative pages (BlockNote + Hocuspocus) with emoji icons, nested page tree, favorites and breadcrumbs. Every page lives in a space (shared Workspace, a team, or a project) and can be moved between them. Per-page access lists (Share → People & teams with access), version history, templates, trash/restore, guest share links, `@mention` backlinks, and a live read-only board embed inside a doc.
+**Docs** — Notion-style real-time collaborative pages (BlockNote + Hocuspocus) with emoji icons, nested page tree, favorites and breadcrumbs. Every page lives in a space (shared Workspace, a team, a project, or your own **Private** space) and can be moved between them. Like Notion, Private pages are visible to you alone, the super admin included. Invite specific people and the page moves to **Shared**, where only they can see it. If someone leaves the workspace, the super admin can recover their private pages from Settings (audit-logged). Per-page access lists (Share → People & teams with access), version history, templates, trash/restore, guest share links, `@mention` backlinks, and a live read-only board embed inside a doc.
 
 **Boards & sprints** — Jira-style backlog (sprint containers with drag-and-drop between sprints and backlog, inline quick-create, start/complete sprint with carry-over), kanban boards with configurable sprint cycles and assignee swimlanes, a sprint hub table with inline-cell editing (status, assignee, priority, type, points, due date, title) and multi-column sort (incl. by epic and label), per-issue to-do checklists (Jira checklist-plugin style — check off/reorder on the issue page, progress badge + quick-edit popover on kanban cards), burndown/cumulative-flow reports, velocity history, and an epic roadmap timeline.
 

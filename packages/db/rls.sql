@@ -295,13 +295,39 @@ create policy tenant_isolation_issue_history on issue_history
 drop policy if exists tenant_isolation_page on page;
 -- A page's space: project (project_id set — visible iff the project is),
 -- team (team_id set — visible to that team and the super admin), or the
--- shared Workspace space (both null — every member). page_single_space_ck
--- guarantees at most one of the two is set.
+-- shared Workspace space (all null — every member), or a user's Private
+-- space (private_owner_id set — that user only). page_single_space_ck
+-- guarantees at most one of the three is set.
+--
+-- Private has no blanket kompast_is_super_admin() branch: Notion's Private
+-- section "can't be seen by the people in your workspace", owners included.
+-- Because USING doubles as WITH CHECK, the same clause also stops anyone
+-- creating or moving a page into another user's Private space.
+--
+-- Two narrower ways in:
+--  * shared_with (Notion's "Shared" section): people the owner invited.
+--    A denormalized list on the page itself, because reading
+--    page_permission here would recurse (its policy reads page).
+--  * the super admin, only for pages whose owner is no longer a member of
+--    this workspace, so a departed person's notes can be recovered
+--    (packages/core/src/page-recovery.ts). A current member's private pages
+--    stay invisible to them.
 create policy tenant_isolation_page on page
   using (
     organization_id = current_setting('app.current_workspace', true)
     and (project_id is null or project_id in (select id from project))
     and (team_id is null or kompast_is_super_admin() or team_id in (select kompast_my_team_ids()))
+    and (
+      private_owner_id is null
+      or private_owner_id = current_setting('app.current_user', true)
+      or shared_with @> array[current_setting('app.current_user', true)]
+      or (
+        kompast_is_super_admin()
+        and private_owner_id not in (
+          select user_id from member where organization_id = current_setting('app.current_workspace', true)
+        )
+      )
+    )
   );
 
 drop policy if exists tenant_isolation_link on link;

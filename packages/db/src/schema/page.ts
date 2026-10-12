@@ -22,8 +22,9 @@ export const page = pgTable(
      * A page lives in exactly one "space": a project (projectId set — its
      * team comes from the project, deliberately not denormalized here, so
      * moving a project between teams never needs a page rewrite), a team
-     * (teamId set), or the shared Workspace space (both null, visible to
-     * every member). The check constraint below forbids both being set;
+     * (teamId set), a user's Private space (privateOwnerId set), or the
+     * shared Workspace space (all null, visible to every member). The check
+     * constraint below allows at most one of the three;
      * keeping a child page in its parent's space is enforced in
      * packages/core/src/page.ts. RLS (packages/db/rls.sql) reads both.
      */
@@ -39,6 +40,26 @@ export const page = pgTable(
      * checked at end of statement, after the pages are gone too.
      */
     teamId: text("team_id").references(() => team.id, { onDelete: "no action" }),
+    /**
+     * Private space (Notion's "Private" sidebar section): set = visible to
+     * this one user only, the super admin included — RLS compares it to
+     * app.current_user, so it is also impossible to create or move a page
+     * into someone else's Private space. Cascade on user delete: nobody
+     * else could ever open these pages, so keeping them would only leave
+     * unreachable rows behind.
+     */
+    privateOwnerId: text("private_owner_id").references(() => user.id, { onDelete: "cascade" }),
+    /**
+     * Notion's "Shared" section: a privately owned page tree the owner has
+     * invited specific people into. Non-empty only alongside privateOwnerId.
+     * A denormalized copy of the user grants on the tree's root
+     * page_permission rows, kept on every page of the tree, because the page
+     * RLS policy can't read page_permission itself: that table's own policy
+     * reads page, and Postgres rejects policies that recurse into each
+     * other. Written only by packages/core/src/page-permission.ts
+     * (syncSharedWith); roles still come from page_permission.
+     */
+    sharedWith: text("shared_with").array().notNull().default(sql`'{}'::text[]`),
     /** Null = not a sprint's meeting-minutes doc. Set once, at creation, by createSprint. */
     sprintId: text("sprint_id").references(() => sprint.id, { onDelete: "cascade" }),
     parentPageId: text("parent_page_id"),
@@ -58,7 +79,13 @@ export const page = pgTable(
     index("page_project_idx").on(t.projectId),
     index("page_sprint_idx").on(t.sprintId),
     index("page_team_idx").on(t.teamId),
-    check("page_single_space_ck", sql`not (${t.teamId} is not null and ${t.projectId} is not null)`),
+    index("page_private_owner_idx").on(t.privateOwnerId),
+    index("page_shared_with_idx").using("gin", t.sharedWith),
+    check("page_shared_needs_owner_ck", sql`cardinality(${t.sharedWith}) = 0 or ${t.privateOwnerId} is not null`),
+    check(
+      "page_single_space_ck",
+      sql`num_nonnulls(${t.teamId}, ${t.projectId}, ${t.privateOwnerId}) <= 1`,
+    ),
   ],
 );
 

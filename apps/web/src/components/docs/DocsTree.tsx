@@ -11,6 +11,10 @@ export interface DocsTreePage {
   parentPageId: string | null;
   /** Team space, or null for the shared Workspace space (sidebar groups by it). */
   teamId?: string | null;
+  /** Set for pages in the viewer's Private space — RLS only ever returns their own. */
+  privateOwnerId?: string | null;
+  /** Non-empty = a Private page its owner shared with these people (sidebar "Shared"). */
+  sharedWith?: string[];
 }
 
 interface TreeProps {

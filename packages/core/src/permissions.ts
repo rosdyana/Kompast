@@ -266,6 +266,15 @@ export async function canUserSeeEntity(
   input: { organizationId: string; userId: string; entityType: "issue" | "page"; entityId: string },
 ): Promise<boolean> {
   const who = { organizationId: input.organizationId, userId: input.userId };
+  // Before the super-admin shortcut: a Private page is its owner's alone,
+  // a Shared one also its invitees' — the super admin included (rls.sql).
+  if (input.entityType === "page") {
+    const [row] = await tx
+      .select({ privateOwnerId: schema.page.privateOwnerId, sharedWith: schema.page.sharedWith })
+      .from(schema.page)
+      .where(eq(schema.page.id, input.entityId));
+    if (row?.privateOwnerId) return row.privateOwnerId === input.userId || row.sharedWith.includes(input.userId);
+  }
   if (await isSuperAdmin(tx, who)) return true;
 
   const myTeams = new Set(

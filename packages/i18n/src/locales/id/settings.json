@@ -9,7 +9,8 @@
     "ai": "AI",
     "mail": "Email",
     "embedding": "Embedding",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "departedPages": "Halaman anggota yang keluar"
   },
   "pageTitle": "Pengaturan workspace",
   "teamsNonAdminNote": "Hanya super admin yang bisa mengelola daftar tim workspace di sini.",
@@ -142,5 +143,18 @@
     "nameHint": "Hanya nama tampilan yang berubah; tautan yang ada tetap berfungsi.",
     "save": "Simpan",
     "savingEllipsis": "Menyimpan…"
+  },
+  "departedPages": {
+    "description": "Halaman pribadi dan yang dibagikan milik anggota yang sudah keluar dari workspace. Tidak ada orang lain yang dapat membuka halaman pribadi, jadi ini satu-satunya cara memulihkannya. Setiap pemulihan dicatat di log audit.",
+    "empty": "Tidak ada anggota keluar yang meninggalkan halaman pribadi.",
+    "untitled": "Tanpa judul",
+    "pageCount_other": "{{count}} halaman",
+    "sharedWith_other": "Dibagikan ke {{count}}",
+    "private": "Pribadi",
+    "inTrash": "Di sampah",
+    "takeOwnership": "Ambil alih",
+    "moveToWorkspace": "Pindah ke Workspace",
+    "recoveredToMe": "Dipindahkan ke halaman Anda",
+    "recoveredToWorkspace": "Dipindahkan ke Workspace"
   }
 }

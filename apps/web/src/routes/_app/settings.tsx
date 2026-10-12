@@ -1,6 +1,6 @@
 import { createFileRoute, useLoaderData, useNavigate, useRouter } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { Bell, Bot, Building2, Database, KeyRound, Mail, Settings as SettingsIcon, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { Bell, Bot, Building2, Database, FileLock2, KeyRound, Mail, Settings as SettingsIcon, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { Badge } from "@kompast/ui/Badge";
 import { Card } from "@kompast/ui/Card";
@@ -16,12 +16,13 @@ import { MembersTab } from "@/components/settings/MembersTab";
 import { TeamsTab } from "@/components/settings/TeamsTab";
 import { RolesTab } from "@/components/settings/RolesTab";
 import { NotificationsTab } from "@/components/settings/NotificationsTab";
+import { DepartedPagesTab } from "@/components/settings/DepartedPagesTab";
 import { SettingsSection, Switch } from "@/components/settings/SettingsSection";
 import { usePageChrome } from "@/components/shell/WorkbenchContext";
 import { cn } from "@/lib/cn";
 
 /** "integrations" is kept as a legacy alias (old links) and resolves to the AI section. */
-const TAB_KEYS = ["notifications", "general", "members", "teams", "roles", "integrations", "ai", "mail", "embedding", "entra"] as const;
+const TAB_KEYS = ["notifications", "general", "members", "teams", "roles", "departedPages", "integrations", "ai", "mail", "embedding", "entra"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 export const Route = createFileRoute("/_app/settings")({
@@ -65,6 +66,9 @@ function SettingsPage() {
               { key: "members" as const, label: t("tabs.members"), icon: <Users size={15} /> },
               { key: "teams" as const, label: t("tabs.teams"), icon: <UsersRound size={15} /> },
               { key: "roles" as const, label: t("tabs.roles"), icon: <ShieldCheck size={15} /> },
+              ...(data.adminData.integrations.isSuperAdmin
+                ? [{ key: "departedPages" as const, label: t("tabs.departedPages"), icon: <FileLock2 size={15} /> }]
+                : []),
             ],
           },
           {
@@ -153,6 +157,7 @@ function SettingsPage() {
           </SettingsSection>
         )}
         {active === "roles" && data.adminData && <RolesTab />}
+        {active === "departedPages" && data.adminData?.integrations.isSuperAdmin && <DepartedPagesTab />}
         {active === "ai" && data.adminData && <AiSection initial={data.adminData.integrations.ai} />}
         {active === "embedding" && data.adminData && <EmbeddingSection initial={data.adminData.integrations.embedding} />}
         {active === "mail" && data.adminData && <MailSection initial={data.adminData.integrations.mail} />}

@@ -9,7 +9,8 @@
     "ai": "AI",
     "mail": "Email",
     "embedding": "Embeddings",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "departedPages": "Departed members' pages"
   },
   "pageTitle": "Workspace settings",
   "teamsNonAdminNote": "Only super admins can manage the workspace's team list here.",
@@ -142,5 +143,20 @@
     "nameHint": "Only the display name changes; existing links keep working.",
     "save": "Save",
     "savingEllipsis": "Saving…"
+  },
+  "departedPages": {
+    "description": "Private and shared pages whose owner has left the workspace. Nobody else can open a private page, so this is the only way to recover them. Every recovery is recorded in the audit log.",
+    "empty": "No departed member has left private pages behind.",
+    "untitled": "Untitled",
+    "pageCount_one": "{{count}} page",
+    "pageCount_other": "{{count}} pages",
+    "sharedWith_one": "Shared with {{count}}",
+    "sharedWith_other": "Shared with {{count}}",
+    "private": "Private",
+    "inTrash": "In trash",
+    "takeOwnership": "Take ownership",
+    "moveToWorkspace": "Move to Workspace",
+    "recoveredToMe": "Moved to your pages",
+    "recoveredToWorkspace": "Moved to Workspace"
   }
 }

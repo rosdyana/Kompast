@@ -79,9 +79,12 @@ const EXTRA_PEOPLE = [
   { key: "mei", email: `mei@${DEMO_EMAIL_DOMAIN}`, name: "張美玲 Mei Chang" },
   { key: "arjun", email: `arjun@${DEMO_EMAIL_DOMAIN}`, name: "Arjun Mehta" },
   { key: "weiting", email: `weiting@${DEMO_EMAIL_DOMAIN}`, name: "黃薇婷 Wei-Ting Huang" },
+  // Leaves the workspace at the end of seeding, so Grace has a departed
+  // member's private pages to recover (Settings → Departed members' pages).
+  { key: "ethan", email: `ethan@${DEMO_EMAIL_DOMAIN}`, name: "Ethan Ko" },
 ];
 
-type PersonKey = "grace" | "daniel" | "priya" | "joyce" | "kevin" | "oliver" | "mei" | "arjun" | "weiting";
+type PersonKey = "grace" | "daniel" | "priya" | "joyce" | "kevin" | "oliver" | "mei" | "arjun" | "weiting" | "ethan";
 const people = {} as Record<PersonKey, string>;
 let orgId = "";
 const as = <T>(who: PersonKey, fn: (tx: Tx) => Promise<T>) => withAuthorizedTenant({ userId: people[who], organizationId: orgId }, fn);
@@ -467,9 +470,14 @@ async function localizeProject(projectId: string, boardId: string) {
   await adminDb.update(schema.board).set({ name: "發表看板" }).where(eq(schema.board.id, boardId));
 }
 
-async function page(who: PersonKey, input: { title: string; icon?: string; projectId?: string; teamId?: string; parentPageId?: string }, markdown: string) {
+async function page(
+  who: PersonKey,
+  input: { title: string; icon?: string; projectId?: string; teamId?: string; parentPageId?: string; private?: boolean },
+  markdown: string,
+) {
+  const { private: isPrivate, ...rest } = input;
   return as(who, async (tx) => {
-    const p = await createPage(tx, { organizationId: orgId, actorUserId: people[who], ...input });
+    const p = await createPage(tx, { organizationId: orgId, actorUserId: people[who], ...rest, privateOwnerId: isPrivate ? people[who] : undefined });
     await seedPageContentFromMarkdown(tx, p.id, markdown);
     return p.id;
   });
@@ -605,6 +613,41 @@ The **Enterprise SSO** epic — see the linked issues on this page.
   // Finance's own space — locked for everyone but Mei and Grace.
   await page("mei", { title: "Budget process 預算流程", icon: "💰", teamId: teams.finance }, "# Budget process 預算流程\n\nOnly the Finance team can see this. 僅財務團隊可見。\n");
 
+  // ── Private & Shared (Notion's sidebar sections) ─────────────────────
+  // Private: the author alone, not even Grace (super admin) sees these.
+  await page("daniel", { title: "My review notes", icon: "📝", private: true }, `# My review notes
+
+Only I can see this page, not even the super admin. It lives in my **Private** section.
+
+- Promotion case for Priya: draft by Friday
+- Ask Grace about the Q4 headcount plan
+`);
+  await page("joyce", { title: "發表會講稿草稿", icon: "🎤", private: true }, "# 發表會講稿草稿\n\n只有我看得到這頁。準備好之後再分享給團隊。\n");
+  // Shared: Daniel invites Priya into a private page, so it shows under
+  // Shared for both of them and for nobody else.
+  const oneOnOne = await page("daniel", { title: "Daniel / Priya 1:1", icon: "🤝", private: true }, `# Daniel / Priya 1:1
+
+Shared with Priya only. Anyone else in the workspace, Grace included, can't see it.
+
+## This week
+- Atlas sprint: on track
+- Conference talk proposal: Priya to draft
+`);
+  await page("daniel", { title: "Growth plan", icon: "🌱", parentPageId: oneOnOne }, "# Growth plan\n\nSub-pages of a shared page are shared with the same people.\n");
+  await as("daniel", (tx) => grantPageAccess(tx, { pageId: oneOnOne, subject: { type: "user", id: people.priya }, role: "edit", actorUserId: people.daniel }));
+
+  // Ethan's private pages, about to be orphaned when he leaves (see main()).
+  const handover = await page("ethan", { title: "Handover: billing service", icon: "📦", private: true }, `# Handover: billing service
+
+Ethan's notes before leaving. Shared with Daniel.
+
+- The cron for invoice retries lives in infra/billing
+- Stripe webhook secret rotation is due in November
+`);
+  await page("ethan", { title: "Billing on-call checklist", icon: "🧾", parentPageId: handover }, "# Billing on-call checklist\n\n1. Check the billing dashboard\n2. Page the payments vendor if webhooks stall\n");
+  await as("ethan", (tx) => grantPageAccess(tx, { pageId: handover, subject: { type: "user", id: people.daniel }, role: "view", actorUserId: people.ethan }));
+  await page("ethan", { title: "Interview notes (private)", icon: "🗒️", private: true }, "# Interview notes\n\nOnly Ethan could see this while he was here.\n");
+
   // A few favorites so each persona's sidebar isn't empty on first load.
   const favorites: [PersonKey, string][] = [
     ["grace", handbook],
@@ -629,6 +672,8 @@ async function main() {
   const ctx = await seedProjects(teams);
   console.log("Seeding docs…");
   await seedDocs(teams, ctx);
+  // Ethan leaves: his membership goes, his private pages stay, recoverable by Grace.
+  await adminDb.delete(schema.member).where(and(eq(schema.member.organizationId, orgId), eq(schema.member.userId, people.ethan)));
   // A pending invitation, so the team page has something under "Pending invitations".
   await as("joyce", (tx) =>
     createTeamInvitation(tx, { organizationId: orgId, teamId: teams.marketing, email: `intern@${DEMO_EMAIL_DOMAIN}`, teamRole: "member", inviterId: people.joyce }),

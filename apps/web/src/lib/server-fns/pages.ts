@@ -43,6 +43,8 @@ import {
   getPageAccess,
   grantPageAccess,
   removePagePermission,
+  listDepartedMemberPages,
+  recoverDepartedMemberPage,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 
@@ -75,6 +77,8 @@ const createPageSchema = z.object({
   projectId: z.string().nullable().optional(),
   /** Team space. RLS's WITH CHECK rejects the insert unless the caller is in that team (or the super admin). */
   teamId: z.string().nullable().optional(),
+  /** The caller's own Private space. Never an arbitrary user id: the owner is always the caller. */
+  private: z.boolean().optional(),
   type: z.enum(["doc", "template"]).optional(),
 });
 
@@ -89,6 +93,7 @@ export const createPageFn = createServerFn({ method: "POST" })
         parentPageId: data.parentPageId,
         projectId: data.projectId,
         teamId: data.teamId,
+        privateOwnerId: data.private ? ctx.userId : undefined,
         type: data.type,
         actorUserId: ctx.userId,
       }),
@@ -227,7 +232,21 @@ export const movePageFn = createServerFn({ method: "POST" })
   .validator(movePageSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => movePage(tx, data.pageId, data));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      // Dragging under a page in another space changes the page's space.
+      // Into or out of a Private/Shared space that changes who can see it,
+      // so it needs the same right as the Move to… menu (movePageToSpaceFn).
+      if (data.parentPageId) {
+        const [page, parent] = await Promise.all([getPage(tx, data.pageId), getPage(tx, data.parentPageId)]);
+        const crossesPersonal =
+          (page.privateOwnerId || parent.privateOwnerId) &&
+          (page.privateOwnerId !== parent.privateOwnerId || page.projectId !== parent.projectId || page.teamId !== parent.teamId);
+        if (crossesPersonal && !(await canManagePageAccess(tx, data.pageId, ctx))) {
+          throw new ForbiddenError(`Only someone who manages access to page ${data.pageId} can move it there`);
+        }
+      }
+      await movePage(tx, data.pageId, data);
+    });
     return { ok: true } as const;
   });
 
@@ -498,7 +517,7 @@ export const revokePageAccessFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
       if (!(await canManagePageAccess(tx, data.pageId, ctx))) throw new ForbiddenError(`Cannot change access to page ${data.pageId}`);
-      await removePagePermission(tx, data.pageId, data.subject);
+      await removePagePermission(tx, data.pageId, data.subject, ctx.userId);
       return { ok: true } as const;
     });
   });
@@ -507,14 +526,38 @@ export const revokePageAccessFn = createServerFn({ method: "POST" })
  * "Move to…" — re-homes a page (and its whole subtree, see core movePage)
  * at the root of another space. RLS's WITH CHECK is what stops moving into a
  * team/project the caller can't see; the edit check here covers the source.
+ * Moving into Private takes the page away from everyone else, and moving a
+ * Private/Shared page out exposes it, so both need the same right as
+ * changing access (canManagePageAccess), not just edit.
  */
 export const movePageToSpaceFn = createServerFn({ method: "POST" })
-  .validator(z.object({ pageId: z.string(), projectId: z.string().nullable(), teamId: z.string().nullable() }))
+  .validator(z.object({ pageId: z.string(), projectId: z.string().nullable(), teamId: z.string().nullable(), private: z.boolean().optional() }))
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
       if (!(await canAccessPage(tx, data.pageId, ctx, "edit"))) throw new ForbiddenError(`No edit access to page ${data.pageId}`);
-      await movePage(tx, data.pageId, { parentPageId: null, space: { projectId: data.projectId, teamId: data.teamId } });
+      const page = await getPage(tx, data.pageId);
+      if ((data.private || page.privateOwnerId) && !(await canManagePageAccess(tx, data.pageId, ctx))) {
+        throw new ForbiddenError(`Only someone who manages access to page ${data.pageId} can move it between private and shared spaces`);
+      }
+      await movePage(tx, data.pageId, {
+        parentPageId: null,
+        space: { projectId: data.projectId, teamId: data.teamId, privateOwnerId: data.private ? ctx.userId : null },
+      });
       return { ok: true } as const;
     });
+  });
+
+/** Settings → Departed members' pages (super admin only; core re-checks). */
+export const listDepartedMemberPagesFn = createServerFn({ method: "GET" }).handler(async () => {
+  const ctx = await requireAuthContext();
+  return withAuthorizedTenant(ctx, (tx) => listDepartedMemberPages(tx, ctx));
+});
+
+export const recoverDepartedMemberPageFn = createServerFn({ method: "POST" })
+  .validator(z.object({ pageId: z.string(), to: z.enum(["me", "workspace"]) }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => recoverDepartedMemberPage(tx, ctx, data));
+    return { ok: true } as const;
   });

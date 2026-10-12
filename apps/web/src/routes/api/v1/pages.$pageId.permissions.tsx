@@ -47,7 +47,7 @@ export const Route = createFileRoute("/api/v1/pages/$pageId/permissions")({
           return withAuthorizedTenant(ctx, async (tx) => {
             await resolvePage(tx, ctx, params.pageId, "view");
             if (!(await canManagePageAccess(tx, params.pageId, ctx))) throw new ApiError(403, "Forbidden", "You can't change who has access to this page");
-            await removePagePermission(tx, params.pageId, subject);
+            await removePagePermission(tx, params.pageId, subject, ctx.userId);
             return jsonResponse({ ok: true });
           });
         }),

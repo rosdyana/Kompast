@@ -35,7 +35,7 @@ export interface Workbench {
   openPalette: () => void;
   openCreateIssue: (defaults?: CreateIssueDefaults) => void;
   openShortcuts: () => void;
-  createPage: (opts?: { parentPageId?: string | null; projectId?: string | null; teamId?: string | null }) => Promise<void>;
+  createPage: (opts?: { parentPageId?: string | null; projectId?: string | null; teamId?: string | null; private?: boolean }) => Promise<void>;
   chrome: PageChrome | null;
   setChrome: (chrome: PageChrome | null) => void;
 }

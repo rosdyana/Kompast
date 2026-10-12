@@ -21,6 +21,7 @@ The data:
 - **Projects:** Atlas Platform (21 issues), Mobile App, the Marketing launch project (17 issues, with its workflow in Chinese), a Finance project nobody else can see, and a legacy project with no team.
 - **Sprints:** each team board has a closed sprint, an active sprint a week in (so burndown and velocity have data), and a planned next sprint.
 - **Docs:** bilingual Workspace docs, team-space docs per team, and project docs. One Workspace page, *Q4 headcount plan*, is restricted through Share → People & teams with access.
+- **Private & Shared docs:** Daniel has a private *My review notes* and shares *Daniel / Priya 1:1* with Priya, so it shows under **Shared** for both of them only. Joyce has a private Chinese draft. **Ethan Ko** (a former engineer, not a persona) has left the workspace, leaving private notes and a *Handover: billing service* page shared with Daniel. Grace can recover them from Settings → Departed members' pages.
 
 ## Run it on your laptop
 
@@ -63,7 +64,8 @@ Notes:
 1. Open `https://<demo-domain>/login`, type the access code once, and click a persona. The UI switches to that persona's language.
 2. To switch persona: open the workspace menu → **Log out**, then pick another. The browser tab remembers the code.
 3. A good flow:
-   - **Grace**: sees everything, Assign to team, the restricted page's Share menu.
+   - **Grace**: sees every team, Assign to team, the restricted page's Share menu, and Settings → Departed members' pages. She does *not* see Daniel's private notes.
+   - **Daniel → Priya**: Daniel's Private and Shared sections, then sign in as Priya to see the 1:1 page under Shared.
    - **Daniel**: only his team, other teams locked, the Atlas board and sprint hub.
    - **Kevin**: Chinese UI, only Marketing. Paste an Atlas URL to show the "no access" screen.
    - **Joyce**: invite someone into her team.

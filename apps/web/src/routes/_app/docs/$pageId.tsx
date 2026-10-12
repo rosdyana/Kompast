@@ -1,5 +1,5 @@
 import { createFileRoute, ClientOnly, Link, useRouter, useLoaderData } from "@tanstack/react-router";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   Building2,
   Check,
@@ -15,6 +15,7 @@ import {
   MoreHorizontal,
   MoveHorizontal,
   Plus,
+  Share2,
   SmilePlus,
   Star,
   Trash2,
@@ -163,7 +164,7 @@ function DocPageBody({ data }: { data: PageData }) {
     }
   }
 
-  async function moveToSpace(space: { projectId: string | null; teamId: string | null }, label: string) {
+  async function moveToSpace(space: SpaceTarget, label: string) {
     try {
       await movePageToSpaceFn({ data: { pageId: data.page.id, ...space } });
       toast.show({ title: t("pageDetail.movedTo", { space: label }) });
@@ -195,13 +196,17 @@ function DocPageBody({ data }: { data: PageData }) {
   // ── Topbar chrome ────────────────────────────────────────────────────
   const crumbs: Crumb[] = [];
   // The space crumb leads, so where a page lives (and so who can see it) is
-  // always visible: a project, a team's own space, or the shared Workspace.
+  // always visible: a project, a team's own space, Private, or the shared Workspace.
   const spaceTeam = data.page.teamId ? shell.teams.find((tm) => tm.id === data.page.teamId) : undefined;
   if (!data.project) {
     crumbs.push(
-      spaceTeam
-        ? { label: spaceTeam.name, icon: <UsersRound size={15} strokeWidth={1.75} className="text-text-3" /> }
-        : { label: t("nav:workspaceDocs"), icon: <Building2 size={15} strokeWidth={1.75} className="text-text-3" /> },
+      data.page.privateOwnerId && data.page.sharedWith.length > 0
+        ? { label: t("nav:sharedDocs"), icon: <Share2 size={15} strokeWidth={1.75} className="text-text-3" /> }
+        : data.page.privateOwnerId
+        ? { label: t("nav:privateDocs"), icon: <Lock size={15} strokeWidth={1.75} className="text-text-3" /> }
+        : spaceTeam
+          ? { label: spaceTeam.name, icon: <UsersRound size={15} strokeWidth={1.75} className="text-text-3" /> }
+          : { label: t("nav:workspaceDocs"), icon: <Building2 size={15} strokeWidth={1.75} className="text-text-3" /> },
     );
   }
   if (data.project) {
@@ -250,7 +255,7 @@ function DocPageBody({ data }: { data: PageData }) {
             onHistory={() => setHistoryOpen(true)}
             onToggleFullWidth={toggleFullWidth}
             onTrash={moveToTrash}
-            currentSpace={{ projectId: data.page.projectId, teamId: data.page.teamId }}
+            currentSpace={{ projectId: data.page.projectId, teamId: data.page.teamId, private: !!data.page.privateOwnerId && data.page.sharedWith.length === 0 }}
             onMove={moveToSpace}
           />
         </div>
@@ -479,7 +484,9 @@ function SharePopover({ data }: { data: PageData }) {
           <p className="mt-0.5 text-[12.5px] leading-snug text-text-2">{t("pageDetail.shareDescription")}</p>
         </div>
         <div className="max-h-[240px] overflow-y-auto px-2 py-2">
-          {data.shareLinks.length === 0 && <p className="px-2 py-2 text-[13px] text-text-3">{t("pageDetail.noShareLinksYet")}</p>}
+          {data.shareLinks.length === 0 && (
+            <p className="px-2 py-2 text-[13px] text-text-3">{data.page.privateOwnerId ? t("pageDetail.noShareLinksPersonal") : t("pageDetail.noShareLinksYet")}</p>
+          )}
           {data.shareLinks.map((link) => (
             <div key={link.id} className="group/link flex h-9 items-center gap-2 rounded-[6px] px-2 hover:bg-surface-2">
               <Link2 size={14} strokeWidth={1.75} className={cn("flex-none", link.revokedAt ? "text-text-3" : "text-text-2")} />
@@ -519,6 +526,8 @@ function SharePopover({ data }: { data: PageData }) {
 }
 
 type PageAccess = Awaited<ReturnType<typeof getPageAccessFn>>;
+/** A "Move to…" destination: Workspace (all null), a team, a project, or the viewer's own Private space. */
+type SpaceTarget = { projectId: string | null; teamId: string | null; private?: boolean };
 type PageRole = "view" | "comment" | "edit" | "full";
 const PAGE_ROLES: PageRole[] = ["view", "comment", "edit", "full"];
 
@@ -531,6 +540,8 @@ const PAGE_ROLES: PageRole[] = ["view", "comment", "edit", "full"];
 function PageAccessSection({ pageId }: { pageId: string }) {
   const { t } = useTranslation(["docs", "common"]);
   const toast = useToast();
+  const router = useRouter();
+  const me = useLoaderData({ from: "/_app" }).user.id;
   const [access, setAccess] = useState<PageAccess | null>(null);
   const [subject, setSubject] = useState("");
   const [role, setRole] = useState<PageRole>("edit");
@@ -549,6 +560,9 @@ function PageAccessSection({ pageId }: { pageId: string }) {
     try {
       await fn();
       await load();
+      // Sharing a Private page (or un-sharing the last person) moves it
+      // between the sidebar's Private and Shared sections.
+      await router.invalidate();
     } catch (err) {
       toast.show({ tone: "error", title: t("common:somethingWentWrong"), description: err instanceof Error ? err.message : undefined });
     } finally {
@@ -564,6 +578,8 @@ function PageAccessSection({ pageId }: { pageId: string }) {
   if (!access) return <div className="border-b border-border px-4 py-3 text-[13px] text-text-3">{t("common:loading")}</div>;
 
   const granted = new Set(access.grants.map((g) => `${g.subjectType}:${g.subjectId}`));
+  // Personal pages are shared with people only (core refuses teams).
+  const addLabel = access.owner ? t("pageDetail.accessAddPersonPlaceholder") : t("pageDetail.accessAddPlaceholder");
   const restricted = access.grants.length > 0;
 
   return (
@@ -572,7 +588,23 @@ function PageAccessSection({ pageId }: { pageId: string }) {
         <Lock size={15} strokeWidth={1.75} className="text-text-2" />
         {t("pageDetail.accessHeading")}
       </p>
-      <p className="mt-0.5 text-[12.5px] leading-snug text-text-2">{restricted ? t("pageDetail.accessRestricted") : t("pageDetail.accessOpen")}</p>
+      <p className="mt-0.5 text-[12.5px] leading-snug text-text-2">
+        {access.owner
+          ? restricted
+            ? t("pageDetail.accessShared", { owner: access.owner.id === me ? t("pageDetail.you") : access.owner.name })
+            : t("pageDetail.accessPrivate")
+          : restricted
+            ? t("pageDetail.accessRestricted")
+            : t("pageDetail.accessOpen")}
+      </p>
+
+      {access.owner && restricted && (
+        <div className="mt-2 flex h-9 items-center gap-2">
+          <Avatar name={access.owner.name} size={22} />
+          <span className="min-w-0 flex-1 truncate text-[13.5px]">{access.owner.name}</span>
+          <span className="text-[12.5px] text-text-3">{t("pageDetail.owner")}</span>
+        </div>
+      )}
 
       {access.grants.length > 0 && (
         <div className="mt-2 flex flex-col">
@@ -582,7 +614,8 @@ function PageAccessSection({ pageId }: { pageId: string }) {
               <span className="min-w-0 flex-1 truncate text-[13.5px]" title={g.detail ?? undefined}>
                 {g.name}
               </span>
-              {access.canManage ? (
+              {/* You can't take yourself off a Shared page (core refuses it: RLS would hide the row mid-update). */}
+              {access.canManage && !(access.owner && g.subjectId === me) ? (
                 <>
                   <select
                     value={g.role}
@@ -617,8 +650,8 @@ function PageAccessSection({ pageId }: { pageId: string }) {
 
       {access.canManage && (
         <div className="mt-2 flex gap-1.5">
-          <NativeSelect value={subject} onChange={(e) => setSubject(e.target.value)} aria-label={t("pageDetail.accessAddPlaceholder")} className="h-8 min-w-0 flex-1 text-[13px]">
-            <option value="">{t("pageDetail.accessAddPlaceholder")}</option>
+          <NativeSelect value={subject} onChange={(e) => setSubject(e.target.value)} aria-label={addLabel} className="h-8 min-w-0 flex-1 text-[13px]">
+            <option value="">{addLabel}</option>
             {access.candidates.teams.filter((tm) => !granted.has(`team:${tm.id}`)).length > 0 && (
               <optgroup label={t("pageDetail.accessTeams")}>
                 {access.candidates.teams
@@ -676,8 +709,8 @@ function MoreMenu(props: {
   onHistory: () => void;
   onToggleFullWidth: () => void;
   onTrash: () => void;
-  currentSpace: { projectId: string | null; teamId: string | null };
-  onMove: (space: { projectId: string | null; teamId: string | null }, label: string) => void;
+  currentSpace: SpaceTarget;
+  onMove: (space: SpaceTarget, label: string) => void;
 }) {
   const { t } = useTranslation(["docs", "nav"]);
   const shell = useLoaderData({ from: "/_app" });
@@ -691,8 +724,9 @@ function MoreMenu(props: {
   // Only spaces the viewer can actually see: RLS would reject a move into
   // anything else anyway (locked teams never appear; projects are already
   // RLS-filtered in the shell).
-  const destinations = [
+  const destinations: { key: string; label: string; icon: ReactNode; space: SpaceTarget }[] = [
     { key: "workspace", label: t("nav:workspaceDocs"), icon: <Building2 size={15} />, space: { projectId: null, teamId: null } },
+    { key: "private", label: t("nav:privateDocs"), icon: <Lock size={15} />, space: { projectId: null, teamId: null, private: true } },
     ...shell.teams
       .filter((tm) => !tm.locked)
       .map((tm) => ({ key: `team:${tm.id}`, label: tm.name, icon: <UsersRound size={15} />, space: { projectId: null, teamId: tm.id } })),
@@ -703,8 +737,8 @@ function MoreMenu(props: {
       space: { projectId: p.id, teamId: null },
     })),
   ];
-  const isCurrent = (space: { projectId: string | null; teamId: string | null }) =>
-    space.projectId === props.currentSpace.projectId && space.teamId === props.currentSpace.teamId;
+  const isCurrent = (space: SpaceTarget) =>
+    space.projectId === props.currentSpace.projectId && space.teamId === props.currentSpace.teamId && !!space.private === !!props.currentSpace.private;
   return (
     <>
       <IconButton

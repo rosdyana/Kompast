@@ -105,6 +105,10 @@ function serializePage(page: typeof schema.page.$inferSelect) {
     parentPageId: page.parentPageId,
     projectId: page.projectId,
     teamId: page.teamId,
+    /** In the caller's own Private space. Only ever true for the caller's pages: RLS hides everyone else's. */
+    private: page.privateOwnerId !== null,
+    /** A private page its owner has invited specific people into (Notion's "Shared"). */
+    shared: page.sharedWith.length > 0,
     type: page.type,
     createdAt: page.createdAt.toISOString(),
     updatedAt: page.updatedAt.toISOString(),
@@ -446,6 +450,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
         title: z.string().min(1),
         projectKey: z.string().optional(),
         teamId: z.string().optional().describe("Team space (a team's own docs). Omit both this and projectKey for the shared Workspace space."),
+        private: z.boolean().optional().describe("Put the page in the caller's own Private space, visible to them alone. Mutually exclusive with projectKey/teamId."),
         parentPageId: z.string().nullable().optional(),
         content: z.string().optional(),
         idempotencyKey: z.string().optional(),
@@ -464,6 +469,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
               parentPageId: args.parentPageId,
               projectId,
               teamId: args.teamId,
+              privateOwnerId: args.private ? ctx.userId : undefined,
               actorUserId: ctx.userId,
             });
             // Safe only because this page is brand new — see seed-page-content.ts for the full explanation.
@@ -556,7 +562,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
           await resolvePage(tx, ctx, args.pageId, "view");
           if (!(await canManagePageAccess(tx, args.pageId, ctx))) throw new ForbiddenError("You can't change who has access to this page");
           const subject = { type: args.subjectType, id: args.subjectId };
-          if (args.role === null) await removePagePermission(tx, args.pageId, subject);
+          if (args.role === null) await removePagePermission(tx, args.pageId, subject, ctx.userId);
           else await grantPageAccess(tx, { pageId: args.pageId, subject, role: args.role, actorUserId: ctx.userId });
           return { ok: true };
         }),

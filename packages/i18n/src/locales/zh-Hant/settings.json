@@ -9,7 +9,8 @@
     "ai": "AI",
     "mail": "電子郵件",
     "embedding": "嵌入向量",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "departedPages": "已離開成員的頁面"
   },
   "pageTitle": "工作區設定",
   "teamsNonAdminNote": "只有超級管理員可以在此管理工作區的團隊清單。",
@@ -142,5 +143,18 @@
     "nameHint": "只會變更顯示名稱；既有連結仍可正常使用。",
     "save": "儲存",
     "savingEllipsis": "儲存中…"
+  },
+  "departedPages": {
+    "description": "擁有者已離開工作區的私人與已分享頁面。其他人無法開啟私人頁面，因此這是唯一的復原方式。每次復原都會記錄在稽核日誌中。",
+    "empty": "沒有已離開的成員留下私人頁面。",
+    "untitled": "未命名",
+    "pageCount_other": "{{count}} 個頁面",
+    "sharedWith_other": "已分享給 {{count}} 人",
+    "private": "私人",
+    "inTrash": "在垃圾桶",
+    "takeOwnership": "接管",
+    "moveToWorkspace": "移至工作區",
+    "recoveredToMe": "已移至你的頁面",
+    "recoveredToWorkspace": "已移至工作區"
   }
 }

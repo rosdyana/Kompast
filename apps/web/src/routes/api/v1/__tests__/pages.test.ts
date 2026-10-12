@@ -153,6 +153,53 @@ describe("/api/v1/pages", () => {
     }
   });
 
+  it("creates a private page a teammate can't see until it's shared with them", async () => {
+    const createRes = await pagesHandlers.POST({ request: req("http://x/api/v1/pages", { method: "POST", token, body: { title: "My notes", private: true } }), params: {} });
+    expect(createRes.status).toBe(201);
+    const page = await createRes.json();
+    expect(page).toMatchObject({ private: true, teamId: null, projectId: null });
+
+    const conflict = await pagesHandlers.POST({ request: req("http://x/api/v1/pages", { method: "POST", token, body: { title: "Both", private: true, teamId } }), params: {} });
+    expect(conflict.status).toBe(400);
+
+    const mateId = `${userId}-pmate`;
+    await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, mateId));
+    await admin.delete(schema.user).where(eq(schema.user.id, mateId));
+    await admin.insert(schema.user).values({ id: mateId, name: "Mate", email: `${mateId}@example.com` });
+    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId: mateId, role: "member" });
+    await admin.insert(schema.teamMember).values({ id: `tmem-${mateId}`, teamId, userId: mateId, membershipKey: `${teamId}:${mateId}` });
+    const auth = await getAuth();
+    const mateToken = (await auth.api.createApiKey({ body: { userId: mateId, permissions: { pages: ["read", "write"] }, metadata: { organizationId: orgId } } })).key;
+
+    try {
+      const url = `http://x/api/v1/pages/${page.id}`;
+      const mine = await (await pagesHandlers.GET({ request: req("http://x/api/v1/pages", { token }), params: {} })).json();
+      expect(mine.data.map((p: { id: string }) => p.id)).toContain(page.id);
+      const theirs = await (await pagesHandlers.GET({ request: req("http://x/api/v1/pages", { token: mateToken }), params: {} })).json();
+      expect(theirs.data.map((p: { id: string }) => p.id)).not.toContain(page.id);
+      expect((await pageItemHandlers.GET({ request: req(url, { token: mateToken }), params: { pageId: page.id } })).status).toBe(404);
+
+      const teamShare = await pagePermissionsHandlers.PUT({
+        request: req(`${url}/permissions`, { method: "PUT", token, body: { subject: { type: "team", id: teamId }, role: "view" } }),
+        params: { pageId: page.id },
+      });
+      expect(teamShare.status).toBe(400);
+
+      const share = await pagePermissionsHandlers.PUT({
+        request: req(`${url}/permissions`, { method: "PUT", token, body: { subject: { type: "user", id: mateId }, role: "view" } }),
+        params: { pageId: page.id },
+      });
+      expect(share.status).toBe(200);
+      const seen = await pageItemHandlers.GET({ request: req(url, { token: mateToken }), params: { pageId: page.id } });
+      expect(seen.status).toBe(200);
+      expect(await seen.json()).toMatchObject({ private: true, shared: true });
+    } finally {
+      await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, mateId));
+      await admin.delete(schema.member).where(eq(schema.member.userId, mateId));
+      await admin.delete(schema.user).where(eq(schema.user.id, mateId));
+    }
+  });
+
   it("updates a page's title via PATCH", async () => {
     const created = await (
       await pagesHandlers.POST({ request: req("http://x/api/v1/pages", { method: "POST", token, body: { title: "Old title" } }), params: {} })
