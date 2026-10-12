@@ -85,7 +85,25 @@
     "unlinkIssue": "Lepas tautan",
     "commentHint": "⌘ Enter untuk kirim",
     "readOnly": "Hanya lihat — Anda tidak punya akses edit ke halaman ini.",
-    "projectLabel": "Proyek"
+    "projectLabel": "Proyek",
+    "movedTo": "Dipindahkan ke {{space}}",
+    "moveTo": "Pindahkan ke…",
+    "accessHeading": "Orang & tim dengan akses",
+    "accessOpen": "Semua yang dapat melihat ruang ini dapat membukanya. Tambahkan seseorang untuk membatasinya.",
+    "accessRestricted": "Hanya orang dan tim di bawah (serta super admin workspace) yang dapat membuka halaman ini.",
+    "accessAddPlaceholder": "Tambah orang atau tim…",
+    "accessTeams": "Tim",
+    "accessPeople": "Orang",
+    "accessRole": "Tingkat akses",
+    "accessRoleFor": "Tingkat akses untuk {{name}}",
+    "accessAdd": "Tambah",
+    "accessRemove": "Hapus {{name}}",
+    "role": {
+      "view": "Dapat melihat",
+      "comment": "Dapat berkomentar",
+      "edit": "Dapat mengedit",
+      "full": "Akses penuh"
+    }
   },
   "index": {
     "newPageButton": "Halaman baru",

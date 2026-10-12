@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { notFound } from "@tanstack/react-router";
 import * as z from "zod";
 import { loadEnv } from "@kompast/env";
 import { eq, inArray, schema } from "@kompast/db";
@@ -38,6 +39,10 @@ import {
   resolveDefaultCreationTarget,
   withAuthorizedTenant,
   ForbiddenError,
+  canManagePageAccess,
+  getPageAccess,
+  grantPageAccess,
+  removePagePermission,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 
@@ -68,6 +73,8 @@ const createPageSchema = z.object({
   title: z.string().optional(),
   parentPageId: z.string().nullable().optional(),
   projectId: z.string().nullable().optional(),
+  /** Team space. RLS's WITH CHECK rejects the insert unless the caller is in that team (or the super admin). */
+  teamId: z.string().nullable().optional(),
   type: z.enum(["doc", "template"]).optional(),
 });
 
@@ -81,6 +88,7 @@ export const createPageFn = createServerFn({ method: "POST" })
         title: data.title,
         parentPageId: data.parentPageId,
         projectId: data.projectId,
+        teamId: data.teamId,
         type: data.type,
         actorUserId: ctx.userId,
       }),
@@ -92,9 +100,11 @@ export const getPageDetailFn = createServerFn({ method: "GET" })
   .handler(async ({ data: pageId }) => {
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
+      // notFound(), not ForbiddenError: a page in another team's space or a
+      // restricted page renders the same "not found, or no access" state
+      // (see NoAccessState) rather than confirming it exists.
+      if (!(await canAccessPage(tx, pageId, ctx, "view"))) throw notFound();
       const page = await getPage(tx, pageId);
-      const allowed = await canAccessPage(tx, pageId, ctx, "view");
-      if (!allowed) throw new ForbiddenError(`No access to page ${pageId}`);
 
       const canEdit = await canAccessPage(tx, pageId, ctx, "edit");
       const [children, comments, outgoingLinks, backlinks, shareLinks, favoriteIds] = await Promise.all([
@@ -190,9 +200,11 @@ export const getPageEditorAccessFn = createServerFn({ method: "GET" })
   .handler(async ({ data: pageId }) => {
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
+      // notFound(), not ForbiddenError: a page in another team's space or a
+      // restricted page renders the same "not found, or no access" state
+      // (see NoAccessState) rather than confirming it exists.
+      if (!(await canAccessPage(tx, pageId, ctx, "view"))) throw notFound();
       const page = await getPage(tx, pageId);
-      const allowed = await canAccessPage(tx, pageId, ctx, "view");
-      if (!allowed) throw new ForbiddenError(`No access to page ${pageId}`);
       const canEdit = await canAccessPage(tx, pageId, ctx, "edit");
       const collabToken = signCollabToken({ userId: ctx.userId, organizationId: ctx.organizationId, pageId, role: canEdit ? "edit" : "view" });
       return { page, canEdit, collabToken, collabWsUrl: loadEnv().COLLAB_WS_URL };
@@ -393,7 +405,7 @@ export const listPageVersionsFn = createServerFn({ method: "GET" })
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
       const [versions, allowed] = await Promise.all([listPageVersions(tx, pageId), canAccessPage(tx, pageId, ctx, "view")]);
-      if (!allowed) throw new ForbiddenError(`No access to page ${pageId}`);
+      if (!allowed) throw notFound();
 
       const authorIds = [...new Set(versions.map((v) => v.authorId).filter((v): v is string => !!v))];
       const users = authorIds.length > 0 ? await tx.select().from(schema.user).where(inArray(schema.user.id, authorIds)) : [];
@@ -452,5 +464,57 @@ export const createIssueFromDocLineFn = createServerFn({ method: "POST" })
 
       const [project] = await tx.select({ key: schema.project.key, teamId: schema.project.teamId }).from(schema.project).where(eq(schema.project.id, page.projectId));
       return { issueId, projectKey: project!.key, teamId: project!.teamId, keySeq: String(keySeq) };
+    });
+  });
+
+const pageAccessSubjectSchema = z.object({ type: z.enum(["user", "team"]), id: z.string() });
+
+/** Backs the Share popover's "People & teams with access" section — loaded when it opens. */
+export const getPageAccessFn = createServerFn({ method: "GET" })
+  .validator((pageId: string) => pageId)
+  .handler(async ({ data: pageId }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      if (!(await canAccessPage(tx, pageId, ctx, "view"))) throw notFound();
+      const [access, canManage] = await Promise.all([getPageAccess(tx, pageId, ctx), canManagePageAccess(tx, pageId, ctx)]);
+      return { ...access, canManage };
+    });
+  });
+
+export const grantPageAccessFn = createServerFn({ method: "POST" })
+  .validator(z.object({ pageId: z.string(), subject: pageAccessSubjectSchema, role: z.enum(["view", "comment", "edit", "full"]) }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      if (!(await canManagePageAccess(tx, data.pageId, ctx))) throw new ForbiddenError(`Cannot change access to page ${data.pageId}`);
+      await grantPageAccess(tx, { ...data, actorUserId: ctx.userId });
+      return { ok: true } as const;
+    });
+  });
+
+export const revokePageAccessFn = createServerFn({ method: "POST" })
+  .validator(z.object({ pageId: z.string(), subject: pageAccessSubjectSchema }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      if (!(await canManagePageAccess(tx, data.pageId, ctx))) throw new ForbiddenError(`Cannot change access to page ${data.pageId}`);
+      await removePagePermission(tx, data.pageId, data.subject);
+      return { ok: true } as const;
+    });
+  });
+
+/**
+ * "Move to…" — re-homes a page (and its whole subtree, see core movePage)
+ * at the root of another space. RLS's WITH CHECK is what stops moving into a
+ * team/project the caller can't see; the edit check here covers the source.
+ */
+export const movePageToSpaceFn = createServerFn({ method: "POST" })
+  .validator(z.object({ pageId: z.string(), projectId: z.string().nullable(), teamId: z.string().nullable() }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, async (tx) => {
+      if (!(await canAccessPage(tx, data.pageId, ctx, "edit"))) throw new ForbiddenError(`No edit access to page ${data.pageId}`);
+      await movePage(tx, data.pageId, { parentPageId: null, space: { projectId: data.projectId, teamId: data.teamId } });
+      return { ok: true } as const;
     });
   });

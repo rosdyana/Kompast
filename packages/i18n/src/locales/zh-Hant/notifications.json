@@ -19,5 +19,10 @@
     "issue.mentioned": "在議題中被提及"
   },
   "savedToast": "已儲存偏好設定",
-  "saveFailed": "無法儲存偏好設定"
+  "saveFailed": "無法儲存偏好設定",
+  "title": {
+    "issue.assigned": "你被指派到 {{key}}",
+    "issue.commented": "{{key}} 有新留言",
+    "issue.mentioned": "你在 {{key}} 中被提及"
+  }
 }

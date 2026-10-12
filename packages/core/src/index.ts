@@ -22,6 +22,7 @@ export * from "./rich-text";
 export * from "./watcher";
 export * from "./attachment";
 export * from "./worklog";
+export * from "./checklist";
 export * from "./issue-link";
 export * from "./saved-view";
 export * from "./search";

@@ -15,7 +15,7 @@
   "addMemberFailed": "Gagal menambah anggota",
   "teamMembersHeading": "Anggota tim",
   "needsAdminTitle": "Tim ini butuh setidaknya satu admin",
-  "memberRoleLabel": "Member",
+  "memberRoleLabel": "Anggota",
   "adminRoleLabel": "Admin",
   "remove": "Hapus",
   "overviewSubtitle": "Setiap proyek dimiliki oleh sebuah tim. Kelola tim workspace ini di sini.",
@@ -42,5 +42,18 @@
   "teams": "Tim",
   "settings": "Pengaturan",
   "noAccessTitle": "Hanya super admin yang dapat membuat tim",
-  "goHome": "Kembali ke beranda"
+  "goHome": "Kembali ke beranda",
+  "teamAdminsLabel": "Admin: {{names}}",
+  "inviteHeading": "Undang orang baru",
+  "inviteSubtitle": "Mereka akan bergabung ke workspace sebagai anggota dan langsung masuk ke tim ini.",
+  "inviteEmailPlaceholder": "nama@perusahaan.com",
+  "inviteRoleLabel": "Peran di tim",
+  "invite": "Kirim undangan",
+  "invitingEllipsis": "Mengirim…",
+  "inviteSent": "Undangan terkirim",
+  "inviteAlreadyPending": "Undangan untuk alamat itu masih menunggu",
+  "inviteFailed": "Gagal mengirim undangan",
+  "inviteCanceled": "Undangan dibatalkan",
+  "pendingInvitesHeading": "Undangan tertunda",
+  "cancelInvite": "Batalkan undangan"
 }

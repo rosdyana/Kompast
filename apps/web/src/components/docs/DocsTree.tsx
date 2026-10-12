@@ -9,6 +9,8 @@ export interface DocsTreePage {
   title: string;
   icon: string | null;
   parentPageId: string | null;
+  /** Team space, or null for the shared Workspace space (sidebar groups by it). */
+  teamId?: string | null;
 }
 
 interface TreeProps {

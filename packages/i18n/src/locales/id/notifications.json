@@ -19,5 +19,10 @@
     "issue.mentioned": "Disebut di sebuah issue"
   },
   "savedToast": "Preferensi disimpan",
-  "saveFailed": "Gagal menyimpan preferensi"
+  "saveFailed": "Gagal menyimpan preferensi",
+  "title": {
+    "issue.assigned": "Anda ditugaskan ke {{key}}",
+    "issue.commented": "Komentar baru di {{key}}",
+    "issue.mentioned": "Anda disebut di {{key}}"
+  }
 }

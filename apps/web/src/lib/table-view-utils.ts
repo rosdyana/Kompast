@@ -16,6 +16,8 @@ export interface SortableFlatIssue {
   dueDate: string | Date | null;
   storyPoints: number | null;
   keySeq: number;
+  epicId?: string | null;
+  labels?: string[];
 }
 
 export interface FilterableFlatIssue {
@@ -38,7 +40,21 @@ export function priorityOrderByKey(priorityLevels: { key: string; order: number 
   return Object.fromEntries(sorted.map((p, i, arr) => [p.key, arr.length - 1 - i]));
 }
 
-function compareByField(a: SortableFlatIssue, b: SortableFlatIssue, field: SortField, priorityOrder: Record<string, number>): number {
+/** Missing values (no epic / no labels) always sort last, whichever direction — the caller only flips non-empty comparisons. */
+function compareText(a: string | null, b: string | null): number | "aEmpty" | "bEmpty" {
+  if (a === null && b === null) return 0;
+  if (a === null) return "aEmpty";
+  if (b === null) return "bEmpty";
+  return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+}
+
+function sortKey(issue: SortableFlatIssue, field: "epic" | "label", epicTitleById: ReadonlyMap<string, string>): string | null {
+  if (field === "epic") return issue.epicId ? (epicTitleById.get(issue.epicId) ?? issue.epicId) : null;
+  const labels = issue.labels ?? [];
+  return labels.length > 0 ? [...labels].sort((x, y) => x.localeCompare(y)).join(", ") : null;
+}
+
+function compareByField(a: SortableFlatIssue, b: SortableFlatIssue, field: Exclude<SortField, "epic" | "label">, priorityOrder: Record<string, number>): number {
   if (field === "manual") {
     const aRank = a.sprintRank ?? a.rank;
     const bRank = b.sprintRank ?? b.rank;
@@ -54,11 +70,27 @@ function compareByField(a: SortableFlatIssue, b: SortableFlatIssue, field: SortF
   return a.keySeq - b.keySeq; // "key"
 }
 
-/** Multi-column sort: rules are applied in priority order, the first non-zero comparison wins. */
-export function sortIssues<T extends SortableFlatIssue>(issues: T[], sort: SortRule[], priorityOrder: Record<string, number>): T[] {
+/**
+ * Multi-column sort: rules are applied in priority order, the first non-zero comparison wins.
+ * "epic" sorts by epic title (pass `epicTitleById`; falls back to the raw id), "label" by an
+ * issue's alphabetically-first labels — issues with no epic / no labels go last either way.
+ */
+export function sortIssues<T extends SortableFlatIssue>(
+  issues: T[],
+  sort: SortRule[],
+  priorityOrder: Record<string, number>,
+  epicTitleById: ReadonlyMap<string, string> = new Map(),
+): T[] {
   const rules = sort.length > 0 ? sort : [{ field: "manual" as const, direction: "asc" as const }];
   return [...issues].sort((a, b) => {
     for (const rule of rules) {
+      if (rule.field === "epic" || rule.field === "label") {
+        const cmp = compareText(sortKey(a, rule.field, epicTitleById), sortKey(b, rule.field, epicTitleById));
+        if (cmp === "aEmpty") return 1;
+        if (cmp === "bEmpty") return -1;
+        if (cmp !== 0) return rule.direction === "asc" ? cmp : -cmp;
+        continue;
+      }
       const cmp = compareByField(a, b, rule.field, priorityOrder);
       if (cmp !== 0) return rule.direction === "asc" ? cmp : -cmp;
     }

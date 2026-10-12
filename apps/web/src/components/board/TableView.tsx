@@ -17,6 +17,7 @@ import { moveIssueFn } from "@/lib/server-fns/issues";
 import {
   updateIssueAssigneeFn,
   updateIssueDatesFn,
+  updateIssueEpicFn,
   updateIssuePriorityFn,
   updateIssueStoryPointsFn,
   updateIssueTitleFn,
@@ -30,16 +31,18 @@ import { FilterBuilder } from "./FilterBuilder";
 type BoardData = Awaited<ReturnType<typeof getProjectBoardFn>>;
 type BaseIssue = BoardData["columns"][number]["issues"][number];
 type FlatIssue = BaseIssue & { columnId: string; columnName: string; columnColor: string; sprintRank?: string | null };
-type Patch = Partial<Pick<FlatIssue, "title" | "typeId" | "statusId" | "columnId" | "columnName" | "columnColor" | "assigneeId" | "priority" | "storyPoints" | "dueDate">>;
+type Patch = Partial<Pick<FlatIssue, "title" | "typeId" | "statusId" | "columnId" | "columnName" | "columnColor" | "assigneeId" | "epicId" | "priority" | "storyPoints" | "dueDate">>;
 
 const INTL_LOCALE: Record<SupportedLocale, string> = { en: "en-US", id: "id-ID", "zh-Hant": "zh-Hant-TW" };
-const SORT_FIELDS: SortField[] = ["manual", "priority", "dueDate", "points", "key"];
+const SORT_FIELDS: SortField[] = ["manual", "priority", "dueDate", "points", "key", "epic", "label"];
 const SORT_FIELD_LABEL_KEY: Record<SortField, string> = {
   manual: "tableView.sortByManual",
   priority: "tableView.sortByPriority",
   dueDate: "tableView.sortByDueDate",
   points: "tableView.sortByPoints",
   key: "tableView.sortByKey",
+  epic: "tableView.sortByEpic",
+  label: "tableView.sortByLabel",
 };
 
 /** Date-only value as YYYY-MM-DD in local time (what <input type="date"> reads/writes). */
@@ -189,6 +192,9 @@ function TableRow({
   const type = data.issueTypes.find((tp) => tp.id === view.typeId);
   const priority = data.priorityLevels.find((p) => p.key === view.priority);
   const assignee = view.assigneeId ? usersById.get(view.assigneeId) : undefined;
+  const epic = view.epicId ? data.candidateEpics.find((e) => e.id === view.epicId) : undefined;
+  // Epics themselves sit at the top of the hierarchy and can't be filed under another epic.
+  const canHaveEpic = type?.hierarchyLevel !== 0;
   const teamId = data.project.teamId ?? "none";
   const issueKey = `${data.project.key}-${issue.keySeq}`;
 
@@ -212,6 +218,10 @@ function TableRow({
   const priorityOptions: SelectOption[] = [...data.priorityLevels]
     .sort((a, b) => b.order - a.order)
     .map((p) => ({ value: p.key, label: p.name, icon: <PriorityIcon priority={p} /> }));
+  const epicOptions: SelectOption[] = [
+    { value: "", label: t("card.noEpic") },
+    ...data.candidateEpics.map((e) => ({ value: e.id, label: `${data.project.key}-${e.keySeq} ${e.title}` })),
+  ];
   const typeOptions: SelectOption[] = data.issueTypes
     .filter((tp) => tp.hierarchyLevel === type?.hierarchyLevel)
     .map((tp) => ({ value: tp.id, label: tp.name, icon: <IssueTypeIcon type={tp} size={16} /> }));
@@ -353,6 +363,30 @@ function TableRow({
           }
         />
       </td>
+      <td className="w-[180px] px-1">
+        {canHaveEpic ? (
+          <PickerCell
+            label={t("tableView.colEpic")}
+            value={view.epicId ?? ""}
+            options={epicOptions}
+            width={280}
+            onSelect={(v) => {
+              const next = v || null;
+              if (next === view.epicId) return;
+              save({ epicId: next }, () => updateIssueEpicFn({ data: { issueId: issue.id, epicId: next } }));
+            }}
+            display={
+              epic ? (
+                <span className="max-w-full truncate rounded-[4px] bg-violet-soft px-1.5 py-0.5 text-[12px] font-medium text-violet">{epic.title}</span>
+              ) : (
+                <span className="text-text-3">–</span>
+              )
+            }
+          />
+        ) : (
+          <span className="px-2 text-text-3">–</span>
+        )}
+      </td>
       <td className="w-[130px] px-1">
         <PickerCell
           label={t("tableView.colPriority")}
@@ -476,7 +510,8 @@ export function TableView({ data, sprintContext }: { data: BoardData; sprintCont
     col.issues.map((issue) => ({ ...issue, columnId: col.id, columnName: col.name, columnColor: col.color })),
   );
   const filtered = applyFilters(flat, config.filters);
-  const sorted = sortIssues(filtered, config.sort, priorityOrderByKey(data.priorityLevels));
+  const epicTitleById = useMemo(() => new Map(data.candidateEpics.map((e) => [e.id, e.title])), [data.candidateEpics]);
+  const sorted = sortIssues(filtered, config.sort, priorityOrderByKey(data.priorityLevels), epicTitleById);
   const orderedIssueIds = sorted.map((i) => i.id);
 
   const groups: { key: string; label: string; lead?: ReactNode; issues: FlatIssue[] }[] =
@@ -523,7 +558,7 @@ export function TableView({ data, sprintContext }: { data: BoardData; sprintCont
 
   const manualModeActive = sprintContext != null && config.sort.length === 1 && config.sort[0]?.field === "manual";
   const showDragColumn = sprintContext != null;
-  const columnCount = 7 + (showDragColumn ? 1 : 0);
+  const columnCount = 8 + (showDragColumn ? 1 : 0);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -639,7 +674,7 @@ export function TableView({ data, sprintContext }: { data: BoardData; sprintCont
         {error && <p className="rounded-[6px] bg-danger-soft px-3 py-2 text-[13px] text-danger">{error}</p>}
 
         <div className="kp-table-scroll max-h-[calc(100vh-240px)] min-h-[160px] overflow-auto rounded-[8px] border border-border bg-surface">
-          <table className="w-full min-w-[980px] border-separate border-spacing-0 text-[14px]">
+          <table className="w-full min-w-[1160px] border-separate border-spacing-0 text-[14px]">
             <thead className="sticky top-0 z-[5] bg-surface-2">
               <tr>
                 {showDragColumn && <th className={cn(th, "w-7 border-b border-border")} aria-label={t("tableEdit.dragHandle")} />}
@@ -647,6 +682,7 @@ export function TableView({ data, sprintContext }: { data: BoardData; sprintCont
                 <th className={cn(th, "border-b border-border pl-3")}>{t("tableView.colTitle")}</th>
                 <th className={cn(th, "border-b border-border")}>{t("tableView.colStatus")}</th>
                 <th className={cn(th, "border-b border-border")}>{t("tableView.colAssignee")}</th>
+                <th className={cn(th, "border-b border-border")}>{t("tableView.colEpic")}</th>
                 <th className={cn(th, "border-b border-border")}>{t("tableView.colPriority")}</th>
                 <th className={cn(th, "border-b border-border text-right")}>{t("tableView.colPoints")}</th>
                 <th className={cn(th, "border-b border-border pr-3")}>{t("tableView.colDueDate")}</th>

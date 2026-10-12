@@ -24,6 +24,8 @@ alter table issue_attachment enable row level security;
 alter table issue_attachment force row level security;
 alter table worklog enable row level security;
 alter table worklog force row level security;
+alter table issue_checklist_item enable row level security;
+alter table issue_checklist_item force row level security;
 alter table issue_link enable row level security;
 alter table issue_link force row level security;
 alter table issue_history enable row level security;
@@ -119,13 +121,54 @@ alter table priority_level force row level security;
 -- The policies above still guard these tables against the kompast_app
 -- role for the same defense-in-depth reason.
 
+-- ── Team-scoped visibility ─────────────────────────────────────────────
+-- On top of workspace isolation, content is visible only to the
+-- workspace's super admin or to members of the owning team (see
+-- docs/superpowers/specs/2026-10-12-team-scoped-visibility-design.md).
+-- `project` is the root: every project-owned table below filters through
+-- `select id from project`, and Postgres applies project's own policy
+-- inside that subquery, so they inherit team scoping without repeating it.
+-- Same inheritance trick the issue_comment -> issue policies already used.
+--
+-- Both helpers read member/team_member, which have no RLS (Better Auth's
+-- own tables), so plain SECURITY INVOKER is enough. Single-statement SQL
+-- functions marked STABLE get inlined by the planner, and their bodies are
+-- uncorrelated with the outer row, so they run once per statement, not
+-- once per row.
+create or replace function kompast_is_super_admin() returns boolean
+  language sql stable as $$
+    select exists (
+      select 1 from member
+      where organization_id = current_setting('app.current_workspace', true)
+        and user_id = current_setting('app.current_user', true)
+        and is_super_admin
+    )
+  $$;
+
+create or replace function kompast_my_team_ids() returns setof text
+  language sql stable as $$
+    select tm.team_id from team_member tm
+    join team t on t.id = tm.team_id
+    where t.organization_id = current_setting('app.current_workspace', true)
+      and tm.user_id = current_setting('app.current_user', true)
+  $$;
+
 drop policy if exists tenant_isolation_project on project;
+-- team_id null (legacy "Unassigned" projects) matches neither branch of
+-- the OR for a non-super-admin, so those are super-admin-only until
+-- assigned to a team — deliberate, never visible-to-all.
 create policy tenant_isolation_project on project
-  using (organization_id = current_setting('app.current_workspace', true));
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and (kompast_is_super_admin() or team_id in (select kompast_my_team_ids()))
+  );
 
 drop policy if exists tenant_isolation_issue on issue;
 create policy tenant_isolation_issue on issue
-  using (organization_id = current_setting('app.current_workspace', true));
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and project_id in (select id from project)
+  );
 
 drop policy if exists tenant_isolation_audit_log on audit_log;
 create policy tenant_isolation_audit_log on audit_log
@@ -195,6 +238,15 @@ create policy tenant_isolation_worklog on worklog
     )
   );
 
+drop policy if exists tenant_isolation_issue_checklist_item on issue_checklist_item;
+create policy tenant_isolation_issue_checklist_item on issue_checklist_item
+  using (
+    issue_id in (
+      select id from issue
+      where organization_id = current_setting('app.current_workspace', true)
+    )
+  );
+
 drop policy if exists tenant_isolation_issue_link on issue_link;
 create policy tenant_isolation_issue_link on issue_link
   using (
@@ -221,12 +273,7 @@ create policy tenant_isolation_issue_attachment on issue_attachment
 -- this is a brand-new table, so it gets real RLS from day one.
 drop policy if exists tenant_isolation_issue_property_definition on issue_property_definition;
 create policy tenant_isolation_issue_property_definition on issue_property_definition
-  using (
-    project_id in (
-      select id from project
-      where organization_id = current_setting('app.current_workspace', true)
-    )
-  );
+  using (project_id in (select id from project));
 
 -- priority_level joins through project instead of issue (it's a
 -- project-level configuration table, not an issue row) — same indirect-
@@ -234,12 +281,7 @@ create policy tenant_isolation_issue_property_definition on issue_property_defin
 -- gets real RLS from day one.
 drop policy if exists tenant_isolation_priority_level on priority_level;
 create policy tenant_isolation_priority_level on priority_level
-  using (
-    project_id in (
-      select id from project
-      where organization_id = current_setting('app.current_workspace', true)
-    )
-  );
+  using (project_id in (select id from project));
 
 drop policy if exists tenant_isolation_issue_history on issue_history;
 create policy tenant_isolation_issue_history on issue_history
@@ -251,8 +293,16 @@ create policy tenant_isolation_issue_history on issue_history
   );
 
 drop policy if exists tenant_isolation_page on page;
+-- A page's space: project (project_id set — visible iff the project is),
+-- team (team_id set — visible to that team and the super admin), or the
+-- shared Workspace space (both null — every member). page_single_space_ck
+-- guarantees at most one of the two is set.
 create policy tenant_isolation_page on page
-  using (organization_id = current_setting('app.current_workspace', true));
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and (project_id is null or project_id in (select id from project))
+    and (team_id is null or kompast_is_super_admin() or team_id in (select kompast_my_team_ids()))
+  );
 
 drop policy if exists tenant_isolation_link on link;
 create policy tenant_isolation_link on link
@@ -260,65 +310,40 @@ create policy tenant_isolation_link on link
 
 drop policy if exists tenant_isolation_page_version on page_version;
 create policy tenant_isolation_page_version on page_version
-  using (
-    page_id in (
-      select id from page
-      where organization_id = current_setting('app.current_workspace', true)
-    )
-  );
+  using (page_id in (select id from page));
 
 drop policy if exists tenant_isolation_page_permission on page_permission;
 create policy tenant_isolation_page_permission on page_permission
-  using (
-    page_id in (
-      select id from page
-      where organization_id = current_setting('app.current_workspace', true)
-    )
-  );
+  using (page_id in (select id from page));
 
 drop policy if exists tenant_isolation_page_comment on page_comment;
 create policy tenant_isolation_page_comment on page_comment
-  using (
-    page_id in (
-      select id from page
-      where organization_id = current_setting('app.current_workspace', true)
-    )
-  );
+  using (page_id in (select id from page));
 
 drop policy if exists tenant_isolation_page_favorite on page_favorite;
 create policy tenant_isolation_page_favorite on page_favorite
-  using (
-    page_id in (
-      select id from page
-      where organization_id = current_setting('app.current_workspace', true)
-    )
-  );
+  using (page_id in (select id from page));
 
 drop policy if exists tenant_isolation_share_link on share_link;
 create policy tenant_isolation_share_link on share_link
-  using (
-    page_id in (
-      select id from page
-      where organization_id = current_setting('app.current_workspace', true)
-    )
-  );
+  using (page_id in (select id from page));
 
 drop policy if exists tenant_isolation_ydoc_state on ydoc_state;
 create policy tenant_isolation_ydoc_state on ydoc_state
-  using (
-    page_id in (
-      select id from page
-      where organization_id = current_setting('app.current_workspace', true)
-    )
-  );
+  using (page_id in (select id from page));
 
 drop policy if exists tenant_isolation_idempotency_key on idempotency_key;
 create policy tenant_isolation_idempotency_key on idempotency_key
   using (organization_id = current_setting('app.current_workspace', true));
 
 drop policy if exists tenant_isolation_sprint on sprint;
+-- board has no RLS of its own (pre-existing gap, see
+-- issue_property_definition's comment), so this reaches project through it.
 create policy tenant_isolation_sprint on sprint
-  using (organization_id = current_setting('app.current_workspace', true));
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and board_id in (select id from board where project_id in (select id from project))
+  );
 
 drop policy if exists tenant_isolation_sprint_issue on sprint_issue;
 create policy tenant_isolation_sprint_issue on sprint_issue
@@ -352,7 +377,10 @@ create policy tenant_isolation_email_outbox on email_outbox
 
 drop policy if exists tenant_isolation_automation_workflow on automation_workflow;
 create policy tenant_isolation_automation_workflow on automation_workflow
-  using (organization_id = current_setting('app.current_workspace', true));
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and project_id in (select id from project)
+  );
 
 drop policy if exists tenant_isolation_automation_node on automation_node;
 create policy tenant_isolation_automation_node on automation_node
@@ -380,15 +408,33 @@ create policy tenant_isolation_ai_usage on ai_usage
 
 drop policy if exists tenant_isolation_import_run on import_run;
 create policy tenant_isolation_import_run on import_run
-  using (organization_id = current_setting('app.current_workspace', true));
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and project_id in (select id from project)
+  );
 
 drop policy if exists tenant_isolation_external_ref on external_ref;
 create policy tenant_isolation_external_ref on external_ref
   using (organization_id = current_setting('app.current_workspace', true));
 
 drop policy if exists tenant_isolation_embedding on embedding;
+-- Ask Kompast retrieval runs as the asking user, so this is what keeps
+-- another team's issue/comment/page text out of their answers. It also
+-- gates writes (USING doubles as WITH CHECK, and DELETE/UPDATE apply it to
+-- their WHERE clause), which is fine: indexing only ever runs in
+-- apps/worker on the admin connection, which bypasses RLS entirely.
+drop policy if exists tenant_isolation_embedding_insert on embedding;
+drop policy if exists tenant_isolation_embedding_update on embedding;
+drop policy if exists tenant_isolation_embedding_delete on embedding;
 create policy tenant_isolation_embedding on embedding
-  using (organization_id = current_setting('app.current_workspace', true));
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and (
+      (entity_type = 'issue' and entity_id in (select id from issue))
+      or (entity_type = 'comment' and entity_id in (select id from issue_comment))
+      or (entity_type = 'page' and entity_id in (select id from page))
+    )
+  );
 
 drop policy if exists tenant_isolation_embedding_index_queue on embedding_index_queue;
 create policy tenant_isolation_embedding_index_queue on embedding_index_queue

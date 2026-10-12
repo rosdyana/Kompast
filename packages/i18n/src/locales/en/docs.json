@@ -85,7 +85,25 @@
     "unlinkIssue": "Unlink",
     "commentHint": "⌘ Enter to send",
     "readOnly": "View only — you don't have edit access to this page.",
-    "projectLabel": "Project"
+    "projectLabel": "Project",
+    "movedTo": "Moved to {{space}}",
+    "moveTo": "Move to…",
+    "accessHeading": "People & teams with access",
+    "accessOpen": "Everyone who can see this space can open it. Add someone to restrict it to a list.",
+    "accessRestricted": "Only the people and teams below (and the workspace super admin) can open this page.",
+    "accessAddPlaceholder": "Add a person or team…",
+    "accessTeams": "Teams",
+    "accessPeople": "People",
+    "accessRole": "Access level",
+    "accessRoleFor": "Access level for {{name}}",
+    "accessAdd": "Add",
+    "accessRemove": "Remove {{name}}",
+    "role": {
+      "view": "Can view",
+      "comment": "Can comment",
+      "edit": "Can edit",
+      "full": "Full access"
+    }
   },
   "index": {
     "newPageButton": "New page",

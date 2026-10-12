@@ -112,5 +112,13 @@
     "loading": "正在載入專案…",
     "activeSprint": "進行中",
     "failed": "無法建立議題：{{message}}"
-  }
+  },
+  "workspaceDocs": "工作區",
+  "teamDocs": "文件",
+  "newTeamDoc": "新增團隊文件",
+  "noTeamDocs": "尚無文件",
+  "lockedTeamHint": "您不在此團隊中。請向 {{names}} 申請存取權限。",
+  "lockedTeamNoAdmin": "您不在此團隊中。",
+  "assignToTeam": "指派到團隊",
+  "assignedToTeam": "已移至 {{team}}"
 }

@@ -9,6 +9,7 @@
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
     "seed:dev": "tsx scripts/seed-dev.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
     "test": "vitest run"
   },
   "dependencies": {

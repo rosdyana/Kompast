@@ -5,6 +5,9 @@
   "notFoundTitle": "Halaman tidak ditemukan",
   "notFoundSubtext": "Halaman yang Anda cari tidak ada atau mungkin telah dipindahkan.",
   "notFoundGoHome": "Kembali ke beranda",
+  "noAccessTitle": "Tidak ditemukan, atau Anda tidak memiliki akses",
+  "noAccessSubtext": "Mungkin telah dipindahkan atau dihapus, atau milik tim yang tidak Anda ikuti. Minta akses ke admin tim tersebut jika diperlukan.",
+  "restricted": "Terbatas",
   "save": "Simpan",
   "cancel": "Batal",
   "delete": "Hapus",
@@ -17,5 +20,9 @@
   "more": "Lainnya",
   "copyLink": "Salin tautan",
   "linkCopied": "Tautan disalin",
-  "somethingWentWrong": "Terjadi kesalahan."
+  "somethingWentWrong": "Terjadi kesalahan.",
+  "mentionGroupPeople": "Orang",
+  "mentionGroupIssues": "Issue",
+  "dismiss": "Tutup",
+  "breadcrumb": "Navigasi jalur"
 }

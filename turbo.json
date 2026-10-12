@@ -18,7 +18,9 @@
     "COLLAB_WS_URL",
     "COLLAB_INTERNAL_PORT",
     "ENABLE_DEV_LOGIN",
-    "DEV_ADMIN_PASSWORD"
+    "DEV_ADMIN_PASSWORD",
+    "DEMO_MODE",
+    "DEMO_ACCESS_CODE"
   ],
   "tasks": {
     "build": {

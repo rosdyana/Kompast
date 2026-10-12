@@ -113,5 +113,13 @@
     "loading": "Loading project…",
     "activeSprint": "active",
     "failed": "Couldn't create the issue: {{message}}"
-  }
+  },
+  "workspaceDocs": "Workspace",
+  "teamDocs": "Docs",
+  "newTeamDoc": "New team doc",
+  "noTeamDocs": "No docs yet",
+  "lockedTeamHint": "You're not in this team. Ask {{names}} for access.",
+  "lockedTeamNoAdmin": "You're not in this team.",
+  "assignToTeam": "Assign to team",
+  "assignedToTeam": "Moved to {{team}}"
 }

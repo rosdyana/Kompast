@@ -63,6 +63,16 @@ const schema = z.object({
   // schema stays true to its own "deliberately minimal" boot-time contract).
   ENABLE_DEV_LOGIN: z.enum(["true", "false"]).default("false"),
   DEV_ADMIN_PASSWORD: z.string().min(8).optional(),
+
+  // Stakeholder-demo mode (apps/web/src/lib/demo.ts). Unlike dev login this
+  // DOES work with NODE_ENV=production — a hosted demo runs the real
+  // production images — so it is gated by an access code instead: seeded
+  // demo personas' password IS the code, public sign-up stays disabled, and
+  // only accounts in DEMO_PERSONAS are offered. Only ever enable it on a
+  // deployment holding nothing but seeded demo data. DEMO_ACCESS_CODE is
+  // required when on (enforced in demo.ts, same reasoning as above).
+  DEMO_MODE: z.enum(["true", "false"]).default("false"),
+  DEMO_ACCESS_CODE: z.string().min(8).optional(),
 });
 
 export type Env = z.infer<typeof schema>;

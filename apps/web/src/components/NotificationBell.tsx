@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Bell, CheckCheck } from "lucide-react";
 import { Popover } from "@kompast/ui/Popover";
 import { IconButton } from "@kompast/ui/Button";
@@ -8,6 +8,7 @@ import { listNotificationsFn, markNotificationReadFn, markAllNotificationsReadFn
 import { cn } from "@/lib/cn";
 
 type NotificationsData = Awaited<ReturnType<typeof listNotificationsFn>>;
+type NotificationRow = NotificationsData["notifications"][number];
 
 const POLL_MS = 30_000;
 
@@ -30,6 +31,7 @@ export function NotificationBell() {
   const [data, setData] = useState<NotificationsData | null>(null);
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
+  const navigate = useNavigate();
 
   async function refresh() {
     try {
@@ -45,8 +47,20 @@ export function NotificationBell() {
     return () => clearInterval(interval);
   }, []);
 
-  async function handleOpenNotification(notificationId: string) {
-    await markNotificationReadFn({ data: notificationId });
+  async function handleOpenNotification(n: NotificationRow) {
+    const target = n.target;
+    if (target) {
+      setOpen(false);
+      if (target.kind === "issue") {
+        navigate({
+          to: "/issues/$teamId/$projectKey/$issueKeySeq",
+          params: { teamId: target.teamId ?? "none", projectKey: target.projectKey, issueKeySeq: String(target.keySeq) },
+        });
+      } else {
+        navigate({ to: "/docs/$pageId", params: { pageId: target.pageId } });
+      }
+    }
+    if (!n.readAt) await markNotificationReadFn({ data: n.id });
     await refresh();
   }
 
@@ -56,6 +70,13 @@ export function NotificationBell() {
   }
 
   const unreadCount = data?.unreadCount ?? 0;
+
+  // Stored titles are English (they double as email subjects); known event
+  // types are re-rendered in the viewer's locale from the resolved target.
+  const titleFor = (n: NotificationRow) =>
+    n.target?.kind === "issue"
+      ? t(`title.${n.eventType}`, { key: `${n.target.projectKey}-${n.target.keySeq}`, defaultValue: n.title })
+      : n.title;
 
   return (
     <>
@@ -96,7 +117,7 @@ export function NotificationBell() {
             data.notifications.map((n) => (
               <button
                 key={n.id}
-                onClick={() => handleOpenNotification(n.id)}
+                onClick={() => handleOpenNotification(n)}
                 className={cn(
                   "relative flex w-full gap-3 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-surface-2",
                   !n.readAt && "bg-accent-soft/40",
@@ -104,7 +125,7 @@ export function NotificationBell() {
               >
                 <span className={cn("mt-1.5 h-2 w-2 flex-none rounded-full", n.readAt ? "bg-transparent" : "bg-accent")} />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-[13.5px] font-medium leading-snug text-text">{n.title}</span>
+                  <span className="text-[13.5px] font-medium leading-snug text-text">{titleFor(n)}</span>
                   {n.body && <span className="line-clamp-2 text-[12.5px] leading-snug text-text-2">{n.body}</span>}
                   <span className="text-[12px] text-text-3">{relativeTime(new Date(n.createdAt), intlLocale)}</span>
                 </span>

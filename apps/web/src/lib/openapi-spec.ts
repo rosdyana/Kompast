@@ -219,6 +219,7 @@ export function buildOpenApiSpec(serverUrl: string) {
                     title: { type: "string" },
                     parentPageId: { type: "string", nullable: true },
                     projectKey: { type: "string" },
+                    teamId: { type: "string", description: "Team space; omit this and projectKey for the shared Workspace space" },
                     content: { type: "string", description: "Initial body as Markdown. Only honored on create — see PATCH." },
                   },
                 },
@@ -272,6 +273,40 @@ export function buildOpenApiSpec(serverUrl: string) {
           summary: "Unlink a page from an issue",
           parameters: [{ name: "issueKey", in: "query", required: true, schema: { type: "string" } }],
           responses: { "200": { description: "OK" }, "400": problemJson, "401": problemJson },
+        },
+      },
+      "/api/v1/pages/{pageId}/permissions": {
+        parameters: [{ name: "pageId", in: "path", required: true, schema: { type: "string" } }],
+        get: {
+          summary: "List who can open a page (empty grants = open to everyone who can see its space)",
+          responses: { "200": { description: "OK" }, "401": problemJson, "404": problemJson },
+        },
+        put: {
+          summary: "Grant or update a user's/team's access to a page",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["subject", "role"],
+                  properties: {
+                    subject: { type: "object", required: ["type", "id"], properties: { type: { type: "string", enum: ["user", "team"] }, id: { type: "string" } } },
+                    role: { type: "string", enum: ["view", "comment", "edit", "full"] },
+                  },
+                },
+              },
+            },
+          },
+          responses: { "200": { description: "OK" }, "401": problemJson, "403": problemJson, "404": problemJson },
+        },
+        delete: {
+          summary: "Revoke a user's/team's access to a page",
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { type: "object", required: ["type", "id"], properties: { type: { type: "string", enum: ["user", "team"] }, id: { type: "string" } } } } },
+          },
+          responses: { "200": { description: "OK" }, "401": problemJson, "403": problemJson, "404": problemJson },
         },
       },
       "/api/v1/sprints": {

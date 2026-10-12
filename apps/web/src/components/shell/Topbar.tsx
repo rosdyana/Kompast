@@ -25,7 +25,7 @@ export function Topbar({ canCreateIssue }: { canCreateIssue: boolean }) {
         </IconButton>
       )}
 
-      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-0.5 text-[14px]">
+      <nav aria-label={t("common:breadcrumb")} className="flex min-w-0 flex-1 items-center gap-0.5 text-[14px]">
         {crumbs.map((crumb, i) => {
           const last = i === crumbs.length - 1;
           const content = (

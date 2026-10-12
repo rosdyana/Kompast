@@ -192,6 +192,45 @@ export async function getProjectByTeamAndKey(tx: Tx, input: GetProjectByTeamAndK
   return matches[0] ?? null;
 }
 
+export class ProjectKeyConflictError extends Error {
+  constructor(key: string) {
+    super(`The team already has a project with key "${key}". Rename one of them first.`);
+    this.name = "ProjectKeyConflictError";
+  }
+}
+
+/**
+ * Moves a project to a team — for legacy "Unassigned" (team_id null)
+ * projects, which team-scoped RLS shows only to the super admin until
+ * this runs, and for later team reshuffles. Super admin only: it changes
+ * who can see the whole project, its issues, and its docs at once.
+ *
+ * Project pages need no rewrite — they reach their team through
+ * page.project_id (see packages/db/rls.sql's page policy), so they move
+ * with the project automatically. The key only has to be unique per team
+ * (project_team_key_uq), so it is checked against the target team first
+ * for a readable error instead of a raw unique-violation.
+ */
+export async function assignProjectToTeam(tx: Tx, input: { projectId: string; teamId: string; organizationId: string }) {
+  const [project] = await tx.select().from(schema.project).where(eq(schema.project.id, input.projectId));
+  if (!project) throw new Error(`Project ${input.projectId} not found`);
+  if (project.teamId === input.teamId) return;
+
+  const [team] = await tx
+    .select({ id: schema.team.id })
+    .from(schema.team)
+    .where(and(eq(schema.team.id, input.teamId), eq(schema.team.organizationId, input.organizationId)));
+  if (!team) throw new Error(`Team ${input.teamId} not found`);
+
+  const [clash] = await tx
+    .select({ id: schema.project.id })
+    .from(schema.project)
+    .where(and(eq(schema.project.teamId, input.teamId), eq(schema.project.key, project.key)));
+  if (clash) throw new ProjectKeyConflictError(project.key);
+
+  await tx.update(schema.project).set({ teamId: input.teamId }).where(eq(schema.project.id, input.projectId));
+}
+
 export async function setSprintMinutesTemplate(tx: Tx, projectId: string, pageId: string): Promise<void> {
   await tx.update(schema.project).set({ sprintMinutesTemplatePageId: pageId }).where(eq(schema.project.id, projectId));
 }

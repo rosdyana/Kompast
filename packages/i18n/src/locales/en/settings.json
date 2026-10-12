@@ -101,27 +101,27 @@
     "superAdmin": {
       "name": "Super Admin",
       "scope": "One per workspace",
-      "desc": "Can create new teams and manage any team (member.isSuperAdmin). Transferring this role revokes it from the previous holder."
+      "desc": "Sees every team's projects and docs, plus projects not yet assigned to a team. Creates teams, appoints team admins, and moves projects between teams (member.isSuperAdmin). Transferring this role revokes it from the previous holder."
     },
     "workspaceOwner": {
       "name": "Workspace Owner / Admin",
       "scope": "Workspace",
-      "desc": "Can open Settings (Entra/AI/Email integrations) and invite/manage workspace members (member.role)."
+      "desc": "Can open Settings (Entra/AI/Email integrations) and invite/manage workspace members (member.role). Does not see other teams' content — only the teams they belong to, plus Workspace docs."
     },
     "teamAdmin": {
       "name": "Team Admin",
       "scope": "Per team",
-      "desc": "Can create projects within their own team and manage that team's membership (team_member.role). Has no rights in other teams or workspace-wide."
+      "desc": "Creates projects in their team, adds workspace members to it, and invites new people straight into it by email (team_member.role). Sees only their own teams' projects and docs."
     },
     "teamMember": {
       "name": "Team Member",
       "scope": "Per team",
-      "desc": "A regular member of a team, with no management rights."
+      "desc": "Sees and works in their team's projects and docs, plus shared Workspace docs. Other teams appear only as locked names."
     },
     "projectRole": {
       "name": "Project Lead / Contributor / Viewer",
       "scope": "Per project",
-      "desc": "A role that can be assigned per project (project_member.role). Not enforced anywhere in the code yet — it can currently only be assigned."
+      "desc": "Project leads (project_member.role = lead) can manage that project's settings — columns and custom fields."
     }
   },
   "groupAccount": "Account",

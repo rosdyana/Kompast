@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, redirect, useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SidebarProvider, SidebarShell, useSidebarCollapsed } from "@kompast/ui/SidebarShell";
 import { ToastProvider, useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
@@ -51,16 +51,21 @@ function Workbench() {
   const [createOpen, setCreateOpen] = useState(false);
   const [chrome, setChrome] = useState<PageChrome | null>(null);
 
+  const chromeRef = useRef(chrome);
+  chromeRef.current = chrome;
+
   const openCreateIssue = useCallback((defaults?: CreateIssueDefaults) => {
     setPaletteOpen(false);
-    setCreateDefaults(defaults ?? null);
+    setCreateDefaults(defaults ?? chromeRef.current?.createDefaults ?? null);
     setCreateOpen(true);
   }, []);
 
   const createPage = useCallback(
-    async (opts?: { parentPageId?: string | null; projectId?: string | null }) => {
+    async (opts?: { parentPageId?: string | null; projectId?: string | null; teamId?: string | null }) => {
       try {
-        const page = await createPageFn({ data: { parentPageId: opts?.parentPageId ?? undefined, projectId: opts?.projectId ?? undefined } });
+        const page = await createPageFn({
+          data: { parentPageId: opts?.parentPageId ?? undefined, projectId: opts?.projectId ?? undefined, teamId: opts?.teamId ?? undefined },
+        });
         await router.navigate({ to: "/docs/$pageId", params: { pageId: page.id } });
         await router.invalidate();
       } catch (err) {

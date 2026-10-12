@@ -1,15 +1,15 @@
 import { createFileRoute, redirect, useLoaderData, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { UserMinus, UsersRound } from "lucide-react";
+import { Mail, UserMinus, UsersRound, X } from "lucide-react";
 import { Card } from "@kompast/ui/Card";
 import { Button, IconButton } from "@kompast/ui/Button";
 import { Avatar } from "@kompast/ui/Avatar";
-import { NativeSelect } from "@kompast/ui/Input";
+import { NativeSelect, TextField } from "@kompast/ui/Input";
 import { PageContainer } from "@kompast/ui/PageContainer";
 import { PageHeader } from "@kompast/ui/PageHeader";
 import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
-import { getTeamManagementFn, addTeamMemberFn, removeTeamMemberFn, setTeamMemberRoleFn } from "@/lib/server-fns/teams";
+import { getTeamManagementFn, addTeamMemberFn, removeTeamMemberFn, setTeamMemberRoleFn, inviteToTeamFn, cancelTeamInvitationFn } from "@/lib/server-fns/teams";
 import { ConfirmDialog } from "@/components/settings/ConfirmDialog";
 import { usePageChrome } from "@/components/shell/WorkbenchContext";
 
@@ -110,6 +110,8 @@ function TeamManagementPage() {
         {error && <p className="mt-2 text-[13px] text-danger">{error}</p>}
       </Card>
 
+      <InviteByEmail teamId={teamId} invitations={data.invitations} />
+
       <h2 className="mb-2 type-headline">{t("teamMembersHeading")}</h2>
       <Card className="overflow-hidden">
         {data.members.map((m) => {
@@ -161,5 +163,86 @@ function TeamManagementPage() {
         }}
       />
     </PageContainer>
+  );
+}
+
+/**
+ * Inviting someone who isn't in the workspace yet. They join as a plain
+ * workspace member, straight into this team with the chosen team role —
+ * which is how a team admin grows their team without needing a workspace
+ * admin (see packages/core/src/team.ts createTeamInvitation).
+ */
+function InviteByEmail({ teamId, invitations }: { teamId: string; invitations: Awaited<ReturnType<typeof getTeamManagementFn>>["invitations"] }) {
+  const { t } = useTranslation("teams");
+  const router = useRouter();
+  const toast = useToast();
+  const [email, setEmail] = useState("");
+  const [teamRole, setTeamRole] = useState<"member" | "admin">("member");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function invite(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setSending(true);
+    setError(null);
+    try {
+      const { created } = await inviteToTeamFn({ data: { teamId, email: email.trim(), teamRole } });
+      setEmail("");
+      toast.show({ title: created ? t("inviteSent") : t("inviteAlreadyPending") });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("inviteFailed"));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function cancel(invitationId: string) {
+    await cancelTeamInvitationFn({ data: { teamId, invitationId } });
+    toast.show({ title: t("inviteCanceled") });
+    await router.invalidate();
+  }
+
+  return (
+    <Card className="mb-8 p-4">
+      <p className="text-[14px] font-medium">{t("inviteHeading")}</p>
+      <p className="mb-3 type-small text-text-3">{t("inviteSubtitle")}</p>
+      <form onSubmit={invite} className="flex flex-col gap-2 sm:flex-row">
+        <TextField
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={t("inviteEmailPlaceholder")}
+          aria-label={t("inviteEmailPlaceholder")}
+          className="sm:flex-1"
+        />
+        <NativeSelect value={teamRole} onChange={(e) => setTeamRole(e.target.value as "member" | "admin")} aria-label={t("inviteRoleLabel")} className="sm:w-[150px]">
+          <option value="member">{t("memberRoleLabel")}</option>
+          <option value="admin">{t("adminRoleLabel")}</option>
+        </NativeSelect>
+        <Button type="submit" variant="primary" disabled={sending || !email.trim()}>
+          {sending ? t("invitingEllipsis") : t("invite")}
+        </Button>
+      </form>
+      {error && <p className="mt-2 text-[13px] text-danger">{error}</p>}
+
+      {invitations.length > 0 && (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="mb-1.5 text-[12.5px] font-semibold text-text-3">{t("pendingInvitesHeading")}</p>
+          {invitations.map((inv) => (
+            <div key={inv.id} className="flex items-center gap-2.5 py-1.5">
+              <Mail size={15} className="flex-none text-text-3" />
+              <span className="min-w-0 flex-1 truncate text-[14px]">{inv.email}</span>
+              <span className="text-[12.5px] text-text-3">{inv.teamRole === "admin" ? t("adminRoleLabel") : t("memberRoleLabel")}</span>
+              <IconButton aria-label={t("cancelInvite")} title={t("cancelInvite")} onClick={() => cancel(inv.id)} className="hover:text-danger">
+                <X size={15} />
+              </IconButton>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }

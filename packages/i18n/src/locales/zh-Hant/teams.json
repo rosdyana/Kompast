@@ -42,5 +42,18 @@
   "teams": "團隊",
   "settings": "設定",
   "noAccessTitle": "只有超級管理員可以建立團隊",
-  "goHome": "回到首頁"
+  "goHome": "回到首頁",
+  "teamAdminsLabel": "管理員：{{names}}",
+  "inviteHeading": "邀請新成員",
+  "inviteSubtitle": "對方將以成員身分加入工作區，並直接加入此團隊。",
+  "inviteEmailPlaceholder": "name@company.com",
+  "inviteRoleLabel": "團隊角色",
+  "invite": "傳送邀請",
+  "invitingEllipsis": "傳送中…",
+  "inviteSent": "已傳送邀請",
+  "inviteAlreadyPending": "此地址已有待處理的邀請",
+  "inviteFailed": "無法傳送邀請",
+  "inviteCanceled": "已取消邀請",
+  "pendingInvitesHeading": "待處理的邀請",
+  "cancelInvite": "取消邀請"
 }

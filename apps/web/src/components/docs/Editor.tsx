@@ -8,6 +8,7 @@ import { filterSuggestionItems } from "@blocknote/core/extensions";
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
 import { withCollaboration } from "@blocknote/core/yjs";
 import { BlockNoteView } from "@blocknote/shadcn";
+import { useBlockNoteDictionary } from "@/lib/blocknote-dictionary";
 import { useTranslation } from "@kompast/i18n";
 import { useTheme } from "@kompast/ui/theme";
 import { VersionHistory } from "./VersionHistory";
@@ -160,9 +161,11 @@ function CollabEditor({
 }: DocEditorProps & { provider: HocuspocusProvider }) {
   const { t } = useTranslation("docs");
   const { theme } = useTheme();
+  const { locale, dictionary } = useBlockNoteDictionary();
 
   const editor = useCreateBlockNote(
     withCollaboration({
+      dictionary,
       // Cast: see the note above `schema` — same dual-instance friction, this
       // time between BlockNoteSchema and the CustomBlockNoteSchema type
       // withCollaboration's own resolved @blocknote/core copy expects.
@@ -173,7 +176,7 @@ function CollabEditor({
         user: { id: userId, name: userName, color: colorForUser(userId) },
       },
     }),
-    [provider],
+    [provider, locale],
   );
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import {
   pgTable,
   text,
+  boolean,
   integer,
   timestamp,
   jsonb,
@@ -135,6 +136,29 @@ export const worklog = pgTable("worklog", {
   note: text("note"),
   loggedAt: timestamp("logged_at").notNull().defaultNow(),
 });
+
+/**
+ * To-do checklist items on an issue (Jira "checklist" plugin style) —
+ * lightweight, ordered, check-off-able lines that are deliberately NOT
+ * sub-issues: no status/assignee/history. Isolated indirectly through
+ * issue_id (see rls.sql), same shape as worklog.
+ */
+export const issueChecklistItem = pgTable(
+  "issue_checklist_item",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issue_id")
+      .notNull()
+      .references(() => issue.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    done: boolean("done").notNull().default(false),
+    rank: rank("rank").notNull(),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("issue_checklist_item_issue_idx").on(t.issueId)],
+);
 
 /**
  * Field-level change log. Written in the same transaction as the mutation

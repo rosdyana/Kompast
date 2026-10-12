@@ -225,6 +225,27 @@
       "when": 1789599783263,
       "tag": "0031_silky_valeria_richards",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791806946697,
+      "tag": "0032_team_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791808593783,
+      "tag": "0033_page_team_fk_no_action",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791815487238,
+      "tag": "0034_issue_checklist",
+      "breakpoints": true
     }
   ]
 }

@@ -85,7 +85,25 @@
     "unlinkIssue": "取消連結",
     "commentHint": "⌘ Enter 送出",
     "readOnly": "僅供檢視 — 您沒有此頁面的編輯權限。",
-    "projectLabel": "專案"
+    "projectLabel": "專案",
+    "movedTo": "已移至 {{space}}",
+    "moveTo": "移至…",
+    "accessHeading": "具有存取權的成員與團隊",
+    "accessOpen": "可以檢視此空間的所有人都能開啟此頁面。新增成員即可限制存取。",
+    "accessRestricted": "只有下列成員與團隊（以及工作區超級管理員）可以開啟此頁面。",
+    "accessAddPlaceholder": "新增成員或團隊…",
+    "accessTeams": "團隊",
+    "accessPeople": "成員",
+    "accessRole": "存取層級",
+    "accessRoleFor": "{{name}} 的存取層級",
+    "accessAdd": "新增",
+    "accessRemove": "移除 {{name}}",
+    "role": {
+      "view": "可檢視",
+      "comment": "可留言",
+      "edit": "可編輯",
+      "full": "完整存取"
+    }
   },
   "index": {
     "newPageButton": "新增頁面",

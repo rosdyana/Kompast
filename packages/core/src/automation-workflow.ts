@@ -125,6 +125,7 @@ const NODE_TYPES_REQUIRING_ISSUE_ID = new Set<AutomationNodeType>([
   "action_set_property",
   "action_add_label",
   "action_comment",
+  "action_add_description",
   "action_notify",
   "action_link_issue",
   "action_create_subtask",

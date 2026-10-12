@@ -1,8 +1,8 @@
 import { SearchField } from "@kompast/ui/Input";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Link, useRouter } from "@tanstack/react-router";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { ChevronDown, Layers, MoreHorizontal, Plus } from "lucide-react";
+import { CheckSquare, ChevronDown, Layers, MoreHorizontal, Plus } from "lucide-react";
 import { Button, IconButton } from "@kompast/ui/Button";
 import { Avatar, UnassignedAvatar } from "@kompast/ui/Avatar";
 import { IssueTypeIcon } from "@kompast/ui/IssueTypeIcon";
@@ -20,6 +20,7 @@ import { updateIssueTitleFn, archiveIssueFn } from "@/lib/server-fns/issue-detai
 import { completeSprintFn, listSprintsFn } from "@/lib/server-fns/sprints";
 import { CompleteSprintDialog } from "./BacklogView";
 import { useConfirmArm } from "@/lib/use-confirm-arm";
+import { IssueChecklist, type ChecklistSummary } from "@/components/issues/IssueChecklist";
 import { cn } from "@/lib/cn";
 import { daysUntil, formatShortDate, useIntlLocale, useProjectLookups, useSuppressClickAfterDrag, type BoardData, type BoardIssue } from "./project-shared";
 
@@ -657,6 +658,32 @@ function formatPropertyValue(type: string, value: unknown, intlLocale: string): 
   return String(value);
 }
 
+const ChecklistBadge = forwardRef<HTMLButtonElement, { summary: ChecklistSummary; onClick?: (e: React.MouseEvent) => void }>(function ChecklistBadge(
+  { summary, onClick },
+  ref,
+) {
+  const { t } = useTranslation("issue");
+  const complete = summary.done === summary.total;
+  return (
+    <button
+      ref={ref}
+      type="button"
+      tabIndex={onClick ? 0 : -1}
+      onClick={onClick}
+      onPointerDown={(e) => e.stopPropagation()}
+      title={t("checklist.cardBadge", { done: summary.done, total: summary.total })}
+      aria-label={t("checklist.cardBadge", { done: summary.done, total: summary.total })}
+      className={cn(
+        "inline-flex h-5 items-center gap-1 rounded-[4px] px-1 text-[11.5px] font-medium tabular-nums outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent",
+        complete ? "bg-green-soft text-green" : "text-text-3",
+      )}
+    >
+      <CheckSquare size={13} strokeWidth={2} />
+      {summary.done}/{summary.total}
+    </button>
+  );
+});
+
 /** The card's visual content — shared by the real card and the drag overlay. */
 function CardBody({
   issue,
@@ -669,11 +696,14 @@ function CardBody({
   lifted,
   title,
   menu,
+  checklist,
 }: Pick<CardCommon, "projectKey" | "issueTypesById" | "usersById" | "priorityLevelsByKey" | "epicsById" | "visibleProperties"> & {
   issue: BoardIssue;
   lifted?: boolean;
   title?: React.ReactNode;
   menu?: React.ReactNode;
+  /** Interactive checklist badge (real card); the drag overlay falls back to a static one. */
+  checklist?: React.ReactNode;
 }) {
   const locale = useIntlLocale();
   const type = issueTypesById.get(issue.typeId);
@@ -719,6 +749,7 @@ function CardBody({
             {due.toLocaleDateString(locale, { day: "numeric", month: "short" })}
           </span>
         )}
+        {checklist ?? (issue.checklist && <ChecklistBadge summary={issue.checklist} />)}
         <span className="ml-auto flex items-center gap-1.5">
           {issue.storyPoints != null && (
             <span className="inline-flex h-5 min-w-[22px] items-center justify-center rounded-full bg-surface-4 px-1.5 text-[11.5px] font-semibold tabular-nums text-text-2">
@@ -742,6 +773,11 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const { isArmed, arm, disarm } = useConfirmArm();
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [checklist, setChecklist] = useState<ChecklistSummary | null>(issue.checklist);
+  const checklistChanged = useRef(false);
+  const checklistRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => setChecklist(issue.checklist), [issue.checklist?.done, issue.checklist?.total]);
 
   function setRefs(el: HTMLAnchorElement | null) {
     setNodeRef(el);
@@ -749,7 +785,8 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLAnchorElement>) {
-    if (editingTitle) return;
+    // Keystrokes typed in the (portalled) checklist popover still bubble here through the React tree.
+    if (editingTitle || checklistOpen) return;
     if (e.key === "ArrowLeft") {
       e.preventDefault();
       common.onMoveToAdjacentColumn(issue.id, columnId, "prev", swimlaneKey);
@@ -814,6 +851,14 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
           >
             {t("card.rename")}
           </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setMenuOpen(false);
+              setChecklistOpen(true);
+            }}
+          >
+            {t("card.checklist")}
+          </MenuItem>
           <MenuSeparator />
           <MenuLabel>{t("card.moveToColumn")}</MenuLabel>
           {common.columns
@@ -832,6 +877,50 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
             </>
           )}
         </MenuList>
+      </Popover>
+    </>
+  );
+
+  function closeChecklist() {
+    setChecklistOpen(false);
+    if (checklistChanged.current) {
+      checklistChanged.current = false;
+      router.invalidate();
+    }
+  }
+
+  const checklistBadge = (
+    <>
+      {checklist && (
+        <ChecklistBadge
+          ref={checklistRef}
+          summary={checklist}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (checklistOpen) closeChecklist();
+            else setChecklistOpen(true);
+          }}
+        />
+      )}
+      <Popover
+        open={checklistOpen}
+        onClose={closeChecklist}
+        anchorRef={checklist ? checklistRef : menuRef}
+        placement="bottom-start"
+        width={320}
+        ariaLabel={t("card.checklist")}
+        className="p-2.5"
+      >
+        <IssueChecklist
+          issueId={issue.id}
+          compact
+          autoFocusAdd={!checklist}
+          onChange={(summary) => {
+            checklistChanged.current = true;
+            setChecklist(summary);
+          }}
+        />
       </Popover>
     </>
   );
@@ -877,7 +966,7 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
       aria-keyshortcuts="ArrowLeft ArrowRight"
       className={cn("block rounded-[8px] outline-none focus-visible:ring-2 focus-visible:ring-accent", isDragging && "opacity-30")}
     >
-      <CardBody issue={issue} {...common} title={title} menu={menu} />
+      <CardBody issue={issue} {...common} title={title} menu={menu} checklist={checklistBadge} />
     </Link>
   );
 }

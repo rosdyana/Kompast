@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+# One-shot stakeholder-demo seeder (see docs/DEMO.md):
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile seed run --rm seed-demo
+# Runs apps/web/scripts/seed-demo.ts through tsx against the live database.
+# It needs the full workspace (packages/core, BlockNote's server-side
+# markdown → Yjs conversion via jsdom, tsx), so unlike the service images
+# this is a single, unslimmed stage — fine for something run once per
+# demo reset. Not published by release.yml; build it on the demo host.
+FROM node:22-alpine
+RUN corepack enable
+WORKDIR /app
+COPY . .
+RUN pnpm install --frozen-lockfile
+ENV NODE_ENV=production
+CMD ["pnpm", "--filter", "@kompast/web", "seed:demo"]

@@ -86,7 +86,9 @@ describe("team service layer", () => {
     expect(teamA.memberCount).toBe(1);
     expect(teamA.projectCount).toBe(1);
     expect(teamA.myRole).toBe("admin");
-    expect(teamB.projectCount).toBe(0);
+    // Not a member of team B and not the super admin: locked, so its counts are withheld rather than reported.
+    expect(teamB.locked).toBe(true);
+    expect(teamB.projectCount).toBeNull();
     expect(teamB.myRole).toBeNull();
   });
 

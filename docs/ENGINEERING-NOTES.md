@@ -21,7 +21,30 @@ Submitting `/setup` writes encrypted credentials to `system_settings` and invali
 
 Group-claim → workspace-role mapping (`entra_group_map` table) has no admin UI yet.
 
+**Password sign-in exists in two gated forms**: the local-only dev-admin bypass (`ENABLE_DEV_LOGIN`, never with `NODE_ENV=production`) and stakeholder demo mode (see Demo mode below). Real deployments are Entra-only.
+
 **⚠️ Operational gotcha, confirmed by hand (twice — before and after moving Entra config into the DB):** `microsoftEntraId()` always performs live OIDC discovery against `https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration` to fetch the JWKS needed for ID-token verification, and its options type has no way to skip or override that. If the tenant is wrong, or Microsoft's discovery endpoint is briefly unreachable, Better Auth's plugin init throws — and because every plugin shares one auth context, **this takes down the entire app, not just Microsoft sign-in**: every route calling `auth.api.getSession()` 500s. Since `/setup` only runs once, a wrong tenant entered there has no UI path to fix — correct `system_settings.microsoft_tenant_id` directly in Postgres, then hit any route once to force `getAuth()` to rebuild (it re-reads settings on every call, only reusing the cache when the read matches what's cached). The underlying fix would be `requireIdTokenVerification: false` on the provider — trading away ID-token signature verification for availability, a security tradeoff intentionally left alone rather than made unilaterally.
+
+## Teams & visibility
+
+Design and decisions: `docs/superpowers/specs/2026-10-12-team-scoped-visibility-design.md`.
+
+**Enforced in RLS, not per route.** `packages/db/rls.sql` scopes `project` to `kompast_is_super_admin() or team_id in (select kompast_my_team_ids())`. Every project-owned table filters through `select id from project` (or `issue`/`sprint`/`page`), and Postgres applies the inner table's own policy inside a policy subquery, so issues, comments, worklogs, links, attachments, history, sprints, automation workflows, import runs and embeddings all inherit team scoping. Nothing in REST, MCP or the server functions filters by team; a missed filter fails closed. `team_id IS NULL` (legacy) projects are super-admin-only. Pages: project pages follow their project; team-space pages (`page.team_id`) follow the team; pages with neither are the shared Workspace space. `page_single_space_ck` forbids both, and `packages/core/src/page.ts` keeps a whole subtree in one space.
+
+**Gotchas hit while building it:**
+- `canAccessPage` used to return `true` for a page the caller couldn't see. RLS hides its `page_permission` rows too, so it looked "unrestricted". It now checks the page row is visible first.
+- Child-policy inheritance applies to *writes* as well: USING doubles as WITH CHECK, and UPDATE/DELETE apply the SELECT policy to their WHERE clause. That's why RAG indexing (`apps/worker` reindex) moved from "withAuthorizedTenant as the first member found" to `withTenant(adminDb, …)`, the same shape automation already used. An arbitrary member may not see the entity being indexed. Retrieval still runs as the asking user, which is what keeps other teams' text out of Ask Kompast.
+- `page.team_id` is `ON DELETE NO ACTION`, not `RESTRICT`. RESTRICT is checked immediately and broke deleting a whole organization (the same cascade removes both team and pages). `SET NULL` would fail open by moving private pages into the Workspace space.
+- Anything delivered to *another* user must re-check visibility for that user, because the transaction's RLS identity is the actor's. `notify()` does this (`canUserSeeEntity`), and project assignee pickers use `listAssignableUsers` (team + super admin).
+- REST/MCP page create must pass `projectId: undefined`, not `null`, when no `projectKey` is given. `null` means "force the Workspace space", which `createPage` rejects under a project parent.
+
+**Team invitations** write Better Auth's `invitation` row directly (`createTeamInvitation`), for the same reason `addTeamMember` bypasses the plugin: its endpoint checks the caller's *workspace* role, which can't express "this team's admin". The plugin's real `acceptInvitation` still does accepting (email match, expiry, member + team_member rows); `applyAcceptedTeamInvitation` then applies Kompast's own `invitation.team_role`. Invitees always get workspace role `member`. **Not verified end-to-end:** the accept step needs a signed-in invitee, which neither tests (no session) nor demo mode (sign-up closed) can provide. The core half is tested with the plugin's effects simulated.
+
+**Not built:** request-access flow; team deletion; RLS on config tables (`board`, `board_column`, `workflow_status`, `issue_type`, `saved_view`), which are only reachable by id but aren't policy-protected; force-closing a live collab socket when someone leaves a team (the 60s token TTL bounds reconnects only); per-project roles beyond `lead`.
+
+## Demo mode
+
+`DEMO_MODE` + `DEMO_ACCESS_CODE` (`apps/web/src/lib/demo.ts`). Unlike dev login it works with `NODE_ENV=production`, because a hosted demo runs the real images. Demo personas' password *is* the access code, sign-up stays disabled (`emailAndPassword.disableSignUp`), and `/setup`'s Entra gate is skipped. `apps/web/scripts/seed-demo.ts` creates personas through a seed-only Better Auth instance with sign-up open, so the credential rows are exactly what sign-in later reads (Better Auth 1.7's `account.issuer` etc.), then builds the dataset through `packages/core` as the persona who'd really do each thing. The only direct writes backdate timestamps so a sprint can be "a week in". **Gotcha:** `turbo.json`'s `globalPassThroughEnv` must list every env var the apps read; turbo silently drops undeclared ones, and `DEMO_MODE` read as off until it was added. Runbook: `docs/DEMO.md`.
 
 ## Docs
 

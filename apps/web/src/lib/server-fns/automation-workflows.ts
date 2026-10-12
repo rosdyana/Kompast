@@ -15,6 +15,7 @@ const AUTOMATION_NODE_TYPES = [
   "action_set_property",
   "action_add_label",
   "action_comment",
+  "action_add_description",
   "action_notify",
   "action_link_issue",
   "action_create_subtask",

@@ -202,7 +202,7 @@ export function SprintHub({ boardId, data }: { boardId: string; data: BoardData 
           <div className="mb-1.5 flex items-center gap-2">
             <Sparkles size={14} className="text-violet" />
             <span className="text-[13.5px] font-semibold">{t("sprint.aiSummaryHeading")}</span>
-            <IconButton size="xs" className="ml-auto" aria-label="Close" onClick={() => { setAiSummary(null); setAiError(null); }}>
+            <IconButton size="xs" className="ml-auto" aria-label={t("common:close")} onClick={() => { setAiSummary(null); setAiError(null); }}>
               <X size={13} />
             </IconButton>
           </div>

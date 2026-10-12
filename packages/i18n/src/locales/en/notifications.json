@@ -19,5 +19,10 @@
     "issue.mentioned": "Mentioned in an issue"
   },
   "savedToast": "Preference saved",
-  "saveFailed": "Couldn't save the preference"
+  "saveFailed": "Couldn't save the preference",
+  "title": {
+    "issue.assigned": "You were assigned to {{key}}",
+    "issue.commented": "New comment on {{key}}",
+    "issue.mentioned": "You were mentioned in {{key}}"
+  }
 }

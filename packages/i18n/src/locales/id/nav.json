@@ -112,5 +112,13 @@
     "loading": "Memuat proyek…",
     "activeSprint": "aktif",
     "failed": "Gagal membuat issue: {{message}}"
-  }
+  },
+  "workspaceDocs": "Workspace",
+  "teamDocs": "Dokumen",
+  "newTeamDoc": "Dokumen tim baru",
+  "noTeamDocs": "Belum ada dokumen",
+  "lockedTeamHint": "Anda bukan anggota tim ini. Minta akses ke {{names}}.",
+  "lockedTeamNoAdmin": "Anda bukan anggota tim ini.",
+  "assignToTeam": "Pindahkan ke tim",
+  "assignedToTeam": "Dipindahkan ke {{team}}"
 }

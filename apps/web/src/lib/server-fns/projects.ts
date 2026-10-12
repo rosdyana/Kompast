@@ -1,7 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
+import { notFound } from "@tanstack/react-router";
 import * as z from "zod";
 import { and, asc, db, eq, inArray, schema } from "@kompast/db";
 import {
+  assignProjectToTeam,
   createProject,
   createPage,
   setSprintMinutesTemplate,
@@ -16,10 +18,12 @@ import {
   listSprints,
   listSprintIssues,
   requireProjectAdmin,
+  requireSuperAdmin,
   requireTeamAdmin,
   updateSavedViewConfig,
   withAuthorizedTenant,
   type FilterCondition,
+  listAssignableUsers,
 } from "@kompast/core";
 import { seedPageContentFromMarkdown } from "../seed-page-content";
 import { requireAuthContext } from "../session";
@@ -107,6 +111,22 @@ export const createProjectFn = createServerFn({ method: "POST" })
     }
   });
 
+const assignProjectToTeamSchema = z.object({ projectId: z.string(), teamId: z.string() });
+
+/**
+ * Super admin only — moving a project changes who can see all of it (see
+ * packages/core/src/project.ts assignProjectToTeam). Backs the sidebar's
+ * "Unassigned" group action and Settings → Teams.
+ */
+export const assignProjectToTeamFn = createServerFn({ method: "POST" })
+  .validator(assignProjectToTeamSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireSuperAdmin(db, ctx);
+    await withAuthorizedTenant(ctx, (tx) => assignProjectToTeam(tx, { ...data, organizationId: ctx.organizationId }));
+    return { ok: true } as const;
+  });
+
 export const getProjectBoardFn = createServerFn({ method: "GET" })
   .validator((input: { teamId: string; projectKey: string }) => input)
   .handler(async ({ data }) => {
@@ -119,7 +139,8 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
         teamId: data.teamId === "none" ? null : data.teamId,
         key: projectKey,
       });
-      if (!project) throw new Error(`Project ${projectKey} not found`);
+      // Hidden by team-scoped RLS or genuinely gone — same NoAccessState either way.
+      if (!project) throw notFound();
 
       const [board] = await tx.select().from(schema.board).where(eq(schema.board.projectId, project.id));
       if (!board) throw new Error(`Project ${projectKey} has no board`);
@@ -166,14 +187,11 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
         .innerJoin(schema.user, eq(schema.user.id, schema.projectMember.userId))
         .where(eq(schema.projectMember.projectId, project.id));
 
-      // Every workspace member (not just current assignees in `users`) — the
-      // table view's inline assignee picker must offer anyone assignable,
-      // same list/shape getIssueDetailFn's assignee picker uses.
-      const orgMembers = await tx
-        .select({ userId: schema.member.userId, name: schema.user.name })
-        .from(schema.member)
-        .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
-        .where(eq(schema.member.organizationId, ctx.organizationId));
+      // Everyone assignable (not just current assignees in `users`) — the
+      // project's team plus the super admin, i.e. exactly who can open
+      // these issues (see listAssignableUsers). Same list/shape
+      // getIssueDetailFn's assignee picker uses.
+      const orgMembers = (await listAssignableUsers(tx, { organizationId: ctx.organizationId, projectId: project.id })).map(({ userId, name }) => ({ userId, name }));
 
       return {
         project,
@@ -230,11 +248,12 @@ export const getBoardEmbedDataFn = createServerFn({ method: "GET" })
         .where(and(eq(schema.project.id, board.projectId), eq(schema.project.organizationId, ctx.organizationId)));
       if (!project) throw new Error(`Board ${boardId} not found`);
 
-      const [issueTypes, boardData, tableView, priorityLevels] = await Promise.all([
+      const [issueTypes, boardData, tableView, priorityLevels, candidateEpics] = await Promise.all([
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)).orderBy(asc(schema.issueType.order)),
         getBoard(tx, board.id),
         getOrCreateDefaultTableView(tx, board.id, ctx.userId),
         listPriorityLevels(tx, project.id),
+        listCandidateEpics(tx, project.id),
       ]);
 
       const assigneeIds = [
@@ -250,12 +269,12 @@ export const getBoardEmbedDataFn = createServerFn({ method: "GET" })
               .where(inArray(schema.user.id, assigneeIds))
           : [];
 
-      return { project, board, issueTypes, users, tableView, priorityLevels, ...boardData };
+      return { project, board, issueTypes, users, tableView, priorityLevels, candidateEpics, ...boardData };
     });
   });
 
 const sortRuleSchema = z.object({
-  field: z.enum(["manual", "priority", "dueDate", "points", "key"]),
+  field: z.enum(["manual", "priority", "dueDate", "points", "key", "epic", "label"]),
   direction: z.enum(["asc", "desc"]),
 });
 

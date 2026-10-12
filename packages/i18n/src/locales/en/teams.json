@@ -44,5 +44,18 @@
   "teams": "Teams",
   "settings": "Settings",
   "noAccessTitle": "Only super admins can create teams",
-  "goHome": "Go home"
+  "goHome": "Go home",
+  "teamAdminsLabel": "Admins: {{names}}",
+  "inviteHeading": "Invite someone new",
+  "inviteSubtitle": "They'll join the workspace as a member and land straight in this team.",
+  "inviteEmailPlaceholder": "name@company.com",
+  "inviteRoleLabel": "Team role",
+  "invite": "Send invite",
+  "invitingEllipsis": "Sending…",
+  "inviteSent": "Invitation sent",
+  "inviteAlreadyPending": "An invitation is already pending for that address",
+  "inviteFailed": "Couldn't send the invitation",
+  "inviteCanceled": "Invitation canceled",
+  "pendingInvitesHeading": "Pending invitations",
+  "cancelInvite": "Cancel invitation"
 }

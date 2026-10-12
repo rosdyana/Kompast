@@ -23,6 +23,11 @@ import {
   startSprint,
   completeSprint,
   getEpicRoadmap,
+  requireTeamMember,
+  canManagePageAccess,
+  getPageAccess,
+  grantPageAccess,
+  removePagePermission,
 } from "@kompast/core";
 import type { ApiAuthContext } from "@/lib/api-auth";
 import { ApiError } from "@/lib/api-auth";
@@ -99,6 +104,7 @@ function serializePage(page: typeof schema.page.$inferSelect) {
     icon: page.icon,
     parentPageId: page.parentPageId,
     projectId: page.projectId,
+    teamId: page.teamId,
     type: page.type,
     createdAt: page.createdAt.toISOString(),
     updatedAt: page.updatedAt.toISOString(),
@@ -439,6 +445,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
       inputSchema: {
         title: z.string().min(1),
         projectKey: z.string().optional(),
+        teamId: z.string().optional().describe("Team space (a team's own docs). Omit both this and projectKey for the shared Workspace space."),
         parentPageId: z.string().nullable().optional(),
         content: z.string().optional(),
         idempotencyKey: z.string().optional(),
@@ -448,12 +455,15 @@ export function buildMcpServer(ctx: ApiAuthContext) {
       tool(ctx, "pages:write", () =>
         withAuthorizedTenant(ctx, async (tx) => {
           const run = async () => {
-            const projectId = args.projectKey ? (await resolveProject(tx, ctx.organizationId, args.projectKey)).id : null;
+            // undefined (not null) when unspecified — see the same note in routes/api/v1/pages.tsx.
+            const projectId = args.projectKey ? (await resolveProject(tx, ctx.organizationId, args.projectKey)).id : undefined;
+            if (args.teamId) await requireTeamMember(tx, { ...ctx, teamId: args.teamId });
             const page = await createPage(tx, {
               organizationId: ctx.organizationId,
               title: args.title,
               parentPageId: args.parentPageId,
               projectId,
+              teamId: args.teamId,
               actorUserId: ctx.userId,
             });
             // Safe only because this page is brand new — see seed-page-content.ts for the full explanation.
@@ -507,6 +517,47 @@ export function buildMcpServer(ctx: ApiAuthContext) {
           await resolvePage(tx, ctx, args.pageId, "edit");
           const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
           await linkEntities(tx, { organizationId: ctx.organizationId, fromType: "page", fromId: args.pageId, toType: "issue", toId: issue.id, createdBy: ctx.userId });
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "get_page_access",
+    {
+      description: "List who can open a page. An empty grants list means it's open to everyone who can see the page's space (workspace, team, or project).",
+      inputSchema: { pageId: z.string().min(1) },
+    },
+    (args) =>
+      tool(ctx, "pages:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "view");
+          const { grants } = await getPageAccess(tx, args.pageId, ctx);
+          return { restricted: grants.length > 0, grants };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "set_page_access",
+    {
+      description:
+        "Grant (role: view/comment/edit/full) or revoke (role: null) a user's or team's access to a page. The first grant restricts an open page to its access list; the caller is kept on it with full access.",
+      inputSchema: {
+        pageId: z.string().min(1),
+        subjectType: z.enum(["user", "team"]),
+        subjectId: z.string().min(1),
+        role: z.enum(["view", "comment", "edit", "full"]).nullable(),
+      },
+    },
+    (args) =>
+      tool(ctx, "pages:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "view");
+          if (!(await canManagePageAccess(tx, args.pageId, ctx))) throw new ForbiddenError("You can't change who has access to this page");
+          const subject = { type: args.subjectType, id: args.subjectId };
+          if (args.role === null) await removePagePermission(tx, args.pageId, subject);
+          else await grantPageAccess(tx, { pageId: args.pageId, subject, role: args.role, actorUserId: ctx.userId });
           return { ok: true };
         }),
       )(),

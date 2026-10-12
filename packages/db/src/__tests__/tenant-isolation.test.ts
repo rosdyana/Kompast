@@ -25,13 +25,25 @@ describe("tenant isolation (RLS)", () => {
   const orgB = "test-org-b";
   const projA = "test-proj-a";
   const projB = "test-proj-b";
+  // Org A's super admin: team-scoped RLS shows a project only to the super
+  // admin or the owning team's members, so the scoped reader has to be one
+  // of those for "sees its own workspace" to be observable at all. Using the
+  // super admin also proves the strongest case: even see-everything stops
+  // at the workspace boundary.
+  const superA = "test-tenant-super-a";
 
   beforeAll(async () => {
     await admin`delete from project where id in (${projA}, ${projB})`;
     await admin`delete from organization where id in (${orgA}, ${orgB})`;
+    await admin`delete from "user" where id = ${superA}`;
     await admin`
       insert into organization (id, name, slug)
       values (${orgA}, 'Test Org A', ${orgA}), (${orgB}, 'Test Org B', ${orgB})
+    `;
+    await admin`insert into "user" (id, name, email) values (${superA}, 'Super A', ${superA + "@example.com"})`;
+    await admin`
+      insert into member (id, organization_id, user_id, role, is_super_admin)
+      values (${superA + "-mem"}, ${orgA}, ${superA}, 'owner', true)
     `;
     await admin`
       insert into project (id, organization_id, key, name)
@@ -42,6 +54,7 @@ describe("tenant isolation (RLS)", () => {
   afterAll(async () => {
     await admin`delete from project where id in (${projA}, ${projB})`;
     await admin`delete from organization where id in (${orgA}, ${orgB})`;
+    await admin`delete from "user" where id = ${superA}`;
     await admin.end();
     await app.end();
   });
@@ -60,6 +73,7 @@ describe("tenant isolation (RLS)", () => {
     const conn = await app.reserve();
     try {
       await conn`select set_config('app.current_workspace', ${workspaceId ?? ""}, false)`;
+      await conn`select set_config('app.current_user', ${workspaceId ? superA : ""}, false)`;
       return await fn(conn);
     } finally {
       conn.release();

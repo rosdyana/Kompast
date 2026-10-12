@@ -18,13 +18,13 @@
       "heading": "Embedding（Ask Kompast）",
       "description": "與上方 AI 設定使用不同的供應商 —— Anthropic 沒有公開的 embeddings API，因此無論上方選擇哪個 AI 供應商，Ask Kompast 都需要 Azure OpenAI 或相容 OpenAI 的端點。",
       "enable": "啟用 Ask Kompast",
-      "providerLabel": "Provider",
-      "apiKeyLabel": "API key",
+      "providerLabel": "供應商",
+      "apiKeyLabel": "API 金鑰",
       "savedNoteLong": "（已儲存 —— 留空表示不變更）",
-      "azureEndpointLabel": "Azure endpoint",
+      "azureEndpointLabel": "Azure 端點",
       "azureDeploymentEmbeddingsLabel": "Azure deployment（embeddings）",
-      "baseUrlLabel": "Base URL",
-      "modelLabel": "Model",
+      "baseUrlLabel": "基礎 URL",
+      "modelLabel": "模型",
       "savingEllipsis": "儲存中…",
       "save": "儲存",
       "saved": "已儲存。"
@@ -34,9 +34,9 @@
       "warningPart1": "⚠️ 錯誤的 Tenant ID（並非格式錯誤，而是格式正確但錯誤的 GUID）會導致",
       "warningBold": "整個應用程式",
       "warningPart2": "故障 —— 不只是 Microsoft 登入 —— 因為每個檢查工作階段的請求都會直接對該租戶觸發 OIDC 探索。儲存前請再次確認。",
-      "tenantIdLabel": "Tenant ID",
-      "clientIdLabel": "Client ID",
-      "clientSecretLabel": "Client Secret",
+      "tenantIdLabel": "租用戶 ID",
+      "clientIdLabel": "用戶端 ID",
+      "clientSecretLabel": "用戶端密碼",
       "savedNoteLong": "（已儲存 —— 留空表示不變更）",
       "savingEllipsis": "儲存中…",
       "save": "儲存",
@@ -47,27 +47,27 @@
     "ai": {
       "heading": "AI",
       "enable": "啟用 AI 功能",
-      "providerLabel": "Provider",
-      "apiKeyLabel": "API key",
+      "providerLabel": "供應商",
+      "apiKeyLabel": "API 金鑰",
       "savedNoteLong": "（已儲存 —— 留空表示不變更）",
-      "modelLabel": "Model",
+      "modelLabel": "模型",
       "modelBlankNote": "（留空使用預設值）",
       "modelPlaceholderOther": "此端點使用的模型名稱",
-      "azureEndpointLabel": "Azure endpoint",
-      "azureDeploymentLabel": "Azure deployment",
-      "baseUrlLabel": "Base URL",
+      "azureEndpointLabel": "Azure 端點",
+      "azureDeploymentLabel": "Azure 部署",
+      "baseUrlLabel": "基礎 URL",
       "savingEllipsis": "儲存中…",
       "save": "儲存",
       "saved": "已儲存。",
       "description": "提供文件寫作輔助、AI 議題草稿與衝刺摘要。"
     },
     "mail": {
-      "heading": "Email",
-      "driverLabel": "Driver",
+      "heading": "電子郵件",
+      "driverLabel": "驅動程式",
       "fromAddressLabel": "寄件地址",
       "smtpUrlLabel": "SMTP URL",
       "savedNoteShort": "（已儲存）",
-      "apiKeyLabel": "API key",
+      "apiKeyLabel": "API 金鑰",
       "savingEllipsis": "儲存中…",
       "save": "儲存",
       "saved": "已儲存。",
@@ -99,29 +99,29 @@
   "roles": {
     "intro": "Kompast 目前實際生效的角色階層 —— 並非可設定的權限矩陣，只是程式碼中既有規則的摘要。",
     "superAdmin": {
-      "name": "Super Admin",
+      "name": "超級管理員",
       "scope": "每個工作區一位",
-      "desc": "可以建立新團隊並管理任何團隊（member.isSuperAdmin）。轉移此角色會將其從前任持有者手中撤銷。"
+      "desc": "可檢視所有團隊的專案與文件，以及尚未指派給團隊的專案。可建立團隊、指派團隊管理員，並在團隊之間移動專案（member.isSuperAdmin）。轉移此角色會將其從前任持有者手中撤銷。"
     },
     "workspaceOwner": {
       "name": "工作區擁有者／管理員",
       "scope": "工作區",
-      "desc": "可以開啟設定（Entra／AI／Email 整合）並邀請／管理工作區成員（member.role）。"
+      "desc": "可以開啟設定（Entra／AI／Email 整合）並邀請／管理工作區成員（member.role）。不會看到其他團隊的內容 —— 只看得到自己所屬的團隊與工作區文件。"
     },
     "teamAdmin": {
       "name": "團隊管理員",
       "scope": "依團隊",
-      "desc": "可以在自己的團隊內建立專案，並管理該團隊的成員（team_member.role）。對其他團隊或整個工作區沒有權限。"
+      "desc": "可在自己的團隊建立專案、將工作區成員加入團隊，並以電子郵件直接邀請新成員加入團隊（team_member.role）。只看得到自己團隊的專案與文件。"
     },
     "teamMember": {
       "name": "團隊成員",
       "scope": "依團隊",
-      "desc": "團隊的一般成員，沒有管理權限。"
+      "desc": "可檢視並參與所屬團隊的專案與文件，以及共用的工作區文件。其他團隊只會顯示為鎖定的名稱。"
     },
     "projectRole": {
       "name": "專案負責人／貢獻者／檢視者",
       "scope": "依專案",
-      "desc": "可依專案指派的角色（project_member.role）。目前程式碼中尚未實際套用此權限限制 —— 目前僅能指派。"
+      "desc": "專案負責人（project_member.role = lead）可以管理該專案的設定 —— 欄位與自訂欄位。"
     }
   },
   "groupAccount": "帳戶",

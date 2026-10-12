@@ -38,7 +38,8 @@ function EmbedView({ data }: { data: BoardData }) {
 
   const flat: FlatIssue[] = data.columns.flatMap((col) => col.issues.map((issue) => ({ ...issue, columnId: col.id, columnName: col.name, columnColor: col.color })));
   const filtered = applyFilters(flat, config.filters);
-  const sorted = sortIssues(filtered, config.sort, priorityOrderByKey(data.priorityLevels));
+  const epicTitleById = new Map(data.candidateEpics.map((e) => [e.id, e.title]));
+  const sorted = sortIssues(filtered, config.sort, priorityOrderByKey(data.priorityLevels), epicTitleById);
 
   const issueLink = (issue: FlatIssue) => ({
     to: "/issues/$teamId/$projectKey/$issueKeySeq" as const,
@@ -82,12 +83,13 @@ function EmbedView({ data }: { data: BoardData }) {
 
       {mode === "table" ? (
         <div className="max-h-[420px] overflow-auto">
-          <table className="w-full min-w-[640px] table-fixed border-separate border-spacing-0 text-[13.5px]">
+          <table className="w-full min-w-[790px] table-fixed border-separate border-spacing-0 text-[13.5px]">
             <thead className="sticky top-0 bg-surface">
               <tr className="text-left text-[12px] text-text-3">
                 <th className="h-8 border-b border-border px-3 font-medium">{t("tableView.colTitle")}</th>
                 <th className="h-8 w-[132px] border-b border-border px-2 font-medium">{t("tableView.colStatus")}</th>
                 <th className="h-8 w-[150px] border-b border-border px-2 font-medium">{t("tableView.colAssignee")}</th>
+                <th className="h-8 w-[150px] border-b border-border px-2 font-medium">{t("tableView.colEpic")}</th>
                 <th className="h-8 w-[112px] border-b border-border px-2 pr-3 font-medium">{t("tableView.colPriority")}</th>
               </tr>
             </thead>
@@ -119,6 +121,13 @@ function EmbedView({ data }: { data: BoardData }) {
                         <span className="text-text-3">–</span>
                       )}
                     </td>
+                    <td className="h-9 border-b border-border px-2">
+                      {issue.epicId && epicTitleById.has(issue.epicId) ? (
+                        <span className="block max-w-full truncate rounded-[4px] bg-violet-soft px-1.5 py-0.5 text-[12px] font-medium text-violet">{epicTitleById.get(issue.epicId)}</span>
+                      ) : (
+                        <span className="text-text-3">–</span>
+                      )}
+                    </td>
                     <td className="h-9 border-b border-border px-2 pr-3">
                       {priority ? <PriorityIcon priority={priority} showLabel className="text-[13px] text-text-2" /> : <span className="text-text-3">{issue.priority}</span>}
                     </td>
@@ -127,7 +136,7 @@ function EmbedView({ data }: { data: BoardData }) {
               })}
               {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-text-3">
+                  <td colSpan={5} className="px-3 py-8 text-center text-text-3">
                     {t("tableView.noIssues")}
                   </td>
                 </tr>

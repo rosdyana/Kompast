@@ -2,6 +2,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   Bell,
   CalendarClock,
+  FileText,
   GitBranch,
   GitFork,
   Link2,
@@ -29,6 +30,7 @@ const ICONS: Record<AutomationNodeType, LucideIcon> = {
   action_set_property: PenLine,
   action_add_label: Tag,
   action_comment: MessageSquare,
+  action_add_description: FileText,
   action_notify: Bell,
   action_link_issue: Link2,
   action_create_subtask: ListPlus,

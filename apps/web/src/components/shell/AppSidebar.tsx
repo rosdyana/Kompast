@@ -11,6 +11,7 @@ import {
   KanbanSquare,
   KeyRound,
   Languages,
+  Lock,
   LogOut,
   Map as MapIcon,
   Moon,
@@ -33,7 +34,9 @@ import { MenuItem, MenuList, MenuSeparator, MenuLabel } from "@kompast/ui/Menu";
 import { useSidebarCollapsed } from "@kompast/ui/SidebarShell";
 import { useTheme } from "@kompast/ui/theme";
 import { useTranslation, SUPPORTED_LOCALES, LOCALE_LABELS, type SupportedLocale } from "@kompast/i18n";
+import { useToast } from "@kompast/ui/Toast";
 import { authClient } from "@/lib/auth-client";
+import { assignProjectToTeamFn } from "@/lib/server-fns/projects";
 import { setLocaleFn } from "@/lib/server-fns/locale";
 import { cn } from "@/lib/cn";
 import { DocsTree, PageIcon, type DocsTreePage } from "@/components/docs/DocsTree";
@@ -45,7 +48,7 @@ export interface SidebarShellData {
   organization: { name: string } | null;
   memberCount: number;
   projects: { id: string; key: string; name: string; teamId: string | null }[];
-  teams: { id: string; name: string; myRole: string | null }[];
+  teams: { id: string; name: string; myRole: string | null; locked: boolean; adminNames: string[] }[];
   isAdmin: boolean;
   isSuperAdmin: boolean;
   pages: DocsTreePage[];
@@ -100,7 +103,63 @@ const PROJECT_VIEWS: { key: ProjectView; icon: typeof Inbox }[] = [
   { key: "automation", icon: Zap },
 ];
 
-function ProjectNode({ project, teamParam }: { project: SidebarShellData["projects"][number]; teamParam: string }) {
+/** Super admin's "Assign to team" for a legacy Unassigned project — the only way it becomes visible to anyone else. */
+function AssignToTeamAction({ project, teams }: { project: SidebarShellData["projects"][number]; teams: SidebarShellData["teams"] }) {
+  const { t } = useTranslation(["nav", "common"]);
+  const router = useRouter();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+
+  async function assign(team: SidebarShellData["teams"][number]) {
+    setOpen(false);
+    try {
+      await assignProjectToTeamFn({ data: { projectId: project.id, teamId: team.id } });
+      toast.show({ title: t("assignedToTeam", { team: team.name }) });
+      await router.invalidate();
+    } catch (err) {
+      toast.show({ tone: "error", title: t("common:somethingWentWrong"), description: err instanceof Error ? err.message : undefined });
+    }
+  }
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-label={t("assignToTeam")}
+        title={t("assignToTeam")}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="grid h-[22px] w-[22px] flex-none place-items-center rounded-[4px] text-text-3 opacity-0 transition-opacity hover:bg-surface-4 hover:text-text focus-visible:opacity-100 group-hover/row:opacity-100"
+      >
+        <Users size={13} strokeWidth={1.75} />
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} width={220} role="menu">
+        <MenuList>
+          <MenuLabel>{t("assignToTeam")}</MenuLabel>
+          {teams.map((team) => (
+            <MenuItem key={team.id} onClick={() => assign(team)}>
+              {team.name}
+            </MenuItem>
+          ))}
+        </MenuList>
+      </Popover>
+    </>
+  );
+}
+
+function ProjectNode({
+  project,
+  teamParam,
+  assignTeams,
+}: {
+  project: SidebarShellData["projects"][number];
+  teamParam: string;
+  /** Set only for Unassigned projects (super admin): enables the assign action. */
+  assignTeams?: SidebarShellData["teams"];
+}) {
   const { t } = useTranslation("nav");
   const { setMobileOpen } = useSidebarCollapsed();
   const location = useRouterState({ select: (s) => s.location });
@@ -137,6 +196,7 @@ function ProjectNode({ project, teamParam }: { project: SidebarShellData["projec
         >
           <span className="truncate">{project.name}</span>
         </Link>
+        {assignTeams && assignTeams.length > 0 && <AssignToTeamAction project={project} teams={assignTeams} />}
       </div>
       {open && (
         <div className="flex flex-col gap-px pb-1">
@@ -162,19 +222,41 @@ function ProjectNode({ project, teamParam }: { project: SidebarShellData["projec
   );
 }
 
+/**
+ * A team the viewer isn't in (D4 in the team-visibility spec): name only,
+ * not expandable, with who to ask. Its content is hidden by RLS regardless —
+ * this row is purely a pointer.
+ */
+function LockedTeamRow({ team }: { team: SidebarShellData["teams"][number] }) {
+  const { t } = useTranslation("nav");
+  const hint = team.adminNames.length > 0 ? t("lockedTeamHint", { names: team.adminNames.join(", ") }) : t("lockedTeamNoAdmin");
+  return (
+    <div title={hint} aria-label={`${team.name}. ${hint}`} className="flex h-7 items-center gap-1 rounded-[6px] pl-1 pr-2 text-[12.5px] font-medium text-text-3">
+      <Lock size={12} strokeWidth={2} className="mx-px flex-none" />
+      <span className="truncate">{team.name}</span>
+    </div>
+  );
+}
+
 function TeamGroup({
   team,
   projects,
+  pages,
   canCreateProject,
   canManageTeam,
+  assignTeams,
 }: {
   team: { id: string; name: string };
   projects: SidebarShellData["projects"];
+  /** This team's own team-space docs; undefined for the Unassigned pseudo-team, which has no space. */
+  pages?: DocsTreePage[];
   canCreateProject: boolean;
   canManageTeam: boolean;
+  assignTeams?: SidebarShellData["teams"];
 }) {
   const { t } = useTranslation("nav");
   const router = useRouter();
+  const { createPage } = useWorkbench();
   const [open, setOpen] = useState(true);
   const isUnassigned = team.id === "__unassigned";
 
@@ -191,6 +273,11 @@ function TeamGroup({
           <span className="truncate">{team.name}</span>
         </button>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/team:opacity-100">
+          {pages && (
+            <HoverAction label={t("newTeamDoc")} onClick={() => createPage({ teamId: team.id })}>
+              <FileText size={13} strokeWidth={1.75} />
+            </HoverAction>
+          )}
           {canManageTeam && (
             <HoverAction label={t("manageTeam")} onClick={() => router.navigate({ to: "/teams/$teamId", params: { teamId: team.id } })}>
               <Settings size={13} strokeWidth={1.75} />
@@ -210,8 +297,13 @@ function TeamGroup({
         <div className="flex flex-col gap-px">
           {projects.length === 0 && <p className="py-1 pl-7 text-[13px] text-text-3">{t("noProjectsInTeam")}</p>}
           {projects.map((p) => (
-            <ProjectNode key={p.id} project={p} teamParam={isUnassigned ? "none" : team.id} />
+            <ProjectNode key={p.id} project={p} teamParam={isUnassigned ? "none" : team.id} assignTeams={assignTeams} />
           ))}
+          {pages && pages.length > 0 && (
+            <div className="pl-3">
+              <DocsTree pages={pages} onAddChild={(parentPageId) => createPage({ parentPageId })} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -323,15 +415,20 @@ export function AppSidebar({ shell }: { shell: SidebarShellData }) {
   const { openPalette, openCreateIssue, createPage } = useWorkbench();
   const { setMobileOpen } = useSidebarCollapsed();
   const favorites = shell.pages.filter((p) => shell.favoriteIds.includes(p.id));
-  const workspacePages = shell.pages;
+  // shell.pages is every visible non-project page; team-space ones go under their team.
+  const workspacePages = shell.pages.filter((p) => !p.teamId);
+  const openTeams = shell.teams.filter((team) => !team.locked);
+  const lockedTeams = shell.teams.filter((team) => team.locked);
 
   const teamGroups = [
-    ...shell.teams.map((team) => ({
+    ...openTeams.map((team) => ({
       team,
       projects: shell.projects.filter((p) => p.teamId === team.id),
+      pages: shell.pages.filter((p) => p.teamId === team.id),
       canCreateProject: shell.isSuperAdmin || team.myRole === "admin",
       canManageTeam: shell.isSuperAdmin || team.myRole === "admin",
     })),
+    // Only ever non-empty for the super admin: RLS hides team-less projects from everyone else.
     ...(shell.projects.some((p) => !p.teamId)
       ? [
           {
@@ -339,6 +436,7 @@ export function AppSidebar({ shell }: { shell: SidebarShellData }) {
             projects: shell.projects.filter((p) => !p.teamId),
             canCreateProject: shell.isSuperAdmin,
             canManageTeam: false,
+            assignTeams: shell.isSuperAdmin ? shell.teams : undefined,
           },
         ]
       : []),
@@ -395,7 +493,7 @@ export function AppSidebar({ shell }: { shell: SidebarShellData }) {
         )}
 
         <div className="mb-2">
-          <SectionHeader label={t("projects")}>
+          <SectionHeader label={t("teams")}>
             {shell.isSuperAdmin && (
               <Link
                 to="/teams/new"
@@ -407,19 +505,22 @@ export function AppSidebar({ shell }: { shell: SidebarShellData }) {
               </Link>
             )}
           </SectionHeader>
-          {teamGroups.length === 0 ? (
+          {teamGroups.length === 0 && lockedTeams.length === 0 ? (
             <p className="px-2 py-1 text-[13px] text-text-3">{shell.isSuperAdmin ? t("noTeamsYetSuperAdmin") : t("noTeamsYetMember")}</p>
           ) : (
             <div className="flex flex-col gap-1">
               {teamGroups.map((g) => (
                 <TeamGroup key={g.team.id} {...g} />
               ))}
+              {lockedTeams.map((team) => (
+                <LockedTeamRow key={team.id} team={team} />
+              ))}
             </div>
           )}
         </div>
 
         <div>
-          <SectionHeader label={t("docs")}>
+          <SectionHeader label={t("workspaceDocs")}>
             <HoverAction label={t("newPage")} onClick={() => createPage()}>
               <Plus size={14} strokeWidth={2} />
             </HoverAction>

@@ -18,6 +18,7 @@ import { SprintHub } from "@/components/board/SprintHub";
 import { SprintSetupWizard } from "@/components/board/SprintSetupWizard";
 import { ProjectIcon } from "@/components/shell/ProjectIcon";
 import { usePageChrome, useWorkbench } from "@/components/shell/WorkbenchContext";
+import { NoAccessState } from "@/components/shared/NoAccessState";
 
 const VIEW_KEYS = ["backlog", "board", "table", "roadmap", "docs", "automation", "import", "settings"] as const;
 type ViewKey = (typeof VIEW_KEYS)[number];
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/_app/projects/$teamId/$projectKey")({
   }),
   loader: ({ params }) => getProjectBoardFn({ data: { teamId: params.teamId, projectKey: params.projectKey } }),
   component: ProjectPage,
+  notFoundComponent: NoAccessState,
 });
 
 function ProjectPage() {
@@ -40,7 +42,6 @@ function ProjectPage() {
   const router = useRouter();
   const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { openCreateIssue } = useWorkbench();
   const requested = tab ?? "backlog";
   // A non-admin who follows a ?tab=settings link lands on Backlog instead of a blank page.
   const view: ViewKey = requested === "settings" && !data.canManageProject ? "backlog" : requested;
@@ -75,20 +76,19 @@ function ProjectPage() {
         },
         { label: viewLabel },
       ],
+      // The topbar's global Create button replaces a per-page one: preselect
+      // this project (and the active sprint on Board) and refresh the backlog.
+      createDefaults: {
+        projectId: data.project.id,
+        sprintId: view === "board" ? data.activeSprint?.id : undefined,
+        onCreated: () => setBacklogKey((k) => k + 1),
+      },
     },
-    [data.project.id, data.project.name, team?.name, viewLabel],
+    [data.project.id, data.project.name, team?.name, viewLabel, view, data.activeSprint?.id],
   );
 
   function setView(key: string) {
     navigate({ search: { tab: key as ViewKey } });
-  }
-
-  function createIssue() {
-    openCreateIssue({
-      projectId: data.project.id,
-      sprintId: view === "board" ? data.activeSprint?.id : undefined,
-      onCreated: () => setBacklogKey((k) => k + 1),
-    });
   }
 
   const needsSprint = (view === "board" || view === "backlog") && !data.hasAnySprint;
@@ -104,10 +104,6 @@ function ProjectPage() {
               <span className="type-key">{data.project.key}</span> · {t("header.ticketCount", { count: issueCount })}
             </p>
           </div>
-          <Button variant="primary" onClick={createIssue}>
-            <Plus size={15} strokeWidth={2.25} />
-            {t("header.createIssue")}
-          </Button>
         </div>
         <Tabs items={viewTabs} active={view} onChange={setView} className="-mx-1 mt-3 border-b border-border" />
       </div>

@@ -52,6 +52,11 @@ describe("search", () => {
       { id: teamId, organizationId: orgId, name: "Test Team" },
       { id: otherTeamId, organizationId: otherOrgId, name: "Other Test Team" },
     ]);
+    // Each user belongs to their own org's team, or team-scoped RLS hides the projects they create.
+    await admin.insert(schema.teamMember).values([
+      { id: `tmem-${teamId}`, teamId, userId, membershipKey: `${teamId}:${userId}` },
+      { id: `tmem-${otherTeamId}`, teamId: otherTeamId, userId: otherUserId, membershipKey: `${otherTeamId}:${otherUserId}` },
+    ]);
   });
 
   afterAll(async () => {

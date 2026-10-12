@@ -70,6 +70,16 @@ export async function requireProjectAccess(
   }
 }
 
+/** Non-throwing form of requireSuperAdmin, for callers that branch on it. */
+export async function isSuperAdmin(db: AnyDb, ctx: AuthContext): Promise<boolean> {
+  const [row] = await db
+    .select({ isSuperAdmin: schema.member.isSuperAdmin })
+    .from(schema.member)
+    .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)))
+    .limit(1);
+  return row?.isSuperAdmin ?? false;
+}
+
 /**
  * Whether ctx.userId holds the workspace's single super-admin flag.
  * Distinct from requireSystemAdmin (settings.ts) — that gate is for
@@ -79,12 +89,7 @@ export async function requireProjectAccess(
  * admin_uq, packages/db/src/schema/auth.ts).
  */
 export async function requireSuperAdmin(db: AnyDb, ctx: AuthContext): Promise<void> {
-  const [row] = await db
-    .select({ isSuperAdmin: schema.member.isSuperAdmin })
-    .from(schema.member)
-    .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)))
-    .limit(1);
-  if (!row?.isSuperAdmin) {
+  if (!(await isSuperAdmin(db, ctx))) {
     throw new ForbiddenError(`User ${ctx.userId} is not the super admin of organization ${ctx.organizationId}`);
   }
 }
@@ -126,6 +131,23 @@ export async function requireTeamAdmin(
   if (!teamMember || teamMember.role !== "admin") {
     throw new ForbiddenError(`User ${ctx.userId} is not an admin of team ${ctx.teamId}`);
   }
+}
+
+/**
+ * Whether ctx.userId can work in ctx.teamId's space at all — a member of
+ * the team (any role) or the super admin. The app-side mirror of rls.sql's
+ * kompast_my_team_ids()/kompast_is_super_admin(), for surfaces that want a
+ * clean 403 up front instead of letting RLS's WITH CHECK reject the write.
+ */
+export async function requireTeamMember(db: AnyDb, ctx: AuthContext & { teamId: string }): Promise<void> {
+  if (await isSuperAdmin(db, ctx)) return;
+  const [row] = await db
+    .select({ id: schema.teamMember.id })
+    .from(schema.teamMember)
+    .innerJoin(schema.team, eq(schema.team.id, schema.teamMember.teamId))
+    .where(and(eq(schema.teamMember.teamId, ctx.teamId), eq(schema.teamMember.userId, ctx.userId), eq(schema.team.organizationId, ctx.organizationId)))
+    .limit(1);
+  if (!row) throw new ForbiddenError(`User ${ctx.userId} is not a member of team ${ctx.teamId}`);
 }
 
 /**
@@ -230,3 +252,52 @@ export async function transferSuperAdmin(
       .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, newHolderUserId)));
   }
 }
+
+/**
+ * Whether `userId` — typically NOT the caller — could open an issue/page.
+ * Used where the transaction's RLS identity is someone else (the actor of
+ * a mutation fanning notifications out to watchers/assignees, or the
+ * automation worker on the admin connection), so RLS can't answer it: it
+ * re-derives the same rules explicitly (rls.sql team scoping + the
+ * page_permission layer from page-permission.ts).
+ */
+export async function canUserSeeEntity(
+  tx: Tx,
+  input: { organizationId: string; userId: string; entityType: "issue" | "page"; entityId: string },
+): Promise<boolean> {
+  const who = { organizationId: input.organizationId, userId: input.userId };
+  if (await isSuperAdmin(tx, who)) return true;
+
+  const myTeams = new Set(
+    (
+      await tx
+        .select({ teamId: schema.teamMember.teamId })
+        .from(schema.teamMember)
+        .innerJoin(schema.team, eq(schema.team.id, schema.teamMember.teamId))
+        .where(and(eq(schema.teamMember.userId, input.userId), eq(schema.team.organizationId, input.organizationId)))
+    ).map((r) => r.teamId),
+  );
+
+  if (input.entityType === "issue") {
+    const [row] = await tx
+      .select({ teamId: schema.project.teamId })
+      .from(schema.issue)
+      .innerJoin(schema.project, eq(schema.project.id, schema.issue.projectId))
+      .where(eq(schema.issue.id, input.entityId));
+    return !!row?.teamId && myTeams.has(row.teamId);
+  }
+
+  const [page] = await tx
+    .select({ teamId: schema.page.teamId, projectId: schema.page.projectId, projectTeamId: schema.project.teamId })
+    .from(schema.page)
+    .leftJoin(schema.project, eq(schema.project.id, schema.page.projectId))
+    .where(eq(schema.page.id, input.entityId));
+  if (!page) return false;
+  if (page.projectId && !(page.projectTeamId && myTeams.has(page.projectTeamId))) return false;
+  if (page.teamId && !myTeams.has(page.teamId)) return false;
+
+  const grants = await tx.select().from(schema.pagePermission).where(eq(schema.pagePermission.pageId, input.entityId));
+  if (grants.length === 0) return true;
+  return grants.some((g) => (g.subjectType === "user" && g.subjectId === input.userId) || (g.subjectType === "team" && myTeams.has(g.subjectId)));
+}
+

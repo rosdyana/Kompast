@@ -38,6 +38,9 @@ describe("automation-execution: executeNode", () => {
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+    // The fixture user must belong to the team that owns the project, or
+    // team-scoped RLS (packages/db/rls.sql) hides it from them.
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
   });
 
   afterAll(cleanup);
@@ -179,6 +182,23 @@ describe("automation-execution: executeNode", () => {
 
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.labels).toEqual(["existing"]);
+  });
+
+  it("action_add_description appends paragraphs (upgrading a legacy description) or replaces it", async () => {
+    const { issueId, runId, workflowId } = await seedProjectIssueAndWorkflow("exad");
+    await admin.update(schema.issue).set({ descriptionJson: { text: "Original" } }).where(eq(schema.issue.id, issueId));
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    const append = fakeNode("action_add_description", { text: "Line one\nLine two" });
+    expect((await withAuthorizedTenant(ctx, (tx) => executeNode(tx, append, run!, workflow!, 0))).status).toBe("succeeded");
+    let [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(toPlainText(issue!.descriptionJson)).toBe("Original\nLine one\nLine two");
+
+    const replace = fakeNode("action_add_description", { text: "Fresh", mode: "replace" });
+    await withAuthorizedTenant(ctx, (tx) => executeNode(tx, replace, run!, workflow!, 0));
+    [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(toPlainText(issue!.descriptionJson)).toBe("Fresh");
   });
 
   it("action_comment writes a real comment", async () => {
@@ -414,6 +434,9 @@ describe("automation-execution: action_webhook", () => {
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+    // The fixture user must belong to the team that owns the project, or
+    // team-scoped RLS (packages/db/rls.sql) hides it from them.
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
   });
 
   afterAll(cleanup);

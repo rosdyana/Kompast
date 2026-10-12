@@ -51,7 +51,8 @@ export function TeamsTab({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-medium">{team.name}</p>
                   <p className="text-[12.5px] text-text-3">
-                    {t("teamMemberCount", { count: team.memberCount })} · {t("teamProjectCount", { count: team.projectCount })}
+                    {t("teamMemberCount", { count: team.memberCount ?? 0 })} · {t("teamProjectCount", { count: team.projectCount ?? 0 })}
+                    {team.adminNames.length > 0 && <> · {t("teamAdminsLabel", { names: team.adminNames.join(", ") })}</>}
                   </p>
                 </div>
                 {team.myRole === "admin" && <Badge tone="accent">{t("adminBadge")}</Badge>}

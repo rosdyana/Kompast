@@ -5,6 +5,9 @@
   "notFoundTitle": "Page not found",
   "notFoundSubtext": "The page you're looking for doesn't exist or may have moved.",
   "notFoundGoHome": "Go home",
+  "noAccessTitle": "Not found, or you don't have access",
+  "noAccessSubtext": "It may have been moved or deleted, or it belongs to a team you're not part of. Ask that team's admin if you need access.",
+  "restricted": "Restricted",
   "save": "Save",
   "cancel": "Cancel",
   "delete": "Delete",
@@ -17,5 +20,9 @@
   "more": "More",
   "copyLink": "Copy link",
   "linkCopied": "Link copied",
-  "somethingWentWrong": "Something went wrong."
+  "somethingWentWrong": "Something went wrong.",
+  "mentionGroupPeople": "People",
+  "mentionGroupIssues": "Issues",
+  "dismiss": "Dismiss",
+  "breadcrumb": "Breadcrumb"
 }

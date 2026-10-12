@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { enqueueEmail } from "./email";
+import { canUserSeeEntity } from "./permissions";
 
 export interface NotificationPrefView {
   inApp: boolean;
@@ -19,9 +20,9 @@ export interface NotificationPrefView {
  * here just means users can't customize it yet, not a crash.
  */
 export const NOTIFICATION_EVENT_TYPES = [
-  { eventType: "issue.assigned", label: "Ditugaskan ke tiket" },
-  { eventType: "issue.commented", label: "Komentar baru di tiket" },
-  { eventType: "issue.mentioned", label: "Mentioned in a ticket" },
+  { eventType: "issue.assigned", label: "Assigned to an issue" },
+  { eventType: "issue.commented", label: "New comment on an issue you follow" },
+  { eventType: "issue.mentioned", label: "Mentioned in an issue" },
 ] as const;
 
 const DEFAULT_PREF: NotificationPrefView = { inApp: true, email: true, digest: "instant" };
@@ -93,6 +94,14 @@ export interface NotifyInput {
  * reasoning as enqueueEmail).
  */
 export async function notify(tx: Tx, input: NotifyInput): Promise<{ notificationId: string | null; emailQueued: boolean }> {
+  // A watcher/assignee who has since left the issue's team (or a mention of
+  // someone outside it) must not get the title in their inbox or by email —
+  // that would leak exactly what team-scoped RLS hides (M5 in the
+  // team-visibility spec). Checked here, at the one place every
+  // notification passes through, rather than at each caller.
+  if (!(await canUserSeeEntity(tx, { organizationId: input.organizationId, userId: input.userId, entityType: input.entityType, entityId: input.entityId }))) {
+    return { notificationId: null, emailQueued: false };
+  }
   const pref = await getNotificationPref(tx, input.organizationId, input.userId, input.eventType);
 
   let notificationId: string | null = null;
@@ -161,13 +170,43 @@ export async function notifyMentionedUsers(tx: Tx, input: NotifyMentionedUsersIn
   }
 }
 
+export type NotificationTarget =
+  | { kind: "issue"; teamId: string | null; projectKey: string; keySeq: number }
+  | { kind: "page"; pageId: string };
+
+/**
+ * Each row carries a resolved `target` so the bell can link straight to the
+ * issue/page. Issue targets are looked up under the caller's RLS identity —
+ * an issue the user can no longer see (team change, deletion) resolves to
+ * `null` and the row renders as non-navigable instead of a dead link.
+ */
 export async function listNotifications(tx: Tx, organizationId: string, userId: string, limit = 50) {
-  return tx
+  const rows = await tx
     .select()
     .from(schema.notification)
     .where(and(eq(schema.notification.organizationId, organizationId), eq(schema.notification.userId, userId)))
     .orderBy(desc(schema.notification.createdAt))
     .limit(limit);
+
+  const issueIds = [...new Set(rows.filter((r) => r.entityType === "issue").map((r) => r.entityId))];
+  const issues = issueIds.length
+    ? await tx
+        .select({ id: schema.issue.id, keySeq: schema.issue.keySeq, projectKey: schema.project.key, teamId: schema.project.teamId })
+        .from(schema.issue)
+        .innerJoin(schema.project, eq(schema.project.id, schema.issue.projectId))
+        .where(inArray(schema.issue.id, issueIds))
+    : [];
+  const issueById = new Map(issues.map((i) => [i.id, i]));
+
+  return rows.map((r) => {
+    let target: NotificationTarget | null = null;
+    if (r.entityType === "page") target = { kind: "page", pageId: r.entityId };
+    else {
+      const i = issueById.get(r.entityId);
+      if (i) target = { kind: "issue", teamId: i.teamId, projectKey: i.projectKey, keySeq: i.keySeq };
+    }
+    return { ...r, target };
+  });
 }
 
 export async function countUnreadNotifications(tx: Tx, organizationId: string, userId: string) {

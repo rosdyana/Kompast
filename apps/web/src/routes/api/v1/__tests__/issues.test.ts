@@ -58,6 +58,9 @@ describe("/api/v1/issues", () => {
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
     await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
+    // The fixture user must belong to the team that owns the project, or
+    // team-scoped RLS (packages/db/rls.sql) hides it from them.
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
 
     const ctx = { userId, organizationId: orgId };
     // Letters only: the issue-key parser (here and in search.ts /
@@ -75,6 +78,43 @@ describe("/api/v1/issues", () => {
 
   afterAll(async () => {
     await cleanup();
+  });
+
+  it("hides another team's issues from a same-workspace token: 404 on read and on create, never the data", async () => {
+    const createRes = await issuesHandlers.POST({
+      request: req("http://x/api/v1/issues", { method: "POST", token, body: { projectKey, title: "Team-private issue" } }),
+      params: {},
+    });
+    const created = await createRes.json();
+
+    // A member of the same workspace who isn't in the project's team.
+    const outsiderId = `${userId}-outsider`;
+    await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, outsiderId));
+    await admin.delete(schema.user).where(eq(schema.user.id, outsiderId));
+    await admin.insert(schema.user).values({ id: outsiderId, name: "Outsider", email: `${outsiderId}@example.com` });
+    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId: outsiderId, role: "member" });
+    const auth = await getAuth();
+    const outsiderToken = (await auth.api.createApiKey({
+      body: { userId: outsiderId, permissions: { issues: ["read", "write"] }, metadata: { organizationId: orgId } },
+    })).key;
+
+    try {
+      const readRes = await issueItemHandlers.GET({ request: req(`http://x/api/v1/issues/${created.key}`, { token: outsiderToken }), params: { issueKey: created.key } });
+      expect(readRes.status).toBe(404);
+
+      const listRes = await issuesHandlers.GET({ request: req(`http://x/api/v1/issues?projectKey=${projectKey}`, { token: outsiderToken }), params: {} });
+      expect(listRes.status).toBe(404);
+
+      const writeRes = await issuesHandlers.POST({
+        request: req("http://x/api/v1/issues", { method: "POST", token: outsiderToken, body: { projectKey, title: "sneaky" } }),
+        params: {},
+      });
+      expect(writeRes.status).toBe(404);
+    } finally {
+      await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, outsiderId));
+      await admin.delete(schema.member).where(eq(schema.member.userId, outsiderId));
+      await admin.delete(schema.user).where(eq(schema.user.id, outsiderId));
+    }
   });
 
   it("rejects an unauthenticated request", async () => {

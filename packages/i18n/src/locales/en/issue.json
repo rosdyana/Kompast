@@ -111,5 +111,16 @@
   "clickToEdit": "Click to edit",
   "yes": "Yes",
   "no": "No",
-  "epicChildren": "Issues in this epic"
+  "epicChildren": "Issues in this epic",
+  "checklist": {
+    "heading": "Checklist",
+    "progress": "{{done}}/{{total}} done",
+    "addPlaceholder": "Add an item…",
+    "loading": "Loading checklist…",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "deleteItem": "Delete item",
+    "saveFailed": "Couldn't update the checklist",
+    "cardBadge": "Checklist: {{done}} of {{total}} done"
+  }
 }

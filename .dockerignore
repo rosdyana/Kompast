@@ -6,3 +6,11 @@
 **/.vite
 .git
 *.log
+# Env files and mounted credentials are runtime-only (compose's env_file /
+# volumes). Every Dockerfile's build stage does `COPY . .`, and the
+# seed-demo image keeps the whole workspace in its final layer — without
+# these lines a local .env would be baked into an image.
+**/.env
+**/.env.*
+!**/.env.example
+infra/secrets

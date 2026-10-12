@@ -66,9 +66,9 @@ async function notifyCommentParticipants(tx: Tx, issueId: string, authorId: stri
         eventType: "issue.commented",
         entityType: "issue",
         entityId: issueId,
-        title: `Komentar baru di ${issueKey}`,
+        title: `New comment on ${issueKey}`,
         body: row.title,
-        email: email ? { to: email, actionUrl, actionLabel: "Lihat tiket" } : undefined,
+        email: email ? { to: email, actionUrl, actionLabel: "View issue" } : undefined,
       });
     }
   }
