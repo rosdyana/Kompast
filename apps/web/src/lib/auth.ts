@@ -310,6 +310,12 @@ export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthC
         permissions: {
           defaultPermissions: {},
         },
+        // The plugin's default is 10 requests per key per 24h, stamped onto
+        // each apikey row at creation — one MCP session (initialize,
+        // tools/list, a few calls) used it up. Only this plugin-level switch
+        // overrides the per-row values already stored on existing tokens.
+        // Request throttling belongs at the reverse proxy, not per token.
+        rateLimit: { enabled: false },
       }),
       tanstackStartCookies(),
     ],
