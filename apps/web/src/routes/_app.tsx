@@ -10,6 +10,7 @@ import { Topbar } from "@/components/shell/Topbar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { CreateIssueDialog } from "@/components/shell/CreateIssueDialog";
 import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
+import { NotionImportDialog, type NotionImportTarget } from "@/components/docs/NotionImportDialog";
 import { WorkbenchContext, type CreateIssueDefaults, type PageChrome } from "@/components/shell/WorkbenchContext";
 
 export const Route = createFileRoute("/_app")({
@@ -50,6 +51,7 @@ function Workbench() {
   const [createDefaults, setCreateDefaults] = useState<CreateIssueDefaults | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [chrome, setChrome] = useState<PageChrome | null>(null);
+  const [notionImportTarget, setNotionImportTarget] = useState<NotionImportTarget | null>(null);
 
   const chromeRef = useRef(chrome);
   chromeRef.current = chrome;
@@ -117,6 +119,7 @@ function Workbench() {
       openCreateIssue,
       openShortcuts: () => setShortcutsOpen(true),
       createPage,
+      openNotionImport: (target: NotionImportTarget) => setNotionImportTarget(target),
       chrome,
       setChrome,
     }),
@@ -145,6 +148,12 @@ function Workbench() {
       />
       <CreateIssueDialog open={createOpen} onClose={() => setCreateOpen(false)} defaults={createDefaults} shell={shell} />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <NotionImportDialog
+        open={notionImportTarget !== null}
+        onClose={() => setNotionImportTarget(null)}
+        initialTarget={notionImportTarget ?? "private"}
+        canImportToWorkspace={shell.isAdmin || shell.isSuperAdmin}
+      />
     </WorkbenchContext.Provider>
   );
 }

@@ -1,13 +1,15 @@
 import { and, eq, schema, type Json } from "@kompast/db";
-import type { Tx } from "./types";
+import type { AnyDb, Tx } from "./types";
 import { id } from "./ids";
+import { ForbiddenError, type AuthContext } from "./permissions";
 
 export type ImportSourceName = "jira" | "notion";
 export type ImportEntityType = "issue" | "page";
 
 export interface CreateImportRunInput {
   organizationId: string;
-  projectId: string;
+  /** Null for page imports (Notion), which target a docs space rather than a project. */
+  projectId: string | null;
   source: ImportSourceName;
   dryRun: boolean;
   /** Non-secret parameters only (project key, base URL) — never a credential. See packages/db/src/schema/import.ts. */
@@ -90,4 +92,28 @@ export async function upsertExternalRef(tx: Tx, input: UpsertExternalRefInput) {
       target: [schema.externalRef.organizationId, schema.externalRef.source, schema.externalRef.sourceId],
       set: { entityId: input.entityId, sourceUrl: input.sourceUrl, importRunId: input.importRunId },
     });
+}
+
+/**
+ * Where a page import (Notion) lands: the shared Workspace docs, or the
+ * caller's own Private space. Not a team or project space yet.
+ */
+export type PageImportTarget = "workspace" | "private";
+
+/**
+ * Who may import into which docs space. Workspace docs are everyone's, so
+ * filling them with a bulk import is reserved for workspace owners/admins
+ * and the super admin, even though any member can create a single
+ * Workspace page by hand. Private needs no check beyond membership: the
+ * pages are owned by the caller (RLS refuses anyone else's Private space).
+ */
+export async function requirePageImportTarget(db: AnyDb, ctx: AuthContext, target: PageImportTarget): Promise<void> {
+  if (target === "private") return;
+  const [row] = await db
+    .select({ role: schema.member.role, isSuperAdmin: schema.member.isSuperAdmin })
+    .from(schema.member)
+    .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)));
+  if (!row || (row.role !== "owner" && row.role !== "admin" && !row.isSuperAdmin)) {
+    throw new ForbiddenError("Only workspace admins can import into the Workspace docs. Import into your Private space instead.");
+  }
 }

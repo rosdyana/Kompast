@@ -433,10 +433,16 @@ create policy tenant_isolation_ai_usage on ai_usage
   using (organization_id = current_setting('app.current_workspace', true));
 
 drop policy if exists tenant_isolation_import_run on import_run;
+-- Project imports (JIRA) follow their project. Page imports (Notion) have
+-- no project, so only the member who started one sees it: a Private-space
+-- import's report lists page titles nobody else may see.
 create policy tenant_isolation_import_run on import_run
   using (
     organization_id = current_setting('app.current_workspace', true)
-    and project_id in (select id from project)
+    and (
+      project_id in (select id from project)
+      or (project_id is null and created_by = current_setting('app.current_user', true))
+    )
   );
 
 drop policy if exists tenant_isolation_external_ref on external_ref;

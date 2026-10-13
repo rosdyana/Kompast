@@ -2,7 +2,7 @@
 
 A self-hosted team workspace that brings docs, project tracking, automation, and AI assistance together in one place — instead of stitching together several disconnected tools. Real-time collaborative docs, kanban boards with configurable sprints, workflow automation, and an AI assist layer, all on one Postgres-backed workspace.
 
-**Status**: the core platform — auth, boards, docs, REST/MCP API, sprints, notifications, automation, AI assist — is built and working. Data import currently supports JIRA; a general-purpose importer for other tools and a production-hardening pass are still ahead.
+**Status**: the core platform — auth, boards, docs, REST/MCP API, sprints, notifications, automation, AI assist — is built and working. Data import supports JIRA (issues) and Notion (docs); importers for other tools and a production-hardening pass are still ahead.
 
 | Area | Status |
 |---|---|
@@ -15,7 +15,7 @@ A self-hosted team workspace that brings docs, project tracking, automation, and
 | AI assist + Ask Kompast (RAG chat) | Done |
 | Teams + team-scoped visibility | Done |
 | Private & Shared docs (Notion-style) | Done |
-| Importers | JIRA done, others not started |
+| Importers | JIRA and Notion done, others not started |
 | Hardening + cutover | Not started |
 
 Implementation rationale, known gotchas, and verification write-ups for each area live in [`docs/ENGINEERING-NOTES.md`](docs/ENGINEERING-NOTES.md) — read the relevant section before touching that feature area.
@@ -133,7 +133,7 @@ claude mcp add --transport http kompast https://<domain>/mcp \
 
 **Ask Kompast** — a RAG chat over issue titles, descriptions, and comments (pgvector-backed semantic search). Docs/pages indexing is planned but not built yet.
 
-**Importers** — a JIRA importer (live API or exported JSON) that's idempotent and safe to re-run, with a dry-run mode. No importer for other tools yet — that's the main remaining migration gap.
+**Importers** — a JIRA importer (live API or exported JSON) that's idempotent and safe to re-run, with a dry-run mode. A **Notion importer** takes the export zip Notion produces (a page's ⋯ → Export, or Settings → Export all workspace content; HTML or Markdown & CSV) and rebuilds the page tree as Kompast docs: icons, headings, lists, to-dos, toggles, callouts, tables, code, images, and links between pages, which become page mentions with backlinks. Databases come in as a table page with their rows as sub-pages. Workspace owners/admins can import into the Workspace docs; everyone else imports into their own Private space (the ⤓ button on each sidebar section, or `POST /api/v1/imports/notion`). Re-importing the same export into the same space skips pages already there. Importers for other tools aren't built yet.
 
 **Attachments** — pluggable storage (`local` for dev, Google Cloud Storage for production) behind one interface; file bytes never pass through the Node process for production uploads.
 

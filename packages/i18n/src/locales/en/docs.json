@@ -140,5 +140,24 @@
     "deleteTitle": "Delete page forever?",
     "restored": "Page restored",
     "deleted": "Page deleted"
+  },
+  "notionImport": {
+    "title": "Import from Notion",
+    "intro": "In Notion, open a page's ⋯ menu → Export, or Settings → Export all workspace content. Choose HTML to keep page icons, toggles and callouts (Markdown & CSV works too), turn on “Include subpages”, then upload the .zip as downloaded.",
+    "destination": "Import into",
+    "workspace": "Workspace",
+    "workspaceHint": "Everyone in the workspace can see these pages.",
+    "private": "Private",
+    "privateHint": "Only you can see these pages. You can share or move them later.",
+    "file": "Notion export (.zip)",
+    "import": "Import",
+    "importing": "Importing… a large export can take a minute.",
+    "tooLarge": "That file is over 200 MB. Export a smaller part of the workspace, or upload each “Part” zip separately.",
+    "failed": "Import failed: {{message}}",
+    "created": "Pages imported: {{count}}",
+    "skipped": "Already imported earlier, left unchanged: {{count}}",
+    "assets": "Images and files: {{count}}",
+    "problems": "Some pages had problems:",
+    "open": "Open imported pages"
   }
 }

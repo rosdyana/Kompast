@@ -121,6 +121,8 @@
   "newPrivatePage": "New private page",
   "sharedDocs": "Shared",
   "privateDocsHint": "Only you can see pages here",
+  "importToWorkspace": "Import from Notion into Workspace",
+  "importToPrivate": "Import from Notion into Private",
   "noTeamDocs": "No docs yet",
   "lockedTeamHint": "You're not in this team. Ask {{names}} for access.",
   "lockedTeamNoAdmin": "You're not in this team.",

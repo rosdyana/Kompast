@@ -3,3 +3,6 @@ export { fetchJiraIssues, parseJiraExportFile, type JiraApiCredentials } from ".
 export { mapJiraPriority, mapJiraStatusCategory, collectJiraEmails } from "./jira/map";
 export { adfToPlainText } from "./jira/adf";
 export { runJiraImport, type JiraLoadContext, type JiraLoadReport } from "./jira/load";
+export type { NotionExport, NotionExportPage } from "./notion/types";
+export { readNotionExport, resolveExportPath, linkedNotionId, MAX_NOTION_PAGES } from "./notion/extract";
+export { runNotionImport, type NotionLoadContext, type NotionLoadReport, type NotionPageConverter, type ImportedPageRef } from "./notion/load";

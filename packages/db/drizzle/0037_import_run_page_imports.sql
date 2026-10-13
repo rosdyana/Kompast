@@ -1,0 +1,1 @@
+ALTER TABLE "import_run" ALTER COLUMN "project_id" DROP NOT NULL;

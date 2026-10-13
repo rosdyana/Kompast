@@ -23,9 +23,12 @@ export const importRun = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => project.id, { onDelete: "cascade" }),
+    /**
+     * Null for page importers (Notion): they target a docs space, not a
+     * project. RLS then shows the run to its creator only (rls.sql), since
+     * there's no project to inherit visibility from.
+     */
+    projectId: text("project_id").references(() => project.id, { onDelete: "cascade" }),
     source: text("source", { enum: importSource }).notNull(),
     dryRun: boolean("dry_run").notNull().default(false),
     status: text("status", { enum: ["pending", "running", "completed", "failed"] })
