@@ -118,7 +118,7 @@ All secrets are encrypted at rest and never echoed back to the client.
 
 **Boards & sprints** — Jira-style backlog (sprint containers with drag-and-drop between sprints and backlog, inline quick-create, start/complete sprint with carry-over), kanban boards with configurable sprint cycles and assignee swimlanes, a sprint hub table with inline-cell editing (status, assignee, priority, type, points, due date, title) and multi-column sort (incl. by epic and label), per-issue to-do checklists (Jira checklist-plugin style — check off/reorder on the issue page, progress badge + quick-edit popover on kanban cards), burndown/cumulative-flow reports, velocity history, and an epic roadmap timeline.
 
-**REST API + MCP** — every mutation lives once in `packages/core`, so the UI, REST (`/api/v1`), and MCP (`/mcp`) can never drift apart in what they allow. Personal access tokens (`/tokens`) scope both surfaces.
+**REST API + MCP** — every mutation lives once in `packages/core`, so the UI, REST (`/api/v1`), and MCP (`/mcp`) can never drift apart in what they allow. Personal access tokens (`/tokens`) scope both surfaces. MCP covers issues (incl. checklists, worklogs, issue links, watching, archive), sprints and their reports, docs (read as Markdown, search, move, duplicate/templates, trash, versions, comments, access lists), automation workflows, and notifications. Not on MCP: editing page content, guest share links, uploads, imports, Ask Kompast, and admin/config. See `docs/ENGINEERING-NOTES.md` for why.
 
 ```bash
 claude mcp add --transport http kompast https://<domain>/mcp \

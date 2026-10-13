@@ -2,32 +2,95 @@ import * as z from "zod";
 import * as Y from "yjs";
 import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { and, asc, eq, gt, isNull, schema } from "@kompast/db";
+import { and, arrayContains, asc, eq, gt, ilike, inArray, isNull, schema, type Json } from "@kompast/db";
 import {
   createIssue,
   updateIssue,
+  updateIssueCustomField,
   moveIssue,
+  archiveIssue,
+  restoreIssue,
   addComment,
+  listComments,
+  toPlainText,
+  linkIssues,
+  listIssueLinks,
+  logWork,
+  listWorklogs,
+  setWatching,
+  listWatchers,
+  listAttachments,
+  listChecklistItems,
+  addChecklistItem,
+  updateChecklistItem,
+  deleteChecklistItem,
+  moveChecklistItem,
+  listIssuePropertyDefinitions,
+  listPriorityLevels,
+  listCandidateEpics,
+  listAssignableUsers,
+  listTeamsForWorkspace,
+  requireProjectAdmin,
   createPage,
+  getPage,
   updatePageMeta,
+  movePage,
+  archivePage,
+  restorePage,
+  duplicatePage,
+  listArchivedPages,
+  permanentlyDeletePage,
+  listTemplatePages,
+  listPageVersions,
+  getPageVersionSnapshot,
+  toggleFavoritePage,
+  listFavoritePageIds,
   addPageComment,
+  listPageComments,
+  resolvePageComment,
   linkEntities,
+  unlinkEntities,
+  listOutgoingLinks,
+  listBacklinks,
   listPageTree,
   filterAccessiblePages,
   searchWorkspace,
   withAuthorizedTenant,
   withIdempotency,
   ForbiddenError,
+  AutomationGraphError,
+  PageSpaceError,
   listSprints,
+  createSprint,
+  updateSprint,
+  listBacklogIssues,
+  listSprintIssues,
+  addIssueToSprint,
+  removeIssueFromSprint,
   getSprintReport,
+  getBurndown,
+  getCumulativeFlow,
+  getVelocityHistory,
   startSprint,
   completeSprint,
   getEpicRoadmap,
+  listWorkflows,
+  getWorkflow,
+  createWorkflow,
+  updateWorkflow,
+  deleteWorkflow,
+  listWorkflowRuns,
+  getWorkflowRun,
+  listNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
   requireTeamMember,
+  canAccessPage,
   canManagePageAccess,
   getPageAccess,
   grantPageAccess,
   removePagePermission,
+  type Tx,
 } from "@kompast/core";
 import type { ApiAuthContext } from "@/lib/api-auth";
 import { ApiError } from "@/lib/api-auth";
@@ -73,6 +136,8 @@ function tool(ctx: ApiAuthContext, scope: string | null, fn: () => Promise<unkno
     } catch (err) {
       if (err instanceof ApiError) return toolError(err.detail);
       if (err instanceof ForbiddenError) return toolError(err.message);
+      // Client input errors, same mapping as REST's handleApiRoute (400s there).
+      if (err instanceof AutomationGraphError || err instanceof PageSpaceError) return toolError(err.message);
       console.error("[mcp] tool error:", err);
       return toolError("Internal error");
     }
@@ -115,14 +180,44 @@ function serializePage(page: typeof schema.page.$inferSelect) {
   };
 }
 
-async function renderPageMarkdown(tx: import("@kompast/core").Tx, pageId: string): Promise<string> {
-  const [state] = await tx.select().from(schema.ydocState).where(eq(schema.ydocState.pageId, pageId));
-  if (!state) return "";
+function yjsStateToMarkdown(state: Uint8Array): Promise<string> {
   const ydoc = new Y.Doc();
-  Y.applyUpdate(ydoc, state.state);
+  Y.applyUpdate(ydoc, state);
   const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
   const blocks = editor.yDocToBlocks(ydoc, "document-store");
   return editor.blocksToMarkdownLossy(blocks);
+}
+
+async function renderPageMarkdown(tx: Tx, pageId: string): Promise<string> {
+  const [state] = await tx.select().from(schema.ydocState).where(eq(schema.ydocState.pageId, pageId));
+  if (!state) return "";
+  return yjsStateToMarkdown(state.state);
+}
+
+/** Plain text in, a one-paragraph BlockNote document out — the shape issue descriptions and comments are stored in. */
+function paragraphDoc(text: string) {
+  return [{ type: "paragraph", content: [{ type: "text", text, styles: {} }] }];
+}
+
+function toDate(value: string | null | undefined): Date | null | undefined {
+  return value === undefined ? undefined : value === null ? null : new Date(value);
+}
+
+/** Issue keys for a batch of issue ids — what an MCP caller can use in a follow-up call, unlike a raw id. */
+async function issueKeysById(tx: Tx, issueIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(issueIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: schema.issue.id, keySeq: schema.issue.keySeq, projectKey: schema.project.key })
+    .from(schema.issue)
+    .innerJoin(schema.project, eq(schema.project.id, schema.issue.projectId))
+    .where(inArray(schema.issue.id, ids));
+  return new Map(rows.map((r) => [r.id, `${r.projectKey}-${r.keySeq}`]));
+}
+
+/** Soft delete/restore is gated to the project's admin/lead, same as the issue page's Archive button. */
+async function requireIssueAdmin(tx: Tx, ctx: ApiAuthContext, projectId: string) {
+  await requireProjectAdmin(tx, { userId: ctx.userId, organizationId: ctx.organizationId, projectId });
 }
 
 /**
@@ -205,18 +300,35 @@ export function buildMcpServer(ctx: ApiAuthContext) {
   server.registerTool(
     "list_issues",
     {
-      description: "List issues in a project, oldest key first.",
-      inputSchema: { projectKey: z.string().min(1), cursor: z.number().int().optional(), limit: z.number().int().positive().max(100).optional() },
+      description: "List issues in a project, oldest key first. Archived issues are left out unless includeArchived is set.",
+      inputSchema: {
+        projectKey: z.string().min(1),
+        status: z.string().optional().describe("Workflow status name, e.g. \"In Progress\"."),
+        assigneeEmail: z.email().optional(),
+        sprintId: z.string().optional(),
+        epicKey: z.string().optional(),
+        label: z.string().optional(),
+        includeArchived: z.boolean().optional(),
+        cursor: z.number().int().optional(),
+        limit: z.number().int().positive().max(100).optional(),
+      },
     },
     (args) =>
       tool(ctx, "issues:read", () =>
         withAuthorizedTenant(ctx, async (tx) => {
           const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
           const limit = args.limit ?? 25;
+          const conditions = [eq(schema.issue.projectId, project.id), gt(schema.issue.keySeq, args.cursor ?? 0)];
+          if (!args.includeArchived) conditions.push(isNull(schema.issue.archivedAt));
+          if (args.status) conditions.push(eq(schema.issue.statusId, (await resolveStatus(tx, project.id, args.status)).id));
+          if (args.assigneeEmail) conditions.push(eq(schema.issue.assigneeId, await resolveUserByEmail(tx, ctx.organizationId, args.assigneeEmail)));
+          if (args.sprintId) conditions.push(eq(schema.issue.sprintId, args.sprintId));
+          if (args.epicKey) conditions.push(eq(schema.issue.epicId, (await resolveIssue(tx, ctx.organizationId, args.epicKey)).issue.id));
+          if (args.label) conditions.push(arrayContains(schema.issue.labels, [args.label]));
           const rows = await tx
             .select()
             .from(schema.issue)
-            .where(and(eq(schema.issue.projectId, project.id), gt(schema.issue.keySeq, args.cursor ?? 0)))
+            .where(and(...conditions))
             .orderBy(asc(schema.issue.keySeq))
             .limit(limit);
           const nextCursor = rows.length === limit ? rows[rows.length - 1]!.keySeq : null;
@@ -227,12 +339,55 @@ export function buildMcpServer(ctx: ApiAuthContext) {
 
   server.registerTool(
     "get_issue",
-    { description: "Get a single issue by its key (e.g. KPT-42).", inputSchema: { issueKey: z.string().min(1) } },
+    {
+      description:
+        "Get a single issue by its key (e.g. KPT-42): fields, type/status names, description as plain text, epic/parent/sprint, checklist, and links to other issues and docs. Comments are separate (list_issue_comments).",
+      inputSchema: { issueKey: z.string().min(1) },
+    },
     (args) =>
       tool(ctx, "issues:read", () =>
         withAuthorizedTenant(ctx, async (tx) => {
           const { project, issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
-          return serializeIssue(issue, project.key);
+          const [[type], [status], checklist, issueLinks, docLinks, watchers] = await Promise.all([
+            tx.select({ name: schema.issueType.name }).from(schema.issueType).where(eq(schema.issueType.id, issue.typeId)),
+            tx.select({ name: schema.workflowStatus.name, category: schema.workflowStatus.category }).from(schema.workflowStatus).where(eq(schema.workflowStatus.id, issue.statusId)),
+            listChecklistItems(tx, issue.id),
+            listIssueLinks(tx, issue.id),
+            listBacklinks(tx, "issue", issue.id),
+            listWatchers(tx, issue.id),
+          ]);
+          const keys = await issueKeysById(tx, [
+            ...[issue.epicId, issue.parentId].filter((v): v is string => !!v),
+            ...issueLinks.flatMap((l) => [l.fromIssueId, l.toIssueId]),
+          ]);
+          const linkedPageIds = docLinks.filter((l) => l.fromType === "page").map((l) => l.fromId);
+          const linkedPages = linkedPageIds.length
+            ? await filterAccessiblePages(tx, await tx.select().from(schema.page).where(and(inArray(schema.page.id, linkedPageIds), isNull(schema.page.archivedAt))), ctx)
+            : [];
+          return {
+            ...serializeIssue(issue, project.key),
+            type: type?.name ?? null,
+            status: status?.name ?? null,
+            statusCategory: status?.category ?? null,
+            description: toPlainText(issue.descriptionJson),
+            epicKey: issue.epicId ? keys.get(issue.epicId) ?? null : null,
+            parentKey: issue.parentId ? keys.get(issue.parentId) ?? null : null,
+            sprintId: issue.sprintId,
+            startDate: issue.startDate,
+            estimateSeconds: issue.estimateSeconds,
+            spentSeconds: issue.spentSeconds,
+            customFields: issue.customFields,
+            archived: issue.archivedAt !== null,
+            checklist: checklist.map((c) => ({ id: c.id, text: c.text, done: c.done })),
+            issueLinks: issueLinks.map((l) => ({
+              id: l.id,
+              type: l.type,
+              direction: l.fromIssueId === issue.id ? "outward" : "inward",
+              issueKey: keys.get(l.fromIssueId === issue.id ? l.toIssueId : l.fromIssueId) ?? null,
+            })),
+            linkedPages: linkedPages.map((p) => ({ id: p.id, title: p.title })),
+            watcherIds: watchers.map((w) => w.userId),
+          };
         }),
       )(),
   );
@@ -252,6 +407,9 @@ export function buildMcpServer(ctx: ApiAuthContext) {
         labels: z.array(z.string()).optional(),
         storyPoints: z.number().optional(),
         dueDate: z.string().optional(),
+        epicKey: z.string().optional().describe("Epic to file the issue under, e.g. KPT-12."),
+        parentKey: z.string().optional().describe("Parent issue, for a subtask."),
+        sprintId: z.string().optional().describe("Sprint to add the issue to right away (see list_sprints)."),
         idempotencyKey: z.string().optional(),
       },
     },
@@ -265,6 +423,9 @@ export function buildMcpServer(ctx: ApiAuthContext) {
               resolveStatus(tx, project.id, args.status),
               args.assigneeEmail ? resolveUserByEmail(tx, ctx.organizationId, args.assigneeEmail) : Promise.resolve(undefined),
             ]);
+            const parentId = args.parentKey ? (await resolveIssue(tx, ctx.organizationId, args.parentKey)).issue.id : undefined;
+            const epicId = args.epicKey ? (await resolveIssue(tx, ctx.organizationId, args.epicKey)).issue.id : undefined;
+            if (args.sprintId) await resolveSprint(tx, ctx.organizationId, args.sprintId);
             const created = await createIssue(tx, {
               organizationId: ctx.organizationId,
               projectId: project.id,
@@ -274,15 +435,17 @@ export function buildMcpServer(ctx: ApiAuthContext) {
               reporterId: ctx.userId,
               assigneeId,
               priority: args.priority,
-              descriptionJson: args.description
-                ? [{ type: "paragraph", content: [{ type: "text", text: args.description, styles: {} }] }]
-                : undefined,
+              descriptionJson: args.description ? paragraphDoc(args.description) : undefined,
               labels: args.labels,
               storyPoints: args.storyPoints,
               dueDate: args.dueDate ? new Date(args.dueDate) : undefined,
+              parentId,
               origin: ctx.origin,
               originClient: "mcp",
             });
+            // Same follow-up steps, in the same transaction, as the UI's create dialog (createIssueFn).
+            if (epicId) await updateIssue(tx, created.issueId, { epicId, actorId: ctx.userId, origin: ctx.origin, originClient: "mcp" });
+            if (args.sprintId) await addIssueToSprint(tx, args.sprintId, created.issueId, { actorId: ctx.userId, origin: ctx.origin, originClient: "mcp" });
             return { key: `${project.key}-${created.keySeq}`, id: created.issueId };
           };
           if (!args.idempotencyKey) return run();
@@ -304,27 +467,31 @@ export function buildMcpServer(ctx: ApiAuthContext) {
         dueDate: z.string().nullable().optional(),
         startDate: z.string().nullable().optional(),
         epicKey: z.string().nullable().optional(),
+        parentKey: z.string().nullable().optional(),
+        type: z.string().optional().describe("Issue type name, e.g. \"Bug\"."),
+        estimateSeconds: z.number().int().nonnegative().nullable().optional(),
         labels: z.array(z.string()).optional(),
-        description: z.string().optional(),
+        description: z.string().optional().describe("Replaces the whole description with this plain text."),
       },
     },
     (args) =>
       tool(ctx, "issues:write", () =>
         withAuthorizedTenant(ctx, async (tx) => {
-          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
-          const epicId = args.epicKey === undefined ? undefined : args.epicKey === null ? null : (await resolveIssue(tx, ctx.organizationId, args.epicKey)).issue.id;
+          const { project, issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          const keyToId = async (key: string | null | undefined) =>
+            key === undefined ? undefined : key === null ? null : (await resolveIssue(tx, ctx.organizationId, key)).issue.id;
           await updateIssue(tx, issue.id, {
             title: args.title,
             priority: args.priority,
             storyPoints: args.storyPoints,
-            dueDate: args.dueDate === undefined ? undefined : args.dueDate === null ? null : new Date(args.dueDate),
-            startDate: args.startDate === undefined ? undefined : args.startDate === null ? null : new Date(args.startDate),
-            epicId,
+            dueDate: toDate(args.dueDate),
+            startDate: toDate(args.startDate),
+            epicId: await keyToId(args.epicKey),
+            parentId: await keyToId(args.parentKey),
+            typeId: args.type ? (await resolveIssueType(tx, project.id, args.type)).id : undefined,
+            estimateSeconds: args.estimateSeconds,
             labels: args.labels,
-            descriptionJson:
-              args.description !== undefined
-                ? [{ type: "paragraph", content: [{ type: "text", text: args.description, styles: {} }] }]
-                : undefined,
+            descriptionJson: args.description !== undefined ? paragraphDoc(args.description) : undefined,
             actorId: ctx.userId,
             origin: ctx.origin,
             originClient: "mcp",
@@ -382,7 +549,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
           const result = await addComment(tx, {
             issueId: issue.id,
             authorId: ctx.userId,
-            bodyJson: [{ type: "paragraph", content: [{ type: "text", text: args.text, styles: {} }] }],
+            bodyJson: paragraphDoc(args.text),
             parentCommentId: args.parentCommentId,
             origin: ctx.origin,
             originClient: "mcp",
@@ -621,6 +788,790 @@ export function buildMcpServer(ctx: ApiAuthContext) {
           const sprint = await resolveSprint(tx, ctx.organizationId, args.sprintId);
           if (args.carryToSprintId) await resolveSprint(tx, ctx.organizationId, args.carryToSprintId);
           return completeSprint(tx, { sprintId: sprint.id, actorId: ctx.userId, carryToSprintId: args.carryToSprintId });
+        }),
+      )(),
+  );
+
+  // ── Projects & people ────────────────────────────────────────────────
+
+  server.registerTool(
+    "get_project",
+    {
+      description:
+        "Everything needed to file and edit issues in a project: its issue types, workflow statuses, priority levels, custom properties, epics, and the members issues can be assigned to.",
+      inputSchema: { projectKey: z.string().min(1) },
+    },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
+          const [types, statuses, priorities, properties, epics, members] = await Promise.all([
+            tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)).orderBy(asc(schema.issueType.order)),
+            tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, project.id)).orderBy(asc(schema.workflowStatus.order)),
+            listPriorityLevels(tx, project.id),
+            listIssuePropertyDefinitions(tx, project.id),
+            listCandidateEpics(tx, project.id),
+            listAssignableUsers(tx, { organizationId: ctx.organizationId, projectId: project.id }),
+          ]);
+          return {
+            id: project.id,
+            key: project.key,
+            name: project.name,
+            teamId: project.teamId,
+            issueTypes: types.map((t) => ({ name: t.name, isSubtask: t.isSubtask, hierarchyLevel: t.hierarchyLevel })),
+            statuses: statuses.map((s) => ({ name: s.name, category: s.category })),
+            priorities: priorities.map((p) => p.key),
+            properties: properties.map((p) => ({ key: p.key, name: p.name, type: p.type, options: p.options })),
+            epics: epics.map((e) => ({ key: `${project.key}-${e.keySeq}`, title: e.title })),
+            members,
+          };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_teams",
+    { description: "List the workspace's teams. Team ids are what create_page's teamId and set_page_access's team subject take." },
+    tool(ctx, null, () => withAuthorizedTenant(ctx, (tx) => listTeamsForWorkspace(tx, ctx))),
+  );
+
+  // ── Issues: comments, links, time, checklist, watching, archive ───────
+
+  server.registerTool(
+    "list_issue_comments",
+    { description: "List an issue's comments, oldest first, as plain text.", inputSchema: { issueKey: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          const comments = await listComments(tx, issue.id);
+          return comments.map((c) => ({
+            id: c.id,
+            authorId: c.authorId,
+            parentCommentId: c.parentCommentId,
+            text: toPlainText(c.bodyJson),
+            origin: c.origin,
+            createdAt: c.createdAt,
+          }));
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "set_issue_property",
+    {
+      description: "Set one custom property on an issue (see get_project for the project's property keys). value null clears it.",
+      inputSchema: {
+        issueKey: z.string().min(1),
+        key: z.string().min(1),
+        value: z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())]),
+      },
+    },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { project, issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          const definitions = await listIssuePropertyDefinitions(tx, project.id);
+          if (!definitions.some((d) => d.key === args.key)) {
+            throw new ApiError(400, "Bad Request", `Property "${args.key}" is not defined in project ${project.key}`);
+          }
+          await updateIssueCustomField(tx, issue.id, args.key, args.value as Json, { actorId: ctx.userId, origin: ctx.origin, originClient: "mcp" });
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "link_issues",
+    {
+      description: "Link two issues. Directional, as in JIRA: fromIssueKey \"blocks\"/\"duplicates\"/\"clones\" toIssueKey; \"relates\" reads either way.",
+      inputSchema: {
+        fromIssueKey: z.string().min(1),
+        toIssueKey: z.string().min(1),
+        type: z.enum(["blocks", "relates", "duplicates", "clones"]),
+      },
+    },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const [{ issue: from }, { issue: to }] = await Promise.all([
+            resolveIssue(tx, ctx.organizationId, args.fromIssueKey),
+            resolveIssue(tx, ctx.organizationId, args.toIssueKey),
+          ]);
+          if (from.id === to.id) throw new ApiError(400, "Bad Request", "An issue can't be linked to itself");
+          return linkIssues(tx, { fromIssueId: from.id, toIssueId: to.id, type: args.type });
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "log_work",
+    {
+      description: "Log time spent on an issue. Adds to the issue's spent time.",
+      inputSchema: {
+        issueKey: z.string().min(1),
+        seconds: z.number().int().positive(),
+        note: z.string().optional(),
+        loggedAt: z.iso.datetime().optional().describe("When the work happened. Defaults to now."),
+      },
+    },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          return logWork(tx, {
+            issueId: issue.id,
+            userId: ctx.userId,
+            seconds: args.seconds,
+            note: args.note,
+            loggedAt: args.loggedAt ? new Date(args.loggedAt) : undefined,
+          });
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_worklogs",
+    { description: "List the time logged on an issue.", inputSchema: { issueKey: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          const worklogs = await listWorklogs(tx, issue.id);
+          return worklogs.map((w) => ({ id: w.id, userId: w.userId, seconds: w.seconds, note: w.note, loggedAt: w.loggedAt }));
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_attachments",
+    { description: "List an issue's file attachments with short-lived download URLs.", inputSchema: { issueKey: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          const attachments = await listAttachments(tx, issue.id);
+          return attachments.map((a) => ({
+            id: a.id,
+            fileName: a.fileName,
+            contentType: a.contentType,
+            sizeBytes: a.sizeBytes,
+            uploaderId: a.uploaderId,
+            createdAt: a.createdAt,
+            downloadUrl: a.downloadUrl,
+          }));
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "add_checklist_item",
+    { description: "Add a to-do line to an issue's checklist.", inputSchema: { issueKey: z.string().min(1), text: z.string().min(1).max(500) } },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          return addChecklistItem(tx, { issueId: issue.id, text: args.text, createdBy: ctx.userId });
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "update_checklist_item",
+    {
+      description: "Check off, rename, reorder (move: up/down), or delete (delete: true) an issue's checklist item. Item ids come from get_issue.",
+      inputSchema: {
+        issueKey: z.string().min(1),
+        itemId: z.string().min(1),
+        text: z.string().min(1).max(500).optional(),
+        done: z.boolean().optional(),
+        move: z.enum(["up", "down"]).optional(),
+        delete: z.boolean().optional(),
+      },
+    },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          const items = await listChecklistItems(tx, issue.id);
+          if (!items.some((i) => i.id === args.itemId)) throw new ApiError(404, "Not Found", `Checklist item ${args.itemId} not found on ${args.issueKey}`);
+          if (args.delete) {
+            await deleteChecklistItem(tx, args.itemId);
+            return { ok: true };
+          }
+          if (args.text !== undefined || args.done !== undefined) await updateChecklistItem(tx, { itemId: args.itemId, text: args.text, done: args.done });
+          if (args.move) await moveChecklistItem(tx, { itemId: args.itemId, direction: args.move });
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "watch_issue",
+    { description: "Start (watching: true) or stop watching an issue, i.e. get notified of its changes.", inputSchema: { issueKey: z.string().min(1), watching: z.boolean() } },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          await setWatching(tx, { issueId: issue.id, userId: ctx.userId, watching: args.watching });
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "archive_issue",
+    {
+      description: "Archive (soft-delete) an issue, or bring it back with restore: true. Project admins and the team admin only, as in the UI.",
+      inputSchema: { issueKey: z.string().min(1), restore: z.boolean().optional() },
+    },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { project, issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          await requireIssueAdmin(tx, ctx, project.id);
+          const meta = { actorId: ctx.userId, origin: ctx.origin, originClient: "mcp" };
+          if (args.restore) await restoreIssue(tx, issue.id, meta);
+          else await archiveIssue(tx, issue.id, meta);
+          return { ok: true, archived: !args.restore };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_backlog",
+    { description: "List a project's backlog: open issues not in any sprint, in backlog order.", inputSchema: { projectKey: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
+          const issues = await listBacklogIssues(tx, project.id);
+          return issues.map((i) => serializeIssue(i, project.key));
+        }),
+      )(),
+  );
+
+  // ── Sprints ──────────────────────────────────────────────────────────
+
+  server.registerTool(
+    "create_sprint",
+    {
+      description: "Create a sprint on a project's board. Name defaults to the next \"Sprint N\".",
+      inputSchema: {
+        projectKey: z.string().min(1),
+        name: z.string().min(1).optional(),
+        goal: z.string().optional(),
+        cycle: z.enum(["1w", "2w", "3w", "4w", "custom"]).optional(),
+        startAt: z.iso.datetime().optional(),
+        endAt: z.iso.datetime().optional(),
+        capacityPoints: z.number().optional(),
+      },
+    },
+    (args) =>
+      tool(ctx, "sprints:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
+          const board = await resolveBoardForProject(tx, project.id);
+          return createSprint(tx, {
+            organizationId: ctx.organizationId,
+            boardId: board.id,
+            name: args.name,
+            goal: args.goal,
+            cycle: args.cycle,
+            startAt: args.startAt ? new Date(args.startAt) : undefined,
+            endAt: args.endAt ? new Date(args.endAt) : undefined,
+            capacityPoints: args.capacityPoints,
+            actorUserId: ctx.userId,
+          });
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "rename_sprint",
+    { description: "Rename a sprint.", inputSchema: { sprintId: z.string().min(1), name: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "sprints:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const sprint = await resolveSprint(tx, ctx.organizationId, args.sprintId);
+          await updateSprint(tx, { sprintId: sprint.id, name: args.name });
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_sprint_issues",
+    { description: "List the issues in a sprint.", inputSchema: { sprintId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const sprint = await resolveSprint(tx, ctx.organizationId, args.sprintId);
+          const issues = await listSprintIssues(tx, sprint.id);
+          const keys = await issueKeysById(tx, issues.map((i) => i.id));
+          return issues.map((i) => ({ key: keys.get(i.id) ?? null, id: i.id, title: i.title, statusId: i.statusId, assigneeId: i.assigneeId, storyPoints: i.storyPoints }));
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "move_issue_to_sprint",
+    {
+      description: "Put an issue into a sprint (moving it out of any other), or back to the backlog by omitting sprintId.",
+      inputSchema: { issueKey: z.string().min(1), sprintId: z.string().optional() },
+    },
+    (args) =>
+      tool(ctx, "sprints:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          const actor = { actorId: ctx.userId, origin: ctx.origin, originClient: "mcp" };
+          if (args.sprintId) {
+            const sprint = await resolveSprint(tx, ctx.organizationId, args.sprintId);
+            if (sprint.state === "closed") throw new ApiError(400, "Bad Request", "Can't add an issue to a closed sprint");
+            await addIssueToSprint(tx, sprint.id, issue.id, actor);
+          } else {
+            await removeIssueFromSprint(tx, issue.id, actor);
+          }
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "get_sprint_charts",
+    { description: "Day-by-day burndown and cumulative-flow series for a sprint.", inputSchema: { sprintId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const sprint = await resolveSprint(tx, ctx.organizationId, args.sprintId);
+          const [burndown, cumulativeFlow] = await Promise.all([getBurndown(tx, sprint.id), getCumulativeFlow(tx, sprint.id)]);
+          return { burndown, cumulativeFlow };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "get_velocity",
+    { description: "Committed vs completed story points for a project's recent sprints.", inputSchema: { projectKey: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
+          const board = await resolveBoardForProject(tx, project.id);
+          return getVelocityHistory(tx, board.id);
+        }),
+      )(),
+  );
+
+  // ── Docs ─────────────────────────────────────────────────────────────
+
+  server.registerTool(
+    "search_pages",
+    { description: "Find doc pages by title.", inputSchema: { query: z.string().min(1), limit: z.number().int().positive().max(50).optional() } },
+    (args) =>
+      tool(ctx, "pages:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const rows = await tx
+            .select()
+            .from(schema.page)
+            .where(and(eq(schema.page.organizationId, ctx.organizationId), isNull(schema.page.archivedAt), ilike(schema.page.title, `%${args.query.trim()}%`)))
+            .orderBy(asc(schema.page.title))
+            .limit(200);
+          const visible = await filterAccessiblePages(tx, rows, ctx);
+          return { data: visible.slice(0, args.limit ?? 20).map(serializePage) };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_page_comments",
+    { description: "List a page's open (unresolved) comments.", inputSchema: { pageId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "pages:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "view");
+          const comments = await listPageComments(tx, args.pageId);
+          return comments.map((c) => ({ id: c.id, blockId: c.blockId, authorId: c.authorId, text: toPlainText(c.bodyJson), createdAt: c.createdAt }));
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "resolve_page_comment",
+    { description: "Mark a page comment resolved.", inputSchema: { pageId: z.string().min(1), commentId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "pages:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "comment");
+          const [comment] = await tx
+            .select({ id: schema.pageComment.id })
+            .from(schema.pageComment)
+            .where(and(eq(schema.pageComment.id, args.commentId), eq(schema.pageComment.pageId, args.pageId)));
+          if (!comment) throw new ApiError(404, "Not Found", `Comment ${args.commentId} not found on page ${args.pageId}`);
+          await resolvePageComment(tx, comment.id);
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "get_page_links",
+    { description: "Issues a page is linked to, and pages that mention it (backlinks).", inputSchema: { pageId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "pages:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "view");
+          const [outgoing, backlinks] = await Promise.all([listOutgoingLinks(tx, "page", args.pageId), listBacklinks(tx, "page", args.pageId)]);
+          const keys = await issueKeysById(tx, outgoing.filter((l) => l.toType === "issue").map((l) => l.toId));
+          const mentionedById = backlinks.filter((l) => l.fromType === "page").map((l) => l.fromId);
+          const mentionedBy = mentionedById.length
+            ? await filterAccessiblePages(tx, await tx.select().from(schema.page).where(and(inArray(schema.page.id, mentionedById), isNull(schema.page.archivedAt))), ctx)
+            : [];
+          return { linkedIssues: [...keys.values()], mentionedBy: mentionedBy.map((p) => ({ id: p.id, title: p.title })) };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "unlink_page_from_issue",
+    { description: "Remove a link between a doc page and an issue.", inputSchema: { pageId: z.string().min(1), issueKey: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "pages:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "edit");
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          await unlinkEntities(tx, { fromType: "page", fromId: args.pageId, toType: "issue", toId: issue.id });
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "move_page",
+    {
+      description:
+        "Move a page (with its sub-pages). Give parentPageId to nest it under another page (it joins that page's space), or omit it to move it to the top of a space: projectKey, teamId, private, or none of them for the shared Workspace.",
+      inputSchema: {
+        pageId: z.string().min(1),
+        parentPageId: z.string().optional(),
+        projectKey: z.string().optional(),
+        teamId: z.string().optional(),
+        private: z.boolean().optional(),
+      },
+    },
+    (args) =>
+      tool(ctx, "pages:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const page = await resolvePage(tx, ctx, args.pageId, "edit");
+          // Into or out of a Private/Shared space changes who can see the
+          // page, so it needs the right to change its access, not just edit
+          // (same rule as the UI's Move to… and drag-to-nest).
+          const requireManage = async () => {
+            if (!(await canManagePageAccess(tx, page.id, ctx))) {
+              throw new ForbiddenError(`Only someone who manages access to page ${page.id} can move it into or out of a private space`);
+            }
+          };
+          if (args.parentPageId) {
+            if (args.projectKey || args.teamId || args.private) throw new ApiError(400, "Bad Request", "Give parentPageId or a target space, not both");
+            const parent = await resolvePage(tx, ctx, args.parentPageId, "edit");
+            const crossesPersonal =
+              (page.privateOwnerId || parent.privateOwnerId) &&
+              (page.privateOwnerId !== parent.privateOwnerId || page.projectId !== parent.projectId || page.teamId !== parent.teamId);
+            if (crossesPersonal) await requireManage();
+            await movePage(tx, page.id, { parentPageId: parent.id });
+            return { ok: true };
+          }
+          const projectId = args.projectKey ? (await resolveProject(tx, ctx.organizationId, args.projectKey)).id : null;
+          if (args.teamId) await requireTeamMember(tx, { ...ctx, teamId: args.teamId });
+          if (args.private || page.privateOwnerId) await requireManage();
+          await movePage(tx, page.id, {
+            parentPageId: null,
+            space: { projectId, teamId: args.teamId ?? null, privateOwnerId: args.private ? ctx.userId : null },
+          });
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "duplicate_page",
+    {
+      description: "Copy a page (content included) next to the original, or create a new page from a template by passing a template's id (see list_templates) and parentPageId.",
+      inputSchema: { pageId: z.string().min(1), parentPageId: z.string().nullable().optional(), titleSuffix: z.string().optional() },
+    },
+    (args) =>
+      tool(ctx, "pages:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const source = await resolvePage(tx, ctx, args.pageId, "view");
+          // The copy doesn't carry the source's access list, so copying a
+          // restricted page would publish it to its whole space — only
+          // someone who decides who sees it may do that.
+          const { grants } = await getPageAccess(tx, source.id, ctx);
+          if (grants.length > 0 && !(await canManagePageAccess(tx, source.id, ctx))) {
+            throw new ForbiddenError(`Page ${source.id} is restricted; only someone who manages its access can copy it`);
+          }
+          if (args.parentPageId) await resolvePage(tx, ctx, args.parentPageId, "edit");
+          const copy = await duplicatePage(tx, source.id, {
+            actorUserId: ctx.userId,
+            parentPageId: args.parentPageId,
+            titleSuffix: args.titleSuffix ?? (source.type === "template" ? "" : " (copy)"),
+          });
+          return serializePage(copy);
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_templates",
+    { description: "List page templates." },
+    tool(ctx, "pages:read", () =>
+      withAuthorizedTenant(ctx, async (tx) => {
+        const templates = await filterAccessiblePages(tx, await listTemplatePages(tx, ctx.organizationId), ctx);
+        return { data: templates.map(serializePage) };
+      }),
+    ),
+  );
+
+  server.registerTool(
+    "set_page_template",
+    { description: "Turn a page into a template (isTemplate: true) or back into an ordinary doc.", inputSchema: { pageId: z.string().min(1), isTemplate: z.boolean() } },
+    (args) =>
+      tool(ctx, "pages:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "edit");
+          await updatePageMeta(tx, args.pageId, { type: args.isTemplate ? "template" : "doc" });
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "archive_page",
+    {
+      description: "Move a page and its sub-pages to the trash, or bring a trashed page back with restore: true.",
+      inputSchema: { pageId: z.string().min(1), restore: z.boolean().optional() },
+    },
+    (args) =>
+      tool(ctx, "pages:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "edit");
+          if (args.restore) await restorePage(tx, args.pageId);
+          else await archivePage(tx, args.pageId);
+          return { ok: true, archived: !args.restore };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_trash",
+    { description: "List trashed (archived) pages, most recently trashed first." },
+    tool(ctx, "pages:read", () =>
+      withAuthorizedTenant(ctx, async (tx) => {
+        const pages = await filterAccessiblePages(tx, await listArchivedPages(tx, ctx.organizationId), ctx);
+        return { data: pages.map((p) => ({ ...serializePage(p), archivedAt: p.archivedAt })) };
+      }),
+    ),
+  );
+
+  server.registerTool(
+    "delete_page_permanently",
+    {
+      description: "Permanently delete a page that's already in the trash. Can't be undone. Needs full access to the page.",
+      inputSchema: { pageId: z.string().min(1) },
+    },
+    (args) =>
+      tool(ctx, "pages:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const page = await resolvePage(tx, ctx, args.pageId, "full");
+          if (!page.archivedAt) throw new ApiError(400, "Bad Request", "Move the page to the trash first (archive_page)");
+          await permanentlyDeletePage(tx, page.id);
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_page_versions",
+    { description: "List a page's saved versions, newest first.", inputSchema: { pageId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "pages:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "view");
+          return listPageVersions(tx, args.pageId);
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "get_page_version",
+    {
+      description: "Read an earlier version of a page as Markdown. Read-only: restoring a version is done in the editor, since writing over the live document would race anyone editing it.",
+      inputSchema: { pageId: z.string().min(1), versionId: z.string().min(1) },
+    },
+    (args) =>
+      tool(ctx, "pages:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "view");
+          const snapshot = await getPageVersionSnapshot(tx, args.pageId, args.versionId);
+          if (!snapshot) throw new ApiError(404, "Not Found", `Version ${args.versionId} not found`);
+          return { versionId: args.versionId, content: await yjsStateToMarkdown(snapshot) };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "favorite_page",
+    { description: "Add a page to, or remove it from, your sidebar favorites.", inputSchema: { pageId: z.string().min(1), favorite: z.boolean() } },
+    (args) =>
+      tool(ctx, "pages:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolvePage(tx, ctx, args.pageId, "view");
+          const isFavorite = (await listFavoritePageIds(tx, ctx.userId)).includes(args.pageId);
+          if (isFavorite !== args.favorite) await toggleFavoritePage(tx, args.pageId, ctx.userId);
+          return { ok: true, favorite: args.favorite };
+        }),
+      )(),
+  );
+
+  // ── Automation ───────────────────────────────────────────────────────
+
+  const automationNodeSchema = z.object({
+    id: z.string().min(1),
+    type: z.enum(schema.automationWorkflowNodeType),
+    name: z.string().min(1).optional(),
+    config: z.record(z.string(), z.any()),
+    position: z.object({ x: z.number(), y: z.number() }),
+  });
+  const automationEdgeSchema = z.object({ fromNodeId: z.string().min(1), fromHandle: z.string().min(1).optional(), toNodeId: z.string().min(1) });
+
+  /** Workflow ids aren't project-scoped by themselves; this keeps a caller from reaching one through the wrong project key. */
+  async function resolveWorkflow(tx: Tx, projectKey: string, workflowId: string) {
+    const project = await resolveProject(tx, ctx.organizationId, projectKey);
+    const workflow = await getWorkflow(tx, workflowId);
+    if (!workflow || workflow.projectId !== project.id) throw new ApiError(404, "Not Found", `Workflow ${workflowId} not found in ${project.key}`);
+    return { project, workflow };
+  }
+
+  server.registerTool(
+    "list_automations",
+    { description: "List a project's automation workflows.", inputSchema: { projectKey: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
+          return listWorkflows(tx, project.id);
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "get_automation",
+    { description: "Get an automation workflow's nodes and edges.", inputSchema: { projectKey: z.string().min(1), workflowId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:read", () => withAuthorizedTenant(ctx, async (tx) => (await resolveWorkflow(tx, args.projectKey, args.workflowId)).workflow))(),
+  );
+
+  server.registerTool(
+    "save_automation",
+    {
+      description:
+        "Create an automation workflow (omit workflowId) or update one. A workflow is a graph: trigger nodes (trigger_event, trigger_schedule), conditions, and actions, joined by edges. nodes and edges always go together and replace the whole graph. Use dryRun to log what it would do without doing it.",
+      inputSchema: {
+        projectKey: z.string().min(1),
+        workflowId: z.string().optional(),
+        name: z.string().min(1).optional(),
+        enabled: z.boolean().optional(),
+        dryRun: z.boolean().optional(),
+        nodes: z.array(automationNodeSchema).optional(),
+        edges: z.array(automationEdgeSchema).optional(),
+      },
+    },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          if ((args.nodes === undefined) !== (args.edges === undefined)) throw new ApiError(400, "Bad Request", "nodes and edges must be sent together");
+          if (!args.workflowId) {
+            if (!args.name || !args.nodes || !args.edges) throw new ApiError(400, "Bad Request", "A new workflow needs name, nodes and edges");
+            const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
+            return createWorkflow(tx, {
+              organizationId: ctx.organizationId,
+              projectId: project.id,
+              name: args.name,
+              dryRun: args.dryRun,
+              createdBy: ctx.userId,
+              nodes: args.nodes,
+              edges: args.edges,
+            });
+          }
+          const { project } = await resolveWorkflow(tx, args.projectKey, args.workflowId);
+          await updateWorkflow(tx, {
+            workflowId: args.workflowId,
+            projectId: project.id,
+            name: args.name,
+            enabled: args.enabled,
+            dryRun: args.dryRun,
+            nodes: args.nodes,
+            edges: args.edges,
+          });
+          return { workflowId: args.workflowId };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "delete_automation",
+    { description: "Delete an automation workflow and its run history.", inputSchema: { projectKey: z.string().min(1), workflowId: z.string().min(1) } },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolveWorkflow(tx, args.projectKey, args.workflowId);
+          await deleteWorkflow(tx, args.workflowId);
+          return { ok: true };
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "list_automation_runs",
+    {
+      description: "List an automation workflow's recent runs, or pass runId for one run's per-node steps.",
+      inputSchema: { projectKey: z.string().min(1), workflowId: z.string().min(1), runId: z.string().optional() },
+    },
+    (args) =>
+      tool(ctx, "issues:read", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          await resolveWorkflow(tx, args.projectKey, args.workflowId);
+          if (!args.runId) return listWorkflowRuns(tx, args.workflowId);
+          const run = await getWorkflowRun(tx, args.runId);
+          if (!run || run.workflowId !== args.workflowId) throw new ApiError(404, "Not Found", `Run ${args.runId} not found`);
+          return run;
+        }),
+      )(),
+  );
+
+  // ── Notifications ────────────────────────────────────────────────────
+
+  server.registerTool(
+    "list_notifications",
+    { description: "Your most recent notifications (newest first).", inputSchema: { limit: z.number().int().positive().max(100).optional(), unreadOnly: z.boolean().optional() } },
+    (args) =>
+      tool(ctx, null, () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const rows = await listNotifications(tx, ctx.organizationId, ctx.userId, args.limit ?? 30);
+          return args.unreadOnly ? rows.filter((n) => !n.readAt) : rows;
+        }),
+      )(),
+  );
+
+  server.registerTool(
+    "mark_notifications_read",
+    { description: "Mark one notification read (notificationId), or all of yours (omit it).", inputSchema: { notificationId: z.string().optional() } },
+    (args) =>
+      tool(ctx, null, () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          if (args.notificationId) await markNotificationRead(tx, args.notificationId, ctx.userId);
+          else await markAllNotificationsRead(tx, ctx.organizationId, ctx.userId);
+          return { ok: true };
         }),
       )(),
   );
