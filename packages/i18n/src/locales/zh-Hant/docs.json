@@ -140,5 +140,24 @@
     "deleteTitle": "永久刪除頁面？",
     "restored": "已還原頁面",
     "deleted": "已刪除頁面"
+  },
+  "notionImport": {
+    "title": "從 Notion 匯入",
+    "intro": "在 Notion 中，開啟頁面的 ⋯ 選單 → Export，或 Settings → Export all workspace content。選擇 HTML 可保留頁面圖示、切換區塊與標註（Markdown & CSV 也可以），開啟「Include subpages」，然後直接上傳下載的 .zip 檔。",
+    "destination": "匯入到",
+    "workspace": "工作區",
+    "workspaceHint": "工作區中的每個人都能看到這些頁面。",
+    "private": "私人",
+    "privateHint": "只有你能看到這些頁面，之後可以再分享或移動。",
+    "file": "Notion 匯出檔（.zip）",
+    "import": "匯入",
+    "importing": "匯入中… 大型匯出檔可能需要一分鐘左右。",
+    "tooLarge": "檔案超過 200 MB。請匯出較小的範圍，或分別上傳每個「Part」zip。",
+    "failed": "匯入失敗：{{message}}",
+    "created": "已匯入頁面：{{count}}",
+    "skipped": "先前已匯入、保持不變：{{count}}",
+    "assets": "圖片與檔案：{{count}}",
+    "problems": "部分頁面發生問題：",
+    "open": "開啟匯入的頁面"
   }
 }

@@ -140,5 +140,24 @@
     "deleteTitle": "Hapus halaman secara permanen?",
     "restored": "Halaman dipulihkan",
     "deleted": "Halaman dihapus"
+  },
+  "notionImport": {
+    "title": "Impor dari Notion",
+    "intro": "Di Notion, buka menu ⋯ halaman → Export, atau Settings → Export all workspace content. Pilih HTML agar ikon halaman, toggle, dan callout tetap terjaga (Markdown & CSV juga bisa), aktifkan “Include subpages”, lalu unggah file .zip apa adanya.",
+    "destination": "Impor ke",
+    "workspace": "Workspace",
+    "workspaceHint": "Semua anggota workspace dapat melihat halaman ini.",
+    "private": "Pribadi",
+    "privateHint": "Hanya Anda yang dapat melihat halaman ini. Anda bisa membagikan atau memindahkannya nanti.",
+    "file": "Ekspor Notion (.zip)",
+    "import": "Impor",
+    "importing": "Mengimpor… ekspor yang besar bisa memakan waktu sekitar satu menit.",
+    "tooLarge": "File lebih dari 200 MB. Ekspor bagian workspace yang lebih kecil, atau unggah setiap zip “Part” secara terpisah.",
+    "failed": "Impor gagal: {{message}}",
+    "created": "Halaman diimpor: {{count}}",
+    "skipped": "Sudah diimpor sebelumnya, tidak diubah: {{count}}",
+    "assets": "Gambar dan file: {{count}}",
+    "problems": "Beberapa halaman bermasalah:",
+    "open": "Buka halaman yang diimpor"
   }
 }

@@ -120,6 +120,8 @@
   "newPrivatePage": "Halaman pribadi baru",
   "sharedDocs": "Dibagikan",
   "privateDocsHint": "Hanya Anda yang dapat melihat halaman di sini",
+  "importToWorkspace": "Impor dari Notion ke Workspace",
+  "importToPrivate": "Impor dari Notion ke Pribadi",
   "noTeamDocs": "Belum ada dokumen",
   "lockedTeamHint": "Anda bukan anggota tim ini. Minta akses ke {{names}}.",
   "lockedTeamNoAdmin": "Anda bukan anggota tim ini.",

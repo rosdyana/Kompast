@@ -3,6 +3,7 @@ import { createReadStream, existsSync } from "node:fs";
 import { Readable } from "node:stream";
 import { verifyLocalStorageToken, resolveLocalPath } from "@kompast/storage";
 import { db, schema, eq } from "@kompast/db";
+import { contentTypeFor } from "@/lib/content-type";
 
 export const Route = createFileRoute("/api/storage/download/$")({
   server: {
@@ -33,10 +34,17 @@ export const Route = createFileRoute("/api/storage/download/$")({
           .from(schema.issueAttachment)
           .where(eq(schema.issueAttachment.storageKey, key));
 
+        // Page assets (imported images) have no attachment row; their
+        // type comes from the extension. Served from the app's own origin,
+        // so an SVG could carry script: the sandbox CSP keeps it inert
+        // when opened directly, and <img> rendering doesn't run it anyway.
+        const fileName = attachment?.fileName ?? key.slice(key.lastIndexOf("/") + 1);
         return new Response(Readable.toWeb(createReadStream(path)) as never, {
           headers: {
-            "Content-Type": attachment?.contentType ?? "application/octet-stream",
-            "Content-Disposition": `inline; filename="${attachment?.fileName ?? "download"}"`,
+            "Content-Type": attachment?.contentType ?? contentTypeFor(fileName),
+            "Content-Disposition": `inline; filename="${fileName.replace(/"/g, "")}"`,
+            "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
+            "X-Content-Type-Options": "nosniff",
           },
         });
       },

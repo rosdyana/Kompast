@@ -139,3 +139,14 @@ export async function requireApiAuth(
     origin,
   };
 }
+
+/**
+ * For the few routes the app's own UI calls with a plain fetch (file
+ * uploads and downloads, which server functions don't carry well): a
+ * Bearer PAT if one is sent, held to `requiredScope`, otherwise the
+ * browser session, which carries the user's full permissions as usual.
+ */
+export async function requireApiOrSessionAuth(request: Request, requiredScope: string): Promise<{ userId: string; organizationId: string }> {
+  if (request.headers.get("authorization")) return requireApiAuth(request, requiredScope, "api");
+  return requireSessionAuth(request);
+}

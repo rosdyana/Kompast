@@ -36,6 +36,7 @@ export interface Workbench {
   openCreateIssue: (defaults?: CreateIssueDefaults) => void;
   openShortcuts: () => void;
   createPage: (opts?: { parentPageId?: string | null; projectId?: string | null; teamId?: string | null; private?: boolean }) => Promise<void>;
+  openNotionImport: (target: "workspace" | "private") => void;
   chrome: PageChrome | null;
   setChrome: (chrome: PageChrome | null) => void;
 }
@@ -45,6 +46,7 @@ export const WorkbenchContext = createContext<Workbench>({
   openCreateIssue: () => {},
   openShortcuts: () => {},
   createPage: async () => {},
+  openNotionImport: () => {},
   chrome: null,
   setChrome: () => {},
 });

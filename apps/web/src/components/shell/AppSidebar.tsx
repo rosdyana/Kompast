@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
+  FileDown,
   FileText,
   Home,
   Inbox,
@@ -412,7 +413,7 @@ function WorkspaceMenu({ shell }: { shell: SidebarShellData }) {
 
 export function AppSidebar({ shell }: { shell: SidebarShellData }) {
   const { t } = useTranslation("nav");
-  const { openPalette, openCreateIssue, createPage } = useWorkbench();
+  const { openPalette, openCreateIssue, createPage, openNotionImport } = useWorkbench();
   const { setMobileOpen } = useSidebarCollapsed();
   const favorites = shell.pages.filter((p) => shell.favoriteIds.includes(p.id));
   // shell.pages is every visible non-project page; team-space ones go under
@@ -527,6 +528,12 @@ export function AppSidebar({ shell }: { shell: SidebarShellData }) {
 
         <div>
           <SectionHeader label={t("workspaceDocs")}>
+            {/* Bulk import into everyone's docs is admin-only; the server enforces it too. */}
+            {(shell.isAdmin || shell.isSuperAdmin) && (
+              <HoverAction label={t("importToWorkspace")} onClick={() => openNotionImport("workspace")}>
+                <FileDown size={13} strokeWidth={1.75} />
+              </HoverAction>
+            )}
             <HoverAction label={t("newPage")} onClick={() => createPage()}>
               <Plus size={14} strokeWidth={2} />
             </HoverAction>
@@ -547,6 +554,9 @@ export function AppSidebar({ shell }: { shell: SidebarShellData }) {
 
         <div className="mt-2">
           <SectionHeader label={t("privateDocs")}>
+            <HoverAction label={t("importToPrivate")} onClick={() => openNotionImport("private")}>
+              <FileDown size={13} strokeWidth={1.75} />
+            </HoverAction>
             <HoverAction label={t("newPrivatePage")} onClick={() => createPage({ private: true })}>
               <Plus size={14} strokeWidth={2} />
             </HoverAction>
