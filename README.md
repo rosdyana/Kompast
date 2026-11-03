@@ -179,3 +179,7 @@ docker compose up -d
 ### Backups
 
 Nothing automated yet. At minimum, before going near real data: a `pg_dump` cron with off-box retention and a tested restore procedure.
+
+## License
+
+[MIT](LICENSE) © 2026 Rosdyana Kusuma
