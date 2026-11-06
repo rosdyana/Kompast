@@ -2,6 +2,7 @@
   "name": "kompast",
   "private": true,
   "version": "0.2.3",
+  "license": "MIT",
   "engines": {
     "node": ">=22"
   },
