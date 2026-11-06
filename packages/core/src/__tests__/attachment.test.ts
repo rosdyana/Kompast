@@ -8,7 +8,18 @@ import { existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createProject } from "../project";
 import { createIssue } from "../issue";
-import { requestAttachmentUpload, listAttachments, deleteAttachment, attachIssueFile } from "../attachment";
+import {
+  requestAttachmentUpload,
+  listAttachments,
+  deleteAttachment,
+  attachIssueFile,
+  recordImportedAttachmentPlaceholder,
+  putImportedAttachmentBytes,
+  markImportedAttachmentStored,
+  markImportedAttachmentFailed,
+  requeueFailedImportedAttachments,
+  summarizeImportedAttachments,
+} from "../attachment";
 import { readFileSync } from "node:fs";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
@@ -103,7 +114,7 @@ describe("attachments", () => {
 
     // Simulate the browser's PUT: write real bytes to the exact path the
     // signed upload URL's key resolves to.
-    const path = resolveLocalPath(row!.storageKey);
+    const path = resolveLocalPath(row!.storageKey!);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "fake-pdf-bytes");
     expect(existsSync(path)).toBe(true);
@@ -126,7 +137,7 @@ describe("attachments", () => {
       }),
     );
     const [row] = await admin.select().from(schema.issueAttachment).where(eq(schema.issueAttachment.id, attachmentId));
-    const path = resolveLocalPath(row!.storageKey);
+    const path = resolveLocalPath(row!.storageKey!);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "hello");
 
@@ -174,7 +185,84 @@ describe("attachments", () => {
     expect(row?.fileName).toBe("from-jira.png");
     expect(row?.sizeBytes).toBe(bytes.byteLength);
 
-    const path = resolveLocalPath(row!.storageKey);
+    const path = resolveLocalPath(row!.storageKey!);
     expect(readFileSync(path)).toEqual(bytes);
+  });
+  it("a JIRA migration placeholder has no download link, and deleting it touches no storage", async () => {
+    const issueId = await seedIssue();
+    const ctx = { userId, organizationId: orgId };
+    const { attachmentId } = await withAuthorizedTenant(ctx, (tx) =>
+      recordImportedAttachmentPlaceholder(tx, {
+        issueId,
+        uploaderId: userId,
+        fileName: "later.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 999,
+        status: "pending",
+        sourceUrl: "https://jira.example.net/secure/attachment/1/later.pdf",
+        createdAt: new Date("2024-01-01T00:00:00Z"),
+      }),
+    );
+
+    const listed = await withAuthorizedTenant(ctx, (tx) => listAttachments(tx, issueId));
+    expect(listed).toEqual([
+      expect.objectContaining({ id: attachmentId, status: "pending", storageKey: null, downloadUrl: null, sizeBytes: 999, sourceUrl: "https://jira.example.net/secure/attachment/1/later.pdf" }),
+    ]);
+
+    // No file was ever written for it: deleting must not reach for one.
+    await withAuthorizedTenant(ctx, (tx) => deleteAttachment(tx, { attachmentId, issueId }));
+    expect(await admin.select().from(schema.issueAttachment).where(eq(schema.issueAttachment.id, attachmentId))).toHaveLength(0);
+  });
+
+  it("a copy becomes stored only once its bytes are written; a failure stays pending until the third attempt, and a permanent one fails at once", async () => {
+    const issueId = await seedIssue();
+    const ctx = { userId, organizationId: orgId };
+    const placeholder = (fileName: string) =>
+      withAuthorizedTenant(ctx, (tx) =>
+        recordImportedAttachmentPlaceholder(tx, {
+          issueId,
+          uploaderId: userId,
+          fileName,
+          contentType: "application/pdf",
+          sizeBytes: 9,
+          status: "pending",
+          sourceUrl: `https://jira.example.net/secure/attachment/2/${fileName}`,
+          createdAt: new Date("2024-01-01T00:00:00Z"),
+        }),
+      );
+
+    const { attachmentId } = await placeholder("copied.pdf");
+    const { storageKey } = await putImportedAttachmentBytes({ issueId, attachmentId, fileName: "copied.pdf", contentType: "application/pdf", data: Buffer.from("pdf bytes") });
+    await withAuthorizedTenant(ctx, (tx) => markImportedAttachmentStored(tx, { attachmentId, storageKey, sizeBytes: 9, contentType: "application/pdf" }));
+    const [stored] = await admin.select().from(schema.issueAttachment).where(eq(schema.issueAttachment.id, attachmentId));
+    expect(stored).toMatchObject({ status: "stored", storageKey, sizeBytes: 9, error: null });
+    expect(readFileSync(resolveLocalPath(storageKey))).toEqual(Buffer.from("pdf bytes"));
+    const [listed] = await withAuthorizedTenant(ctx, (tx) => listAttachments(tx, issueId));
+    expect(listed!.downloadUrl).toContain("/api/storage/download/");
+
+    const { attachmentId: flaky } = await placeholder("flaky.pdf");
+    const attempt = (attachmentId: string, permanent = false) =>
+      withAuthorizedTenant(ctx, (tx) => markImportedAttachmentFailed(tx, { attachmentId, error: "timeout", permanent }));
+    expect(await attempt(flaky)).toEqual({ status: "pending", attempts: 1 });
+    expect(await attempt(flaky)).toEqual({ status: "pending", attempts: 2 });
+    expect(await attempt(flaky)).toEqual({ status: "failed", attempts: 3 });
+
+    const { attachmentId: gone } = await placeholder("gone.pdf");
+    expect(await attempt(gone, true)).toEqual({ status: "failed", attempts: 1 });
+    const [goneRow] = await admin.select().from(schema.issueAttachment).where(eq(schema.issueAttachment.id, gone));
+    expect(goneRow).toMatchObject({ status: "failed", error: "timeout" });
+
+    // The summary counts each status, and the copyable bytes are the stored and the queued ones.
+    const [issueRow] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+    const projectId = issueRow!.projectId;
+    const summary = await withAuthorizedTenant(ctx, (tx) => summarizeImportedAttachments(tx, projectId));
+    expect(summary.counts).toEqual({ stored: 1, pending: 0, not_migrated: 0, failed: 2 });
+    expect(summary.bytesStored).toBe(9);
+
+    // A re-run re-queues the failed copies (attempts reset) and leaves the stored one alone.
+    expect(await withAuthorizedTenant(ctx, (tx) => requeueFailedImportedAttachments(tx, projectId))).toBe(2);
+    const rows = await admin.select().from(schema.issueAttachment).where(eq(schema.issueAttachment.issueId, issueId));
+    expect(rows.find((r) => r.id === flaky)).toMatchObject({ status: "pending", attempts: 0, error: null });
+    expect(rows.find((r) => r.id === attachmentId)).toMatchObject({ status: "stored", storageKey });
   });
 });

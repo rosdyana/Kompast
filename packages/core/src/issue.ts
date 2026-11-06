@@ -21,12 +21,20 @@ export interface CreateIssueInput {
   labels?: string[];
   storyPoints?: number;
   dueDate?: Date;
+  /** The importer's start-date field target (a create writes it; the live UI sets it through updateIssue). */
+  startDate?: Date;
   /** Subtask's parent issue id — see issueType.hierarchyLevel/isSubtask for what makes a type valid here. Not validated against hierarchy here; callers (UI/REST/MCP/import) are expected to only offer valid parents. */
   parentId?: string;
   estimateSeconds?: number;
   customFields?: Json;
   /** Backdates the issue row AND its "created" history row — for the importer, where an issue's real creation time must be preserved for burndown/cycle-time to stay honest. Omit for a real-time create (defaults to now). */
   createdAt?: Date;
+  /**
+   * The key number to keep (JIRA's ZTRD-123 → 123). Honoured only when origin is "import" (anything else throws).
+   * If that number is already used in the project, the next free number is used instead, and the returned
+   * keySeq is the one actually written.
+   */
+  keySeq?: number;
   origin?: "user" | "automation" | "mcp" | "api" | "import";
   originClient?: string;
   automationContext?: AutomationContext;
@@ -41,6 +49,11 @@ export interface CreateIssueInput {
  * just later and less clearly.
  */
 export async function createIssue(tx: Tx, input: CreateIssueInput) {
+  if (input.keySeq !== undefined) {
+    if (input.origin !== "import") throw new Error("keySeq can only be set by an import");
+    if (!Number.isSafeInteger(input.keySeq) || input.keySeq < 1) throw new Error(`keySeq must be a positive whole number (got ${input.keySeq})`);
+  }
+
   await tx.execute(sql`select id from project where id = ${input.projectId} for update`);
 
   // A bare aggregate with no GROUP BY always returns exactly one row, even
@@ -49,7 +62,18 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
     .select({ nextSeq: sql<number>`coalesce(${max(schema.issue.keySeq)}, 0) + 1` })
     .from(schema.issue)
     .where(eq(schema.issue.projectId, input.projectId));
-  const nextSeq = seqRow!.nextSeq;
+  let nextSeq = seqRow!.nextSeq;
+
+  // The importer keeps JIRA's number when it's free. The project row lock above
+  // serializes this against manual creates, and the unique index backs it up.
+  if (input.keySeq !== undefined) {
+    const [taken] = await tx
+      .select({ id: schema.issue.id })
+      .from(schema.issue)
+      .where(and(eq(schema.issue.projectId, input.projectId), eq(schema.issue.keySeq, input.keySeq)))
+      .limit(1);
+    if (!taken) nextSeq = input.keySeq;
+  }
 
   const [lastCard] = await tx
     .select({ rank: schema.issue.rank })
@@ -74,6 +98,7 @@ export async function createIssue(tx: Tx, input: CreateIssueInput) {
     labels: input.labels ?? [],
     storyPoints: input.storyPoints,
     dueDate: input.dueDate,
+    startDate: input.startDate,
     parentId: input.parentId,
     estimateSeconds: input.estimateSeconds,
     customFields: input.customFields ?? {},
@@ -148,6 +173,20 @@ export interface UpdateIssueInput {
   origin?: "user" | "automation" | "mcp" | "api" | "import";
   originClient?: string;
   automationContext?: AutomationContext;
+  /**
+   * When the history rows this patch writes happened. Honoured only when origin is "import" (anything else throws).
+   * Lets an import record a change that happened in JIRA's past (a parent link that existed since the child was
+   * created) instead of stamping it with now.
+   */
+  historyAt?: Date;
+  /** The history rows' actor, when it isn't actorId. Honoured only when origin is "import" (anything else throws). */
+  historyActorId?: string;
+  /**
+   * Import-only. `false` writes no issue_history rows for this patch: a JIRA sync applies JIRA's current values and
+   * records JIRA's changelog separately, so the same change is never recorded twice. Honoured only when origin is
+   * "import" (anything else throws).
+   */
+  recordHistory?: boolean;
 }
 
 const UPDATE_ISSUE_HISTORY_FIELDS = [
@@ -171,6 +210,12 @@ const UPDATE_ISSUE_HISTORY_FIELDS = [
  * status changes, so activity feed and future reports see it.
  */
 export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInput) {
+  if ((patch.historyAt !== undefined || patch.historyActorId !== undefined) && patch.origin !== "import") {
+    throw new Error("historyAt and historyActorId can only be set by an import");
+  }
+  if (patch.recordHistory === false && patch.origin !== "import") {
+    throw new Error("recordHistory can only be turned off by an import");
+  }
   const [current] = await tx.select().from(schema.issue).where(eq(schema.issue.id, issueId));
   if (!current) throw new Error(`Issue ${issueId} not found`);
 
@@ -235,19 +280,25 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
     field: string;
     fromValue: string | null;
     toValue: string | null;
+    createdAt?: Date;
   }
+
+  // Import-only overrides (see UpdateIssueInput). Absent for every other caller, so their rows get now and actorId.
+  const historyActorId = patch.historyActorId ?? patch.actorId;
+  const historyCreatedAt = patch.historyAt;
 
   const historyRows: HistoryRow[] = UPDATE_ISSUE_HISTORY_FIELDS.filter(
     (field) => patch[field] !== undefined && patch[field] !== current[field],
   ).map((field) => ({
     id: id("hist"),
     issueId,
-    actorId: patch.actorId,
+    actorId: historyActorId,
     origin: patch.origin ?? "user",
     originClient: patch.originClient,
     field,
     fromValue: current[field] == null ? null : String(current[field]),
     toValue: patch[field] == null ? null : String(patch[field]),
+    ...(historyCreatedAt ? { createdAt: historyCreatedAt } : {}),
   }));
 
   // labels/descriptionJson are excluded from UPDATE_ISSUE_HISTORY_FIELDS
@@ -263,12 +314,13 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
       historyRows.push({
         id: id("hist"),
         issueId,
-        actorId: patch.actorId,
+        actorId: historyActorId,
         origin: patch.origin ?? "user",
         originClient: patch.originClient,
         field: "labels",
         fromValue: current.labels.length > 0 ? current.labels.join(", ") : null,
         toValue: patch.labels.length > 0 ? patch.labels.join(", ") : null,
+        ...(historyCreatedAt ? { createdAt: historyCreatedAt } : {}),
       });
     }
   }
@@ -276,16 +328,17 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
     historyRows.push({
       id: id("hist"),
       issueId,
-      actorId: patch.actorId,
+      actorId: historyActorId,
       origin: patch.origin ?? "user",
       originClient: patch.originClient,
       field: "description",
       fromValue: null,
       toValue: null,
+      ...(historyCreatedAt ? { createdAt: historyCreatedAt } : {}),
     });
   }
 
-  if (historyRows.length > 0) await tx.insert(schema.issueHistory).values(historyRows);
+  if (patch.recordHistory !== false && historyRows.length > 0) await tx.insert(schema.issueHistory).values(historyRows);
 
   const assigneeChanged = patch.assigneeId !== undefined && patch.assigneeId !== current.assigneeId;
   // See createIssue's identical origin==="import" gate — historical bulk
@@ -595,6 +648,37 @@ export async function recordHistoricalStatusChange(tx: Tx, input: RecordHistoric
     field: "status",
     fromValue: input.fromStatusId,
     toValue: input.toStatusId,
+    createdAt: input.createdAt,
+  });
+}
+
+export interface RecordHistoricalFieldChangeInput {
+  issueId: string;
+  actorId: string;
+  /** Field names follow updateIssue's (title, assigneeId, priority, dueDate, storyPoints, labels, parentId, sprint ...), or jira.<field> where Kompast has no native name. */
+  field: string;
+  fromValue: string | null;
+  toValue: string | null;
+  createdAt: Date;
+  originClient?: string;
+}
+
+/**
+ * The field-level counterpart to recordHistoricalStatusChange: one issue_history
+ * row with a caller-given timestamp, origin "import", and no other side effect
+ * (no current-value update, no notification, no automation event). Used by the
+ * importer to replay JIRA's changelog for fields other than status.
+ */
+export async function recordHistoricalFieldChange(tx: Tx, input: RecordHistoricalFieldChangeInput) {
+  await tx.insert(schema.issueHistory).values({
+    id: id("hist"),
+    issueId: input.issueId,
+    actorId: input.actorId,
+    origin: "import",
+    originClient: input.originClient,
+    field: input.field,
+    fromValue: input.fromValue,
+    toValue: input.toValue,
     createdAt: input.createdAt,
   });
 }

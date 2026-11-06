@@ -292,6 +292,17 @@ export interface CreateWorkflowStatusInput {
   name: string;
   category: "todo" | "in_progress" | "done";
   color?: string;
+  /**
+   * Put the status on this existing column (no new column is created). Must
+   * be a column of `boardId`. Mutually exclusive with `afterColumnId`.
+   */
+  columnId?: string;
+  /**
+   * Create the new column right after this one of `boardId` (`null` = first
+   * position). Later columns shift by one. Mutually exclusive with `columnId`.
+   * Omitted (both undefined) = append at the end, as before.
+   */
+  afterColumnId?: string | null;
 }
 
 /**
@@ -301,6 +312,13 @@ export interface CreateWorkflowStatusInput {
  * step) doesn't match anything the target project already has.
  */
 export async function createWorkflowStatus(tx: Tx, input: CreateWorkflowStatusInput) {
+  if (input.columnId !== undefined && input.afterColumnId !== undefined) {
+    throw new Error("Pass either columnId or afterColumnId to createWorkflowStatus, not both");
+  }
+  // Validate placement before anything is written.
+  const existingColumn = input.columnId !== undefined ? await requireBoardColumn(tx, input.boardId, input.columnId) : null;
+  const afterColumn = input.afterColumnId ? await requireBoardColumn(tx, input.boardId, input.afterColumnId) : null;
+
   const [row] = await tx
     .select({ nextOrder: sql<number>`coalesce(max(${schema.workflowStatus.order}), -1) + 1` })
     .from(schema.workflowStatus)
@@ -317,11 +335,26 @@ export async function createWorkflowStatus(tx: Tx, input: CreateWorkflowStatusIn
     order: nextOrder,
   });
 
-  const [colRow] = await tx
-    .select({ nextColumnOrder: sql<number>`coalesce(max(${schema.boardColumn.order}), -1) + 1` })
-    .from(schema.boardColumn)
-    .where(eq(schema.boardColumn.boardId, input.boardId));
-  const nextColumnOrder = colRow!.nextColumnOrder;
+  if (existingColumn) {
+    await tx.insert(schema.boardColumnStatus).values({ id: id("colstatus"), boardColumnId: existingColumn.id, workflowStatusId: statusId });
+    return { statusId, columnId: existingColumn.id };
+  }
+
+  let order: number;
+  if (input.afterColumnId !== undefined) {
+    order = afterColumn ? afterColumn.order + 1 : 0;
+    // One UPDATE moves every column after the insertion point down by one.
+    await tx
+      .update(schema.boardColumn)
+      .set({ order: sql`${schema.boardColumn.order} + 1` })
+      .where(and(eq(schema.boardColumn.boardId, input.boardId), sql`${schema.boardColumn.order} >= ${order}`));
+  } else {
+    const [colRow] = await tx
+      .select({ nextColumnOrder: sql<number>`coalesce(max(${schema.boardColumn.order}), -1) + 1` })
+      .from(schema.boardColumn)
+      .where(eq(schema.boardColumn.boardId, input.boardId));
+    order = colRow!.nextColumnOrder;
+  }
 
   const columnId = id("col");
   await tx.insert(schema.boardColumn).values({
@@ -329,11 +362,21 @@ export async function createWorkflowStatus(tx: Tx, input: CreateWorkflowStatusIn
     boardId: input.boardId,
     name: input.name,
     color: input.color ?? "var(--text3)",
-    order: nextColumnOrder,
+    order,
   });
   await tx.insert(schema.boardColumnStatus).values({ id: id("colstatus"), boardColumnId: columnId, workflowStatusId: statusId });
 
-  return { statusId };
+  return { statusId, columnId };
+}
+
+/** The column, or a throw when it isn't a column of this board. */
+async function requireBoardColumn(tx: Tx, boardId: string, columnId: string): Promise<{ id: string; order: number }> {
+  const [column] = await tx
+    .select({ id: schema.boardColumn.id, order: schema.boardColumn.order })
+    .from(schema.boardColumn)
+    .where(and(eq(schema.boardColumn.id, columnId), eq(schema.boardColumn.boardId, boardId)));
+  if (!column) throw new Error(`Column ${columnId} is not a column of board ${boardId}`);
+  return column;
 }
 
 export interface CreateIssueTypeInput {

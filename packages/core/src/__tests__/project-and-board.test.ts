@@ -330,6 +330,91 @@ describe("project + board service layer", () => {
     expect(matchingColumn?.name).toBe("In QA");
   });
 
+  describe("createWorkflowStatus column placement", () => {
+    async function boardColumnsInOrder(boardId: string) {
+      const rows = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.boardId, boardId));
+      return rows.sort((a, b) => a.order - b.order);
+    }
+
+    it("afterColumnId inserts the new column right after that one and shifts the later columns by one", async () => {
+      const { projectId, boardId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId, key: "extpl", name: "Placement After", actorUserId: userId }),
+      );
+      const before = await boardColumnsInOrder(boardId);
+      const inProgress = before.find((c) => c.name === "In Progress")!;
+
+      const { statusId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createWorkflowStatus(tx, { projectId, boardId, name: "QA", category: "in_progress", afterColumnId: inProgress.id }),
+      );
+
+      const after = await boardColumnsInOrder(boardId);
+      expect(after.map((c) => c.name)).toEqual(["Backlog", "To Do", "In Progress", "QA", "In Review", "Done"]);
+      expect(after.map((c) => c.order)).toEqual([0, 1, 2, 3, 4, 5]);
+      const qa = after.find((c) => c.name === "QA")!;
+      const links = await admin.select().from(schema.boardColumnStatus).where(eq(schema.boardColumnStatus.boardColumnId, qa.id));
+      expect(links.map((l) => l.workflowStatusId)).toEqual([statusId]);
+    });
+
+    it("afterColumnId null puts the new column first", async () => {
+      const { projectId, boardId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId, key: "extpf", name: "Placement First", actorUserId: userId }),
+      );
+
+      await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createWorkflowStatus(tx, { projectId, boardId, name: "Triage", category: "todo", afterColumnId: null }),
+      );
+
+      const after = await boardColumnsInOrder(boardId);
+      expect(after.map((c) => c.name)).toEqual(["Triage", "Backlog", "To Do", "In Progress", "In Review", "Done"]);
+      expect(after.map((c) => c.order)).toEqual([0, 1, 2, 3, 4, 5]);
+    });
+
+    it("columnId adds the status to an existing column without creating a column", async () => {
+      const { projectId, boardId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId, key: "extcl", name: "Placement Join", actorUserId: userId }),
+      );
+      const done = (await boardColumnsInOrder(boardId)).find((c) => c.name === "Done")!;
+
+      const { statusId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createWorkflowStatus(tx, { projectId, boardId, name: "Released", category: "done", columnId: done.id }),
+      );
+
+      expect(await boardColumnsInOrder(boardId)).toHaveLength(5);
+      const links = await admin.select().from(schema.boardColumnStatus).where(eq(schema.boardColumnStatus.boardColumnId, done.id));
+      expect(links.map((l) => l.workflowStatusId)).toContain(statusId);
+    });
+
+    it("rejects a column from another board, and rejects columnId together with afterColumnId", async () => {
+      const first = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId, key: "extrj", name: "Placement Reject A", actorUserId: userId }),
+      );
+      const second = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId, key: "extrk", name: "Placement Reject B", actorUserId: userId }),
+      );
+      const foreignColumn = (await boardColumnsInOrder(second.boardId))[0]!;
+
+      await expect(
+        withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+          createWorkflowStatus(tx, { projectId: first.projectId, boardId: first.boardId, name: "Foreign", category: "todo", afterColumnId: foreignColumn.id }),
+        ),
+      ).rejects.toThrow(/is not a column of board/);
+
+      const ownColumn = (await boardColumnsInOrder(first.boardId))[0]!;
+      await expect(
+        withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+          createWorkflowStatus(tx, {
+            projectId: first.projectId,
+            boardId: first.boardId,
+            name: "Both",
+            category: "todo",
+            columnId: ownColumn.id,
+            afterColumnId: ownColumn.id,
+          }),
+        ),
+      ).rejects.toThrow(/not both/);
+    });
+  });
+
   it("createIssueType adds an issue type past the default seed", async () => {
     const { projectId } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
       createProject(tx, { organizationId: orgId, teamId, key: "extty", name: "Extra Type Test", actorUserId: userId }),

@@ -19,14 +19,18 @@ import {
   advanceWorkflowStep,
   markWorkflowStepFailed,
   claimDueWorkflowSchedules,
+  claimJiraMigrations,
+  withAuthorizedTenant,
 } from "@kompast/core";
 import { createMailer, NotificationEmail, SprintSummaryEmail } from "@kompast/mail";
+import { runJiraMigrationTick, startDueJiraAutoSyncs } from "@kompast/import";
 
 const env = loadEnv();
 const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 
 const MAIL_QUEUE = "mail";
 const REINDEX_QUEUE = "reindex";
+const JIRA_MIGRATION_QUEUE = "jira-migration";
 
 interface NotificationTemplateProps {
   title: string;
@@ -178,6 +182,47 @@ async function processWorkflowSchedules() {
   }
 }
 
+/**
+ * Leases up to two JIRA migrations that are discovering or running, and runs
+ * one bounded tick for each (packages/import/src/jira/migration-runner.ts).
+ * A tick saves its place in the migration's cursor, so an interrupted tick
+ * (a restart, a JIRA rate limit) resumes at the last saved page. Each tick
+ * has its own time budget, so the lease is renewed well before it lapses.
+ * The claim runs on the admin connection (a system-wide scan), like the
+ * other queue claims above. Each tick runs as the migration's creator.
+ */
+/** How often the auto-sync check runs. The job itself runs every few seconds; a due sync needs no finer a look. */
+const JIRA_AUTO_SYNC_CHECK_MS = 60_000;
+let lastJiraAutoSyncCheckAt = Number.NEGATIVE_INFINITY;
+
+/**
+ * Starts the syncs whose auto-sync interval has passed (startDueJiraAutoSyncs), at most once a minute. A migration
+ * that can't be started is logged and left as it is: it's tried again on a later check.
+ */
+async function startJiraAutoSyncsIfDue() {
+  if (Date.now() - lastJiraAutoSyncCheckAt < JIRA_AUTO_SYNC_CHECK_MS) return;
+  lastJiraAutoSyncCheckAt = Date.now();
+  const { started, failed } = await startDueJiraAutoSyncs({ adminDb, withTenantAs: withAuthorizedTenant });
+  for (const id of started) console.log(`[worker] jira migration ${id}: auto-sync started`);
+  for (const f of failed) console.error(`[worker] jira migration ${f.migrationId}: auto-sync could not start: ${f.error}`);
+}
+
+async function processJiraMigrationBatch() {
+  try {
+    await startJiraAutoSyncsIfDue();
+  } catch (err) {
+    console.error("[worker] jira auto-sync check failed:", err);
+  }
+  const migrations = await claimJiraMigrations(adminDb);
+  for (const migration of migrations) {
+    try {
+      await runJiraMigrationTick({ adminDb, withTenantAs: withAuthorizedTenant }, migration);
+    } catch (err) {
+      console.error(`[worker] jira migration ${migration.id} tick failed:`, err);
+    }
+  }
+}
+
 const mailQueue = new Queue(MAIL_QUEUE, { connection });
 const reindexQueue = new Queue(REINDEX_QUEUE, { connection });
 const workflowEventQueue = new Queue("automation-workflow-events", { connection });
@@ -188,16 +233,26 @@ const workflowStepQueue = new Queue("automation-workflow-steps", { connection })
 // double-fire it. Not reachable at the current single-worker deployment
 // shape — revisit if that ever changes.
 const workflowScheduleQueue = new Queue("automation-workflow-schedules", { connection });
+const jiraMigrationQueue = new Queue(JIRA_MIGRATION_QUEUE, { connection });
 const mailWorker = new Worker(MAIL_QUEUE, () => processOutboxBatch(), { connection });
 const reindexWorker = new Worker(REINDEX_QUEUE, () => processReindexBatch(), { connection });
 const workflowEventWorker = new Worker("automation-workflow-events", () => processWorkflowEventBatch(), { connection });
 const workflowStepWorker = new Worker("automation-workflow-steps", () => processWorkflowStepBatch(), { connection });
 const workflowScheduleWorker = new Worker("automation-workflow-schedules", () => processWorkflowSchedules(), { connection });
+// lockDuration: BullMQ renews a job's lock from a timer, so an event-loop stall longer than the lock (BullMQ's
+// default is 30 s) loses it. That is what logged "could not renew lock" and "Missing lock ... moveToFinished" for
+// this job. One job runs up to two JIRA ticks back to back, and each tick stops starting pages after its 4-minute
+// budget and finishes the page in hand, so a job can run past 8 minutes. 10 minutes keeps the lock alive through a
+// whole job and through any stall short of that. A worker that dies is retried after this window instead of at
+// 30 s. The DB lease (JIRA_MIGRATION_LEASE_MS, 5 minutes) is what stops two workers processing one migration.
+const JIRA_MIGRATION_LOCK_MS = 10 * 60_000;
+const jiraMigrationWorker = new Worker(JIRA_MIGRATION_QUEUE, () => processJiraMigrationBatch(), { connection, lockDuration: JIRA_MIGRATION_LOCK_MS });
 mailWorker.on("failed", (job, err) => console.error(`[worker] mail job ${job?.id} failed:`, err));
 reindexWorker.on("failed", (job, err) => console.error(`[worker] reindex job ${job?.id} failed:`, err));
 workflowEventWorker.on("failed", (job, err) => console.error(`[worker] workflow event job ${job?.id} failed:`, err));
 workflowStepWorker.on("failed", (job, err) => console.error(`[worker] workflow step job ${job?.id} failed:`, err));
 workflowScheduleWorker.on("failed", (job, err) => console.error(`[worker] workflow schedule job ${job?.id} failed:`, err));
+jiraMigrationWorker.on("failed", (job, err) => console.error(`[worker] jira migration job ${job?.id} failed:`, err));
 
 process.on("SIGTERM", async () => {
   await mailWorker.close();
@@ -205,11 +260,13 @@ process.on("SIGTERM", async () => {
   await workflowEventWorker.close();
   await workflowStepWorker.close();
   await workflowScheduleWorker.close();
+  await jiraMigrationWorker.close();
   await mailQueue.close();
   await reindexQueue.close();
   await workflowEventQueue.close();
   await workflowStepQueue.close();
   await workflowScheduleQueue.close();
+  await jiraMigrationQueue.close();
   process.exit(0);
 });
 
@@ -223,6 +280,7 @@ async function main() {
   await workflowEventQueue.add("process-workflow-events", {}, { repeat: { every: 5_000 } });
   await workflowStepQueue.add("process-workflow-steps", {}, { repeat: { every: 5_000 } });
   await workflowScheduleQueue.add("process-workflow-schedules", {}, { repeat: { every: 60_000 } });
+  await jiraMigrationQueue.add("process-jira-migrations", {}, { repeat: { every: 5_000 } });
   console.log(`[worker] started, connected to redis at ${env.REDIS_URL}`);
 }
 

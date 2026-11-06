@@ -4,7 +4,7 @@ import { id } from "./ids";
 import { ForbiddenError, type AuthContext } from "./permissions";
 
 export type ImportSourceName = "jira" | "notion";
-export type ImportEntityType = "issue" | "page";
+export type ImportEntityType = "issue" | "page" | "sprint" | "comment" | "worklog" | "attachment" | "user";
 
 export interface CreateImportRunInput {
   organizationId: string;
@@ -15,6 +15,8 @@ export interface CreateImportRunInput {
   /** Non-secret parameters only (project key, base URL) — never a credential. See packages/db/src/schema/import.ts. */
   config: Json;
   createdBy: string;
+  /** Set when this run belongs to a JIRA migration (jira_migration). Omitted by one-shot imports. */
+  migrationId?: string | null;
 }
 
 export async function createImportRun(tx: Tx, input: CreateImportRunInput) {
@@ -27,6 +29,7 @@ export async function createImportRun(tx: Tx, input: CreateImportRunInput) {
     dryRun: input.dryRun,
     config: input.config,
     createdBy: input.createdBy,
+    migrationId: input.migrationId ?? null,
   });
   return { importRunId };
 }
@@ -35,11 +38,15 @@ export async function markImportRunRunning(tx: Tx, importRunId: string) {
   await tx.update(schema.importRun).set({ status: "running", startedAt: new Date() }).where(eq(schema.importRun.id, importRunId));
 }
 
-export async function completeImportRun(tx: Tx, importRunId: string, counts: Json, errors: Json) {
-  await tx.update(schema.importRun).set({ status: "completed", counts, errors, completedAt: new Date() }).where(eq(schema.importRun.id, importRunId));
+export async function completeImportRun(tx: Tx, importRunId: string, counts: Json, errors: Json, notes?: Json) {
+  await tx
+    .update(schema.importRun)
+    .set({ status: "completed", counts, errors, ...(notes !== undefined ? { notes } : {}), completedAt: new Date() })
+    .where(eq(schema.importRun.id, importRunId));
 }
 
-export async function failImportRun(tx: Tx, importRunId: string, error: string) {
+/** AnyDb rather than Tx so the JIRA migration runner can fall back to the admin connection when the creator's own transaction is what failed. */
+export async function failImportRun(tx: AnyDb, importRunId: string, error: string) {
   await tx
     .update(schema.importRun)
     .set({ status: "failed", errors: [{ error }], completedAt: new Date() })
@@ -116,4 +123,52 @@ export async function requirePageImportTarget(db: AnyDb, ctx: AuthContext, targe
   if (!row || (row.role !== "owner" && row.role !== "admin" && !row.isSuperAdmin)) {
     throw new ForbiddenError("Only workspace admins can import into the Workspace docs. Import into your Private space instead.");
   }
+}
+
+/**
+ * The placeholder email a former JIRA member gets: lowercase, with any character
+ * outside [a-z0-9._-] replaced by "-", under the reserved .invalid domain so it can
+ * never receive mail or match a real address.
+ */
+export function formerMemberEmail(accountId: string): string {
+  const safe = accountId.toLowerCase().replace(/[^a-z0-9._-]/g, "-");
+  return `jira-${safe}@former.invalid`;
+}
+
+/**
+ * Finds or creates the placeholder user for a former JIRA member: a `user` row
+ * with no `member` row (so no workspace membership, which is how a departed
+ * person is defined, see page-recovery.ts) and no `account` row (so they can't
+ * sign in). Keyed by external_ref (source "jira", entityType "user", sourceId =
+ * the JIRA accountId), so every batch and every re-run resolves to the same row.
+ * If a user with the placeholder email already exists (a previous run whose
+ * external_ref was lost), that row is reused rather than colliding on the unique
+ * email. Users aren't RLS-scoped; the external_ref is, so this runs in the caller's tenant tx.
+ */
+export async function ensureImportedFormerUser(
+  tx: Tx,
+  input: { organizationId: string; accountId: string; name: string; importRunId: string },
+): Promise<{ userId: string; created: boolean }> {
+  const existing = await resolveExternalRef(tx, input.organizationId, "jira", input.accountId);
+  if (existing && existing.entityType === "user") return { userId: existing.entityId, created: false };
+
+  const email = formerMemberEmail(input.accountId);
+  const [byEmail] = await tx.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, email));
+  let userId = byEmail?.id;
+  let created = false;
+  if (!userId) {
+    userId = id("user");
+    await tx.insert(schema.user).values({ id: userId, name: input.name.trim() || "Former member", email, emailVerified: false });
+    created = true;
+  }
+
+  await upsertExternalRef(tx, {
+    organizationId: input.organizationId,
+    source: "jira",
+    sourceId: input.accountId,
+    entityType: "user",
+    entityId: userId,
+    importRunId: input.importRunId,
+  });
+  return { userId, created };
 }

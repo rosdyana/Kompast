@@ -510,6 +510,164 @@ export async function getSprintReport(tx: Tx, sprintId: string) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Historical sprint import (JIRA). These skip the live-workflow rules of
+// createSprint/startSprint/completeSprint/addIssueToSprint on purpose: an
+// imported sprint is already closed, active or future, with its real dates.
+// Replaying start → complete would stamp today's date on every sprint and
+// carry issues around in ways that never happened.
+// ---------------------------------------------------------------------------
+
+export interface ImportSprintInput {
+  organizationId: string;
+  boardId: string;
+  name: string;
+  /** The number to use if it's free on this board. If it's taken, or not given, the board's next number (max + 1) is used. */
+  preferredNumber?: number;
+  goal?: string;
+  state: "future" | "active" | "closed";
+  startAt?: Date;
+  endAt?: Date;
+  /** Sets the order the sprint list and velocity chart use (both sort by createdAt). Pass the source sprint's start date so imported sprints line up in time. */
+  createdAt?: Date;
+  /** Given: the sprint gets its linked Sprint Action + Retrospective docs, like createSprint. Left out: no docs (closed history doesn't need dozens of empty pages; the retro doc is still made on demand). */
+  actorUserId?: string;
+}
+
+/** Sprint numbers already used on a board, for planning numbers before anything is written (a dry run). */
+export async function listSprintNumbers(tx: Tx, boardId: string): Promise<number[]> {
+  const rows = await tx.select({ number: schema.sprint.number }).from(schema.sprint).where(eq(schema.sprint.boardId, boardId));
+  return rows.map((r) => r.number);
+}
+
+/** The board's active sprint, or null. */
+export async function getActiveSprint(tx: Tx, boardId: string) {
+  const [row] = await tx.select().from(schema.sprint).where(and(eq(schema.sprint.boardId, boardId), eq(schema.sprint.state, "active")));
+  return row ?? null;
+}
+
+/**
+ * Creates a sprint directly in its source state. Still enforces one active
+ * sprint per board (the same rule startSprint enforces).
+ */
+export async function importSprint(tx: Tx, input: ImportSprintInput): Promise<{ sprintId: string; number: number }> {
+  if (input.state === "active" && (await getActiveSprint(tx, input.boardId))) {
+    throw new Error("This board already has an active sprint");
+  }
+  const used = new Set(await listSprintNumbers(tx, input.boardId));
+  const number =
+    input.preferredNumber !== undefined && input.preferredNumber > 0 && !used.has(input.preferredNumber)
+      ? input.preferredNumber
+      : (await nextSprintNumber(tx, input.boardId));
+
+  const sprintId = id("sprint");
+  await tx.insert(schema.sprint).values({
+    id: sprintId,
+    organizationId: input.organizationId,
+    boardId: input.boardId,
+    number,
+    name: input.name,
+    goal: input.goal,
+    state: input.state,
+    cycle: "custom",
+    startAt: input.startAt,
+    endAt: input.endAt,
+    ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+  });
+
+  if (input.actorUserId) {
+    const pageInput = { organizationId: input.organizationId, boardId: input.boardId, sprintId, number, actorUserId: input.actorUserId };
+    await createLinkedMinutesPage(tx, pageInput);
+    await createLinkedRetroPage(tx, pageInput);
+  }
+  return { sprintId, number };
+}
+
+export interface ImportedSprintMembership {
+  sprintId: string;
+  addedAt: Date;
+  /** When the issue left this sprint (carried over or sent back to the backlog). Null: it's still on it. */
+  removedAt: Date | null;
+  plannedAtStart: boolean;
+}
+
+/**
+ * Writes an imported issue's sprint history and sets its current sprint
+ * (null = backlog). An issue on a sprint that isn't closed yet, but still in
+ * a Backlog-column status, moves to the board's first active status — the
+ * same rule addIssueToSprint applies, or it would be on the sprint but
+ * hidden from the Board tab.
+ */
+export async function importIssueSprintMemberships(
+  tx: Tx,
+  input: { issueId: string; boardId: string; memberships: ImportedSprintMembership[]; currentSprintId: string | null; currentSprintState?: "future" | "active" | "closed" },
+): Promise<void> {
+  for (const m of input.memberships) {
+    const [lastRanked] = await tx
+      .select({ rank: schema.sprintIssue.rank })
+      .from(schema.sprintIssue)
+      .where(and(eq(schema.sprintIssue.sprintId, m.sprintId), isNull(schema.sprintIssue.removedAt)))
+      .orderBy(desc(schema.sprintIssue.rank))
+      .limit(1);
+    await tx.insert(schema.sprintIssue).values({
+      id: id("sprintissue"),
+      sprintId: m.sprintId,
+      issueId: input.issueId,
+      plannedAtStart: m.plannedAtStart,
+      addedAt: m.addedAt,
+      removedAt: m.removedAt,
+      rank: rankBetween(lastRanked?.rank ?? null, null),
+    });
+  }
+
+  const updateValues: { sprintId: string | null; statusId?: string } = { sprintId: input.currentSprintId };
+  if (input.currentSprintId && input.currentSprintState !== "closed") {
+    const [current] = await tx.select({ statusId: schema.issue.statusId }).from(schema.issue).where(eq(schema.issue.id, input.issueId));
+    const backlogStatusRows = await tx
+      .select({ workflowStatusId: schema.boardColumnStatus.workflowStatusId })
+      .from(schema.boardColumnStatus)
+      .innerJoin(schema.boardColumn, eq(schema.boardColumn.id, schema.boardColumnStatus.boardColumnId))
+      .where(and(eq(schema.boardColumn.boardId, input.boardId), eq(schema.boardColumn.isBacklog, true)));
+    if (current && backlogStatusRows.some((r) => r.workflowStatusId === current.statusId)) {
+      const targetStatusId = await getDefaultActiveStatusId(tx, input.boardId);
+      if (targetStatusId) updateValues.statusId = targetStatusId;
+    }
+  }
+  await tx.update(schema.issue).set(updateValues).where(eq(schema.issue.id, input.issueId));
+}
+
+/**
+ * The snapshot startSprint ("start", for an imported active sprint) or
+ * completeSprint ("complete", for an imported closed one) would have taken,
+ * so velocity history and sprint reports work for imported sprints. Scope
+ * counts every issue that was ever on the sprint, carried-over ones included.
+ */
+export async function recordImportedSprintSnapshot(tx: Tx, sprintId: string, kind: "start" | "complete", takenAt?: Date): Promise<void> {
+  const members = await tx.select().from(schema.sprintIssue).where(eq(schema.sprintIssue.sprintId, sprintId));
+  const issueIds = [...new Set(members.map((m) => m.issueId))];
+  const issues = issueIds.length ? await tx.select().from(schema.issue).where(inArray(schema.issue.id, issueIds)) : [];
+  const statuses = issues.length
+    ? await tx
+        .select({ id: schema.workflowStatus.id, category: schema.workflowStatus.category })
+        .from(schema.workflowStatus)
+        .where(inArray(schema.workflowStatus.id, [...new Set(issues.map((i) => i.statusId))]))
+    : [];
+  const doneStatusIds = new Set(statuses.filter((s) => s.category === "done").map((s) => s.id));
+  const stillOn = new Set(members.filter((m) => !m.removedAt).map((m) => m.issueId));
+  const done = issues.filter((i) => stillOn.has(i.id) && doneStatusIds.has(i.statusId));
+
+  await tx.insert(schema.sprintSnapshot).values({
+    id: id("sprintsnap"),
+    sprintId,
+    kind,
+    ...(takenAt ? { takenAt } : {}),
+    scopeIssueCount: issues.length,
+    scopePoints: issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0),
+    completedIssueCount: done.length,
+    completedPoints: done.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0),
+  });
+}
+
 export interface UpdateSprintInput {
   sprintId: string;
   name: string;
@@ -520,4 +678,119 @@ export async function updateSprint(tx: Tx, input: UpdateSprintInput): Promise<vo
   const trimmed = input.name.trim();
   if (!trimmed) throw new Error("Sprint name cannot be empty");
   await tx.update(schema.sprint).set({ name: trimmed }).where(eq(schema.sprint.id, input.sprintId));
+}
+
+// ---------------------------------------------------------------------------
+// JIRA catch-up sync (import-only). A sync moves a sprint through the states JIRA reports, and moves issues
+// between sprints as JIRA's sprint field says. None of these send notifications, fire automation, or move issues
+// between sprints beyond the one the caller names. History for the issue moves comes from JIRA's changelog.
+// ---------------------------------------------------------------------------
+
+export interface CompleteImportedSprintInput {
+  sprintId: string;
+  /** JIRA's complete date. The sprint's end and its "complete" snapshot are dated with it. */
+  completedAt: Date;
+}
+
+/** An active sprint closed to match JIRA. Its issues stay where they are: the sync's own issue updates place them. */
+export async function completeImportedSprint(tx: Tx, input: CompleteImportedSprintInput): Promise<void> {
+  const sprint = await getSprint(tx, input.sprintId);
+  if (!sprint) throw new Error(`Sprint ${input.sprintId} not found`);
+  if (sprint.state !== "active") throw new Error(`Sprint is not active (state: ${sprint.state})`);
+  await tx.update(schema.sprint).set({ state: "closed", endAt: input.completedAt }).where(eq(schema.sprint.id, input.sprintId));
+  await recordImportedSprintSnapshot(tx, input.sprintId, "complete", input.completedAt);
+}
+
+export interface ActivateImportedSprintInput {
+  sprintId: string;
+  /** JIRA's start date. The sprint's start and its "start" snapshot are dated with it. */
+  startAt: Date;
+  endAt?: Date;
+}
+
+/** A future sprint started to match JIRA. Refuses when the board already has an active sprint (one per board). */
+export async function activateImportedSprint(tx: Tx, input: ActivateImportedSprintInput): Promise<void> {
+  const sprint = await getSprint(tx, input.sprintId);
+  if (!sprint) throw new Error(`Sprint ${input.sprintId} not found`);
+  if (sprint.state !== "future") throw new Error(`Sprint is already ${sprint.state}`);
+  if (await getActiveSprint(tx, sprint.boardId)) throw new Error("This board already has an active sprint");
+  await tx
+    .update(schema.sprint)
+    .set({ state: "active", startAt: input.startAt, ...(input.endAt ? { endAt: input.endAt } : {}) })
+    .where(eq(schema.sprint.id, input.sprintId));
+  await recordImportedSprintSnapshot(tx, input.sprintId, "start", input.startAt);
+}
+
+export interface UpdateImportedSprintInput {
+  sprintId: string;
+  name?: string;
+  goal?: string | null;
+  startAt?: Date | null;
+  endAt?: Date | null;
+}
+
+/** Name, goal and dates as JIRA has them now. Only the fields given are written. */
+export async function updateImportedSprint(tx: Tx, input: UpdateImportedSprintInput): Promise<void> {
+  const values: Partial<typeof schema.sprint.$inferInsert> = {};
+  if (input.name !== undefined) values.name = input.name;
+  if (input.goal !== undefined) values.goal = input.goal ?? undefined;
+  if (input.startAt !== undefined) values.startAt = input.startAt ?? undefined;
+  if (input.endAt !== undefined) values.endAt = input.endAt ?? undefined;
+  if (Object.keys(values).length === 0) return;
+  await tx.update(schema.sprint).set(values).where(eq(schema.sprint.id, input.sprintId));
+}
+
+export interface MoveImportedIssueSprintInput {
+  issueId: string;
+  boardId: string;
+  /** The sprint the issue is on after the move. Null = the backlog. */
+  sprintId: string | null;
+  /** When JIRA made the move (the changelog's time), or now when it isn't known. Used for the membership rows' dates. */
+  movedAt: Date;
+}
+
+/**
+ * Moves an imported issue to the sprint JIRA says it's on (or to the backlog). Its open memberships end at movedAt,
+ * and a new one starts there. No issue_history row is written: the changelog already holds the move.
+ */
+export async function moveImportedIssueSprint(tx: Tx, input: MoveImportedIssueSprintInput): Promise<void> {
+  await tx
+    .update(schema.sprintIssue)
+    .set({ removedAt: input.movedAt })
+    .where(and(eq(schema.sprintIssue.issueId, input.issueId), isNull(schema.sprintIssue.removedAt)));
+
+  if (input.sprintId) {
+    const [target] = await tx.select().from(schema.sprint).where(eq(schema.sprint.id, input.sprintId));
+    if (!target) throw new Error(`Sprint ${input.sprintId} not found`);
+    const [lastRanked] = await tx
+      .select({ rank: schema.sprintIssue.rank })
+      .from(schema.sprintIssue)
+      .where(and(eq(schema.sprintIssue.sprintId, input.sprintId), isNull(schema.sprintIssue.removedAt)))
+      .orderBy(desc(schema.sprintIssue.rank))
+      .limit(1);
+    await tx.insert(schema.sprintIssue).values({
+      id: id("sprintissue"),
+      sprintId: input.sprintId,
+      issueId: input.issueId,
+      plannedAtStart: target.state === "future" || (!!target.startAt && input.movedAt <= target.startAt),
+      addedAt: input.movedAt,
+      rank: rankBetween(lastRanked?.rank ?? null, null),
+    });
+  }
+
+  const updateValues: { sprintId: string | null; statusId?: string } = { sprintId: input.sprintId };
+  if (input.sprintId) {
+    const [target] = await tx.select({ state: schema.sprint.state }).from(schema.sprint).where(eq(schema.sprint.id, input.sprintId));
+    const [current] = await tx.select({ statusId: schema.issue.statusId }).from(schema.issue).where(eq(schema.issue.id, input.issueId));
+    const backlogStatusRows = await tx
+      .select({ workflowStatusId: schema.boardColumnStatus.workflowStatusId })
+      .from(schema.boardColumnStatus)
+      .innerJoin(schema.boardColumn, eq(schema.boardColumn.id, schema.boardColumnStatus.boardColumnId))
+      .where(and(eq(schema.boardColumn.boardId, input.boardId), eq(schema.boardColumn.isBacklog, true)));
+    if (target?.state !== "closed" && current && backlogStatusRows.some((r) => r.workflowStatusId === current.statusId)) {
+      const targetStatusId = await getDefaultActiveStatusId(tx, input.boardId);
+      if (targetStatusId) updateValues.statusId = targetStatusId;
+    }
+  }
+  await tx.update(schema.issue).set(updateValues).where(eq(schema.issue.id, input.issueId));
 }

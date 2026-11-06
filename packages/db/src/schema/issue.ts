@@ -54,6 +54,11 @@ export const issue = pgTable(
     origin: text("origin").notNull().default("user"),
     originClient: text("origin_client"),
     archivedAt: timestamp("archived_at"),
+    /**
+     * When the issue was resolved (JIRA's resolutiondate). Written by the JIRA importer only, for now: live
+     * workflow transitions don't set it yet, so it's import-only until a later phase wires it in.
+     */
+    resolvedAt: timestamp("resolved_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -116,8 +121,22 @@ export const issueAttachment = pgTable("issue_attachment", {
   uploaderId: text("uploader_id")
     .notNull()
     .references(() => user.id),
-  /** GCS object key (packages/storage). */
-  storageKey: text("storage_key").notNull(),
+  /** Storage object key (packages/storage). Null until the bytes are stored: a JIRA migration placeholder has no copy yet. */
+  storageKey: text("storage_key"),
+  /**
+   * stored: the bytes are in storage (every row before the JIRA migration's attachments phase, and every stored copy since).
+   * pending: a JIRA migration placeholder whose bytes are still to be copied. not_migrated: a placeholder the migration won't copy (over the size limit).
+   * failed: the copy failed for good (see error). Only stored rows have a storage_key.
+   */
+  status: text("status", { enum: ["stored", "pending", "not_migrated", "failed"] })
+    .notNull()
+    .default("stored"),
+  /** The user-facing JIRA link for a file that isn't stored here (works for anyone signed in to JIRA). Set on JIRA migration rows only. */
+  sourceUrl: text("source_url"),
+  /** The last copy failure's message. Cleared when the copy succeeds. */
+  error: text("error"),
+  /** Failed copy attempts so far. The row fails for good after 3. */
+  attempts: integer("attempts").notNull().default(0),
   fileName: text("file_name").notNull(),
   contentType: text("content_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),

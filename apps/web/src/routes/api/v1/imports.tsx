@@ -90,7 +90,7 @@ export const Route = createFileRoute("/api/v1/imports")({
                 resolveUserId: (u) => (u?.emailAddress ? (emailMap.get(u.emailAddress.toLowerCase()) ?? null) : null),
                 downloadAttachment: body.fetchAttachments ? buildJiraAttachmentDownloader(body.jiraEmail, body.jiraApiToken) : undefined,
               });
-              await completeImportRun(tx, importRunId, report.counts, report.errors);
+              await completeImportRun(tx, importRunId, report.counts, report.errors, report.notes);
               return report;
             });
             return jsonResponse({ importRunId, report }, 201);

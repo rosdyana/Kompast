@@ -10,7 +10,12 @@ export interface AttachmentItem {
   fileName: string;
   contentType: string;
   sizeBytes: number;
-  downloadUrl: string;
+  /** Null when the file has no bytes in storage (a JIRA migration file not copied yet, or not copied at all). */
+  downloadUrl: string | null;
+  /** stored: the file is here. The rest are JIRA migration placeholders (see packages/db's issue_attachment). */
+  status: "stored" | "pending" | "not_migrated" | "failed";
+  /** The JIRA page for a file that isn't stored here. */
+  sourceUrl: string | null;
   createdAt: string | Date;
 }
 
@@ -75,6 +80,46 @@ export function Attachments({
           {attachments.map((a) => {
             const Icon = iconFor(a);
             const isImage = a.contentType.startsWith("image/");
+            if (a.status !== "stored" || !a.downloadUrl) {
+              // A JIRA migration placeholder: no download, only the status and (when there is one) the JIRA page.
+              return (
+                <div key={a.id} className="group/tile relative overflow-hidden rounded-[8px] border border-dashed border-border-2 bg-surface-2">
+                  <div className="grid h-[84px] place-items-center">
+                    <Icon size={28} strokeWidth={1.5} className="text-text-3" />
+                  </div>
+                  <div className="px-2.5 py-2">
+                    <p className="truncate text-[13px] font-medium text-text" title={a.fileName}>
+                      {a.fileName}
+                    </p>
+                    <p className="text-[12px] text-text-3">
+                      {a.status === "pending" && `${formatBytes(a.sizeBytes)} · ${t("attachmentCopying")}`}
+                      {a.status === "not_migrated" && a.sourceUrl && (
+                        <a href={a.sourceUrl} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">
+                          {t("attachmentNotCopied", { size: formatBytes(a.sizeBytes) })}
+                        </a>
+                      )}
+                      {a.status === "not_migrated" && !a.sourceUrl && t("attachmentNotCopied", { size: formatBytes(a.sizeBytes) })}
+                      {a.status === "failed" && `${formatBytes(a.sizeBytes)} · `}
+                      {a.status === "failed" && a.sourceUrl && (
+                        <a href={a.sourceUrl} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">
+                          {t("attachmentCopyFailed")}
+                        </a>
+                      )}
+                      {a.status === "failed" && !a.sourceUrl && t("attachmentCopyFailed")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(a.id)}
+                    aria-label={t("deleteAttachment")}
+                    title={t("deleteAttachment")}
+                    className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-[6px] border border-border bg-surface text-text-2 opacity-0 shadow-card transition-opacity hover:text-danger focus-visible:opacity-100 group-hover/tile:opacity-100"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              );
+            }
             return (
               <div key={a.id} className="group/tile relative overflow-hidden rounded-[8px] border border-border bg-surface hover:border-border-2">
                 <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="block">

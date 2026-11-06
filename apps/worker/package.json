@@ -13,6 +13,7 @@
     "@kompast/env": "workspace:*",
     "@kompast/core": "workspace:*",
     "@kompast/db": "workspace:*",
+    "@kompast/import": "workspace:*",
     "@kompast/mail": "workspace:*",
     "bullmq": "^5.34.0",
     "ioredis": "^5.4.2"
