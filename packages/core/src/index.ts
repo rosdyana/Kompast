@@ -42,5 +42,6 @@ export * from "./bootstrap";
 export * from "./crypto";
 export * from "./ai";
 export * from "./import";
+export * from "./jira-migration";
 export * from "./rag";
-export type { Tx } from "./types";
+export type { Tx, AnyDb } from "./types";

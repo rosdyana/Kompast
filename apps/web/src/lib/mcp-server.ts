@@ -958,6 +958,9 @@ export function buildMcpServer(ctx: ApiAuthContext) {
             sizeBytes: a.sizeBytes,
             uploaderId: a.uploaderId,
             createdAt: a.createdAt,
+            // Null for a JIRA migration file that isn't stored here: status and sourceUrl say where it is.
+            status: a.status,
+            sourceUrl: a.sourceUrl,
             downloadUrl: a.downloadUrl,
           }));
         }),

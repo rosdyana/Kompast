@@ -1,0 +1,1 @@
+ALTER TABLE "jira_migration" ADD COLUMN "auto_sync_minutes" integer;

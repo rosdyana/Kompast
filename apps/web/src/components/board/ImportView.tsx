@@ -7,6 +7,7 @@ import { EmptyState, SkeletonRows } from "@kompast/ui/EmptyState";
 import { useTranslation } from "@kompast/i18n";
 import { listImportRunsFn, startJiraImportFn } from "@/lib/server-fns/imports";
 import { useIntlLocale } from "./project-shared";
+import { JiraMigrationWizard } from "./jira-migration/JiraMigrationWizard";
 
 type ImportRun = Awaited<ReturnType<typeof listImportRunsFn>>[number];
 
@@ -24,7 +25,7 @@ function countOf(counts: unknown, key: string): number | null {
  * ever held in this component's state for one submit (cleared right after)
  * and never persisted.
  */
-export function ImportView({ projectId, boardId }: { projectId: string; boardId: string }) {
+export function ImportView({ projectId, boardId, canManage }: { projectId: string; boardId: string; canManage: boolean }) {
   const { t } = useTranslation("board");
   const locale = useIntlLocale();
   const STATUS_LABEL: Record<string, string> = {
@@ -77,10 +78,13 @@ export function ImportView({ projectId, boardId }: { projectId: string; boardId:
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 px-4 pb-12 pt-5 sm:px-6 xl:grid-cols-[minmax(0,440px)_minmax(0,1fr)]">
-      <section className="rounded-[10px] border border-border bg-surface p-5">
-        <h2 className="type-headline">{t("importTab.heading")}</h2>
-        <p className="mb-4 mt-1 type-small text-text-2">{t("importTab.subtitle")}</p>
+    <div className="flex flex-col gap-6 px-4 pb-12 pt-5 sm:px-6">
+      <JiraMigrationWizard projectId={projectId} boardId={boardId} canManage={canManage} />
+
+      <details className="group rounded-[10px] border border-border bg-surface">
+        <summary className="cursor-pointer select-none px-5 py-3.5 type-headline text-[15px] text-text-2 hover:text-text">{t("importTab.advancedHeading")}</summary>
+        <div className="px-5 pb-5">
+          <p className="mb-4 type-small text-text-2">{t("importTab.subtitle")}</p>
         <form
           className="flex flex-col gap-3.5"
           onSubmit={(e) => {
@@ -141,7 +145,8 @@ export function ImportView({ projectId, boardId }: { projectId: string; boardId:
             </div>
           )}
         </form>
-      </section>
+        </div>
+      </details>
 
       <section className="min-w-0">
         <h2 className="mb-3 type-headline">{t("importTab.historyHeading")}</h2>

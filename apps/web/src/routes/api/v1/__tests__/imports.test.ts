@@ -17,8 +17,9 @@ function req(url: string, options: { method?: string; token?: string; body?: unk
   return new Request(url, { method: options.method ?? "GET", headers, body: options.body !== undefined ? JSON.stringify(options.body) : undefined });
 }
 
+/** Shape of JIRA Cloud's GET /rest/api/3/search/jql (token-paged, no total). */
 function jiraSearchResponse(issues: unknown[]): Response {
-  return new Response(JSON.stringify({ startAt: 0, maxResults: 100, total: issues.length, issues }), { status: 200, headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify({ issues, isLast: true }), { status: 200, headers: { "content-type": "application/json" } });
 }
 
 const FIXTURE_ISSUE = {

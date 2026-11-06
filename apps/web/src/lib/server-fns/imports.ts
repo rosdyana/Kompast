@@ -73,7 +73,7 @@ export const startJiraImportFn = createServerFn({ method: "POST" })
           resolveUserId: (u) => (u?.emailAddress ? (emailMap.get(u.emailAddress.toLowerCase()) ?? null) : null),
           downloadAttachment: data.fetchAttachments ? buildJiraAttachmentDownloader(data.jiraEmail, data.jiraApiToken) : undefined,
         });
-        await completeImportRun(tx, importRunId, report.counts, report.errors);
+        await completeImportRun(tx, importRunId, report.counts, report.errors, report.notes);
         return report;
       });
       return { importRunId, report, error: null };

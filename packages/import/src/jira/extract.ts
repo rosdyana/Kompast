@@ -1,46 +1,64 @@
 import type { JiraIssue } from "./types";
+import { createJiraClient, type JiraApiCredentials, type JiraClient } from "./client";
 
-export interface JiraApiCredentials {
-  /** e.g. "https://your-site.atlassian.net" — no trailing slash. */
-  baseUrl: string;
-  email: string;
-  apiToken: string;
-}
+export type { JiraApiCredentials } from "./client";
 
 const PAGE_SIZE = 100;
 
+/** Hard stop so a misbehaving server that keeps returning a token can't loop forever (100 × 1000 = 100k issues). */
+const MAX_PAGES = 1000;
+
+export interface JiraIssuePage {
+  issues: JiraIssue[];
+  /** Absent on the last page. Pass back as `nextPageToken` to fetch the next one. */
+  nextPageToken?: string;
+  isLast: boolean;
+}
+
+export interface JiraIssuePageOptions {
+  nextPageToken?: string;
+  /** Defaults to `*all` — the importer wants every field (comments, worklogs, attachments, the Sprint custom field). */
+  fields?: string;
+  /** e.g. "changelog". Omitted by default, so discovery's scan stays light. */
+  expand?: string;
+  maxResults?: number;
+}
+
 /**
- * Pulls every issue matching `jql` from JIRA Cloud's real REST API v3
- * search endpoint (`GET /rest/api/3/search`), paginating via
- * startAt/maxResults until `total` is exhausted. `expand=changelog` and
- * `fields=*all` are always requested — this importer wants everything
- * (worklogs, comments, attachments, changelog) in one pass rather than a
- * field allowlist, since which fields matter depends on what's actually
- * present per issue.
+ * One page of JIRA Cloud's enhanced search endpoint
+ * (`GET /rest/api/3/search/jql`). The old `GET /rest/api/3/search` now returns
+ * 410 Gone (Atlassian CHANGE-2046). The new endpoint pages with an opaque
+ * `nextPageToken` and returns no `total`.
+ */
+export async function fetchJiraIssuePage(client: JiraClient, jql: string, opts: JiraIssuePageOptions = {}): Promise<JiraIssuePage> {
+  const page = await client.get<{ issues?: JiraIssue[]; nextPageToken?: string; isLast?: boolean }>("/rest/api/3/search/jql", {
+    jql,
+    maxResults: opts.maxResults ?? PAGE_SIZE,
+    fields: opts.fields ?? "*all",
+    expand: opts.expand,
+    nextPageToken: opts.nextPageToken,
+  });
+  const nextPageToken = page.nextPageToken || undefined;
+  return { issues: page.issues ?? [], nextPageToken, isLast: page.isLast ?? !nextPageToken };
+}
+
+/**
+ * Pulls every issue matching `jql`, following `nextPageToken` until `isLast`
+ * (or no token comes back). `fields=*all` and `expand=changelog` are always
+ * requested: the importer wants comments, worklogs, attachments, changelog and
+ * the Sprint custom field in one pass, and the Sprint field's id differs per site.
  */
 export async function fetchJiraIssues(creds: JiraApiCredentials, jql: string): Promise<JiraIssue[]> {
-  const auth = Buffer.from(`${creds.email}:${creds.apiToken}`).toString("base64");
+  const client = createJiraClient(creds);
   const issues: JiraIssue[] = [];
-  let startAt = 0;
+  let nextPageToken: string | undefined;
 
-  while (true) {
-    const url = new URL("/rest/api/3/search", creds.baseUrl);
-    url.searchParams.set("jql", jql);
-    url.searchParams.set("startAt", String(startAt));
-    url.searchParams.set("maxResults", String(PAGE_SIZE));
-    url.searchParams.set("fields", "*all");
-    url.searchParams.set("expand", "changelog");
-
-    const res = await fetch(url, { headers: { authorization: `Basic ${auth}`, accept: "application/json" } });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`JIRA API error (${res.status}): ${detail}`);
-    }
-    const page = (await res.json()) as { startAt: number; maxResults: number; total: number; issues: JiraIssue[] };
+  for (let pageCount = 0; pageCount < MAX_PAGES; pageCount++) {
+    const page = await fetchJiraIssuePage(client, jql, { nextPageToken, fields: "*all", expand: "changelog", maxResults: PAGE_SIZE });
     issues.push(...page.issues);
 
-    startAt += page.issues.length;
-    if (page.issues.length === 0 || startAt >= page.total) break;
+    if (page.isLast || !page.nextPageToken || page.issues.length === 0) break;
+    nextPageToken = page.nextPageToken;
   }
 
   return issues;

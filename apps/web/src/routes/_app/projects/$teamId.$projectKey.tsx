@@ -128,7 +128,7 @@ function ProjectPage() {
             <WorkflowsListTab projectId={data.project.id} teamId={teamId} projectKey={data.project.key} />
           </div>
         )}
-        {view === "import" && <ImportView projectId={data.project.id} boardId={data.board.id} />}
+        {view === "import" && <ImportView projectId={data.project.id} boardId={data.board.id} canManage={data.canManageProject} />}
         {view === "settings" && data.canManageProject && <ProjectSettingsTab data={data} />}
       </div>
     </div>

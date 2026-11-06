@@ -104,6 +104,42 @@ describe("updateIssue + createIssue attribution", () => {
     expect(nonCreation.find((h) => h.field === "priority")).toMatchObject({ fromValue: "medium", toValue: "highest" });
   });
 
+  it("an import's history rows take the given time and actor, and historyAt/historyActorId throw for any other origin", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key: "bdt", name: "Backdate Test", actorUserId: userId }),
+    );
+    const make = (title: string) =>
+      withAuthorizedTenant(ctx, (tx) =>
+        createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title, reporterId: userId }),
+      );
+    const parent = await make("Parent");
+    const child = await make("Child");
+    const jiraCreated = new Date(Date.UTC(2023, 4, 6, 8));
+
+    await withAuthorizedTenant(ctx, (tx) =>
+      updateIssue(tx, child.issueId, {
+        parentId: parent.issueId,
+        actorId: userId,
+        origin: "import",
+        historyAt: jiraCreated,
+        historyActorId: otherUserId,
+      }),
+    );
+
+    const rows = (await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, child.issueId))).filter((h) => h.field === "parentId");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ origin: "import", actorId: otherUserId });
+    expect(rows[0]!.createdAt.getTime()).toBe(jiraCreated.getTime());
+
+    await expect(
+      withAuthorizedTenant(ctx, (tx) => updateIssue(tx, child.issueId, { title: "Renamed", actorId: userId, origin: "user", historyAt: jiraCreated })),
+    ).rejects.toThrow(/can only be set by an import/);
+    await expect(
+      withAuthorizedTenant(ctx, (tx) => updateIssue(tx, child.issueId, { title: "Renamed", actorId: userId, historyActorId: otherUserId })),
+    ).rejects.toThrow(/can only be set by an import/);
+  });
+
   it("updateIssue allows a same-hierarchy-level type change and writes a typeId history row", async () => {
     const ctx = { userId, organizationId: orgId };
     const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>

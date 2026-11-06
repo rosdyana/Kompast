@@ -82,6 +82,8 @@ alter table import_run enable row level security;
 alter table import_run force row level security;
 alter table external_ref enable row level security;
 alter table external_ref force row level security;
+alter table jira_migration enable row level security;
+alter table jira_migration force row level security;
 alter table embedding enable row level security;
 alter table embedding force row level security;
 alter table embedding_index_queue enable row level security;
@@ -220,48 +222,60 @@ drop policy if exists tenant_isolation_invitation on invitation;
 -- Tables scoped only indirectly (via issue_id -> issue.organization_id)
 -- join through issue, so they inherit isolation from the issue policy
 -- above as long as every read/write goes through withTenant()'s tx.
+--
+-- These use a correlated EXISTS, not `issue_id in (select id from issue ...)`.
+-- The uncorrelated IN is not hashed for a single-row check, so Postgres
+-- re-scans the whole issue table on every insert into these tables (every
+-- issue in every workspace), which made JIRA imports quadratic. EXISTS looks
+-- the one issue up by primary key. The issue policy still applies inside the
+-- subquery, so the rows visible are the same.
 drop policy if exists tenant_isolation_issue_comment on issue_comment;
 create policy tenant_isolation_issue_comment on issue_comment
   using (
-    issue_id in (
-      select id from issue
-      where organization_id = current_setting('app.current_workspace', true)
+    exists (
+      select 1 from issue i
+      where i.id = issue_comment.issue_id
+        and i.organization_id = current_setting('app.current_workspace', true)
     )
   );
 
 drop policy if exists tenant_isolation_worklog on worklog;
 create policy tenant_isolation_worklog on worklog
   using (
-    issue_id in (
-      select id from issue
-      where organization_id = current_setting('app.current_workspace', true)
+    exists (
+      select 1 from issue i
+      where i.id = worklog.issue_id
+        and i.organization_id = current_setting('app.current_workspace', true)
     )
   );
 
 drop policy if exists tenant_isolation_issue_checklist_item on issue_checklist_item;
 create policy tenant_isolation_issue_checklist_item on issue_checklist_item
   using (
-    issue_id in (
-      select id from issue
-      where organization_id = current_setting('app.current_workspace', true)
+    exists (
+      select 1 from issue i
+      where i.id = issue_checklist_item.issue_id
+        and i.organization_id = current_setting('app.current_workspace', true)
     )
   );
 
 drop policy if exists tenant_isolation_issue_link on issue_link;
 create policy tenant_isolation_issue_link on issue_link
   using (
-    from_issue_id in (
-      select id from issue
-      where organization_id = current_setting('app.current_workspace', true)
+    exists (
+      select 1 from issue i
+      where i.id = issue_link.from_issue_id
+        and i.organization_id = current_setting('app.current_workspace', true)
     )
   );
 
 drop policy if exists tenant_isolation_issue_attachment on issue_attachment;
 create policy tenant_isolation_issue_attachment on issue_attachment
   using (
-    issue_id in (
-      select id from issue
-      where organization_id = current_setting('app.current_workspace', true)
+    exists (
+      select 1 from issue i
+      where i.id = issue_attachment.issue_id
+        and i.organization_id = current_setting('app.current_workspace', true)
     )
   );
 
@@ -286,9 +300,10 @@ create policy tenant_isolation_priority_level on priority_level
 drop policy if exists tenant_isolation_issue_history on issue_history;
 create policy tenant_isolation_issue_history on issue_history
   using (
-    issue_id in (
-      select id from issue
-      where organization_id = current_setting('app.current_workspace', true)
+    exists (
+      select 1 from issue i
+      where i.id = issue_history.issue_id
+        and i.organization_id = current_setting('app.current_workspace', true)
     )
   );
 
@@ -443,6 +458,18 @@ create policy tenant_isolation_import_run on import_run
       project_id in (select id from project)
       or (project_id is null and created_by = current_setting('app.current_user', true))
     )
+  );
+
+-- A JIRA migration is project-owned, so it follows the project's visibility
+-- exactly like import_run's project branch: only people who can see the
+-- project see its migration row (which holds the discovery snapshot and the
+-- mapping). The encrypted token column is never read by app queries — see
+-- packages/core/src/jira-migration.ts.
+drop policy if exists tenant_isolation_jira_migration on jira_migration;
+create policy tenant_isolation_jira_migration on jira_migration
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and project_id in (select id from project)
   );
 
 drop policy if exists tenant_isolation_external_ref on external_ref;
