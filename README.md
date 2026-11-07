@@ -167,6 +167,49 @@ See [`docs/DEMO.md`](docs/DEMO.md) for the personas, a presentation flow and the
 
 ## Deploying
 
+### Installer (recommended)
+
+On a fresh Debian or Ubuntu VM (x86_64, e.g. a GCP Compute Engine instance), as root. No clone needed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo bash
+```
+
+For a private fork, pass a GitHub token with read access to the repo:
+
+```bash
+export GITHUB_TOKEN=ghp_...
+curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo -E bash
+```
+
+Or from a clone, which copies its `infra/` files instead of downloading them:
+
+```bash
+git clone https://github.com/rosdyana/kompast.git && cd kompast
+sudo ./infra/install.sh
+```
+
+- Preflight checks (OS, RAM, disk, ports, Docker versions, GCP metadata, GHCR). Nothing changes until they pass. `--check` runs only this.
+- Installs Docker and Caddy (automatic HTTPS) if you agree, checks that port 80 actually reaches the VM, and writes `.env` (chmod 600) with generated secrets.
+- Shows your answers for review before writing anything. `--reconfigure` changes domain, storage, proxy or backups later, keeping the secrets.
+- Pulls the images, runs migrations, starts the stack and waits until the app answers. Re-running upgrades: it backs up the database first and records the previous `IMAGE_TAG`.
+- Installs the daily Postgres backup and the `kompast` command. Logs go to `/var/log/kompast-install.log`.
+
+Files live in `/opt/kompast` by default (`KOMPAST_DIR`). For unattended runs (a GCE startup script), pre-answer with `KOMPAST_*` variables and `--yes`, for example `KOMPAST_DOMAIN=kompast.example.com KOMPAST_STORAGE=local sudo -E ./infra/install.sh --yes`. `sudo ./infra/install.sh --help` lists every variable.
+
+Day-to-day, through the `kompast` command:
+
+```bash
+kompast status | logs [svc] | restart [svc]
+kompast upgrade          # re-run the installer; backs up first
+kompast reconfigure      # change domain, storage, proxy or backups
+kompast version          # IMAGE_TAG and running image digests
+kompast backup | backups | restore <file>
+kompast cleanup          # prune dangling images, show disk use
+```
+
+### Manual install
+
 ```bash
 cd infra
 cp .env.example .env   # fill in every value
@@ -180,7 +223,7 @@ docker compose up -d
 
 ### Backups
 
-Nothing automated yet. At minimum, before going near real data: a `pg_dump` cron with off-box retention and a tested restore procedure.
+`infra/backup.sh` runs a daily `pg_dump` at 02:30 (cron, installed by the installer) into `BACKUP_DIR` (default `/var/backups/kompast`), keeps `BACKUP_RETENTION_DAYS` (default 14) days of local dumps, and copies to `BACKUP_GCS_URI` when you choose `local+gcs`. `sudo ./infra/backup.sh restore <file>` restores one after you type the database name to confirm; it re-runs `migrate` afterwards to re-apply roles and RLS. Test a restore before you need one. Local-only backups die with the VM disk, so consider a GCE snapshot schedule (the installer prints the commands).
 
 ## License
 
