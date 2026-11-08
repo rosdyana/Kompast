@@ -14,3 +14,12 @@
 **/.env.*
 !**/.env.example
 infra/secrets
+# Local tooling state, design docs and private keys never belong in an image.
+# Root-anchored on purpose: apps/web/src/components/docs/ is real source.
+.claude/
+.superpowers/
+.impeccable/
+docs/
+presentation/
+**/*.pem
+**/*.key

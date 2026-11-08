@@ -1,0 +1,29 @@
+version: 2
+
+updates:
+  # pnpm workspace: Dependabot reads the root pnpm-lock.yaml and updates
+  # every apps/* and packages/* manifest from there.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  # The service Dockerfiles live in infra/ (see infra/Dockerfile.*).
+  - package-ecosystem: docker
+    directories:
+      - "/infra"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10

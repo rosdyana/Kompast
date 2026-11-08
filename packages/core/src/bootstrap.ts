@@ -17,3 +17,15 @@ export async function isOnlyUser(db: AnyDb, userId: string): Promise<boolean> {
   const [only] = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.id, userId));
   return Boolean(only);
 }
+
+/**
+ * Whether anyone has ever signed in. /setup (unauthenticated by necessity)
+ * refuses once this is true: a deployment that already has users was
+ * bootstrapped some other way (demo seed, dev login), and letting an
+ * anonymous visitor pick its Entra tenant there would hand them the
+ * founding super-admin seat on first sign-in.
+ */
+export async function hasAnyUser(db: AnyDb): Promise<boolean> {
+  const [row] = await db.select({ id: schema.user.id }).from(schema.user).limit(1);
+  return Boolean(row);
+}

@@ -7,6 +7,7 @@ import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { resolveShareLink, getSharedPageContent, shareLinkRequiresPassword } from "@kompast/core";
 import { createServerSchema, redactEmbedsForGuests } from "../blocknote-schema";
 import { clientIp, rateLimit } from "../rate-limit";
+import { sanitizeShareHtml } from "../share-html";
 
 /**
  * Public, unauthenticated surface — no requireAuthContext, no
@@ -48,7 +49,9 @@ export const getSharedPageContentFn = createServerFn({ method: "POST" })
       Y.applyUpdate(ydoc, content.ydocState);
       const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
       const blocks = editor.yDocToBlocks(ydoc, "document-store");
-      html = await editor.blocksToFullHTML(redactEmbedsForGuests(blocks) as any);
+      // Page content is user-authored and this URL is public: the HTML is
+      // rendered with dangerouslySetInnerHTML, so it must be inert here.
+      html = sanitizeShareHtml(await editor.blocksToFullHTML(redactEmbedsForGuests(blocks) as any));
     }
 
     return { ok: true as const, title: content.page.title, icon: content.page.icon, html };

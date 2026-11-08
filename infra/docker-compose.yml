@@ -1,3 +1,9 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
     # pgvector's own image, not vanilla postgres — Ask Kompast's embedding
@@ -17,17 +23,28 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    logging: *logging
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # Redis is only reachable on the compose network, but it carries BullMQ
+    # job payloads and sessions, so it still requires a password. The app
+    # services get it through REDIS_URL (redis://:<password>@redis:6379, see
+    # infra/.env.example and install.sh/demo.sh).
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    environment:
+      # redis-cli reads REDISCLI_AUTH, so the healthcheck can authenticate
+      # without putting the password on its command line.
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 10
+    logging: *logging
 
   migrate:
     image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-migrate:${IMAGE_TAG:-latest}
@@ -37,6 +54,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    logging: *logging
 
   web:
     image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-web:${IMAGE_TAG:-latest}
@@ -47,6 +65,19 @@ services:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
     volumes:
       - ${GCS_CREDENTIALS_HOST_PATH:-./secrets/gcs-service-account.json}:/run/secrets/gcs.json:ro
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    mem_limit: 1g
+    pids_limit: 512
+    # Any HTTP answer below 500 counts as alive (the root path redirects to
+    # the login page, so a 2xx-only check would never pass).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.status < 500 ? 0 : 1), () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging: *logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,6 +93,19 @@ services:
     env_file: .env
     ports:
       - "127.0.0.1:${COLLAB_PORT:-1234}:1234"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    mem_limit: 512m
+    pids_limit: 512
+    # Hocuspocus has no HTTP health route; a TCP connect to its WebSocket port
+    # is the honest liveness signal.
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(1234, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,12 +113,19 @@ services:
         condition: service_healthy
 
   worker:
+    # No healthcheck: the worker has no listening socket or HTTP route, so
+    # nothing cheap and honest can be probed from outside the process.
     image: ghcr.io/${GHCR_OWNER:?GHCR_OWNER is required}/kompast-worker:${IMAGE_TAG:-latest}
     platform: linux/amd64
     restart: unless-stopped
     env_file: .env
     volumes:
       - ${GCS_CREDENTIALS_HOST_PATH:-./secrets/gcs-service-account.json}:/run/secrets/gcs.json:ro
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    mem_limit: 1g
+    pids_limit: 512
+    logging: *logging
     depends_on:
       postgres:
         condition: service_healthy

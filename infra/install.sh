@@ -316,12 +316,23 @@ backup_env_file() {
   local bak stamp
   stamp="$(date +%Y%m%d-%H%M%S)"
   bak="$ENV_FILE.bak-$stamp"
-  cp -p "$ENV_FILE" "$bak"
+  # umask in a subshell: the backup is created 0600 from the start, not
+  # world-readable until the chmod below runs.
+  (umask 077; cp -p "$ENV_FILE" "$bak")
   chmod 600 "$bak"
   ok "Saved the current .env as $bak"
 }
 
 rand_hex() { openssl rand -hex "$1"; }
+
+# Redis requires a password (docker-compose.yml). The hex value needs no
+# URL-escaping inside REDIS_URL. Only the Redis pair is written here.
+set_redis_secret() {
+  local pw
+  pw="$(rand_hex 24)"
+  env_set REDIS_PASSWORD "$pw"
+  env_set REDIS_URL "redis://:${pw}@redis:6379"
+}
 
 # ============================================================================
 # Preflight (no changes)
@@ -928,6 +939,11 @@ ${DOMAIN} {
 
   reverse_proxy 127.0.0.1:$1
 
+  # Upper bound on request bodies, above the largest app-side upload (200 MB, Notion import).
+  request_body {
+    max_size 250MB
+  }
+
   encode zstd gzip
 
   header {
@@ -935,6 +951,8 @@ ${DOMAIN} {
     X-Content-Type-Options "nosniff"
     X-Frame-Options "SAMEORIGIN"
     Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    -Server
   }
 }
 EOF
@@ -1078,13 +1096,18 @@ install_apply() {
   local pg_admin pg_app
   pg_admin="$(rand_hex 24)"
   pg_app="$(rand_hex 24)"
-  cp "$KOMPAST_DIR/.env.example" "$ENV_FILE"
+  # umask in a subshell so the file is never readable by others, even briefly.
+  (umask 077; cp "$KOMPAST_DIR/.env.example" "$ENV_FILE")
   chmod 600 "$ENV_FILE"
   env_set NODE_ENV production
   env_set POSTGRES_PASSWORD "$pg_admin"
   env_set DATABASE_ADMIN_URL "postgres://kompast_admin:${pg_admin}@postgres:5432/kompast"
   env_set DATABASE_URL "postgres://kompast_app:${pg_app}@postgres:5432/kompast"
   env_set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
+  set_redis_secret
+  # One-time secret the /setup form asks for, so nobody who finds the URL
+  # first can pick the Entra tenant. Shown once in "Next steps" below.
+  env_set SETUP_TOKEN "$(rand_hex 16)"
   apply_settings
   ok "Wrote $ENV_FILE (chmod 600) with generated secrets"
   finish_proxy
@@ -1093,6 +1116,10 @@ install_apply() {
 reconfigure_apply() {
   step "Write configuration"
   backup_env_file
+  if [[ -z "$(env_get REDIS_PASSWORD)" ]]; then
+    set_redis_secret
+    ok "Generated REDIS_PASSWORD (Redis now requires a password; other secrets untouched)"
+  fi
   apply_settings
   if [[ "$ANS_BACKUP" == none && -f "$BACKUP_CRON" ]]; then
     rm -f "$BACKUP_CRON"
@@ -1128,6 +1155,14 @@ upgrade_options() {
   ok "Existing $ENV_FILE found. Secrets, storage and backup settings are not touched."
   echo "  APP_URL    $(env_get APP_URL)"
   echo "  IMAGE_TAG  $PREV_TAG   (the previous tag; roll back by setting it again and running kompast upgrade)"
+
+  # Installs made before Redis auth have no REDIS_PASSWORD. Without one the
+  # new compose file refuses to start redis, so add only that pair.
+  if [[ -z "$(env_get REDIS_PASSWORD)" ]]; then
+    backup_env_file
+    set_redis_secret
+    ok "Generated REDIS_PASSWORD (Redis now requires a password; other secrets untouched)"
+  fi
 
   new_tag="$PREV_TAG"
   if [[ -n "${KOMPAST_IMAGE_TAG:-}" ]]; then
@@ -1393,7 +1428,9 @@ print_summary() {
 Next steps
   1. Microsoft Entra ID: register an app with the redirect URI
        $url/api/auth/callback/microsoft-entra-id
-  2. Open $url/setup and enter the Tenant ID, Client ID and Client Secret.
+  2. Open $url/setup and enter the Tenant ID, Client ID and Client Secret,
+     plus this setup token: $(env_get SETUP_TOKEN)
+     (also in $ENV_FILE as SETUP_TOKEN; it is only needed once).
      Double-check the Tenant ID: a wrong one can stop the app from booting.
   3. The first person to sign in becomes the workspace owner and super admin.
 EOF
