@@ -45,6 +45,16 @@ require_demo_env() {
   [[ -f "$ENV_FILE" ]] || die "infra/.env not found. Run: ./demo.sh init <url>"
   [[ "$(env_get DEMO_MODE)" == "true" ]] || die "DEMO_MODE=true is not set in infra/.env — refusing to treat this as a demo deployment."
   [[ -n "$(env_get DEMO_ACCESS_CODE)" ]] || die "DEMO_ACCESS_CODE is empty in infra/.env."
+  # Demos initialized before Redis auth have no REDIS_PASSWORD, and
+  # docker-compose.yml refuses to start without one. Add just that pair
+  # (same as install.sh's upgrade path); Redis data is kept.
+  if [[ -z "$(env_get REDIS_PASSWORD)" ]]; then
+    local redis_pw
+    redis_pw="$(rand 24)"
+    env_set REDIS_PASSWORD "$redis_pw"
+    env_set REDIS_URL "redis://:${redis_pw}@redis:6379"
+    info "Generated REDIS_PASSWORD (Redis now requires a password; other settings untouched)"
+  fi
 }
 
 cmd_init() {
