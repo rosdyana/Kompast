@@ -22,7 +22,7 @@
     "@kompast/env": "workspace:*",
     "@kompast/storage": "workspace:*",
     "cron-parser": "^5.10.1",
-    "undici": "^7.30.1",
+    "undici": "^8.12.4",
     "drizzle-orm": "^0.45.2",
     "fractional-indexing": "^4.0.0",
     "nanoid": "^6.0.2",
