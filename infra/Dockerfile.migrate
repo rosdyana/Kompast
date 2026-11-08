@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 # One-shot migration runner: `docker compose run --rm migrate` (or as a
 # `depends_on: service_completed_successfully` service — see
-# docker-compose.yml). Ships packages/db's source + drizzle/ folder directly
-# via tsx rather than a bundled build, since it only ever runs once per
-# deploy and correctness (running the exact migration files) matters more
-# than image size here.
+# docker-compose.yml). The runner is bundled into one file at build time
+# (packages/db/tsup.config.ts), so the runtime image has no node_modules, no
+# tsx and no esbuild binary. The migration SQL (drizzle/, rls.sql) is copied
+# as-is and read from disk at run time — the exact files, as before.
 # Exact patched Node (CVE-2026-111497 "Node2Shell", Brotli RCE: fixed in 22.23.4 / 24.22.1 / 26.12.1;
 # odd majors like 25 get no fix) pinned by digest so a stale cache can't ship an older 22.x.
 # Dependabot bumps the tag+digest for patch/minor releases (see .github/dependabot.yml).
@@ -15,17 +15,21 @@ WORKDIR /app
 FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @kompast/db build
 
 FROM base AS runtime
 ENV NODE_ENV=production
 RUN addgroup -S kompast && adduser -S kompast -G kompast
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json /app/pnpm-workspace.yaml ./
-COPY --from=build /app/packages/db ./packages/db
-COPY --from=build /app/packages/env ./packages/env
+# The runtime only ever runs `node`. The npm CLI bundled in the base image
+# (and corepack's pnpm/yarn shims) are build tools: removing them keeps their
+# dependency tree — which Trivy flags (e.g. brace-expansion, sigstore, pacote
+# CVEs in npm's own node_modules) — out of the shipped image.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg
+COPY --from=build /app/packages/db/dist ./packages/db/dist
+COPY --from=build /app/packages/db/drizzle ./packages/db/drizzle
+COPY --from=build /app/packages/db/rls.sql ./packages/db/rls.sql
 WORKDIR /app/packages/db
 USER kompast
-# Invoke tsx's entry point directly rather than `pnpm exec`: pnpm would need
-# a writable home for corepack at runtime, which the non-root user does not
-# have. The base image's corepack cache belongs to root.
-CMD ["node", "node_modules/tsx/dist/cli.mjs", "src/migrate.ts"]
+CMD ["node", "dist/migrate.js"]

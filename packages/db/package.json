@@ -12,7 +12,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "tsup"
   },
   "dependencies": {
     "@kompast/env": "workspace:*",
@@ -23,6 +24,7 @@
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "tsup": "^9.0.0"
   }
 }
