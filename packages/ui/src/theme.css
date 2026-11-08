@@ -74,6 +74,12 @@
   --tile-5: #93661d;
   --tile-6: #bf4a3b;
   --tile-7: #2f7f86;
+  /* The compass mark (CompassMark + /public favicons). A brand asset, so it
+     keeps a navy tile in both themes instead of following --indigo, which
+     goes light in dark mode. Tip is a lifted cobalt so it reads on navy. */
+  --mark-tile: #2a4674;
+  --mark-tip: #7aa3f2;
+  --mark-tail: #e3e8f2;
 }
 
 [data-theme="dark"] {
@@ -115,6 +121,7 @@
   --tile-5: #9c7330;
   --tile-6: #bd594b;
   --tile-7: #3a8a90;
+  --mark-tile: #304d7f;
 }
 
 /* Tailwind v4 CSS-first theme: exposes the tokens above as utilities

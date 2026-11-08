@@ -4,8 +4,7 @@ import { MailCheck } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { useTranslation } from "@kompast/i18n";
 import { getInvitationStatusFn, acceptInvitationFn, rejectInvitationFn } from "@/lib/server-fns/invitations";
-import { signInWithMicrosoft } from "@/lib/auth-client";
-import { AuthLayout, MicrosoftGlyph } from "@/components/auth/AuthLayout";
+import { AuthLayout, MicrosoftSignInButton } from "@/components/auth/AuthLayout";
 
 export const Route = createFileRoute("/invite/$invitationId")({
   loader: ({ params }) => getInvitationStatusFn({ data: params.invitationId }),
@@ -38,10 +37,7 @@ function InvitePage() {
         {icon}
         <h2 className="type-title">{t("invitedHeading")}</h2>
         <p className="mt-2 type-body text-text-2">{t("invitedSubtext")}</p>
-        <Button variant="dark" size="lg" className="mt-7 w-full" onClick={() => signInWithMicrosoft(`/invite/${params.invitationId}`)}>
-          <MicrosoftGlyph />
-          {t("continueWithMicrosoft")}
-        </Button>
+        <MicrosoftSignInButton className="mt-7" callbackURL={`/invite/${params.invitationId}`} />
       </AuthLayout>
     );
   }

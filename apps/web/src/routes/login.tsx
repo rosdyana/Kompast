@@ -5,11 +5,11 @@ import { Button } from "@kompast/ui/Button";
 import { Badge } from "@kompast/ui/Badge";
 import { TextField } from "@kompast/ui/Input";
 import { useTranslation } from "@kompast/i18n";
-import { authClient, signInWithMicrosoft, signInAsDevAdmin } from "@/lib/auth-client";
+import { authClient, signInAsDevAdmin } from "@/lib/auth-client";
 import { setLocaleFn } from "@/lib/server-fns/locale";
 import type { DemoPersona } from "@/lib/demo";
 import { getDevLoginStatusFn } from "@/lib/server-fns/dev-login";
-import { AuthLayout, MicrosoftGlyph } from "@/components/auth/AuthLayout";
+import { AuthLayout, MicrosoftSignInButton } from "@/components/auth/AuthLayout";
 
 export const Route = createFileRoute("/login")({
   loader: () => getDevLoginStatusFn(),
@@ -23,7 +23,6 @@ function LoginPage() {
   const [devPassword, setDevPassword] = useState("");
   const [devLoginError, setDevLoginError] = useState<string | null>(null);
   const [devLoginBusy, setDevLoginBusy] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
 
   async function submitDevLogin() {
     if (!devPassword.trim()) return;
@@ -45,21 +44,7 @@ function LoginPage() {
     <AuthLayout>
       <h2 className="type-title">{t("signInHeading")}</h2>
       <p className="mt-2 type-body text-text-2">{t("signInSubtext")}</p>
-      {(microsoftConfigured || !demo.enabled) && (
-        <Button
-          variant="dark"
-          size="lg"
-          className="mt-7 w-full"
-          disabled={redirecting}
-          onClick={() => {
-            setRedirecting(true);
-            signInWithMicrosoft().catch(() => setRedirecting(false));
-          }}
-        >
-          <MicrosoftGlyph />
-          {t("continueWithMicrosoft")}
-        </Button>
-      )}
+      {(microsoftConfigured || !demo.enabled) && <MicrosoftSignInButton className="mt-7" />}
 
       {demo.enabled && demo.personas.length > 0 && <DemoPersonaPicker personas={demo.personas} />}
 

@@ -231,7 +231,7 @@ components:
 
 Kompast is a workbench, not a showroom: two familiar tools laid on one calm, warm-gray table. Docs take Notion's structure: a labeled 248px sidebar with a page tree and favorites, a big emoji icon over a 40px bold title, and a 16px reading column with generous line height. Tracking takes Jira's vocabulary: status lozenges, colored issue-type tiles, priority chevrons, dense backlog rows inside sprint containers, kanban lanes of raised cards, an inline-editable table, a detail page with quiet click-to-edit fields, a ⌘K palette, and a global Create issue dialog. People who have used either tool daily should feel at home within seconds. That is the point, because this is a migration target.
 
-What makes it Kompast and not a clone is the brand pair and the temperature. A deep navy tile holding a cobalt diamond (the compass mark) anchors the shell and the sign-in panel. Everything else sits on warm neutrals tuned for eye comfort: an off-white canvas, warm dark-gray ink, one calm mid-saturation blue, and low-chroma status hues. Dark mode is soft charcoal, never black. Type is the operating system's own UI face, chosen for native rendering and first-class CJK coverage across the English, Bahasa Indonesia, and Traditional Chinese locales. JetBrains Mono appears in exactly one place: issue keys.
+What makes it Kompast and not a clone is the brand pair and the temperature. A deep navy tile holding a single compass needle (the compass mark) anchors the shell and the sign-in panel. Everything else sits on warm neutrals tuned for eye comfort: an off-white canvas, warm dark-gray ink, one calm mid-saturation blue, and low-chroma status hues. Dark mode is soft charcoal, never black. Type is the operating system's own UI face, chosen for native rendering and first-class CJK coverage across the English, Bahasa Indonesia, and Traditional Chinese locales. JetBrains Mono appears in exactly one place: issue keys.
 
 Density is set per surface. Docs breathe; tracking packs rows at 30 to 38px. Chrome stays quiet so that the colored data (lozenges, type tiles, priority arrows, avatars) is what the eye reads first.
 
@@ -252,7 +252,7 @@ A warm-neutral workshop palette: near-white paper, graphite ink, one calm cobalt
 - **Calm Cobalt** (accent): the single action and focus color. Used for primary buttons, the focus ring and outline, the text caret, selected menu checks, active tab underlines, drop targets, the Spinner arc, and checkbox tint. Hover deepens to **Cobalt Pressed** (accent-hover). **Cobalt Ink** (accent-text) is the text-safe variant for links, subtle buttons, active tab labels, and in-progress lozenges. **Cobalt Wash** (accent-soft) is the 3px focus halo and the selected or drop-over fill.
 
 ### Secondary
-- **Compass Navy** (indigo): the brand color. It fills the compass mark tile and the sign-in brand panel, tints custom-field chips on cards, and is the first project-tile and column-tone preset. **Navy Mist** (indigo-soft) is its chip background.
+- **Compass Navy** (indigo): the brand color. It is the source of the compass mark tile (`--mark-tile`) and the sign-in brand panel, tints custom-field chips on cards, and is the first project-tile and column-tone preset. **Navy Mist** (indigo-soft) is its chip background.
 
 ### Tertiary (status hues, low chroma)
 - **Ledger Green** (green) and **Green Mist** (green-soft): done status, the story type tile, success toasts.
@@ -328,7 +328,7 @@ This is a hybrid system. Structure comes from tonal layering: a Sidebar Linen co
 
 ## Shapes
 
-Corners are gently rounded and step up with the size of the object. 4px is for tags and glyphs (badges, lozenges, type tiles, Kbd, inline code). 5px is for menu items and project tiles. 6px is for every control (buttons, inputs, sidebar rows, the search field). 8px is for kanban cards, popovers, toasts, and table frames. 10px is for large containers (Card, Dialog, kanban lanes, sprint containers, panel empty states). Avatars, count pills, and status dots are full circles. The unassigned avatar is a dashed circle, and empty-state panels use a dashed Hairline Deep border. The compass mark is a navy square at a 28% radius holding a 45°-rotated cobalt square.
+Corners are gently rounded and step up with the size of the object. 4px is for tags and glyphs (badges, lozenges, type tiles, Kbd, inline code). 5px is for menu items and project tiles. 6px is for every control (buttons, inputs, sidebar rows, the search field). 8px is for kanban cards, popovers, toasts, and table frames. 10px is for large containers (Card, Dialog, kanban lanes, sprint containers, panel empty states). Avatars, count pills, and status dots are full circles. The unassigned avatar is a dashed circle, and empty-state panels use a dashed Hairline Deep border. The compass mark is a navy square at a 28% radius (9 of 32 units) holding one flat compass needle tilted north-east: a lifted-cobalt tip (`--mark-tip`) and a paper tail (`--mark-tail`) on `--mark-tile`. These three tokens stay navy-based in both themes, because the mark is a brand asset. `CompassMark` and `/public/favicon.svg` share the same 32-unit geometry. On the navy sign-in panel the needle sits bare inside a translucent white tile.
 
 ## Components
 

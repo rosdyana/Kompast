@@ -1,6 +1,8 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { FileText, KanbanSquare, Lock } from "lucide-react";
+import { Spinner } from "@kompast/ui/EmptyState";
 import { useTranslation } from "@kompast/i18n";
+import { signInWithMicrosoft } from "@/lib/auth-client";
 import { CompassMark } from "@/components/shell/ProjectIcon";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 
@@ -12,8 +14,8 @@ import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 export function AuthLayout({ children }: { children: ReactNode }) {
   const { t } = useTranslation("auth");
   return (
-    <div className="grid min-h-screen grid-cols-1 bg-bg lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <aside className="relative flex flex-col justify-between gap-10 overflow-hidden bg-indigo px-6 py-6 text-white sm:px-10 lg:px-14 lg:py-12">
+    <div className="grid min-h-screen grid-cols-1 grid-rows-[auto_1fr] bg-bg lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-1">
+      <aside className="relative flex flex-col justify-between gap-10 overflow-hidden bg-[var(--mark-tile)] px-5 py-4 text-white sm:px-10 sm:py-6 lg:px-14 lg:py-12">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 opacity-60"
@@ -24,8 +26,8 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           }}
         />
         <div className="relative flex items-center gap-2.5">
-          <span className="grid h-8 w-8 place-items-center rounded-[9px] bg-white/10">
-            <CompassMark size={22} />
+          <span className="grid h-8 w-8 place-items-center rounded-[9px] bg-white/10 ring-1 ring-inset ring-white/10">
+            <CompassMark bare size={32} />
           </span>
           <span className="text-[16px] font-semibold tracking-tight">Kompast</span>
         </div>
@@ -66,13 +68,47 @@ export function AuthLayout({ children }: { children: ReactNode }) {
   );
 }
 
-export function MicrosoftGlyph() {
+/**
+ * The Microsoft sign-in button, shared by /login and /invite. Follows
+ * Microsoft's light sign-in button guidance (neutral surface, hairline
+ * border, the four-square logo) so it sits calmly on the off-white card
+ * instead of being the heaviest thing on the page. Clicking hands off to
+ * Entra; the button holds a pending state until the browser leaves, and
+ * recovers if the hand-off call itself fails.
+ */
+export function MicrosoftSignInButton({ callbackURL, className }: { callbackURL?: string; className?: string }) {
+  const { t } = useTranslation("auth");
+  const [pending, setPending] = useState(false);
   return (
-    <span aria-hidden className="grid flex-none grid-cols-2 grid-rows-2 gap-[2px]" style={{ width: 16, height: 16 }}>
-      <i className="bg-[#f25022]" />
-      <i className="bg-[#7fba00]" />
-      <i className="bg-[#00a4ef]" />
-      <i className="bg-[#ffb900]" />
-    </span>
+    <button
+      type="button"
+      disabled={pending}
+      aria-busy={pending}
+      onClick={() => {
+        setPending(true);
+        signInWithMicrosoft(callbackURL).catch(() => setPending(false));
+      }}
+      className={
+        "inline-flex h-11 w-full select-none items-center justify-center gap-3 rounded-[8px] border border-border-2 bg-surface px-4 text-[14.5px] font-medium text-text " +
+        "shadow-[0_1px_2px_rgba(40,38,33,0.05)] transition-[background-color,border-color] duration-100 " +
+        "hover:border-text-3/50 hover:bg-surface-2 active:bg-surface-3 disabled:cursor-progress disabled:bg-surface-2 " +
+        (className ?? "")
+      }
+    >
+      {pending ? <Spinner size={16} /> : <MicrosoftGlyph />}
+      <span>{pending ? t("redirectingToMicrosoft") : t("continueWithMicrosoft")}</span>
+    </button>
+  );
+}
+
+/** Microsoft's four-square logo, at its official 21-unit proportions. */
+export function MicrosoftGlyph({ size = 18 }: { size?: number }) {
+  return (
+    <svg aria-hidden width={size} height={size} viewBox="0 0 21 21" className="flex-none">
+      <rect x="0" y="0" width="10" height="10" fill="#f25022" />
+      <rect x="11" y="0" width="10" height="10" fill="#7fba00" />
+      <rect x="0" y="11" width="10" height="10" fill="#00a4ef" />
+      <rect x="11" y="11" width="10" height="10" fill="#ffb900" />
+    </svg>
   );
 }

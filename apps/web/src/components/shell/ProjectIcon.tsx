@@ -21,15 +21,18 @@ export function ProjectIcon({ projectKey, size = 20, className }: { projectKey: 
   );
 }
 
-/** The Kompast compass mark: navy tile, cobalt diamond. */
-export function CompassMark({ size = 22, className }: { size?: number; className?: string }) {
+/**
+ * The Kompast compass mark: a navy tile holding one compass needle tilted
+ * north-east, lifted-cobalt tip and paper tail. Geometry lives on a 32-unit
+ * grid shared with /public/favicon.svg — change one, change both.
+ * `bare` drops the tile (for placing the needle on the navy brand panel).
+ */
+export function CompassMark({ size = 22, className, bare = false }: { size?: number; className?: string; bare?: boolean }) {
   return (
-    <span
-      aria-hidden
-      className={clsx("inline-grid flex-none place-items-center bg-indigo", className)}
-      style={{ width: size, height: size, borderRadius: Math.round(size * 0.28) }}
-    >
-      <span className="rotate-45 rounded-[2px] bg-accent" style={{ width: size * 0.3, height: size * 0.3 }} />
-    </span>
+    <svg aria-hidden width={size} height={size} viewBox="0 0 32 32" className={clsx("flex-none", className)}>
+      {!bare && <rect width="32" height="32" rx="9" fill="var(--mark-tile)" />}
+      <path d="M25 7 19 19 13 13Z" fill="var(--mark-tip)" />
+      <path d="M7 25 13 13 19 19Z" fill="var(--mark-tail)" />
+    </svg>
   );
 }
