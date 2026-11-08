@@ -62,6 +62,8 @@
       "modelPlaceholderOther": "此端點使用的模型名稱",
       "azureEndpointLabel": "Azure 端點",
       "azureDeploymentLabel": "Azure 部署",
+      "foundryEndpointLabel": "Foundry 端點",
+      "foundryModelNote": "(部署名稱 — 留空則使用預設值)",
       "baseUrlLabel": "基礎 URL",
       "savingEllipsis": "儲存中…",
       "save": "儲存",

@@ -14,6 +14,14 @@ describe("createAiClient", () => {
     expect(() => createAiClient({ ...base, provider: "azure-openai", apiKey: "k" })).toThrow(/endpoint/i);
   });
 
+  it("throws for azure-foundry-anthropic missing an endpoint", () => {
+    expect(() => createAiClient({ ...base, provider: "azure-foundry-anthropic", apiKey: "k" })).toThrow(/endpoint/i);
+  });
+
+  it("succeeds building an azure-foundry-anthropic client given an endpoint (model optional)", () => {
+    expect(() => createAiClient({ ...base, provider: "azure-foundry-anthropic", apiKey: "k", azureEndpoint: "https://x.services.ai.azure.com" })).not.toThrow();
+  });
+
   it("throws for openai-compatible missing a base URL", () => {
     expect(() => createAiClient({ ...base, provider: "openai-compatible", apiKey: "k" })).toThrow(/base url/i);
   });
@@ -46,6 +54,11 @@ describe("resolveModelName", () => {
 
   it("uses an explicit anthropic model override", () => {
     expect(resolveModelName({ ...base, provider: "anthropic", model: "claude-opus-5" })).toBe("claude-opus-5");
+  });
+
+  it("uses the deployment name (or the default model) for azure-foundry-anthropic", () => {
+    expect(resolveModelName({ ...base, provider: "azure-foundry-anthropic", model: "claude-deploy" })).toBe("claude-deploy");
+    expect(resolveModelName({ ...base, provider: "azure-foundry-anthropic", model: null })).toBe("claude-sonnet-5");
   });
 
   it("uses the configured model for openai-compatible", () => {

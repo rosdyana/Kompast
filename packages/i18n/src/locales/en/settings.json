@@ -62,6 +62,8 @@
       "modelPlaceholderOther": "model name at this endpoint",
       "azureEndpointLabel": "Azure endpoint",
       "azureDeploymentLabel": "Azure deployment",
+      "foundryEndpointLabel": "Foundry endpoint",
+      "foundryModelNote": "(deployment name — leave blank for default)",
       "baseUrlLabel": "Base URL",
       "savingEllipsis": "Saving…",
       "save": "Save",

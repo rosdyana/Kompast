@@ -47,7 +47,7 @@ Most teams split their work across a docs tool and an issue tracker, then spend 
 - **Writing assist** in the editor: continue, improve, shorten, expand, summarize, translate.
 - AI-drafted issue descriptions and sprint summaries.
 - **Ask Kompast**: a chat that answers questions from your issues, comments and docs. It uses pgvector semantic search plus read-only lookups (issues by status, assignee or sprint; issue details; sprint reports), and only ever sees what the person asking can see.
-- Works with Anthropic, Azure OpenAI, or any OpenAI-compatible endpoint.
+- Works with Anthropic, Claude on Azure AI Foundry, Azure OpenAI, or any OpenAI-compatible endpoint.
 
 ### Teams & access control
 - One workspace split into teams. Members see only their own teams' projects, issues, sprints and docs, plus shared Workspace docs.
@@ -239,7 +239,7 @@ Workspace admins can change these at `/settings` without touching `.env`:
 | Setting | Options |
 |---|---|
 | Single sign-on | Microsoft Entra ID |
-| AI provider | Anthropic, Azure OpenAI, OpenAI-compatible |
+| AI provider | Anthropic, Claude on Azure AI Foundry, Azure OpenAI, OpenAI-compatible |
 | Embedding provider (Ask Kompast) | Azure OpenAI, OpenAI-compatible |
 | Mail vendor | Brevo, Resend, SMTP |
 
