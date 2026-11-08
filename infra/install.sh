@@ -334,6 +334,29 @@ set_redis_secret() {
   env_set REDIS_URL "redis://:${pw}@redis:6379"
 }
 
+# The non-superuser, RLS-exempt role web/collab/worker use instead of the
+# Postgres superuser (migrate creates it from this URL). Hex password: no
+# URL-escaping needed.
+set_service_db_secret() {
+  env_set DATABASE_SERVICE_URL "postgres://kompast_service:$(rand_hex 24)@postgres:5432/kompast"
+}
+
+# Installs from before Redis auth / the DB role split lack these. Adds only
+# what's missing (backing up .env first); every other secret is untouched.
+add_missing_runtime_secrets() {
+  local backed_up=0
+  if [[ -z "$(env_get REDIS_PASSWORD)" ]]; then
+    backup_env_file; backed_up=1
+    set_redis_secret
+    ok "Generated REDIS_PASSWORD (Redis now requires a password; other secrets untouched)"
+  fi
+  if [[ -z "$(env_get DATABASE_SERVICE_URL)" ]]; then
+    (( backed_up )) || backup_env_file
+    set_service_db_secret
+    ok "Generated DATABASE_SERVICE_URL (app containers no longer get the Postgres superuser; other secrets untouched)"
+  fi
+}
+
 # ============================================================================
 # Preflight (no changes)
 # ============================================================================
@@ -1105,6 +1128,7 @@ install_apply() {
   env_set DATABASE_URL "postgres://kompast_app:${pg_app}@postgres:5432/kompast"
   env_set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
   set_redis_secret
+  set_service_db_secret
   # One-time secret the /setup form asks for, so nobody who finds the URL
   # first can pick the Entra tenant. Shown once in "Next steps" below.
   env_set SETUP_TOKEN "$(rand_hex 16)"
@@ -1116,10 +1140,7 @@ install_apply() {
 reconfigure_apply() {
   step "Write configuration"
   backup_env_file
-  if [[ -z "$(env_get REDIS_PASSWORD)" ]]; then
-    set_redis_secret
-    ok "Generated REDIS_PASSWORD (Redis now requires a password; other secrets untouched)"
-  fi
+  add_missing_runtime_secrets
   apply_settings
   if [[ "$ANS_BACKUP" == none && -f "$BACKUP_CRON" ]]; then
     rm -f "$BACKUP_CRON"
@@ -1156,13 +1177,10 @@ upgrade_options() {
   echo "  APP_URL    $(env_get APP_URL)"
   echo "  IMAGE_TAG  $PREV_TAG   (the previous tag; roll back by setting it again and running kompast upgrade)"
 
-  # Installs made before Redis auth have no REDIS_PASSWORD. Without one the
-  # new compose file refuses to start redis, so add only that pair.
-  if [[ -z "$(env_get REDIS_PASSWORD)" ]]; then
-    backup_env_file
-    set_redis_secret
-    ok "Generated REDIS_PASSWORD (Redis now requires a password; other secrets untouched)"
-  fi
+  # Installs made before Redis auth / the DB role split lack REDIS_PASSWORD
+  # and DATABASE_SERVICE_URL; the new compose file refuses to start without
+  # them, so add only those (this runs before any docker compose command).
+  add_missing_runtime_secrets
 
   new_tag="$PREV_TAG"
   if [[ -n "${KOMPAST_IMAGE_TAG:-}" ]]; then

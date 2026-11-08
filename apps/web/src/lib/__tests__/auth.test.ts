@@ -89,30 +89,41 @@ describe("seedDevAdmin", () => {
 describe("Better Auth plugin REST surface is closed over HTTP", () => {
   const baseURL = process.env.BETTER_AUTH_URL!;
 
-  async function cleanupDevAdmin() {
-    const [user] = await admin.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, DEV_ADMIN_EMAIL));
-    if (!user) return;
-    const members = await admin.select({ organizationId: schema.member.organizationId }).from(schema.member).where(eq(schema.member.userId, user.id));
-    await admin.delete(schema.member).where(eq(schema.member.userId, user.id));
-    await admin.delete(schema.session).where(eq(schema.session.userId, user.id));
-    await admin.delete(schema.account).where(eq(schema.account.userId, user.id));
-    for (const m of members) await admin.delete(schema.organization).where(eq(schema.organization.id, m.organizationId));
-    await admin.delete(schema.user).where(eq(schema.user.id, user.id));
+  // Its own throwaway user — NOT the shared dev-admin: every web test file
+  // that calls getAuth() re-seeds dev-admin in parallel, which raced the
+  // cleanup/sign-in here. Signed up through Better Auth itself so the
+  // password/account rows are real.
+  const EMAIL = `http-guard-${process.pid}-${Date.now()}@example.com`;
+  const PASSWORD = "http-guard-password-1234";
+  const ORG_ID = `test-http-guard-org-${process.pid}`;
+
+  async function cleanupGuardUser() {
+    const users = await admin.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, EMAIL));
+    for (const u of users) {
+      const members = await admin.select({ organizationId: schema.member.organizationId }).from(schema.member).where(eq(schema.member.userId, u.id));
+      await admin.delete(schema.member).where(eq(schema.member.userId, u.id));
+      await admin.delete(schema.session).where(eq(schema.session.userId, u.id));
+      await admin.delete(schema.account).where(eq(schema.account.userId, u.id));
+      for (const m of members) await admin.delete(schema.organization).where(eq(schema.organization.id, m.organizationId));
+      await admin.delete(schema.user).where(eq(schema.user.id, u.id));
+    }
+    await admin.delete(schema.organization).where(eq(schema.organization.id, ORG_ID));
   }
 
-  async function signedInDevAdmin() {
+  async function signedInGuardUser() {
     const auth = buildAuth(null, true);
-    await seedDevAdmin(auth, "a-dev-password-1234");
+    await auth.api.signUpEmail({ body: { email: EMAIL, password: PASSWORD, name: "HTTP Guard" } });
     const res = await auth.handler(
       new Request(`${baseURL}/api/auth/sign-in/email`, {
         method: "POST",
         headers: { "content-type": "application/json", origin: baseURL },
-        body: JSON.stringify({ email: DEV_ADMIN_EMAIL, password: "a-dev-password-1234" }),
+        body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
       }),
     );
     expect(res.status).toBe(200);
     const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
-    return { auth, cookie };
+    const [user] = await admin.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, EMAIL));
+    return { auth, cookie, userId: user!.id };
   }
 
   function post(path: string, cookie: string, body: unknown) {
@@ -123,8 +134,8 @@ describe("Better Auth plugin REST surface is closed over HTTP", () => {
     });
   }
 
-  beforeEach(cleanupDevAdmin);
-  afterAll(cleanupDevAdmin);
+  beforeEach(cleanupGuardUser);
+  afterAll(cleanupGuardUser);
 
   it("isHttpBlockedAuthPath covers the organization and api-key plugins only", () => {
     expect(isHttpBlockedAuthPath("/organization/create")).toBe(true);
@@ -135,7 +146,7 @@ describe("Better Auth plugin REST surface is closed over HTTP", () => {
   });
 
   it("a signed-in user cannot create a workspace over HTTP", async () => {
-    const { auth, cookie } = await signedInDevAdmin();
+    const { auth, cookie } = await signedInGuardUser();
     const res = await auth.handler(post("/organization/create", cookie, { name: "Mine", slug: "test-http-guard-org" }));
     expect(res.status).toBe(403);
     const [org] = await admin.select().from(schema.organization).where(eq(schema.organization.slug, "test-http-guard-org"));
@@ -143,27 +154,27 @@ describe("Better Auth plugin REST surface is closed over HTTP", () => {
   });
 
   it("an owner cannot add themselves to a team over HTTP", async () => {
-    const { auth, cookie } = await signedInDevAdmin();
+    const { auth, cookie } = await signedInGuardUser();
     const res = await auth.handler(post("/organization/add-team-member", cookie, { teamId: "any-team", userId: "any-user" }));
     expect(res.status).toBe(403);
   });
 
   it("a signed-in user cannot mint an API key over HTTP", async () => {
-    const { auth, cookie } = await signedInDevAdmin();
+    const { auth, cookie } = await signedInGuardUser();
     const res = await auth.handler(post("/api-key/create", cookie, { name: "sneaky" }));
     expect(res.status).toBe(403);
   });
 
   it("even a direct session-bound auth.api.createOrganization is refused (allowUserToCreateOrganization: false)", async () => {
-    const { auth, cookie } = await signedInDevAdmin();
+    const { auth, cookie } = await signedInGuardUser();
     await expect(auth.api.createOrganization({ headers: new Headers({ cookie }), body: { name: "Mine", slug: "test-http-guard-org-2" } })).rejects.toThrow();
   });
 
   it("server-side auth.api calls (no request) still work — e.g. listing invitations", async () => {
-    const { auth, cookie } = await signedInDevAdmin();
-    const [user] = await admin.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, DEV_ADMIN_EMAIL));
-    const [membership] = await admin.select().from(schema.member).where(eq(schema.member.userId, user!.id));
-    const invitations = await auth.api.listInvitations({ headers: new Headers({ cookie }), query: { organizationId: membership!.organizationId } });
+    const { auth, cookie, userId } = await signedInGuardUser();
+    await admin.insert(schema.organization).values({ id: ORG_ID, name: "HTTP Guard Org", slug: ORG_ID });
+    await admin.insert(schema.member).values({ id: `mem-${ORG_ID}`, organizationId: ORG_ID, userId, role: "owner" });
+    const invitations = await auth.api.listInvitations({ headers: new Headers({ cookie }), query: { organizationId: ORG_ID } });
     expect(Array.isArray(invitations)).toBe(true);
   });
 });

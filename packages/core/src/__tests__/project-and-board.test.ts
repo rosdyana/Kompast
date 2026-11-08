@@ -30,7 +30,7 @@ import { id } from "../ids";
  */
 describe("project + board service layer", () => {
   const env = loadEnv();
-  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL, { max: 1 }));
+  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL!, { max: 1 }));
 
   const orgId = "test-core-org";
   const otherOrgId = "test-core-other-org";

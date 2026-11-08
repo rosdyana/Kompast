@@ -10,16 +10,27 @@ const client = postgres(env.DATABASE_URL);
 export const db = drizzle(client, { schema });
 
 /**
- * Bypasses RLS entirely (table owner) — NOT the general-purpose escape
- * hatch its name suggests. There are exactly two legitimate callers:
- * apps/collab (Yjs persistence, authenticated by a signed per-page token
- * with no workspace session to derive a GUC from) and
- * packages/core/share-link.ts (the public guest route, which by design
- * has no session at all — see plan §Auth, "Guests are not sessions").
- * Every other query goes through `db` + withTenant()/withAuthorizedTenant().
- * Reaching for this to "make an RLS error go away" is the bug, not the fix.
+ * Bypasses RLS — NOT the general-purpose escape hatch its name suggests.
+ * The legitimate callers are the documented cross-tenant paths: apps/collab
+ * (Yjs persistence, authenticated by a signed per-page token with no
+ * workspace session to derive a GUC from), packages/core/share-link.ts (the
+ * public guest route, no session by design — plan §Auth, "Guests are not
+ * sessions"), and the worker's system-wide queue claims / JIRA migration
+ * runner. Every other query goes through `db` +
+ * withTenant()/withAuthorizedTenant(). Reaching for this to "make an RLS
+ * error go away" is the bug, not the fix.
+ *
+ * Connects as the SERVICE role (DATABASE_SERVICE_URL): BYPASSRLS plus
+ * data-only grants, not a superuser — so a bug in one of these paths can
+ * read/write rows, but can't run DDL, read server files, or `COPY ...
+ * PROGRAM`. Falls back to DATABASE_ADMIN_URL only when no service URL is
+ * configured (dev, tests, installs from before the role split).
  */
-export const adminDb = drizzle(postgres(env.DATABASE_ADMIN_URL), { schema });
+const serviceUrl = env.DATABASE_SERVICE_URL ?? env.DATABASE_ADMIN_URL;
+if (!serviceUrl) {
+  throw new Error("DATABASE_SERVICE_URL is required (or, for local dev and tests, DATABASE_ADMIN_URL). See infra/.env.example.");
+}
+export const adminDb = drizzle(postgres(serviceUrl), { schema });
 export * as schema from "./schema";
 export { withTenant } from "./tenant";
 export type { Json } from "./schema/_shared";

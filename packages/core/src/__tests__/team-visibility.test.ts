@@ -24,7 +24,7 @@ import { id } from "../ids";
  */
 describe("team-scoped visibility", () => {
   const env = loadEnv();
-  const adminClient = postgres(env.DATABASE_ADMIN_URL, { max: 1 });
+  const adminClient = postgres(env.DATABASE_ADMIN_URL!, { max: 1 });
   const admin = drizzle(adminClient);
 
   const orgId = "test-vis-org";

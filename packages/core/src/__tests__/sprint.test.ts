@@ -27,7 +27,7 @@ import {
 
 describe("sprint lifecycle", () => {
   const env = loadEnv();
-  const adminClient = postgres(env.DATABASE_ADMIN_URL, { max: 1 });
+  const adminClient = postgres(env.DATABASE_ADMIN_URL!, { max: 1 });
   const admin = drizzle(adminClient);
 
   const orgId = "test-sprint-org";

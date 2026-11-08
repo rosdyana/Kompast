@@ -218,7 +218,12 @@ docker compose up -d
 
 - **Reverse proxy.** Services bind to `127.0.0.1`; put a reverse proxy in front (see [`infra/Caddyfile.example`](infra/Caddyfile.example)). Route `/api/collab/*` to the `collab` service *before* the catch-all route to `web`, or the WebSocket upgrade fails.
 - **Migrations.** The one-shot `migrate` service runs before `web` on every deploy. It applies schema migrations, provisions a restricted application role, then applies row-level security policies.
-- **Database roles.** `DATABASE_URL` and `DATABASE_ADMIN_URL` **must be different roles**. Postgres exempts table owners from row-level security.
+- **Database roles.** Three roles, each **its own user**:
+  - `DATABASE_ADMIN_URL`: the owner/superuser. Only the `migrate` service gets it; compose blanks it for web, collab and worker.
+  - `DATABASE_URL` (`kompast_app`): every normal request, subject to row-level security. Postgres exempts table owners from RLS, so it must not be the admin role.
+  - `DATABASE_SERVICE_URL` (`kompast_service`): the few deliberate RLS-exempt paths (collab persistence, guest share links, worker queue claims). `BYPASSRLS` with data-only grants, not a superuser. `migrate` creates it.
+
+  `kompast upgrade` adds `DATABASE_SERVICE_URL` to installs that predate it. On managed Postgres that can't grant `BYPASSRLS`, set `DATABASE_SERVICE_URL` to the admin URL; the app then falls back to the old behavior.
 - **Backups.** `infra/backup.sh` runs a daily `pg_dump` at 02:30 (cron, installed by the installer) into `BACKUP_DIR` (default `/var/backups/kompast`), keeps `BACKUP_RETENTION_DAYS` (default 14) days of local dumps, and copies to `BACKUP_GCS_URI` when you choose `local+gcs`. `sudo ./infra/backup.sh restore <file>` restores one after you type the database name to confirm, then re-runs `migrate` to re-apply roles and RLS. Test a restore before you need one. Local-only backups die with the VM disk, so consider a GCE snapshot schedule (the installer prints the commands).
 
 ### First run
