@@ -39,6 +39,8 @@ jobs:
       PORT: "3000"
       DATABASE_ADMIN_URL: postgres://kompast_admin:ci-admin-pass@localhost:5432/kompast
       DATABASE_URL: postgres://kompast_app:ci-app-pass@localhost:5432/kompast
+      # adminDb runs as the non-superuser BYPASSRLS service role in CI, like production (migrate creates it).
+      DATABASE_SERVICE_URL: postgres://kompast_service:ci-service-pass@localhost:5432/kompast
       REDIS_URL: redis://localhost:6379
       BETTER_AUTH_SECRET: ci-secret-ci-secret-ci-secret-32-chars
       BETTER_AUTH_URL: http://localhost:3000

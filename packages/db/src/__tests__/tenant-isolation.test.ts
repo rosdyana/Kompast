@@ -18,7 +18,7 @@ import { loadEnv } from "@kompast/env";
  */
 describe("tenant isolation (RLS)", () => {
   const env = loadEnv();
-  const admin = postgres(env.DATABASE_ADMIN_URL, { max: 1 });
+  const admin = postgres(env.DATABASE_ADMIN_URL!, { max: 1 });
   const app = postgres(env.DATABASE_URL, { max: 1 });
 
   const orgA = "test-org-a";

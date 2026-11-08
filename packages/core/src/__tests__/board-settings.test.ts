@@ -10,7 +10,7 @@ import { id } from "../ids";
 
 describe("board column settings", () => {
   const env = loadEnv();
-  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL, { max: 1 }));
+  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL!, { max: 1 }));
 
   const orgId = "test-boardset-org";
   const userId = "test-boardset-user";

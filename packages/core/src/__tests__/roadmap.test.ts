@@ -11,7 +11,7 @@ import { id } from "../ids";
 
 describe("epic roadmap", () => {
   const env = loadEnv();
-  const adminClient = postgres(env.DATABASE_ADMIN_URL, { max: 1 });
+  const adminClient = postgres(env.DATABASE_ADMIN_URL!, { max: 1 });
   const admin = drizzle(adminClient);
 
   const orgId = "test-roadmap-org";

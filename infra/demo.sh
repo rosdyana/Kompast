@@ -55,6 +55,12 @@ require_demo_env() {
     env_set REDIS_URL "redis://:${redis_pw}@redis:6379"
     info "Generated REDIS_PASSWORD (Redis now requires a password; other settings untouched)"
   fi
+  # Same for demos from before the DB role split: the app containers now
+  # connect as kompast_service instead of the Postgres superuser.
+  if [[ -z "$(env_get DATABASE_SERVICE_URL)" ]]; then
+    env_set DATABASE_SERVICE_URL "postgres://kompast_service:$(rand 24)@postgres:5432/kompast"
+    info "Generated DATABASE_SERVICE_URL (app containers no longer get the Postgres superuser)"
+  fi
 }
 
 cmd_init() {
@@ -67,7 +73,7 @@ cmd_init() {
   (umask 077; cp .env.example "$ENV_FILE")
   chmod 600 "$ENV_FILE"
 
-  local host ws admin_pw app_pw redis_pw
+  local host ws admin_pw app_pw redis_pw service_pw
   host="${url#*://}"
   if [[ "$url" == https://* ]]; then
     ws="wss://${host}/api/collab"          # through Caddy's /api/collab route
@@ -77,12 +83,14 @@ cmd_init() {
   admin_pw="$(rand 16)"
   app_pw="$(rand 16)"
   redis_pw="$(rand 24)"
+  service_pw="$(rand 24)"
 
   env_set APP_URL "$url"
   env_set BETTER_AUTH_URL "$url"
   env_set COLLAB_WS_URL "$ws"
   env_set POSTGRES_PASSWORD "$admin_pw"
   env_set DATABASE_ADMIN_URL "postgres://kompast_admin:${admin_pw}@postgres:5432/kompast"
+  env_set DATABASE_SERVICE_URL "postgres://kompast_service:${service_pw}@postgres:5432/kompast"
   env_set DATABASE_URL "postgres://kompast_app:${app_pw}@postgres:5432/kompast"
   env_set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
   env_set REDIS_PASSWORD "$redis_pw"

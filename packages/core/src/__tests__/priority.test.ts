@@ -16,7 +16,7 @@ import { id } from "../ids";
 
 describe("priority levels", () => {
   const env = loadEnv();
-  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL, { max: 1 }));
+  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL!, { max: 1 }));
 
   const orgId = "test-prio-org";
   const userId = "test-prio-user";

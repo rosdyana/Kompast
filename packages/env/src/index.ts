@@ -9,6 +9,11 @@ import { z } from "zod";
  * ever needs infra-level secrets in .env, never per-vendor business config.
  * See packages/core/src/settings.ts.
  */
+/** docker-compose.yml blanks some vars per service (`VAR: ""`); treat an empty string as not set. */
+function blankAsUnset<T extends z.ZodType>(inner: T) {
+  return z.preprocess((v) => (v === "" ? undefined : v), inner);
+}
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   APP_URL: z.url(),
@@ -22,12 +27,19 @@ const schema = z.object({
   // by hand against the default `postgres` Docker image, whose POSTGRES_USER
   // is a real superuser (rolsuper=t, rolbypassrls=t).
   DATABASE_URL: z.url(),
-  // Elevated/owner connection, used ONLY by packages/db/src/migrate.ts to
-  // run schema migrations and to bootstrap the restricted app role that
-  // DATABASE_URL points at (packages/db/src/bootstrap-roles.ts parses
-  // DATABASE_URL for that role's username/password). Never used at request
-  // time by web/worker/collab.
-  DATABASE_ADMIN_URL: z.url(),
+  // Owner/superuser connection, used by packages/db/src/migrate.ts to run
+  // schema migrations and to bootstrap the app and service roles. Optional
+  // at runtime: docker-compose.yml blanks it for web/collab/worker so the
+  // long-running containers never hold superuser credentials — they use
+  // DATABASE_SERVICE_URL instead. migrate.ts requires it.
+  DATABASE_ADMIN_URL: blankAsUnset(z.url().optional()),
+  // The RLS-exempt connection the running app uses for the few deliberate
+  // cross-tenant paths (packages/db's `adminDb`: collab persistence, guest
+  // share links, the worker's queue claims, the JIRA migration runner): a
+  // NON-superuser role with BYPASSRLS and data-only grants, created by
+  // migrate.ts (bootstrapServiceRole). Unset = fall back to
+  // DATABASE_ADMIN_URL (dev, tests, older installs).
+  DATABASE_SERVICE_URL: blankAsUnset(z.url().optional()),
 
   REDIS_URL: z.url(),
 

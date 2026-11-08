@@ -17,7 +17,7 @@ import { id } from "../ids";
 
 describe("issue property definitions", () => {
   const env = loadEnv();
-  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL, { max: 1 }));
+  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL!, { max: 1 }));
 
   const orgId = "test-iprop-org";
   const userId = "test-iprop-user";

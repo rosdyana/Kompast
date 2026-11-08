@@ -4,6 +4,16 @@ x-logging: &logging
     max-size: "10m"
     max-file: "5"
 
+# The long-running app containers never get the Postgres superuser: .env is
+# shared (env_file), so its admin values are blanked here, and the app's
+# RLS-exempt paths connect as kompast_service (DATABASE_SERVICE_URL) — a
+# non-superuser BYPASSRLS role that migrate creates. Only `migrate` keeps
+# DATABASE_ADMIN_URL. See packages/db/src/bootstrap-roles.ts.
+x-app-db-env: &app-db-env
+  DATABASE_ADMIN_URL: ""
+  POSTGRES_PASSWORD: ""
+  DATABASE_SERVICE_URL: ${DATABASE_SERVICE_URL:?DATABASE_SERVICE_URL is required (kompast upgrade adds it; see infra/.env.example)}
+
 services:
   postgres:
     # pgvector's own image, not vanilla postgres — Ask Kompast's embedding
@@ -61,6 +71,7 @@ services:
     platform: linux/amd64
     restart: unless-stopped
     env_file: .env
+    environment: *app-db-env
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
     volumes:
@@ -91,6 +102,7 @@ services:
     platform: linux/amd64
     restart: unless-stopped
     env_file: .env
+    environment: *app-db-env
     ports:
       - "127.0.0.1:${COLLAB_PORT:-1234}:1234"
     security_opt: ["no-new-privileges:true"]
@@ -111,6 +123,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     # No healthcheck: the worker has no listening socket or HTTP route, so
@@ -119,6 +133,7 @@ services:
     platform: linux/amd64
     restart: unless-stopped
     env_file: .env
+    environment: *app-db-env
     volumes:
       - ${GCS_CREDENTIALS_HOST_PATH:-./secrets/gcs-service-account.json}:/run/secrets/gcs.json:ro
     security_opt: ["no-new-privileges:true"]

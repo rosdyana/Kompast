@@ -15,7 +15,7 @@ import { id } from "../ids";
  */
 describe("super admin / team admin permissions", () => {
   const env = loadEnv();
-  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL, { max: 1 }));
+  const admin = drizzle(postgres(env.DATABASE_ADMIN_URL!, { max: 1 }));
 
   const orgId = "test-perm-org";
   const superAdminId = "test-perm-super-admin";
