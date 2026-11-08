@@ -62,6 +62,8 @@
       "modelPlaceholderOther": "nama model di endpoint ini",
       "azureEndpointLabel": "Azure endpoint",
       "azureDeploymentLabel": "Azure deployment",
+      "foundryEndpointLabel": "Endpoint Foundry",
+      "foundryModelNote": "(nama deployment — kosongkan untuk default)",
       "baseUrlLabel": "URL dasar",
       "savingEllipsis": "Menyimpan…",
       "save": "Simpan",

@@ -55,9 +55,9 @@ export interface AiDriver {
  * config-resolution boundary stays in one place.
  */
 export interface AiCredentials {
-  provider: "anthropic" | "azure-openai" | "openai-compatible";
+  provider: "anthropic" | "azure-openai" | "azure-foundry-anthropic" | "openai-compatible";
   apiKey: string | null;
-  /** Ignored for azure-openai (the deployment name in azureDeployment selects the model instead). Required for openai-compatible — no safe default across arbitrary endpoints. Optional for anthropic (falls back to a current default model). */
+  /** For azure-foundry-anthropic this is the Foundry deployment name (optional — falls back to the default Claude model ID, which is also Foundry's default deployment name); its endpoint reuses azureEndpoint. Ignored for azure-openai (the deployment name in azureDeployment selects the model instead). Required for openai-compatible — no safe default across arbitrary endpoints. Optional for anthropic (falls back to a current default model). */
   model: string | null;
   azureEndpoint: string | null;
   azureDeployment: string | null;

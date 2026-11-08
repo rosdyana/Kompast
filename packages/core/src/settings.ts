@@ -107,7 +107,7 @@ export async function requireSystemAdmin(db: AnyDb, ctx: { userId: string; organ
 }
 
 export interface AiSettingsView {
-  provider: "anthropic" | "azure-openai" | "openai-compatible" | null;
+  provider: "anthropic" | "azure-openai" | "azure-foundry-anthropic" | "openai-compatible" | null;
   hasApiKey: boolean;
   model: string | null;
   azureEndpoint: string | null;
@@ -130,7 +130,7 @@ export async function getAiSettings(db: AnyDb): Promise<AiSettingsView> {
 }
 
 export interface UpdateAiSettingsInput {
-  provider: "anthropic" | "azure-openai" | "openai-compatible";
+  provider: "anthropic" | "azure-openai" | "azure-foundry-anthropic" | "openai-compatible";
   /** Omit to keep the existing stored key (e.g. editing other fields without re-entering a secret). */
   apiKey?: string;
   model?: string;
@@ -184,7 +184,7 @@ export async function getAiCredentials(db: AnyDb) {
   const row = await getRow(db);
   if (!row?.aiProvider || !row.aiApiKeyEncrypted || !row.aiFeaturesEnabled) return null;
   return {
-    provider: row.aiProvider as "anthropic" | "azure-openai" | "openai-compatible",
+    provider: row.aiProvider as "anthropic" | "azure-openai" | "azure-foundry-anthropic" | "openai-compatible",
     apiKey: decryptSecret(row.aiApiKeyEncrypted),
     model: row.aiModel ?? null,
     azureEndpoint: row.aiAzureEndpoint ?? null,

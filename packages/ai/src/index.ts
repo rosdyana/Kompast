@@ -1,4 +1,4 @@
-import { createAnthropicDriver, DEFAULT_ANTHROPIC_MODEL } from "./drivers/anthropic";
+import { createAnthropicDriver, createAzureFoundryAnthropicDriver, DEFAULT_ANTHROPIC_MODEL } from "./drivers/anthropic";
 import { createAzureOpenAiDriver, createAzureOpenAiEmbeddingsDriver } from "./drivers/azure-openai";
 import { createOpenAiCompatibleDriver, createOpenAiCompatibleEmbeddingsDriver } from "./drivers/openai-compatible";
 import type { AiCredentials, AiDriver, CompletionRequest, CompletionResult, EmbeddingCredentials, EmbeddingDriver } from "./types";
@@ -24,6 +24,11 @@ function createDriver(creds: AiCredentials): AiDriver {
     if (!creds.apiKey) throw new Error("Azure OpenAI requires an API key");
     if (!creds.azureEndpoint || !creds.azureDeployment) throw new Error("Azure OpenAI requires an endpoint and a deployment name");
     return createAzureOpenAiDriver(creds.apiKey, creds.azureEndpoint, creds.azureDeployment);
+  }
+  if (creds.provider === "azure-foundry-anthropic") {
+    if (!creds.apiKey) throw new Error("Azure Foundry (Anthropic) requires an API key");
+    if (!creds.azureEndpoint) throw new Error("Azure Foundry (Anthropic) requires an endpoint");
+    return createAzureFoundryAnthropicDriver(creds.apiKey, creds.azureEndpoint, creds.model);
   }
   if (!creds.apiKey) throw new Error("OpenAI-compatible requires an API key");
   if (!creds.openAiCompatibleBaseUrl) throw new Error("OpenAI-compatible requires a base URL");
@@ -54,7 +59,7 @@ export function createAiClient(creds: AiCredentials): AiClient {
  */
 export function resolveModelName(creds: AiCredentials): string {
   if (creds.provider === "azure-openai") return creds.azureDeployment ?? "unknown-deployment";
-  if (creds.provider === "anthropic") return creds.model ?? DEFAULT_ANTHROPIC_MODEL;
+  if (creds.provider === "anthropic" || creds.provider === "azure-foundry-anthropic") return creds.model ?? DEFAULT_ANTHROPIC_MODEL;
   return creds.model ?? "unknown-model";
 }
 

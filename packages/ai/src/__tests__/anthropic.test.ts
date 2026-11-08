@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAnthropicDriver } from "../drivers/anthropic";
+import { createAnthropicDriver, createAzureFoundryAnthropicDriver, foundryMessagesUrl } from "../drivers/anthropic";
 
 function sseResponse(frames: unknown[]): Response {
   const encoder = new TextEncoder();
@@ -176,5 +176,52 @@ describe("createAnthropicDriver", () => {
         },
       ]);
     });
+  });
+});
+
+describe("createAzureFoundryAnthropicDriver", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts the same Messages body to the Foundry endpoint with an api-key header", async () => {
+    const frames = [
+      { type: "message_start", message: { usage: { input_tokens: 3, output_tokens: 0 } } },
+      { type: "content_block_delta", delta: { type: "text_delta", text: "ok" } },
+      { type: "message_delta", usage: { output_tokens: 1 } },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse(frames));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const driver = createAzureFoundryAnthropicDriver("foundry-key", "https://acme.services.ai.azure.com/anthropic/", "my-claude-deploy");
+    const result = await driver.streamCompletion({ messages: [{ role: "user", content: "hi" }] }, () => {});
+
+    expect(result.text).toBe("ok");
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("https://acme.services.ai.azure.com/anthropic/v1/messages");
+    expect(init.headers["api-key"]).toBe("foundry-key");
+    expect(init.headers["x-api-key"]).toBeUndefined();
+    expect(init.headers["anthropic-version"]).toBe("2023-06-01");
+    expect(JSON.parse(init.body).model).toBe("my-claude-deploy");
+  });
+
+  it("labels errors as Foundry errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 401 })));
+    const driver = createAzureFoundryAnthropicDriver("k", "https://acme.services.ai.azure.com", null);
+    await expect(driver.streamCompletion({ messages: [{ role: "user", content: "hi" }] }, () => {})).rejects.toThrow(/Azure Foundry \(Anthropic\) API error \(401\)/);
+  });
+
+  it("normalizes every endpoint form the Foundry portal shows", () => {
+    const want = "https://acme.services.ai.azure.com/anthropic/v1/messages";
+    for (const e of [
+      "https://acme.services.ai.azure.com",
+      "https://acme.services.ai.azure.com/",
+      "https://acme.services.ai.azure.com/anthropic",
+      "https://acme.services.ai.azure.com/anthropic/v1",
+      "https://acme.services.ai.azure.com/anthropic/v1/messages",
+      " https://acme.services.ai.azure.com/anthropic/v1/ ",
+    ]) {
+      expect(foundryMessagesUrl(e)).toBe(want);
+    }
   });
 });
