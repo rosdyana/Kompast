@@ -128,14 +128,23 @@ Kompast ships as Docker images (`web`, `collab`, `worker`, `migrate`) published 
 On a fresh Debian or Ubuntu VM (x86_64, e.g. a GCP Compute Engine instance), as root. No clone needed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo bash
+curl -fsSL https://github.com/rosdyana/kompast/releases/latest/download/install.sh | sudo bash
 ```
 
-For a private fork, pass a GitHub token with read access to the repo:
+This installs the latest **release**: the installer downloads that release's runtime files, checks each one against its `SHA256SUMS`, and pins `IMAGE_TAG` to the release version. To check the installer itself before running it as root:
+
+```bash
+curl -fsSLO https://github.com/rosdyana/kompast/releases/latest/download/install.sh
+curl -fsSLO https://github.com/rosdyana/kompast/releases/latest/download/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS && sudo bash install.sh
+```
+
+Pin a specific release with `KOMPAST_VERSION=v0.4.0` (use `sudo -E`). For a private fork, export a `GITHUB_TOKEN` with read access and fetch the release with the GitHub CLI:
 
 ```bash
 export GITHUB_TOKEN=ghp_...
-curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo -E bash
+gh release download -R <owner>/<repo> -p install.sh -p SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS && sudo -E bash install.sh
 ```
 
 Or from a clone, which copies its `infra/` files instead of downloading them:
@@ -148,7 +157,7 @@ sudo ./infra/install.sh
 - Preflight checks (OS, RAM, disk, ports, Docker versions, GCP metadata, GHCR). Nothing changes until they pass. `--check` runs only this.
 - Installs Docker and Caddy (automatic HTTPS) if you agree, checks that port 80 actually reaches the VM, and writes `.env` (chmod 600) with generated secrets.
 - Shows your answers for review before writing anything. `--reconfigure` changes domain, storage, proxy or backups later, keeping the secrets.
-- Pulls the images, runs migrations, starts the stack and waits until the app answers. Re-running upgrades: it backs up the database first and records the previous `IMAGE_TAG`.
+- Pulls the images, runs migrations, starts the stack and waits until the app answers. Re-running upgrades: it backs up the database first, records the previous `IMAGE_TAG`, and moves `IMAGE_TAG` to the release being installed. `kompast upgrade` fetches the latest release's `install.sh` and verifies it against `SHA256SUMS` before running it (`KOMPAST_VERSION=vX.Y.Z kompast upgrade` pins one).
 - Installs the daily Postgres backup and the `kompast` command. Logs go to `/var/log/kompast-install.log`.
 
 Files live in `/opt/kompast` by default (`KOMPAST_DIR`). For unattended runs (a GCE startup script), pre-answer with `KOMPAST_*` variables and `--yes`, for example `KOMPAST_DOMAIN=kompast.example.com KOMPAST_STORAGE=local sudo -E ./infra/install.sh --yes`. `sudo ./infra/install.sh --help` lists every variable.
@@ -171,14 +180,23 @@ kompast cleanup          # prune dangling images, show disk use
 On a fresh Debian or Ubuntu VM (x86_64, e.g. a GCP Compute Engine instance), as root. No clone needed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo bash
+curl -fsSL https://github.com/rosdyana/kompast/releases/latest/download/install.sh | sudo bash
 ```
 
-For a private fork, pass a GitHub token with read access to the repo:
+This installs the latest **release**: the installer downloads that release's runtime files, checks each one against its `SHA256SUMS`, and pins `IMAGE_TAG` to the release version. To check the installer itself before running it as root:
+
+```bash
+curl -fsSLO https://github.com/rosdyana/kompast/releases/latest/download/install.sh
+curl -fsSLO https://github.com/rosdyana/kompast/releases/latest/download/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS && sudo bash install.sh
+```
+
+Pin a specific release with `KOMPAST_VERSION=v0.4.0` (use `sudo -E`). For a private fork, export a `GITHUB_TOKEN` with read access and fetch the release with the GitHub CLI:
 
 ```bash
 export GITHUB_TOKEN=ghp_...
-curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo -E bash
+gh release download -R <owner>/<repo> -p install.sh -p SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS && sudo -E bash install.sh
 ```
 
 Or from a clone, which copies its `infra/` files instead of downloading them:
@@ -191,7 +209,7 @@ sudo ./infra/install.sh
 - Preflight checks (OS, RAM, disk, ports, Docker versions, GCP metadata, GHCR). Nothing changes until they pass. `--check` runs only this.
 - Installs Docker and Caddy (automatic HTTPS) if you agree, checks that port 80 actually reaches the VM, and writes `.env` (chmod 600) with generated secrets.
 - Shows your answers for review before writing anything. `--reconfigure` changes domain, storage, proxy or backups later, keeping the secrets.
-- Pulls the images, runs migrations, starts the stack and waits until the app answers. Re-running upgrades: it backs up the database first and records the previous `IMAGE_TAG`.
+- Pulls the images, runs migrations, starts the stack and waits until the app answers. Re-running upgrades: it backs up the database first, records the previous `IMAGE_TAG`, and moves `IMAGE_TAG` to the release being installed. `kompast upgrade` fetches the latest release's `install.sh` and verifies it against `SHA256SUMS` before running it (`KOMPAST_VERSION=vX.Y.Z kompast upgrade` pins one).
 - Installs the daily Postgres backup and the `kompast` command. Logs go to `/var/log/kompast-install.log`.
 
 Files live in `/opt/kompast` by default (`KOMPAST_DIR`). For unattended runs (a GCE startup script), pre-answer with `KOMPAST_*` variables and `--yes`, for example `KOMPAST_DOMAIN=kompast.example.com KOMPAST_STORAGE=local sudo -E ./infra/install.sh --yes`. `sudo ./infra/install.sh --help` lists every variable.

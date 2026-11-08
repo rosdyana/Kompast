@@ -57,3 +57,34 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+
+  # Publishes the installer and its runtime files as a GitHub Release — only
+  # after every image above was built, pushed AND passed its Trivy scan, so
+  # `releases/latest` (what install.sh and `kompast upgrade` use by default)
+  # never points at images that failed the gate. install.sh is stamped with
+  # its own version, so it installs the matching runtime files and image tag;
+  # SHA256SUMS is what the installer and the `kompast` wrapper verify against.
+  publish-installer:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Stamp installer and checksum runtime files
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          mkdir dist
+          sed "s/^KOMPAST_RELEASE=\"\"$/KOMPAST_RELEASE=\"$tag\"/" infra/install.sh > dist/install.sh
+          grep -qx "KOMPAST_RELEASE=\"$tag\"" dist/install.sh
+          cp infra/docker-compose.yml infra/Caddyfile.example infra/backup.sh infra/gcs-cors.json dist/
+          # GitHub renames release assets that start with a dot; install.sh asks for "env.example".
+          cp infra/.env.example dist/env.example
+          (cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes --verify-tag

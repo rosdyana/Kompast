@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
 # Kompast production installer for a fresh Debian/Ubuntu VM (x86_64, e.g. GCP).
 #
-#   curl -fsSL https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo bash
+#   curl -fsSL https://github.com/rosdyana/kompast/releases/latest/download/install.sh | sudo bash
 #
 # Full usage, flags and environment variables: run with --help.
 # Single file on purpose: the curl | bash path only has this script.
+
+# Set by .github/workflows/release.yml in the copy attached to a GitHub Release
+# (e.g. "v0.4.0"): that release's runtime files and images are what this
+# script installs. Empty in a checkout or on a branch.
+KOMPAST_RELEASE=""
 
 print_usage() {
   cat <<'EOF'
 Kompast production installer (Debian/Ubuntu, x86_64). Images come from GHCR; no clone needed.
 
-Install, as root:
-  curl -fsSL https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo bash
+Install the latest release, as root:
+  curl -fsSL https://github.com/rosdyana/kompast/releases/latest/download/install.sh | sudo bash
+Or verify the script before running it:
+  curl -fsSLO https://github.com/rosdyana/kompast/releases/latest/download/install.sh
+  curl -fsSLO https://github.com/rosdyana/kompast/releases/latest/download/SHA256SUMS
+  sha256sum --check --ignore-missing SHA256SUMS && sudo bash install.sh
 Or from a checkout (copies its infra/ files instead of downloading them):
   git clone https://github.com/rosdyana/kompast.git && cd kompast && sudo ./infra/install.sh
-Private repo: export GITHUB_TOKEN, then use  curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" <url> | sudo -E bash
+Private repo: export GITHUB_TOKEN and run with sudo -E (downloads go through the GitHub API).
+
+Runtime files (docker-compose.yml, backup.sh, ...) come from a GitHub Release and are checked
+against its SHA256SUMS before use; IMAGE_TAG defaults to that release's version.
 
 Modes (chosen automatically):
   install      no $KOMPAST_DIR/.env yet: asks the questions, generates secrets, deploys
@@ -34,7 +46,7 @@ Environment (pre-answers; with --yes they are used without asking, otherwise the
   KOMPAST_DIR                     install directory (default /opt/kompast)
   KOMPAST_DOMAIN                  bare host, e.g. kompast.example.com
   KOMPAST_GHCR_OWNER              GitHub owner of the images (default rosdyana)
-  KOMPAST_IMAGE_TAG               image tag (default latest)
+  KOMPAST_IMAGE_TAG               image tag (default: the release being installed, e.g. 0.4.0)
   GHCR_USER, GHCR_TOKEN           only for private images: GitHub user + PAT with read:packages
   KOMPAST_STORAGE                 gcs | local (default gcs)
   KOMPAST_GCS_BUCKET              bucket name, no gs://
@@ -46,8 +58,11 @@ Environment (pre-answers; with --yes they are used without asking, otherwise the
   KOMPAST_BACKUP_RETENTION_DAYS   default 14
   KOMPAST_BACKUP_GCS_URI          gs://bucket[/prefix], required when KOMPAST_BACKUP=local+gcs
   KOMPAST_REPO                    GitHub repo for downloads (default rosdyana/kompast)
-  KOMPAST_REF                     branch, tag or commit to download (default main)
-  GITHUB_TOKEN                    private repo: Authorization header on every download
+  KOMPAST_VERSION                 release to install, e.g. v0.4.0 (default: this script's release,
+                                  else the latest release)
+  KOMPAST_REF                     TESTING ONLY: download runtime files from a branch/commit instead
+                                  of a release. Unverified (no checksums); IMAGE_TAG is not moved
+  GITHUB_TOKEN                    private repo: authenticate downloads (GitHub API)
   DEBUG=1                         trace every command with set -x into the log. The trace includes
                                   generated secrets, so do not share the log
 
@@ -651,14 +666,109 @@ resolve_source() {
   fi
 }
 
-# get_file NAME DEST — copy from the checkout, or download. Never reached in --check.
+repo_slug() { echo "${KOMPAST_REPO:-rosdyana/kompast}"; }
+
+# github_api PATH — JSON from the GitHub REST API (authenticated when GITHUB_TOKEN is set).
+github_api() {
+  local args=(-sS -H "Accept: application/vnd.github+json")
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then args+=(-H "Authorization: Bearer $GITHUB_TOKEN"); fi
+  curl "${args[@]}" "https://api.github.com/repos/$(repo_slug)/$1"
+}
+
+# Sets RELEASE_VERSION: KOMPAST_VERSION, else the release this script came
+# from (KOMPAST_RELEASE), else the repo's latest published release.
+resolve_release() {
+  if [[ -n "${RELEASE_VERSION:-}" ]]; then return 0; fi
+  local v="${KOMPAST_VERSION:-$KOMPAST_RELEASE}"
+  if [[ -z "$v" ]]; then
+    v="$(github_api releases/latest | sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)"
+    [[ -n "$v" ]] || die "No published release found in $(repo_slug). Pin one with KOMPAST_VERSION=vX.Y.Z (or, for testing only, KOMPAST_REF=<branch>)."
+  fi
+  [[ "$v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || die "Not a release version: '$v' (expected vX.Y.Z)"
+  RELEASE_VERSION="$v"
+}
+
+# download_release_asset NAME DEST — one asset of RELEASE_VERSION.
+download_release_asset() {
+  local name="$1" dest="$2" url code
+  local args=(-sS -L -o "$dest" -w '%{http_code}')
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    # Private repos: the browser download URL needs a web session, so use the API's asset endpoint.
+    url="$(github_api "releases/tags/$RELEASE_VERSION" | awk -v n="$name" '
+      /"url": *"https:\/\/api\.github\.com\/repos\/.*\/releases\/assets\/[0-9]+"/ { match($0, /https:[^"]+/); u = substr($0, RSTART, RLENGTH) }
+      index($0, "\"name\": \"" n "\"") { print u; exit }')"
+    [[ -n "$url" ]] || die "Release $RELEASE_VERSION has no asset named $name"
+    args+=(-H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octet-stream")
+  else
+    url="https://github.com/$(repo_slug)/releases/download/$RELEASE_VERSION/$name"
+  fi
+  code="$(curl "${args[@]}" "$url" || true)"
+  if [[ "$code" != 200 ]]; then
+    rm -f "$dest"
+    die "download failed (HTTP ${code:-none}): $name from release $RELEASE_VERSION of $(repo_slug). 404 = no such release/asset; 401/403/404 on a private repo = set GITHUB_TOKEN (and use sudo -E)."
+  fi
+}
+
+# verify_release_file ASSET PATH — PATH must match ASSET's line in the release's SHA256SUMS.
+verify_release_file() {
+  local want got
+  want="$(awk -v n="$1" '$2 == n || $2 == "*" n { print $1; exit }' "$RELEASE_SUMS")"
+  [[ -n "$want" ]] || die "$1 is not listed in SHA256SUMS of release $RELEASE_VERSION"
+  got="$(sha256sum "$2" | awk '{print $1}')"
+  [[ "$got" == "$want" ]] || die "Checksum mismatch for $1 from release $RELEASE_VERSION (expected $want, got $got). Refusing to continue."
+}
+
+# The image tag a release publishes: release.yml tags images with the semver, no leading "v".
+release_image_tag() {
+  if [[ -n "${RELEASE_VERSION:-}" ]]; then echo "${RELEASE_VERSION#v}"; fi
+}
+
+# Fresh-install default: the release being installed; from a checkout, the
+# repo's package.json version; "latest" only when neither is known
+# (KOMPAST_REF). A pinned tag means an upgrade is a deliberate move, and
+# `kompast version` shows what is actually running.
+default_image_tag() {
+  local t
+  t="$(release_image_tag)"
+  if [[ -z "$t" && -n "${SRC_DIR:-}" && -f "$SRC_DIR/../package.json" ]]; then
+    t="$(sed -n 's/^  "version": *"\([^"]*\)".*/\1/p' "$SRC_DIR/../package.json" | head -n1)"
+  fi
+  echo "${t:-latest}"
+}
+
+# get_file NAME DEST — copy from the checkout, or download (verified). Never reached in --check.
 get_file() {
   if [[ -n "$SRC_DIR" ]]; then
     cp "$SRC_DIR/$1" "$2"
     return 0
   fi
+  if [[ -n "${KOMPAST_REF:-}" ]]; then
+    get_file_unverified "$1" "$2"
+    return 0
+  fi
+  resolve_release
+  if [[ -z "${RELEASE_SUMS:-}" ]]; then
+    RELEASE_SUMS="$(mktemp)"
+    download_release_asset SHA256SUMS "$RELEASE_SUMS"
+    ok "Release $RELEASE_VERSION: runtime files are checked against its SHA256SUMS"
+  fi
+  # GitHub renames release assets that start with a dot, so they are published without it.
+  local asset="${1#.}" tmp
+  tmp="$(mktemp)"
+  download_release_asset "$asset" "$tmp"
+  verify_release_file "$asset" "$tmp"
+  cat "$tmp" > "$2"
+  rm -f "$tmp"
+}
+
+# KOMPAST_REF: straight from a branch/commit — no release, no checksums. For testing changes before release.
+get_file_unverified() {
+  if [[ -z "${WARNED_UNVERIFIED:-}" ]]; then
+    WARNED_UNVERIFIED=1
+    warn "KOMPAST_REF=$KOMPAST_REF: downloading UNVERIFIED files from that branch/commit (testing only, no checksums)"
+  fi
   local url code
-  url="https://raw.githubusercontent.com/${KOMPAST_REPO:-rosdyana/kompast}/${KOMPAST_REF:-main}/infra/$1"
+  url="https://raw.githubusercontent.com/$(repo_slug)/${KOMPAST_REF}/infra/$1"
   local args=(-sS -L -o "$2" -w '%{http_code}')
   if [[ -n "${GITHUB_TOKEN:-}" ]]; then
     args+=(-H "Authorization: Bearer $GITHUB_TOKEN")
@@ -731,7 +841,7 @@ init_answers() {
   else
     ANS_DOMAIN=""
     ANS_GHCR_OWNER="rosdyana"
-    ANS_IMAGE_TAG="latest"
+    ANS_IMAGE_TAG="$(default_image_tag)"
     ANS_STORAGE="gcs"
     ANS_GCS_BUCKET=""
     ANS_GCS_PROJECT="$GCP_PROJECT"
@@ -1182,10 +1292,19 @@ upgrade_options() {
   # them, so add only those (this runs before any docker compose command).
   add_missing_runtime_secrets
 
+  # Upgrading from a release moves IMAGE_TAG to that release, so the runtime
+  # files just installed and the images always match (and an install on the
+  # old floating "latest" gets pinned). From a branch (KOMPAST_REF) or a
+  # checkout the tag is left alone. KOMPAST_IMAGE_TAG always wins.
   new_tag="$PREV_TAG"
+  if [[ -n "$(release_image_tag)" ]]; then
+    new_tag="$(release_image_tag)"
+  fi
   if [[ -n "${KOMPAST_IMAGE_TAG:-}" ]]; then
     new_tag="$KOMPAST_IMAGE_TAG"
-  elif (( YES == 0 )) && confirm "Change IMAGE_TAG?" N; then
+  elif (( YES == 0 )) && confirm "Use IMAGE_TAG $new_tag?" Y; then
+    :
+  elif (( YES == 0 )); then
     ask_valid_tag new_tag
   fi
   if [[ "$new_tag" != "$PREV_TAG" ]]; then
@@ -1380,15 +1499,45 @@ install_wrapper() {
   local tmp=/usr/local/bin/.kompast.new
   {
     printf '#!/usr/bin/env bash\nKOMPAST_DIR=%q\n' "$KOMPAST_DIR"
+    # The installer's own release/checksum helpers, copied verbatim so the
+    # wrapper verifies exactly the way install.sh does.
+    echo 'KOMPAST_RELEASE=""; RELEASE_VERSION=""; RELEASE_SUMS=""'
+    echo 'die() { echo "✗ $*" >&2; exit 1; }'
+    echo 'ok() { echo "✓ $*" >&2; }'
+    echo 'warn() { echo "! $*" >&2; }'
+    declare -f repo_slug github_api resolve_release download_release_asset verify_release_file
     cat <<'WRAP'
 # kompast — day-to-day commands for the Kompast install (generated by install.sh).
 set -euo pipefail
 if [[ $EUID -ne 0 ]]; then exec sudo -E "$0" "$@"; fi
 cd "$KOMPAST_DIR"
-base="https://raw.githubusercontent.com/${KOMPAST_REPO:-rosdyana/kompast}/${KOMPAST_REF:-main}/infra"
-auth=()
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then auth=(-H "Authorization: Bearer $GITHUB_TOKEN"); fi
-installer() { curl -fsSL "${auth[@]}" "$base/install.sh" | KOMPAST_DIR="$KOMPAST_DIR" bash -s -- "$@"; }
+
+# Upgrades run the install.sh attached to a GitHub Release (KOMPAST_VERSION,
+# else the latest), checked against that release's SHA256SUMS before it runs
+# as root — never a script piped from a branch. KOMPAST_REF=<branch> is the
+# explicit, unverified escape hatch for testing.
+fetch_installer() {
+  local dir
+  dir="$(mktemp -d)"
+  if [[ -n "${KOMPAST_REF:-}" ]]; then
+    warn "KOMPAST_REF=$KOMPAST_REF: running an UNVERIFIED installer from that branch/commit (testing only)"
+    local args=(-fsSL -o "$dir/install.sh")
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then args+=(-H "Authorization: Bearer $GITHUB_TOKEN"); fi
+    curl "${args[@]}" "https://raw.githubusercontent.com/$(repo_slug)/$KOMPAST_REF/infra/install.sh"
+  else
+    resolve_release
+    RELEASE_SUMS="$dir/SHA256SUMS"
+    download_release_asset SHA256SUMS "$RELEASE_SUMS"
+    download_release_asset install.sh "$dir/install.sh"
+    verify_release_file install.sh "$dir/install.sh"
+    ok "Kompast $RELEASE_VERSION: install.sh matches the release's SHA256SUMS"
+  fi
+  INSTALLER="$dir/install.sh"
+}
+installer() {
+  fetch_installer
+  KOMPAST_DIR="$KOMPAST_DIR" KOMPAST_VERSION="${KOMPAST_VERSION:-$RELEASE_VERSION}" bash "$INSTALLER" "$@"
+}
 cmd="${1:-}"
 if [[ $# -gt 0 ]]; then shift; fi
 case "$cmd" in
