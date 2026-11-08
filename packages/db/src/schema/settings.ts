@@ -22,9 +22,9 @@ export const systemSettings = pgTable("system_settings", {
   microsoftClientId: text("microsoft_client_id"),
   microsoftClientSecretEncrypted: text("microsoft_client_secret_encrypted"),
 
-  aiProvider: text("ai_provider", { enum: ["anthropic", "azure-openai", "openai-compatible"] }),
+  aiProvider: text("ai_provider", { enum: ["anthropic", "azure-openai", "azure-foundry-anthropic", "openai-compatible"] }),
   aiApiKeyEncrypted: text("ai_api_key_encrypted"),
-  /** Ignored for azure-openai (aiAzureDeployment selects the model). Optional for anthropic (a default is used if unset). Required at call time for openai-compatible — arbitrary endpoints have no safe default model name. */
+  /** Ignored for azure-openai (aiAzureDeployment selects the model). Optional for anthropic and azure-foundry-anthropic (a default is used if unset; for Foundry it is the deployment name, and the endpoint lives in aiAzureEndpoint). Required at call time for openai-compatible — arbitrary endpoints have no safe default model name. */
   aiModel: text("ai_model"),
   aiAzureEndpoint: text("ai_azure_endpoint"),
   aiAzureDeployment: text("ai_azure_deployment"),

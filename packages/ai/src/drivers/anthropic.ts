@@ -47,7 +47,44 @@ function toAnthropicTurns(messages: AiMessage[]): AnthropicTurn[] {
   return turns;
 }
 
+export interface AnthropicDriverOptions {
+  /** Full Messages endpoint URL. */
+  url: string;
+  /** Auth headers — `x-api-key` for api.anthropic.com, `api-key` for Azure AI Foundry. */
+  headers: Record<string, string>;
+  model: string | null;
+  /** Prefix for thrown error messages, so a Foundry failure doesn't read as an api.anthropic.com one. */
+  label: string;
+}
+
 export function createAnthropicDriver(apiKey: string, model: string | null): AiDriver {
+  return createAnthropicMessagesDriver({ url: "https://api.anthropic.com/v1/messages", headers: { "x-api-key": apiKey }, model, label: "Anthropic" });
+}
+
+/**
+ * Claude on Azure AI Foundry speaks the same Messages API (same request
+ * body, same SSE events) at `https://<resource>.services.ai.azure.com/anthropic/v1/messages`,
+ * so it reuses this driver wholesale — only the URL and auth header differ.
+ * `model` is the Foundry deployment name (which defaults to the model ID
+ * when the deployment is created). Accepts the endpoint with or without
+ * the `/anthropic`, `/anthropic/v1`, or `/anthropic/v1/messages` suffix,
+ * since the Foundry portal shows it in more than one form.
+ */
+export function createAzureFoundryAnthropicDriver(apiKey: string, endpoint: string, model: string | null): AiDriver {
+  return createAnthropicMessagesDriver({ url: foundryMessagesUrl(endpoint), headers: { "api-key": apiKey }, model, label: "Azure Foundry (Anthropic)" });
+}
+
+export function foundryMessagesUrl(endpoint: string): string {
+  const base = endpoint
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/messages$/, "")
+    .replace(/\/v1$/, "")
+    .replace(/\/anthropic$/, "");
+  return `${base}/anthropic/v1/messages`;
+}
+
+function createAnthropicMessagesDriver({ url, headers, model, label }: AnthropicDriverOptions): AiDriver {
   return {
     async streamCompletion(input, onDelta) {
       const system = input.messages
@@ -55,11 +92,11 @@ export function createAnthropicDriver(apiKey: string, model: string | null): AiD
         .map((m) => m.content)
         .join("\n\n");
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch(url, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-api-key": apiKey,
+          ...headers,
           "anthropic-version": ANTHROPIC_VERSION,
         },
         body: JSON.stringify({
@@ -76,7 +113,7 @@ export function createAnthropicDriver(apiKey: string, model: string | null): AiD
 
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => "");
-        throw new Error(`Anthropic API error (${res.status}): ${detail}`);
+        throw new Error(`${label} API error (${res.status}): ${detail}`);
       }
 
       let text = "";

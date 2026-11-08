@@ -58,7 +58,7 @@ export const updateMicrosoftAuthFn = createServerFn({ method: "POST" })
   });
 
 const updateAiSchema = z.object({
-  provider: z.enum(["anthropic", "azure-openai", "openai-compatible"]),
+  provider: z.enum(["anthropic", "azure-openai", "azure-foundry-anthropic", "openai-compatible"]),
   apiKey: z.string().optional(),
   model: z.string().optional(),
   azureEndpoint: z.string().optional(),

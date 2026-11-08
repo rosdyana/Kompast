@@ -434,6 +434,7 @@ function AiSection({ initial }: { initial: Integrations["ai"] }) {
           <FormField label={t("integrations.ai.providerLabel")}>
             <NativeSelect value={provider} onChange={(e) => setProvider(e.target.value as typeof provider)}>
               <option value="anthropic">Anthropic</option>
+              <option value="azure-foundry-anthropic">Claude on Azure AI Foundry</option>
               <option value="azure-openai">Azure OpenAI</option>
               <option value="openai-compatible">OpenAI-compatible</option>
             </NativeSelect>
@@ -446,10 +447,16 @@ function AiSection({ initial }: { initial: Integrations["ai"] }) {
               label={
                 <span>
                   {t("integrations.ai.modelLabel")} {provider === "anthropic" && <span className="font-normal text-text-3">{t("integrations.ai.modelBlankNote")}</span>}
+                  {provider === "azure-foundry-anthropic" && <span className="font-normal text-text-3">{t("integrations.ai.foundryModelNote")}</span>}
                 </span>
               }
             >
-              <TextField value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider === "anthropic" ? "claude-sonnet-5" : t("integrations.ai.modelPlaceholderOther")} />
+              <TextField value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider === "anthropic" || provider === "azure-foundry-anthropic" ? "claude-sonnet-5" : t("integrations.ai.modelPlaceholderOther")} />
+            </FormField>
+          )}
+          {provider === "azure-foundry-anthropic" && (
+            <FormField label={t("integrations.ai.foundryEndpointLabel")}>
+              <TextField value={azureEndpoint} onChange={(e) => setAzureEndpoint(e.target.value)} placeholder="https://<resource>.services.ai.azure.com/anthropic" />
             </FormField>
           )}
           {provider === "azure-openai" && (
