@@ -5,7 +5,7 @@
 # via tsx rather than a bundled build, since it only ever runs once per
 # deploy and correctness (running the exact migration files) matters more
 # than image size here.
-FROM node:22-alpine AS base
+FROM node:25-alpine AS base
 RUN corepack enable
 WORKDIR /app
 

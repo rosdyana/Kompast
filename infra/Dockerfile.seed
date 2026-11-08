@@ -6,7 +6,7 @@
 # markdown → Yjs conversion via jsdom, tsx), so unlike the service images
 # this is a single, unslimmed stage — fine for something run once per
 # demo reset. Not published by release.yml; build it on the demo host.
-FROM node:22-alpine
+FROM node:25-alpine
 RUN corepack enable
 WORKDIR /app
 COPY . .
