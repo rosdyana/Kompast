@@ -16,7 +16,7 @@
     "@kompast/core": "workspace:*",
     "@kompast/db": "workspace:*",
     "@kompast/env": "workspace:*",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^0.45.4",
     "fflate": "^0.8.3"
   },
   "devDependencies": {
