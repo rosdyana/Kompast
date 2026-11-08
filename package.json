@@ -32,7 +32,11 @@
   "pnpm": {
     "overrides": {
       "drizzle-orm": "0.45.2",
-      "y-protocols": "1.0.7"
+      "y-protocols": "1.0.7",
+      "undici": ">=7.30.1 <8",
+      "proxy-addr": ">=2.0.8",
+      "body-parser": ">=2.4.0",
+      "source-map-js": ">=1.2.2"
     }
   }
 }
