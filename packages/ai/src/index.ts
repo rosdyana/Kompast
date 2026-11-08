@@ -3,7 +3,17 @@ import { createAzureOpenAiDriver, createAzureOpenAiEmbeddingsDriver } from "./dr
 import { createOpenAiCompatibleDriver, createOpenAiCompatibleEmbeddingsDriver } from "./drivers/openai-compatible";
 import type { AiCredentials, AiDriver, CompletionRequest, CompletionResult, EmbeddingCredentials, EmbeddingDriver } from "./types";
 
-export type { AiCredentials, AiDriver, AiMessage, CompletionRequest, CompletionResult, EmbeddingCredentials, EmbeddingDriver } from "./types";
+export type {
+  AiCredentials,
+  AiDriver,
+  AiMessage,
+  AiToolCall,
+  AiToolDefinition,
+  CompletionRequest,
+  CompletionResult,
+  EmbeddingCredentials,
+  EmbeddingDriver,
+} from "./types";
 
 function createDriver(creds: AiCredentials): AiDriver {
   if (creds.provider === "anthropic") {

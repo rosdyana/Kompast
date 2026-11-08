@@ -7,7 +7,7 @@ import { Card } from "@kompast/ui/Card";
 import { FormField, NativeSelect, TextField } from "@kompast/ui/Input";
 import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
-import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn } from "@/lib/server-fns/settings";
+import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn, reindexAllFn } from "@/lib/server-fns/settings";
 import { listMembersFn } from "@/lib/server-fns/members";
 import { listTeamsFn } from "@/lib/server-fns/teams";
 import { renameWorkspaceFn } from "@/lib/server-fns/workspace";
@@ -308,7 +308,49 @@ function EmbeddingSection({ initial }: { initial: Integrations["embedding"] }) {
         </div>
         <SaveRow saving={saving} error={error} onSave={save} label={t("integrations.embedding.save")} savingLabel={t("integrations.embedding.savingEllipsis")} />
       </Card>
+      <ReindexCard />
     </SettingsSection>
+  );
+}
+
+/** Queues every issue, comment and page for re-embedding. Separate from the form above: it saves nothing and needs no unsaved-changes check. */
+function ReindexCard() {
+  const { t } = useTranslation("settings");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ issues: number; comments: number; pages: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reindex = async () => {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const { issues, comments, pages } = await reindexAllFn();
+      setResult({ issues, comments, pages });
+    } catch (err) {
+      setError(t("integrations.embedding.reindexFailed", { message: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="mt-4">
+      <div className="flex flex-col gap-2 p-5">
+        <p className="text-[13px] leading-relaxed text-text-2">{t("integrations.embedding.reindexHelp")}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-3">
+        <Button variant="secondary" onClick={reindex} disabled={busy}>
+          {busy ? t("integrations.embedding.reindexing") : t("integrations.embedding.reindex")}
+        </Button>
+        {result && (
+          <span className="text-[13px] text-text-2">
+            {t("integrations.embedding.reindexQueued", { issues: result.issues, comments: result.comments, pages: result.pages })}
+          </span>
+        )}
+        {error && <span className="text-[13px] text-danger">{error}</span>}
+      </div>
+    </Card>
   );
 }
 

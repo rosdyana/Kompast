@@ -258,6 +258,9 @@ importers:
       nanoid:
         specifier: ^5.0.9
         version: 5.1.16
+      yjs:
+        specifier: 13.6.32
+        version: 13.6.32
     devDependencies:
       postgres:
         specifier: ^3.4.9

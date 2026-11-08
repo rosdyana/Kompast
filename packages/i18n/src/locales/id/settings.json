@@ -29,7 +29,12 @@
       "modelLabel": "Model",
       "savingEllipsis": "Menyimpan…",
       "save": "Simpan",
-      "saved": "Tersimpan."
+      "saved": "Tersimpan.",
+      "reindexHelp": "Memasukkan ulang setiap isu, komentar, dan halaman di ruang kerja ini ke antrean agar Ask Kompast menangkap apa pun yang terlewat. Biasanya hanya perlu setelah mengganti penyedia atau model embedding. Berjalan di latar belakang; ruang kerja yang besar bisa memakan waktu.",
+      "reindex": "Indeks ulang semua",
+      "reindexing": "Memasukkan ke antrean…",
+      "reindexQueued": "Masuk antrean untuk indeks ulang: {{issues}} isu, {{comments}} komentar, {{pages}} halaman.",
+      "reindexFailed": "Gagal memasukkan indeks ulang ke antrean: {{message}}"
     },
     "entra": {
       "heading": "Microsoft Entra ID",

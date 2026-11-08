@@ -29,7 +29,12 @@
       "modelLabel": "模型",
       "savingEllipsis": "儲存中…",
       "save": "儲存",
-      "saved": "已儲存。"
+      "saved": "已儲存。",
+      "reindexHelp": "將此工作區中的每個議題、留言與頁面重新加入佇列，讓 Ask Kompast 補上先前遺漏的內容。通常只有在更換嵌入服務商或模型後才需要。於背景執行；工作區很大時可能需要一段時間。",
+      "reindex": "重新索引全部內容",
+      "reindexing": "加入佇列中…",
+      "reindexQueued": "已加入重新索引佇列：{{issues}} 個議題、{{comments}} 則留言、{{pages}} 個頁面。",
+      "reindexFailed": "無法加入重新索引佇列：{{message}}"
     },
     "entra": {
       "heading": "Microsoft Entra ID",

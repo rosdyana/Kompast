@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./collab-token": "./src/collab-token.ts",
     "./ids": "./src/ids.ts",
+    "./rag-queue": "./src/rag-queue.ts",
     "./table-view-config": "./src/table-view-config.ts"
   },
   "scripts": {
@@ -23,7 +24,8 @@
     "cron-parser": "^5.10.1",
     "drizzle-orm": "^0.45.2",
     "fractional-indexing": "^4.0.0",
-    "nanoid": "^5.0.9"
+    "nanoid": "^5.0.9",
+    "yjs": "13.6.32"
   },
   "devDependencies": {
     "postgres": "^3.4.9",

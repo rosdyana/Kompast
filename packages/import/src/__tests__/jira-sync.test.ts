@@ -145,6 +145,10 @@ describe("JIRA catch-up sync (real Postgres, mocked JIRA)", () => {
     await fullImport();
     const before = await issueByKey("JSYNC-1");
     expect(before?.title).toBe("Child story");
+    // The full import queued a reindex task for each comment as it was created. Clear the first comment's, so the
+    // assertion after the sync can only be seeing the task the comment-body update itself enqueued.
+    const [firstComment] = await admin.select({ id: schema.issueComment.id }).from(schema.issueComment).where(eq(schema.issueComment.issueId, before!.id));
+    await admin.delete(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.entityId, firstComment!.id));
 
     // JIRA moves on: a summary and an assignee edit, a comment edit and a new comment, a new worklog, a new
     // attachment, a new status, a sprint move, and a new issue.
@@ -202,6 +206,13 @@ describe("JIRA catch-up sync (real Postgres, mocked JIRA)", () => {
     const comments = await admin.select().from(schema.issueComment).where(eq(schema.issueComment.issueId, one!.id)).orderBy(asc(schema.issueComment.createdAt));
     expect(comments).toHaveLength(2);
     expect(comments.map((c) => JSON.stringify(c.bodyJson).includes("first, edited"))).toEqual([true, false]);
+    // The sync rewrote the first comment's body, so it's queued for reindex again (same transaction as the update).
+    const queued = await admin
+      .select()
+      .from(schema.embeddingIndexQueue)
+      .where(and(eq(schema.embeddingIndexQueue.entityId, firstComment!.id), eq(schema.embeddingIndexQueue.status, "pending")));
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({ entityType: "comment", action: "index" });
     const worklogs = await admin.select().from(schema.worklog).where(eq(schema.worklog.issueId, one!.id));
     expect(worklogs).toHaveLength(2);
     expect(one?.spentSeconds).toBe(3600 + 1800);

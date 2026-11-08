@@ -10,6 +10,7 @@ import { adminDb, eq, schema } from "@kompast/db";
 // `exports`) pull in only what it actually uses.
 import { verifyCollabToken, type CollabTokenPayload } from "@kompast/core/collab-token";
 import { id } from "@kompast/core/ids";
+import { enqueueReindex } from "@kompast/core/rag-queue";
 
 /**
  * documentName -> last time a page_version snapshot was written, so
@@ -54,6 +55,11 @@ export function createCollabServer(port: number) {
       // "Edited …", recent-pages lists and sorting reflect content changes,
       // not just title/icon edits.
       await adminDb.update(schema.page).set({ updatedAt: new Date() }).where(eq(schema.page.id, pageId));
+
+      // Queue a reindex of the page's body. Debounced saves collapse into one pending task (enqueueReindex dedups),
+      // and the worker re-reads the stored state at process time, so the latest content is what gets embedded.
+      const [pageRow] = await adminDb.select({ organizationId: schema.page.organizationId }).from(schema.page).where(eq(schema.page.id, pageId));
+      if (pageRow) await enqueueReindex(adminDb, { organizationId: pageRow.organizationId, entityType: "page", entityId: pageId });
 
       const now = Date.now();
       const last = lastSnapshotAt.get(pageId) ?? 0;

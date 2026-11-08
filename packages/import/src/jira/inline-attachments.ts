@@ -1,5 +1,5 @@
 import { and, eq, schema, sql, type Json } from "@kompast/db";
-import type { Tx } from "@kompast/core";
+import { enqueueReindex, type Tx } from "@kompast/core";
 
 /**
  * Inline attachment references in migrated rich text. The converter (adf-to-blocks.ts)
@@ -136,6 +136,10 @@ export async function rewriteIssueInlineAttachments(
   const needle = `%/attachment/content/${jiraAttachmentId}"%`;
   let total = 0;
 
+  // Needed for the reindex enqueue below; the issue row is the only place this org id lives for a comment too.
+  const [owner] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, issueId));
+  if (!owner) return 0;
+
   const [issueRow] = await tx
     .select({ descriptionJson: schema.issue.descriptionJson })
     .from(schema.issue)
@@ -144,6 +148,7 @@ export async function rewriteIssueInlineAttachments(
     const result = rewrite(issueRow.descriptionJson);
     if (result.count > 0) {
       await tx.update(schema.issue).set({ descriptionJson: result.value as Json }).where(eq(schema.issue.id, issueId));
+      await enqueueReindex(tx, { organizationId: owner.organizationId, entityType: "issue", entityId: issueId });
       total += result.count;
     }
   }
@@ -156,6 +161,7 @@ export async function rewriteIssueInlineAttachments(
     const result = rewrite(comment.bodyJson);
     if (result.count > 0) {
       await tx.update(schema.issueComment).set({ bodyJson: result.value as Json }).where(eq(schema.issueComment.id, comment.id));
+      await enqueueReindex(tx, { organizationId: owner.organizationId, entityType: "comment", entityId: comment.id });
       total += result.count;
     }
   }

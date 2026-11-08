@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as Y from "yjs";
 import { db, schema, eq, asc, sql, adminDb, withTenant } from "@kompast/db";
 import { encryptSecret, decryptSecret } from "../crypto";
 import {
@@ -19,19 +20,26 @@ import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 import { createProject } from "../project";
 import { createSprint, addIssueToSprint } from "../sprint";
-import { createIssue } from "../issue";
+import { createIssue, archiveIssue, moveIssue } from "../issue";
 import { addComment } from "../comment";
+import { createPage, archivePage, updatePageMeta, permanentlyDeletePage } from "../page";
 import { AiNotConfiguredError, runAiCompletion, runDocTextAction, generateIssueDescription, generateSprintSummary } from "../ai";
 import {
   chunkText,
   indexEntity,
+  enqueueReindex,
   claimPendingReindexTasks,
   markReindexTaskProcessed,
   processReindexTask,
   searchEmbeddings,
   askKompast,
+  AskThreadNotFoundError,
   EmbeddingNotConfiguredError,
+  type SearchResult,
 } from "../rag";
+import { enrichCandidates } from "../rag-enrich";
+import { runAskTool } from "../ask-tools";
+import { MAX_ASK_TURNS } from "../rag";
 
 function fakeAnthropicSseResponse(): Response {
   const frames = [
@@ -48,6 +56,41 @@ function fakeAnthropicSseResponse(): Response {
     },
   });
   return new Response(body, { status: 200 });
+}
+
+/** Plays back a list of SSE frames as a streamed Anthropic response. */
+function sseFramesResponse(frames: unknown[]): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200 });
+}
+
+/** One Anthropic reply that streams a tool_use block whose JSON input is split across two input_json_delta chunks. */
+function anthropicToolUseResponse(name: string, input: Record<string, unknown>, tokens: { input: number; output: number }): Response {
+  const json = JSON.stringify(input);
+  const mid = Math.floor(json.length / 2);
+  return sseFramesResponse([
+    { type: "message_start", message: { usage: { input_tokens: tokens.input, output_tokens: 0 } } },
+    { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: `toolu_${name}`, name, input: {} } },
+    { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json.slice(0, mid) } },
+    { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json.slice(mid) } },
+    { type: "content_block_stop", index: 0 },
+    { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: tokens.output } },
+  ]);
+}
+
+/** One Anthropic reply that streams plain text and ends the turn. */
+function anthropicTextResponse(text: string, tokens: { input: number; output: number }): Response {
+  return sseFramesResponse([
+    { type: "message_start", message: { usage: { input_tokens: tokens.input, output_tokens: 0 } } },
+    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+    { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: tokens.output } },
+  ]);
 }
 
 const EMBEDDING_DIMENSIONS = 1536;
@@ -427,6 +470,8 @@ describe("packages/core/rag", () => {
   const userId = "test-rag-user";
   const teamId = "test-rag-team";
   const ctx = { userId, organizationId: orgId };
+  /** A workspace member who is deliberately NOT on teamId — used to check team-scoped page visibility. */
+  const outsiderId = "test-rag-outsider";
 
   async function cleanup() {
     await db.delete(schema.systemSettings);
@@ -434,11 +479,15 @@ describe("packages/core/rag", () => {
     await db.delete(schema.aiThread).where(eq(schema.aiThread.organizationId, orgId));
     await db.delete(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.organizationId, orgId));
     await db.delete(schema.embedding).where(eq(schema.embedding.organizationId, orgId));
+    // Team-space pages (the archived-page test) reference team, so they go before it. adminDb: the restricted
+    // role's RLS would hide these rows from a plain delete (no tenant session here), leaving the team FK blocked.
+    await adminDb.delete(schema.page).where(eq(schema.page.organizationId, orgId));
     await db.delete(schema.project).where(eq(schema.project.organizationId, orgId));
     await db.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await db.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await db.delete(schema.organization).where(eq(schema.organization.id, orgId));
     await db.delete(schema.user).where(eq(schema.user.id, userId));
+    await db.delete(schema.user).where(eq(schema.user.id, outsiderId));
   }
 
   beforeEach(async () => {
@@ -549,8 +598,13 @@ describe("packages/core/rag", () => {
       // this is a system-wide claim (every test file's createIssue/addComment
       // calls enqueue onto the SAME queue), same reasoning as
       // claimPendingAutomationEvents' own test in automation.test.ts.
-      const claimed = await claimPendingReindexTasks(adminDb, 50);
-      const ours = claimed.filter((t) => t.entityId === issueId);
+      // Claim in batches until ours turns up: claims are oldest-first, and a
+      // shared test DB with no worker draining it accumulates pending rows
+      // from earlier runs, so one batch of 50 may never reach ours.
+      let ours: Awaited<ReturnType<typeof claimPendingReindexTasks>> = [];
+      for (let batch = await claimPendingReindexTasks(adminDb, 500); batch.length > 0 && ours.length === 0; batch = await claimPendingReindexTasks(adminDb, 500)) {
+        ours = batch.filter((t) => t.entityId === issueId);
+      }
       expect(ours).toHaveLength(1);
       expect(ours[0]!.status).toBe("processing");
     });
@@ -573,6 +627,125 @@ describe("packages/core/rag", () => {
       expect(results[0]!.distance).toBeLessThan(results.find((r) => r.entityId === unrelatedId)!.distance);
     });
 
+    it("enqueueReindex skips a duplicate while a task for the same entity is pending, but a processing task does not block a new one", async () => {
+      const { projectId, issueTypes, statuses } = await seedProject();
+      // createIssue already queues one pending index task for this issue.
+      const { issueId } = await withAuthorizedTenant(ctx, (tx) => createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Dedupe target", reporterId: userId }));
+      const enqueue = () => withAuthorizedTenant(ctx, (tx) => enqueueReindex(tx, { organizationId: orgId, entityType: "issue", entityId: issueId }));
+      const forIssue = () => adminDb.select().from(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.entityId, issueId));
+
+      await enqueue();
+      await enqueue();
+      let rows = await forIssue();
+      const pending = rows.filter((r) => r.status === "pending");
+      expect(pending).toHaveLength(1);
+      expect(rows).toHaveLength(1);
+
+      await adminDb.update(schema.embeddingIndexQueue).set({ status: "processing" }).where(eq(schema.embeddingIndexQueue.id, pending[0]!.id));
+      await enqueue();
+      rows = await forIssue();
+      expect(rows.filter((r) => r.status === "pending")).toHaveLength(1);
+      expect(rows).toHaveLength(2);
+    });
+
+    it("searchEmbeddings drops archived issues and comments on archived issues, but keeps live ones", async () => {
+      const { projectId, issueTypes, statuses } = await seedProject();
+      const mk = (title: string) =>
+        withAuthorizedTenant(ctx, (tx) => createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title, reporterId: userId }));
+      const { issueId: liveId } = await mk("Live issue");
+      const { issueId: archivedId } = await mk("Archived issue");
+      const { commentId } = await withAuthorizedTenant(ctx, (tx) => addComment(tx, { issueId: archivedId, authorId: userId, bodyJson: { text: "comment on the archived issue" } }));
+
+      // Identical text on all three, so each vector is identical and any of them would match the query equally.
+      const sharedText = "shared searchable text about the archive filter";
+      await asWorker((tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: liveId, text: sharedText }));
+      await asWorker((tx) => indexEntity(tx, { organizationId: orgId, entityType: "issue", entityId: archivedId, text: sharedText }));
+      await asWorker((tx) => indexEntity(tx, { organizationId: orgId, entityType: "comment", entityId: commentId, text: sharedText }));
+
+      const search = () => withAuthorizedTenant(ctx, (tx) => searchEmbeddings(tx, { organizationId: orgId, queryVector: fakeEmbed(sharedText), limit: 10 }));
+      const before = (await search()).map((r) => r.entityId);
+      expect(before).toEqual(expect.arrayContaining([liveId, archivedId, commentId]));
+
+      await withAuthorizedTenant(ctx, (tx) => archiveIssue(tx, archivedId, { actorId: userId }));
+
+      const after = (await search()).map((r) => r.entityId);
+      expect(after).toContain(liveId);
+      expect(after).not.toContain(archivedId);
+      expect(after).not.toContain(commentId);
+    });
+
+    it("searchEmbeddings drops archived pages", async () => {
+      const pageId = (await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, teamId, title: "Archive me", actorUserId: userId }))).id;
+      const sharedText = "shared searchable text about archived docs";
+      await asWorker((tx) => indexEntity(tx, { organizationId: orgId, entityType: "page", entityId: pageId, text: sharedText }));
+
+      const search = () => withAuthorizedTenant(ctx, (tx) => searchEmbeddings(tx, { organizationId: orgId, queryVector: fakeEmbed(sharedText), limit: 10 }));
+      expect((await search()).map((r) => r.entityId)).toContain(pageId);
+
+      await withAuthorizedTenant(ctx, (tx) => archivePage(tx, pageId));
+      expect((await search()).map((r) => r.entityId)).not.toContain(pageId);
+    });
+
+    it("indexes a page's title and Yjs body, returns it to a team member, and hides it from a workspace member outside the team", async () => {
+      const { projectId } = await seedProject();
+      const title = "Quokka runbook";
+      const sentence = "The quokka migration plan moves billing to the new ledger service.";
+      const pageId = (await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, projectId, title, actorUserId: userId }))).id;
+
+      // Body as apps/collab stores it: a Yjs doc whose "document-store" fragment holds BlockNote's blockGroup/blockContainer/paragraph shape.
+      const ydoc = new Y.Doc();
+      const group = new Y.XmlElement("blockGroup");
+      const container = new Y.XmlElement("blockContainer");
+      const paragraph = new Y.XmlElement("paragraph");
+      const runs = new Y.XmlText();
+      ydoc.getXmlFragment("document-store").push([group]);
+      group.push([container]);
+      container.push([paragraph]);
+      paragraph.push([runs]);
+      runs.insert(0, sentence);
+      await adminDb.insert(schema.ydocState).values({ pageId, state: Buffer.from(Y.encodeStateAsUpdate(ydoc)) });
+
+      await withAuthorizedTenant(ctx, (tx) => enqueueReindex(tx, { organizationId: orgId, entityType: "page", entityId: pageId }));
+      const task = await fetchPendingReindexTask(pageId);
+      expect(task).toMatchObject({ entityType: "page", action: "index", status: "pending" });
+      await asWorker((tx) => processReindexTask(tx, task!));
+      await markReindexTaskProcessed(adminDb, task!.id);
+
+      // fakeEmbed of the exact indexed text, so the page's chunk is the nearest match.
+      const pageText = `${title}\n\n${sentence}`;
+      const search = (asUser: { userId: string; organizationId: string }) =>
+        withAuthorizedTenant(asUser, (tx) => searchEmbeddings(tx, { organizationId: orgId, queryVector: fakeEmbed(pageText), entityTypes: ["page"], limit: 10 }));
+
+      const teamHits = await search(ctx);
+      const hit = teamHits.find((r) => r.entityId === pageId);
+      expect(hit).toBeDefined();
+      expect(hit!.content).toContain(sentence);
+
+      await db.insert(schema.user).values({ id: outsiderId, name: "RAG Outsider", email: `${outsiderId}@example.com` });
+      await db.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId: outsiderId, role: "member" });
+      expect(await search({ userId: outsiderId, organizationId: orgId })).toEqual([]);
+    });
+
+    it("updatePageMeta queues a page reindex only when the title changes, and permanentlyDeletePage queues a delete", async () => {
+      const pageId = (await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, teamId, title: "Before", actorUserId: userId }))).id;
+      // createPage already queued an index task; mark it done so only what the next call enqueues is visible.
+      await adminDb.update(schema.embeddingIndexQueue).set({ status: "processed" }).where(eq(schema.embeddingIndexQueue.entityId, pageId));
+      const forPage = () => adminDb.select().from(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.entityId, pageId));
+
+      await withAuthorizedTenant(ctx, (tx) => updatePageMeta(tx, pageId, { icon: "star" }));
+      expect((await forPage()).filter((r) => r.status === "pending")).toHaveLength(0);
+
+      await withAuthorizedTenant(ctx, (tx) => updatePageMeta(tx, pageId, { title: "After" }));
+      const pending = (await forPage()).filter((r) => r.status === "pending");
+      expect(pending).toHaveLength(1);
+      expect(pending[0]).toMatchObject({ organizationId: orgId, entityType: "page", action: "index" });
+
+      await withAuthorizedTenant(ctx, (tx) => permanentlyDeletePage(tx, pageId));
+      const deletes = (await forPage()).filter((r) => r.action === "delete");
+      expect(deletes).toHaveLength(1);
+      expect(deletes[0]).toMatchObject({ organizationId: orgId, entityType: "page", status: "pending" });
+    });
+
     it("askKompast retrieves relevant context, answers, and persists both the question and the answer with citations", async () => {
       const { projectId, issueTypes, statuses } = await seedProject();
       const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
@@ -582,7 +755,7 @@ describe("packages/core/rag", () => {
       await asWorker((tx) => processReindexTask(tx, task!));
 
       const deltas: string[] = [];
-      const result = await withAuthorizedTenant(ctx, (tx) => askKompast(tx, { organizationId: orgId, userId, question: "Unique searchable issue title", onDelta: (d) => deltas.push(d) }));
+      const result = await askKompast(ctx, { question: "Unique searchable issue title", onDelta: (d) => deltas.push(d) });
 
       expect(result.answer).toBe("Hello");
       expect(deltas.join("")).toBe("Hello");
@@ -598,21 +771,257 @@ describe("packages/core/rag", () => {
     });
 
     it("askKompast continuing an existing thread includes the prior exchange in the next prompt", async () => {
-      const first = await withAuthorizedTenant(ctx, (tx) => askKompast(tx, { organizationId: orgId, userId, question: "first question" }));
+      const first = await askKompast(ctx, { question: "first question" });
 
       const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
       fetchMock.mockClear();
 
-      await withAuthorizedTenant(ctx, (tx) => askKompast(tx, { organizationId: orgId, userId, threadId: first.threadId, question: "second question" }));
+      await askKompast(ctx, { threadId: first.threadId, question: "second question" });
 
       const chatCall = fetchMock.mock.calls.find((c: unknown[]) => !String(c[0]).includes("/embeddings"))!;
       const sentBody = JSON.parse(chatCall[1].body);
       expect(JSON.stringify(sentBody.messages)).toContain("first question");
       expect(JSON.stringify(sentBody.messages)).toContain("Hello"); // the prior assistant answer
     });
+
+    it("enrichment is live: a status change made after indexing shows up in the next prompt and citation, without reindexing", async () => {
+      const { projectId, issueTypes, statuses } = await seedProject();
+      const inProgress = statuses.find((s) => s.name === "In Progress")!;
+      const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+        createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Live enrichment probe", reporterId: userId }),
+      );
+      const task = await fetchPendingReindexTask(issueId);
+      await asWorker((tx) => processReindexTask(tx, task!));
+
+      // Deliberately no reindex after this move: the context header must come from the live row, not the indexed text.
+      await withAuthorizedTenant(ctx, (tx) => moveIssue(tx, { issueId, toStatusId: inProgress.id, actorId: userId }));
+
+      const result = await askKompast(ctx, { question: "Live enrichment probe" });
+
+      const [project] = await adminDb.select().from(schema.project).where(eq(schema.project.id, projectId));
+      const [issue] = await adminDb.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+      const key = `${project!.key}-${issue!.keySeq}`;
+
+      const chatCall = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find((c: unknown[]) => !String(c[0]).includes("/embeddings"))!;
+      // Raw request body: the Anthropic driver sends the system prompt (where the context lives) as a top-level `system` field, not inside `messages`.
+      const sentBody = chatCall[1].body as string;
+      expect(sentBody).toContain(key);
+      expect(sentBody).toContain("In Progress");
+      expect(sentBody).toContain(`Issue ${key} \\"Live enrichment probe\\"`);
+
+      const citation = result.citations.find((c) => c.entityId === issueId);
+      expect(citation).toBeDefined();
+      expect(citation!.ref).toEqual({ kind: "issue", teamId, projectKey: project!.key, keySeq: issue!.keySeq });
+      expect(citation!.title).toBe(`${key} · Live enrichment probe`);
+    });
+
+    it("enrichCandidates drops candidates whose entity doesn't exist or isn't visible, keeps the rest, and labels a project page by its project", async () => {
+      const { projectId, issueTypes, statuses } = await seedProject();
+      const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+        createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Visible probe", reporterId: userId }),
+      );
+      const pageId = (await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, projectId, title: "Probe doc", actorUserId: userId }))).id;
+
+      const ghost = (entityType: SearchResult["entityType"]): SearchResult => ({ entityType, entityId: id("ghost"), content: "ghost text", distance: 0 });
+      const candidates: SearchResult[] = [
+        ghost("issue"),
+        { entityType: "issue", entityId: issueId, content: "Visible probe", distance: 0 },
+        ghost("comment"),
+        ghost("page"),
+        { entityType: "page", entityId: pageId, content: "Probe doc body", distance: 0 },
+      ];
+
+      const enriched = await withAuthorizedTenant(ctx, (tx) => enrichCandidates(tx, candidates));
+      expect(enriched.map((e) => e.candidate.entityId)).toEqual([issueId, pageId]);
+      expect(enriched[0]!.enrichment).toMatchObject({ kind: "issue", issue: { key: expect.stringMatching(/^RAG-\d+$/), title: "Visible probe", statusName: statuses[0]!.name } });
+      expect(enriched[1]!.enrichment).toEqual({ kind: "page", title: "Probe doc", space: "project RAG" });
+    });
+
+    it("a failed chat call persists nothing: no thread, no message, no ai_usage row", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string | URL, init?: RequestInit) => {
+          if (url.toString().includes("/embeddings")) return fakeEmbeddingsResponse((JSON.parse(init!.body as string) as { input: string[] }).input);
+          return new Response("upstream exploded", { status: 500 });
+        }),
+      );
+
+      await expect(askKompast(ctx, { question: "this one will fail" })).rejects.toThrow(/Anthropic API error \(500\)/);
+
+      expect(await adminDb.select().from(schema.aiThread).where(eq(schema.aiThread.userId, userId))).toHaveLength(0);
+      expect(await adminDb.select().from(schema.aiMessage).where(sql`thread_id in (select id from ai_thread where organization_id = ${orgId})`)).toHaveLength(0);
+      expect(await adminDb.select().from(schema.aiUsage).where(eq(schema.aiUsage.organizationId, orgId))).toHaveLength(0);
+    });
+
+    it("a successful ask persists exactly the question and the answer in one new thread, and one ai_usage row for feature ask-kompast", async () => {
+      const result = await askKompast(ctx, { question: "usage probe" });
+
+      const messages = await adminDb.select().from(schema.aiMessage).where(eq(schema.aiMessage.threadId, result.threadId));
+      expect(messages).toHaveLength(2);
+      expect(messages.map((m) => m.role).sort()).toEqual(["assistant", "user"]);
+
+      const usage = await adminDb.select().from(schema.aiUsage).where(eq(schema.aiUsage.organizationId, orgId));
+      expect(usage).toHaveLength(1);
+      expect(usage[0]).toMatchObject({ userId, feature: "ask-kompast", provider: "anthropic", inputTokens: 12, outputTokens: 5 });
+    });
+
+    describe("ask tools", () => {
+      /** Embeddings are answered as usual; each chat (Anthropic) call is answered by `reply`, given the 0-based chat-call index and the parsed request body. */
+      function stubChatScript(reply: (chatCall: number, body: Record<string, any>) => Response) {
+        let chatCall = 0;
+        const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+          if (url.toString().includes("/embeddings")) {
+            return fakeEmbeddingsResponse((JSON.parse(init!.body as string) as { input: string[] }).input);
+          }
+          return reply(chatCall++, JSON.parse(init!.body as string));
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        return fetchMock;
+      }
+
+      /** The request bodies of the chat (non-embedding) calls, in order. */
+      function chatBodies(fetchMock: ReturnType<typeof vi.fn>): Record<string, any>[] {
+        return fetchMock.mock.calls.filter((c: unknown[]) => !String(c[0]).includes("/embeddings")).map((c: unknown[]) => JSON.parse((c[1] as RequestInit).body as string));
+      }
+
+      it("the model looks up its own assigned issues, then answers from the result; one thread, one answer, summed usage", async () => {
+        const { projectId, issueTypes, statuses } = await seedProject();
+        const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+          createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Assigned to me probe", reporterId: userId, assigneeId: userId }),
+        );
+        const [project] = await adminDb.select().from(schema.project).where(eq(schema.project.id, projectId));
+        const [issue] = await adminDb.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+        const key = `${project!.key}-${issue!.keySeq}`;
+
+        const fetchMock = stubChatScript((call) =>
+          call === 0
+            ? anthropicToolUseResponse("list_issues", { assignee: "me" }, { input: 10, output: 3 })
+            : anthropicTextResponse(`You have ${key}.`, { input: 20, output: 6 }),
+        );
+        const onTool = vi.fn();
+
+        const result = await askKompast(ctx, { question: "what is assigned to me?", onTool });
+
+        expect(result.answer).toBe(`You have ${key}.`);
+        expect(onTool).toHaveBeenCalledWith("list_issues");
+
+        const bodies = chatBodies(fetchMock);
+        expect(bodies).toHaveLength(2);
+        expect(bodies[0]!.tools.map((t: { name: string }) => t.name)).toContain("list_issues");
+        const toolResult = bodies[1]!.messages.flatMap((m: { content: unknown }) => (Array.isArray(m.content) ? m.content : [])).find((b: { type: string }) => b.type === "tool_result");
+        expect(toolResult.content).toContain(key);
+        expect(toolResult.content).toContain("Assigned to me probe");
+
+        const messages = await adminDb.select().from(schema.aiMessage).where(eq(schema.aiMessage.threadId, result.threadId)).orderBy(asc(schema.aiMessage.createdAt));
+        expect(messages).toHaveLength(2);
+        expect(messages[1]).toMatchObject({ role: "assistant", content: `You have ${key}.` });
+
+        const usage = await adminDb.select().from(schema.aiUsage).where(eq(schema.aiUsage.organizationId, orgId));
+        expect(usage).toHaveLength(1);
+        expect(usage[0]).toMatchObject({ inputTokens: 30, outputTokens: 9 });
+      });
+
+      it("tools never reveal a project or issue the asking user's team can't see", async () => {
+        // A second team the fixture user is NOT on, with its own project and issue.
+        const hiddenTeamId = "test-rag-hidden-team";
+        await db.insert(schema.team).values({ id: hiddenTeamId, organizationId: orgId, name: "Hidden Team" });
+        const hidden = await asWorker((tx) => createProject(tx, { organizationId: orgId, teamId: hiddenTeamId, key: "hid", name: "Hidden Project", actorUserId: userId }));
+        const { issueId } = await asWorker((tx) =>
+          createIssue(tx, { organizationId: orgId, projectId: hidden.projectId, typeId: hidden.issueTypes[0]!.id, statusId: hidden.statuses[0]!.id, title: "Hidden secret plan", reporterId: userId }),
+        );
+        const [hiddenIssue] = await adminDb.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+        const [hiddenProject] = await adminDb.select().from(schema.project).where(eq(schema.project.id, hidden.projectId));
+        const hiddenKey = `${hiddenProject!.key}-${hiddenIssue!.keySeq}`;
+
+        const run = async (name: string, input: Record<string, unknown>) => JSON.parse(await runAskTool(ctx, { id: `call_${name}`, name, input }));
+
+        const byProject = await run("list_issues", { projectKey: hiddenProject!.key });
+        expect(byProject.error).toBeDefined();
+        expect(JSON.stringify(byProject)).not.toContain("Hidden secret plan");
+
+        const byKey = await run("get_issue", { key: hiddenKey });
+        expect(byKey.error).toBeDefined();
+        expect(JSON.stringify(byKey)).not.toContain("Hidden secret plan");
+
+        const sprint = await run("get_sprint", { projectKey: hiddenProject!.key, sprint: "active" });
+        expect(sprint.error).toBeDefined();
+
+        const everything = await run("list_issues", {});
+        expect(JSON.stringify(everything)).not.toContain("Hidden secret plan");
+        expect(JSON.stringify(everything)).not.toContain(hiddenKey);
+
+        const projects = await run("list_projects", {});
+        expect(projects.map((p: { key: string }) => p.key)).not.toContain(hiddenProject!.key);
+      });
+
+      it("stops after MAX_ASK_TURNS when the model keeps asking for tools, and the last request carries no tools", async () => {
+        const fetchMock = stubChatScript(() => anthropicToolUseResponse("list_projects", {}, { input: 1, output: 1 }));
+
+        await askKompast(ctx, { question: "loop forever" });
+
+        const bodies = chatBodies(fetchMock);
+        expect(bodies).toHaveLength(MAX_ASK_TURNS);
+        for (const body of bodies.slice(0, -1)) expect(body.tools).toBeDefined();
+        expect(bodies[bodies.length - 1]).not.toHaveProperty("tools");
+
+        const usage = await adminDb.select().from(schema.aiUsage).where(eq(schema.aiUsage.organizationId, orgId));
+        expect(usage).toHaveLength(1);
+        expect(usage[0]).toMatchObject({ inputTokens: MAX_ASK_TURNS, outputTokens: MAX_ASK_TURNS });
+      });
+
+      it("a bad tool call comes back as an error result, never a thrown exception", async () => {
+        expect(JSON.parse(await runAskTool(ctx, { id: "a", name: "get_issue", input: {} }))).toEqual({ error: '"key" is required' });
+        expect(JSON.parse(await runAskTool(ctx, { id: "b", name: "delete_everything", input: {} })).error).toMatch(/Unknown tool/);
+        expect(JSON.parse(await runAskTool(ctx, { id: "c", name: "list_issues", input: { limit: "ten" } })).error).toMatch(/limit/);
+        expect(JSON.parse(await runAskTool(ctx, { id: "d", name: "list_issues", input: { sprint: "Sprint 1" } })).error).toMatch(/projectKey/);
+      });
+    });
+
+    describe("thread ownership", () => {
+      const otherUserId = "test-rag-other-user";
+      const otherCtx = { userId: otherUserId, organizationId: orgId };
+
+      beforeEach(async () => {
+        await db.delete(schema.user).where(eq(schema.user.id, otherUserId));
+        await db.insert(schema.user).values({ id: otherUserId, name: "Other RAG User", email: `${otherUserId}@example.com` });
+        await db.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId: otherUserId, role: "member" });
+        await db.insert(schema.teamMember).values({ id: `tmem-${teamId}-${otherUserId}`, teamId, userId: otherUserId, membershipKey: `${teamId}:${otherUserId}` });
+      });
+
+      afterEach(async () => {
+        await db.delete(schema.aiMessage).where(sql`thread_id in (select id from ai_thread where organization_id = ${orgId})`);
+        await db.delete(schema.aiThread).where(eq(schema.aiThread.organizationId, orgId));
+        await db.delete(schema.member).where(eq(schema.member.userId, otherUserId));
+        await db.delete(schema.user).where(eq(schema.user.id, otherUserId));
+      });
+
+      it("another workspace member can't read someone else's thread or its messages", async () => {
+        const mine = await askKompast(ctx, { question: "my private question" });
+
+        const theirThreads = await withAuthorizedTenant(otherCtx, (tx) => tx.select().from(schema.aiThread).where(eq(schema.aiThread.id, mine.threadId)));
+        const theirMessages = await withAuthorizedTenant(otherCtx, (tx) => tx.select().from(schema.aiMessage).where(eq(schema.aiMessage.threadId, mine.threadId)));
+        expect(theirThreads).toHaveLength(0);
+        expect(theirMessages).toHaveLength(0);
+      });
+
+      it("askKompast refuses another user's threadId and writes nothing to that thread", async () => {
+        const mine = await askKompast(ctx, { question: "my private question" });
+
+        await expect(askKompast(otherCtx, { threadId: mine.threadId, question: "sneaky" })).rejects.toThrow(AskThreadNotFoundError);
+
+        const messages = await adminDb.select().from(schema.aiMessage).where(eq(schema.aiMessage.threadId, mine.threadId));
+        expect(messages).toHaveLength(2);
+        expect(messages.some((m) => m.content === "sneaky")).toBe(false);
+
+        // The owner can still continue it.
+        await askKompast(ctx, { threadId: mine.threadId, question: "follow-up" });
+        const after = await adminDb.select().from(schema.aiMessage).where(eq(schema.aiMessage.threadId, mine.threadId));
+        expect(after).toHaveLength(4);
+      });
+    });
   });
 
   it("askKompast throws EmbeddingNotConfiguredError when embeddings aren't set up", async () => {
-    await expect(withAuthorizedTenant(ctx, (tx) => askKompast(tx, { organizationId: orgId, userId, question: "anything" }))).rejects.toThrow(EmbeddingNotConfiguredError);
+    await expect(askKompast(ctx, { question: "anything" })).rejects.toThrow(EmbeddingNotConfiguredError);
   });
 });

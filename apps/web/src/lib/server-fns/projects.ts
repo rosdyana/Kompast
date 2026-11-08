@@ -80,7 +80,7 @@ export const createProjectFn = createServerFn({ method: "POST" })
             type: "template",
             actorUserId: ctx.userId,
           });
-          await seedPageContentFromMarkdown(tx, templatePage.id, "# Planning\n\n# Review\n\n# Retro\n");
+          await seedPageContentFromMarkdown(tx, templatePage.id, "# Planning\n\n# Review\n\n# Retro\n", ctx.organizationId);
           await setSprintMinutesTemplate(tx, created.projectId, templatePage.id);
         } catch (err) {
           console.error(`Failed to seed Sprint Minutes Template for project ${created.projectId}:`, err);
@@ -96,7 +96,7 @@ export const createProjectFn = createServerFn({ method: "POST" })
             type: "template",
             actorUserId: ctx.userId,
           });
-          await seedPageContentFromMarkdown(tx, retroTemplatePage.id, "# Went Well\n\n# To Improve\n\n# Action Items\n");
+          await seedPageContentFromMarkdown(tx, retroTemplatePage.id, "# Went Well\n\n# To Improve\n\n# Action Items\n", ctx.organizationId);
           await setSprintRetroTemplate(tx, created.projectId, retroTemplatePage.id);
         } catch (err) {
           console.error(`Failed to seed Sprint Retrospective Template for project ${created.projectId}:`, err);

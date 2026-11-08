@@ -23,6 +23,34 @@ export interface RunAiCompletionInput {
   onDelta?: (delta: string) => void;
 }
 
+export interface RecordAiUsageInput {
+  organizationId: string;
+  userId: string;
+  feature: string;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/**
+ * Writes one ai_usage audit row. Split out of runAiCompletion so a caller
+ * that streams a completion outside any transaction (askKompast) can still
+ * record usage in its own short write transaction afterwards.
+ */
+export async function recordAiUsage(tx: Tx, input: RecordAiUsageInput): Promise<void> {
+  await tx.insert(schema.aiUsage).values({
+    id: id("aiusage"),
+    organizationId: input.organizationId,
+    userId: input.userId,
+    feature: input.feature,
+    provider: input.provider,
+    model: input.model,
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+  });
+}
+
 /**
  * The single call site every AI feature funnels through: resolves
  * workspace-configured credentials (getAiCredentials — null covers both
@@ -40,8 +68,7 @@ export async function runAiCompletion(tx: Tx, input: RunAiCompletionInput) {
   const client = createAiClient(creds);
   const result = await client.streamCompletion({ messages: input.messages, maxTokens: input.maxTokens }, input.onDelta ?? (() => {}));
 
-  await tx.insert(schema.aiUsage).values({
-    id: id("aiusage"),
+  await recordAiUsage(tx, {
     organizationId: input.organizationId,
     userId: input.userId,
     feature: input.feature,

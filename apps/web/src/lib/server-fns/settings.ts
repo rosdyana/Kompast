@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { and, db, eq, schema } from "@kompast/db";
+import { adminDb, and, db, eq, schema } from "@kompast/db";
 import {
   getAiSettings,
   updateAiSettings,
@@ -10,6 +10,7 @@ import {
   completeSetup,
   getEmbeddingSettings,
   updateEmbeddingSettings,
+  enqueueFullReindex,
   requireSystemAdmin,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
@@ -94,6 +95,18 @@ export const updateEmbeddingSettingsFn = createServerFn({ method: "POST" })
     await updateEmbeddingSettings(db, { ...data, updatedBy: ctx.userId });
     return { ok: true } as const;
   });
+
+/**
+ * Queues every issue, comment and page in the workspace for reindexing (see
+ * enqueueFullReindex). Runs on adminDb because a workspace admin's own RLS
+ * may not show them every team's content. The queue is drained by apps/worker.
+ */
+export const reindexAllFn = createServerFn({ method: "POST" }).handler(async () => {
+  const ctx = await requireAuthContext();
+  await requireSystemAdmin(db, ctx);
+  const counts = await enqueueFullReindex(adminDb, ctx.organizationId);
+  return { ok: true, ...counts } as const;
+});
 
 const updateMailSchema = z.object({
   driver: z.enum(["brevo", "resend", "smtp"]),

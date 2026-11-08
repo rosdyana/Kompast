@@ -24,5 +24,11 @@
   "sourcePage": "Page",
   "composerHint": "Enter to send · Shift+Enter for a new line",
   "thinking": "Thinking…",
-  "stopped": "Stopped."
+  "stopped": "Stopped.",
+  "toolListProjects": "Looking up projects…",
+  "toolListIssues": "Searching issues…",
+  "toolGetIssue": "Reading issue…",
+  "toolGetSprint": "Checking sprint…",
+  "toolSearchWorkspace": "Searching docs and comments…",
+  "toolGeneric": "Looking things up…"
 }

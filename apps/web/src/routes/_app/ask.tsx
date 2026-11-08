@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, FileText, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, Square, Ticket } from "lucide-react";
 import { Button, IconButton } from "@kompast/ui/Button";
@@ -17,18 +17,53 @@ type Message = Awaited<ReturnType<typeof listMessagesFn>>[number];
 /** Only the streaming-in-progress assistant message is ever client-only (no id yet) — every other message on screen came from listMessagesFn. */
 type DisplayMessage = Pick<Message, "role" | "content"> & { id: string; citations?: AskCitation[] };
 
+/** Which status line to show for a running lookup. An unrecognized tool name falls back to a generic line rather than rendering nothing. */
+const TOOL_STATUS_KEYS = {
+  list_projects: "toolListProjects",
+  list_issues: "toolListIssues",
+  get_issue: "toolGetIssue",
+  get_sprint: "toolGetSprint",
+  search_workspace: "toolSearchWorkspace",
+} as const;
+
+const CHIP_CLASS = "inline-flex h-6 max-w-[260px] items-center gap-1.5 rounded-full border border-border bg-surface px-2 text-[12px] text-text-2";
+const CHIP_LINK_CLASS = `${CHIP_CLASS} transition-colors hover:border-border-2 hover:bg-surface-2 hover:text-text`;
+
 function CitationChip({ c }: { c: AskCitation }) {
   const { t } = useTranslation("ask");
   const Icon = c.entityType === "page" ? FileText : c.entityType === "comment" ? MessageSquare : Ticket;
   const label = c.entityType === "page" ? t("sourcePage") : c.entityType === "comment" ? t("sourceComment") : t("sourceIssue");
-  return (
-    <span
-      title={c.excerpt}
-      className="inline-flex h-6 max-w-[260px] items-center gap-1.5 rounded-full border border-border bg-surface px-2 text-[12px] text-text-2"
-    >
+  const body = (
+    <>
       <Icon size={12} className="flex-none text-text-3" />
       <span className="flex-none font-medium">{label}</span>
-      <span className="truncate text-text-3">{c.excerpt}</span>
+      <span className="truncate text-text-3">{c.title || c.excerpt}</span>
+    </>
+  );
+
+  // Citations stored before live enrichment carry no ref, so they render as the plain chip they always did.
+  if (c.ref?.kind === "issue") {
+    return (
+      <Link
+        to="/issues/$teamId/$projectKey/$issueKeySeq"
+        params={{ teamId: c.ref.teamId ?? "none", projectKey: c.ref.projectKey, issueKeySeq: String(c.ref.keySeq) }}
+        title={c.excerpt}
+        className={CHIP_LINK_CLASS}
+      >
+        {body}
+      </Link>
+    );
+  }
+  if (c.ref?.kind === "page") {
+    return (
+      <Link to="/docs/$pageId" params={{ pageId: c.ref.pageId }} title={c.excerpt} className={CHIP_LINK_CLASS}>
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <span title={c.excerpt} className={CHIP_CLASS}>
+      {body}
     </span>
   );
 }
@@ -42,6 +77,8 @@ function AskPage() {
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The tool the model is running right now, shown as a transient status line. Cleared when text starts arriving or the answer ends. */
+  const [toolName, setToolName] = useState<string | null>(null);
   const [threadListOpen, setThreadListOpen] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -114,8 +151,12 @@ function AskPage() {
     try {
       const result = await streamAskKompast(
         { threadId: selectedThreadId ?? undefined, question: q },
-        (delta) => setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: m.content + delta } : m))),
+        (delta) => {
+          setToolName(null);
+          setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: m.content + delta } : m)));
+        },
         controller.signal,
+        (name) => setToolName(name),
       );
       setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, citations: result.citations } : m)));
       if (!selectedThreadId) {
@@ -132,6 +173,7 @@ function AskPage() {
       }
     } finally {
       abortRef.current = null;
+      setToolName(null);
       setBusy(false);
     }
   }
@@ -237,6 +279,12 @@ function AskPage() {
                     </div>
                   </div>
                 ),
+              )}
+              {toolName && (
+                <p className="flex items-center gap-2 pl-10 text-[13px] text-text-3">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-text-3" />
+                  {t(TOOL_STATUS_KEYS[toolName as keyof typeof TOOL_STATUS_KEYS] ?? "toolGeneric")}
+                </p>
               )}
             </div>
           )}

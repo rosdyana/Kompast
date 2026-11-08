@@ -147,10 +147,10 @@ async function createProjectWithTemplates(who: PersonKey, input: { teamId: strin
   return as(who, async (tx) => {
     const created = await createProject(tx, { organizationId: orgId, actorUserId: people[who], ...input });
     const minutes = await createPage(tx, { organizationId: orgId, projectId: created.projectId, title: templates.minutes.split("\n")[0]!.replace(/^# /, ""), type: "template", actorUserId: people[who] });
-    await seedPageContentFromMarkdown(tx, minutes.id, templates.minutes);
+    await seedPageContentFromMarkdown(tx, minutes.id, templates.minutes, orgId);
     await setSprintMinutesTemplate(tx, created.projectId, minutes.id);
     const retro = await createPage(tx, { organizationId: orgId, projectId: created.projectId, title: templates.retro.split("\n")[0]!.replace(/^# /, ""), type: "template", actorUserId: people[who] });
-    await seedPageContentFromMarkdown(tx, retro.id, templates.retro);
+    await seedPageContentFromMarkdown(tx, retro.id, templates.retro, orgId);
     await setSprintRetroTemplate(tx, created.projectId, retro.id);
     return created;
   });
@@ -478,7 +478,7 @@ async function page(
   const { private: isPrivate, ...rest } = input;
   return as(who, async (tx) => {
     const p = await createPage(tx, { organizationId: orgId, actorUserId: people[who], ...rest, privateOwnerId: isPrivate ? people[who] : undefined });
-    await seedPageContentFromMarkdown(tx, p.id, markdown);
+    await seedPageContentFromMarkdown(tx, p.id, markdown, orgId);
     return p.id;
   });
 }

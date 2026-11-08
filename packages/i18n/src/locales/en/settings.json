@@ -29,7 +29,12 @@
       "modelLabel": "Model",
       "savingEllipsis": "Saving…",
       "save": "Save",
-      "saved": "Saved."
+      "saved": "Saved.",
+      "reindexHelp": "Re-queues every issue, comment and page in this workspace so Ask Kompast picks up anything it missed. Usually only needed after changing the embedding provider or model. Runs in the background; a large workspace can take a while.",
+      "reindex": "Re-index everything",
+      "reindexing": "Queuing…",
+      "reindexQueued": "Queued for re-indexing: {{issues}} issues, {{comments}} comments, {{pages}} pages.",
+      "reindexFailed": "Couldn't queue re-indexing: {{message}}"
     },
     "entra": {
       "heading": "Microsoft Entra ID",
