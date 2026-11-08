@@ -1,9 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
+import { createHash } from "node:crypto";
 import * as z from "zod";
 import * as Y from "yjs";
 import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { resolveShareLink, getSharedPageContent, shareLinkRequiresPassword } from "@kompast/core";
 import { createServerSchema, redactEmbedsForGuests } from "../blocknote-schema";
+import { clientIp, rateLimit } from "../rate-limit";
 
 /**
  * Public, unauthenticated surface — no requireAuthContext, no
@@ -28,6 +31,13 @@ const unlockSchema = z.object({ token: z.string(), password: z.string().optional
 export const getSharedPageContentFn = createServerFn({ method: "POST" })
   .validator(unlockSchema)
   .handler(async ({ data }) => {
+    if (data.password !== undefined) {
+      // Only password guesses are capped; the first no-password load is free. Keyed on the link (a hash, so
+      // the raw token isn't stored in Redis) and the IP, so one visitor can't brute-force one link.
+      const linkKey = createHash("sha256").update(data.token).digest("hex").slice(0, 16);
+      const gate = await rateLimit(`sharepw:${linkKey}:${clientIp(getRequest())}`, 10, 900);
+      if (!gate.ok) throw new Error(`Too many password attempts. Try again in ${Math.ceil(gate.retryAfter / 60)} minutes.`);
+    }
     const content = await getSharedPageContent(data.token, data.password);
     if (!content) return { ok: false as const };
 

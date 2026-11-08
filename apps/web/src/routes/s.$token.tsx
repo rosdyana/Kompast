@@ -64,6 +64,9 @@ function SharedPage() {
       const res = await getSharedPageContentFn({ data: { token, password } });
       if (res.ok) setContent(res);
       else setError(t("wrongPassword"));
+    } catch (err) {
+      // The server throws (rather than returning ok:false) when password attempts are rate-limited; its message says how long to wait.
+      setError(err instanceof Error ? err.message : t("wrongPassword"));
     } finally {
       setLoading(false);
     }

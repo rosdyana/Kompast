@@ -24,12 +24,20 @@ type Handler = (opts: { request: Request; params: Record<string, string> }) => P
 const importPost = (NotionImportRoute.options.server!.handlers as { POST: Handler }).POST;
 const assetGet = (PageAssetRoute.options.server!.handlers as { GET: Handler }).GET;
 
-function upload(token: string, fields: Record<string, string>, zip: Uint8Array | null = notionMarkdownExportZip()) {
+async function upload(token: string, fields: Record<string, string>, zip: Uint8Array | null = notionMarkdownExportZip()) {
   const form = new FormData();
   if (zip) form.set("file", new File([new Uint8Array(zip)], "Export.zip", { type: "application/zip" }));
   for (const [key, value] of Object.entries(fields)) form.set(key, value);
+  // The route requires Content-Length (411 otherwise), which a browser or curl always sends for a multipart body.
+  const encoded = new Response(form);
+  const contentType = encoded.headers.get("content-type")!;
+  const body = new Uint8Array(await encoded.arrayBuffer());
   return importPost({
-    request: new Request("http://x/api/v1/imports/notion", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: form }),
+    request: new Request("http://x/api/v1/imports/notion", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": contentType, "content-length": String(body.byteLength) },
+      body,
+    }),
     params: {},
   });
 }
@@ -127,5 +135,18 @@ describe("/api/v1/imports/notion", () => {
     const { importRunId } = await notAZip.json();
     const [run] = await admin.select().from(schema.importRun).where(eq(schema.importRun.id, importRunId));
     expect(run?.status).toBe("failed");
+  });
+
+  it("refuses an upload with no Content-Length before reading the body", async () => {
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array(notionMarkdownExportZip())], "Export.zip", { type: "application/zip" }));
+    form.set("target", "private");
+    const res = await importPost({
+      request: new Request("http://x/api/v1/imports/notion", { method: "POST", headers: { authorization: `Bearer ${tokens[memberId]!}` }, body: form }),
+      params: {},
+    });
+    // Node sets no Content-Length for a FormData body on a Request, so this is the "missing header" case.
+    expect(res.status).toBe(411);
+    expect(await res.json()).toMatchObject({ status: 411, title: "Length Required" });
   });
 });

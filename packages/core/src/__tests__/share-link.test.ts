@@ -10,6 +10,7 @@ import { NotFoundError } from "../errors";
 import { createShareLink, listShareLinks, revokeShareLink, resolveShareLink, checkSharePassword, getSharedPageContent } from "../share-link";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
+import { hashPassword, hashPasswordAsync, verifyPassword, verifyPasswordAsync } from "../crypto";
 
 describe("share links", () => {
   const env = loadEnv();
@@ -87,8 +88,8 @@ describe("share links", () => {
 
     const resolved = await resolveShareLink(token);
     expect(resolved).not.toBeNull();
-    expect(checkSharePassword(resolved!.shareLink, "wrong")).toBe(false);
-    expect(checkSharePassword(resolved!.shareLink, "correct-horse")).toBe(true);
+    expect(await checkSharePassword(resolved!.shareLink, "wrong")).toBe(false);
+    expect(await checkSharePassword(resolved!.shareLink, "correct-horse")).toBe(true);
   });
 
   it("getSharedPageContent returns the page's stored Yjs bytes for a valid token", async () => {
@@ -171,5 +172,16 @@ describe("share links", () => {
       await expect(withAuthorizedTenant(outsider, (tx) => requireCanCopyPage(tx, page.id, outsider))).resolves.toBeUndefined();
       await expect(withAuthorizedTenant(outsider, (tx) => requireCanManagePageAccess(tx, page.id, outsider))).resolves.toBeUndefined();
     });
+  });
+});
+
+describe("share password hashing", () => {
+  it("async and sync hashes are interchangeable (same format and scrypt parameters)", async () => {
+    const syncHash = hashPassword("pw-sync");
+    const asyncHash = await hashPasswordAsync("pw-async");
+    expect(await verifyPasswordAsync("pw-sync", syncHash)).toBe(true);
+    expect(verifyPassword("pw-async", asyncHash)).toBe(true);
+    expect(await verifyPasswordAsync("wrong", asyncHash)).toBe(false);
+    expect(await verifyPasswordAsync("pw-async", "not-a-hash")).toBe(false);
   });
 });

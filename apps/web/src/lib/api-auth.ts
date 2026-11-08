@@ -1,6 +1,14 @@
 import { getAuth } from "./auth";
 import { requireMembership, ForbiddenError } from "@kompast/core";
 import { db } from "@kompast/db";
+import { clientIp, isRateLimited, rateLimit } from "./rate-limit";
+
+/** Bad-token attempts allowed per client IP per minute before further requests are refused unverified. */
+const AUTH_FAILURES_PER_IP = 30;
+const AUTH_FAILURE_WINDOW_SECONDS = 60;
+/** Requests per API key per minute, across every route and MCP. */
+const REQUESTS_PER_KEY = 600;
+const KEY_WINDOW_SECONDS = 60;
 
 export interface ApiAuthContext {
   userId: string;
@@ -41,6 +49,7 @@ export class ApiError extends Error {
     public title: string,
     public detail: string,
     public extra?: Record<string, unknown>,
+    public headers?: Record<string, string>,
   ) {
     super(detail);
     this.name = "ApiError";
@@ -49,7 +58,7 @@ export class ApiError extends Error {
   toResponse(): Response {
     return new Response(
       JSON.stringify({ type: "about:blank", title: this.title, status: this.status, detail: this.detail, ...this.extra }),
-      { status: this.status, headers: { "Content-Type": "application/problem+json" } },
+      { status: this.status, headers: { "Content-Type": "application/problem+json", ...this.headers } },
     );
   }
 }
@@ -95,6 +104,43 @@ function scopeToPermissions(scope: string): Record<string, string[]> {
  * not silently as "user".
  */
 export async function requireApiAuth(
+  request: Request,
+  requiredScope: string | undefined,
+  origin: "api" | "mcp",
+): Promise<ApiAuthContext> {
+  // Limits are keyed on the client IP only when it's known. Requests with no X-Forwarded-For would all share
+  // one "unknown" bucket, so one client's failures could lock out everyone else. The documented Caddy setup always sends the header.
+  const ip = clientIp(request);
+  const limitByIp = ip !== "unknown";
+  if (limitByIp) {
+    // Checked before verifying, so a flood of bad tokens stops costing a key lookup on every request.
+    const gate = await isRateLimited(`authfail:${ip}`, AUTH_FAILURES_PER_IP, AUTH_FAILURE_WINDOW_SECONDS);
+    if (gate.limited) throw tooManyApiRequests(gate.retryAfter);
+  }
+
+  let ctx: ApiAuthContext;
+  try {
+    ctx = await verifyBearerToken(request, requiredScope, origin);
+  } catch (err) {
+    if (limitByIp && err instanceof ApiError && err.status === 401) {
+      await rateLimit(`authfail:${ip}`, AUTH_FAILURES_PER_IP, AUTH_FAILURE_WINDOW_SECONDS);
+    }
+    throw err;
+  }
+
+  // Per key, after a good verify: a valid token can't be used to run an unbounded request rate.
+  const perKey = await rateLimit(`pat:${ctx.apiKeyId}`, REQUESTS_PER_KEY, KEY_WINDOW_SECONDS);
+  if (!perKey.ok) throw tooManyApiRequests(perKey.retryAfter);
+  return ctx;
+}
+
+function tooManyApiRequests(retryAfter: number): ApiError {
+  return new ApiError(429, "Too Many Requests", `Too many requests. Try again in ${retryAfter} seconds.`, undefined, {
+    "Retry-After": String(retryAfter),
+  });
+}
+
+async function verifyBearerToken(
   request: Request,
   requiredScope: string | undefined,
   origin: "api" | "mcp",

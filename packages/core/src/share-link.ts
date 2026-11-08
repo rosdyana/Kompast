@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { adminDb, and, eq, isNull, or, gt, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
-import { hashPassword, verifyPassword } from "./crypto";
+import { hashPasswordAsync, verifyPasswordAsync } from "./crypto";
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -28,7 +28,7 @@ export async function createShareLink(tx: Tx, input: CreateShareLinkInput) {
     tokenHash: hashToken(token),
     scope: input.scope ?? "view",
     includeEmbeds: input.includeEmbeds ?? false,
-    passwordHash: input.password ? hashPassword(input.password) : null,
+    passwordHash: input.password ? await hashPasswordAsync(input.password) : null,
     expiresAt: input.expiresAt ?? null,
     createdBy: input.createdBy,
   });
@@ -86,9 +86,9 @@ export function shareLinkRequiresPassword(shareLink: { passwordHash: string | nu
   return shareLink.passwordHash !== null;
 }
 
-export function checkSharePassword(shareLink: { passwordHash: string | null }, candidate: string): boolean {
+export async function checkSharePassword(shareLink: { passwordHash: string | null }, candidate: string): Promise<boolean> {
   if (!shareLink.passwordHash) return true;
-  return verifyPassword(candidate, shareLink.passwordHash);
+  return verifyPasswordAsync(candidate, shareLink.passwordHash);
 }
 
 /**
@@ -101,7 +101,7 @@ export function checkSharePassword(shareLink: { passwordHash: string | null }, c
 export async function getSharedPageContent(token: string, password?: string) {
   const resolved = await resolveShareLink(token);
   if (!resolved) return null;
-  if (!checkSharePassword(resolved.shareLink, password ?? "")) return null;
+  if (!(await checkSharePassword(resolved.shareLink, password ?? ""))) return null;
 
   const [row] = await adminDb.select().from(schema.ydocState).where(eq(schema.ydocState.pageId, resolved.page.id));
   return { page: resolved.page, shareLink: resolved.shareLink, ydocState: row?.state ?? null };

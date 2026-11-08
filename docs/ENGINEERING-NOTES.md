@@ -180,3 +180,22 @@ Wizard, background runner, catch-up sync and completeness check. Code: `packages
 - **Reconciliation cursor.** The run's cursor carries its differences (up to 20,000) until it finishes. A large project's cursor is large while the check runs.
 - **Finish.** Refused without a completeness check newer than the last sync, and with unexplained differences unless they are acknowledged. It clears the token and turns auto-sync off in one transaction.
 - **Not built.** Comment threads: JIRA's API has no thread structure to import, so replies come in as flat comments. Development and plugin fields (the Development panel, Tempo, and similar) are not migrated. Linking a former member to a Kompast user after they join is not built; ask an admin. Multi-workspace sign-in picks no workspace.
+
+## Security hardening (Nov 2026 pass)
+
+**Outbound requests to user-chosen URLs** go through `guardedFetch` (`packages/core/src/net-guard.ts`): automation webhooks, the JIRA client (legacy import + migration), and legacy JIRA attachment downloads. Private/loopback/link-local/CGNAT/multicast and the IPv6 forms that embed them are refused; hostnames are checked **at connect time** in an undici `Agent` `lookup` (every resolved address must pass, and the socket connects to that vetted address — no DNS-rebinding window), IP literals before sending. Redirects are never followed. `OUTBOUND_ALLOW_PRIVATE_HOSTS` exempts named hosts (on-prem JIRA); link-local never. Tests stub `globalThis.fetch`, so the connect-time lookup doesn't run there — `net-guard.test.ts` exercises it against `*.localtest.me` (public DNS → 127.0.0.1). Verified that the npm `undici@7` Agent works as a dispatcher for Node 22's built-in fetch (the Docker base). **Not guarded:** AI/embedding provider base URLs — deployment-admin only, and self-hosted model servers on private IPs are a legitimate setup.
+
+**Rate limits** (`apps/web/src/lib/rate-limit.ts`, Redis fixed window, fail-open on Redis errors): bad API tokens 30/min per IP (checked before verifying), 600 req/min per PAT (REST + MCP via `requireApiAuth`), AI and Ask streams 30/min per user, share-link password attempts 10/15 min per link+IP, `/setup` 10/15 min per IP. Client IP is the first `X-Forwarded-For` entry — trustworthy only behind the documented Caddy setup (Caddy overwrites a client-sent XFF); requests with no XFF skip the per-IP limits rather than share one bucket.
+
+**Size caps:** uploads 100 MiB (`MAX_UPLOAD_BYTES`, bound into GCS signed URLs via `x-goog-content-length-range`, counted while streaming for local storage); Notion import 1 GiB uncompressed / 50,000 entries across nested zips, and a missing `Content-Length` is a 411; AI inputs `.max()`-bounded; collab WebSocket frames 5 MiB. Collab refuses the WebSocket handshake (403, in `onUpgrade`) unless `Origin` is `APP_URL`'s origin. Share-link passwords use async scrypt (no event-loop blocking). AI stream errors no longer echo provider error bodies to the client.
+
+**Security backlog (found, deliberately not done in this pass):**
+- App containers get the Postgres superuser password (`DATABASE_ADMIN_URL`/`POSTGRES_PASSWORD` in the shared `.env`); collab, share links and the worker use it at runtime. Split to a non-superuser `BYPASSRLS` role and keep the superuser to `migrate`.
+- Installer / `kompast upgrade` run `curl | bash` from `main` as root; `IMAGE_TAG` defaults to `latest`. Pin to release tags with checksums; digest-pin base images.
+- Automation webhooks still run inside the step's DB transaction (bounded by the 10 s timeout); move the call outside it.
+- GCS download URLs keep the stored Content-Type inline (driver interface has no filename/type) — add `responseDisposition: attachment` for non-images.
+- `BETTER_AUTH_SECRET` doubles as AES key and collab/storage HMAC key — derive per-purpose keys (HKDF).
+- No-RLS tables with id-only writes: `saved_view` update, board-column `boardId`/`projectId` mismatch, `issue_watcher`; workspace-only RLS on notification/automation-run tables.
+- Restricted-page inheritance for sub-pages; PAT expiry + the unused `admin` scope; Entra `pkce`; CSV export `\t`/`\r` formula prefix; attachment `sourceUrl` open redirect; encrypted backups; installer `umask 077`; container `cap_drop`/`no-new-privileges`/limits (Phase 4).
+- Test infra: `packages/import` has an intermittent cross-file race ("the migration was not claimed" / 10 s timeouts under full parallel load); each file passes alone.
+

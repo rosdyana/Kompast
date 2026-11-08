@@ -2,22 +2,25 @@ import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
 import { runDocTextAction, generateIssueDescription, generateSprintSummary, withAuthorizedTenant } from "@kompast/core";
 import { ApiError, requireSessionAuth } from "@/lib/api-auth";
+import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { aiStreamErrorMessage } from "@/lib/ai-stream-error";
 
+// Caps keep one request from sending a whole book to the model.
 const bodySchema = z.discriminatedUnion("feature", [
   z.object({
     feature: z.literal("doc"),
     action: z.enum(["continue", "improve", "shorten", "expand", "summarize", "translate"]),
-    text: z.string().min(1),
-    targetLanguage: z.string().optional(),
+    text: z.string().min(1).max(20_000),
+    targetLanguage: z.string().max(64).optional(),
   }),
   z.object({
     feature: z.literal("issue-description"),
-    title: z.string().min(1),
-    context: z.string().optional(),
+    title: z.string().min(1).max(500),
+    context: z.string().max(50_000).optional(),
   }),
   z.object({
     feature: z.literal("sprint-summary"),
-    sprintId: z.string(),
+    sprintId: z.string().max(128),
   }),
 ]);
 
@@ -43,6 +46,9 @@ export const Route = createFileRoute("/api/ai/stream")({
           throw err;
         }
 
+        const limit = await rateLimit(`ai:${ctx.userId}`, 30, 60);
+        if (!limit.ok) return tooManyRequests(limit.retryAfter);
+
         const parsed = bodySchema.safeParse(await request.json().catch(() => null));
         if (!parsed.success) {
           return new ApiError(400, "Bad Request", parsed.error.message).toResponse();
@@ -66,7 +72,7 @@ export const Route = createFileRoute("/api/ai/stream")({
               });
               send({ done: true });
             } catch (err) {
-              send({ error: err instanceof Error ? err.message : "AI request failed" });
+              send({ error: aiStreamErrorMessage(err, "The AI provider request failed") });
             } finally {
               controller.close();
             }

@@ -73,6 +73,12 @@ const schema = z.object({
   // required when on (enforced in demo.ts, same reasoning as above).
   DEMO_MODE: z.enum(["true", "false"]).default("false"),
   DEMO_ACCESS_CODE: z.string().min(8).optional(),
+  // Comma-separated hostnames that user-chosen outbound requests (automation
+  // webhooks, JIRA import/migration) may reach even though they resolve to a
+  // private address — e.g. an on-prem JIRA on the internal network. Every
+  // other private/loopback/link-local destination is refused; see
+  // packages/core/src/net-guard.ts. Link-local (cloud metadata) is never exempt.
+  OUTBOUND_ALLOW_PRIVATE_HOSTS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

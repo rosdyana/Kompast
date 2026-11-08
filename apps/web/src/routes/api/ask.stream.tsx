@@ -2,10 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
 import { askKompast } from "@kompast/core";
 import { ApiError, requireSessionAuth } from "@/lib/api-auth";
+import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { aiStreamErrorMessage } from "@/lib/ai-stream-error";
 
 const bodySchema = z.object({
-  threadId: z.string().optional(),
-  question: z.string().min(1),
+  threadId: z.string().max(128).optional(),
+  question: z.string().min(1).max(4_000),
 });
 
 /**
@@ -25,6 +27,9 @@ export const Route = createFileRoute("/api/ask/stream")({
           if (err instanceof ApiError) return err.toResponse();
           throw err;
         }
+
+        const limit = await rateLimit(`ai:${ctx.userId}`, 30, 60);
+        if (!limit.ok) return tooManyRequests(limit.retryAfter);
 
         const parsed = bodySchema.safeParse(await request.json().catch(() => null));
         if (!parsed.success) {
@@ -47,7 +52,7 @@ export const Route = createFileRoute("/api/ask/stream")({
               });
               send({ done: true, threadId: result.threadId, citations: result.citations });
             } catch (err) {
-              send({ error: err instanceof Error ? err.message : "Ask Kompast request failed" });
+              send({ error: aiStreamErrorMessage(err, "The AI provider request failed") });
             } finally {
               controller.close();
             }

@@ -1,4 +1,4 @@
-import dns from "node:dns/promises";
+import { guardedFetch, isRedirect } from "./net-guard";
 import { and, eq, sql, schema, type Json } from "@kompast/db";
 import type { Tx } from "./types";
 import { createIssue, moveIssue, updateIssue, updateIssueCustomField } from "./issue";
@@ -151,53 +151,6 @@ async function applySetProperty(tx: Tx, issueId: string, property: string, value
 function delayResumeAt(config: { amount: number; unit: "minutes" | "hours" | "days" }): Date {
   const msPerUnit = { minutes: 60_000, hours: 3_600_000, days: 86_400_000 };
   return new Date(Date.now() + config.amount * msPerUnit[config.unit]);
-}
-
-/**
- * Best-effort SSRF guard for action_webhook's own address-family check:
- * true if `address` (already DNS-resolved, never the raw hostname — a
- * hostname can resolve to a private IP without looking like one) falls in
- * a loopback/link-local/private range. Deliberately not exhaustive — no
- * full IPv6 CIDR handling beyond the common ranges below, and this can't
- * defend against DNS rebinding between this check and the fetch call
- * itself. A reasonable best effort for the common ranges (including the
- * 169.254.169.254 cloud metadata endpoint), not a complete network
- * security boundary.
- */
-function isDisallowedWebhookAddress(address: string, family: number): boolean {
-  if (family === 4) {
-    const octets = address.split(".").map(Number);
-    if (octets.length !== 4 || octets.some((n) => Number.isNaN(n))) return true; // malformed — fail closed
-    const [a, b] = octets as [number, number, number, number];
-    if (a === 127) return true; // loopback (127.0.0.0/8)
-    if (a === 10) return true; // private (10.0.0.0/8)
-    if (a === 172 && b >= 16 && b <= 31) return true; // private (172.16.0.0/12)
-    if (a === 192 && b === 168) return true; // private (192.168.0.0/16)
-    if (a === 169 && b === 254) return true; // link-local (169.254.0.0/16) — includes the cloud metadata endpoint
-    if (a === 0) return true; // "this network" (0.0.0.0/8)
-    return false;
-  }
-  const normalized = address.toLowerCase();
-  if (normalized === "::1") return true; // loopback
-  if (normalized.startsWith("fe80:")) return true; // link-local (fe80::/10)
-  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // unique local (fc00::/7)
-  if (normalized.startsWith("::ffff:")) return isDisallowedWebhookAddress(normalized.slice("::ffff:".length), 4); // IPv4-mapped IPv6
-  return false;
-}
-
-/**
- * Resolves action_webhook's user-configured target URL and rejects it if
- * it points at a loopback/link-local/private address — this is the
- * engine's only outbound-fetch primitive, reachable by any user with
- * issues:write (not just an admin), and the request originates from
- * apps/worker's own network position. Throws (caught by executeNode's
- * existing catch, same as a real network error) rather than returning a
- * boolean, so callers can't forget to check it.
- */
-async function assertWebhookUrlAllowed(rawUrl: string): Promise<void> {
-  const hostname = new URL(rawUrl).hostname;
-  const { address, family } = await dns.lookup(hostname);
-  if (isDisallowedWebhookAddress(address, family)) throw new Error("Webhook target resolves to a disallowed address");
 }
 
 /**
@@ -410,8 +363,11 @@ export async function executeNode(
     if (node.type === "action_webhook") {
       const config = resolvedConfig as { url: string; method: string; headers: Record<string, string>; bodyTemplate: Json };
       try {
-        await assertWebhookUrlAllowed(config.url);
-        const res = await fetch(config.url, {
+        // guardedFetch (net-guard.ts) refuses private/loopback/link-local
+        // targets at connect time (no DNS-rebinding window) and never
+        // follows redirects. Reachable by any project admin, and the
+        // request leaves from the worker's own network position.
+        const res = await guardedFetch(config.url, {
           method: config.method,
           headers: { "Content-Type": "application/json", ...config.headers },
           body: JSON.stringify(config.bodyTemplate),
@@ -424,22 +380,8 @@ export async function executeNode(
           // rejects with a DOMException named "AbortError", handled
           // generically by the catch below like any other network error.
           signal: AbortSignal.timeout(10_000),
-          // Never auto-follow a redirect: assertWebhookUrlAllowed only
-          // DNS-resolves and range-checks the INITIAL url — fetch's default
-          // redirect: "follow" would transparently chase a Location header
-          // straight past that guard (e.g. an attacker-controlled host
-          // redirecting to http://169.254.169.254/... cloud metadata, or to
-          // a loopback address), defeating the SSRF check entirely without
-          // ever re-validating the redirect target. With "manual", Node's
-          // native fetch (undici) does not follow the redirect itself —
-          // empirically, in this repo's Node version, it returns the 3xx
-          // response as-is (status/headers intact) rather than throwing or
-          // returning an opaque-redirect response, hence the status-range
-          // check below (with an `opaqueredirect` check kept alongside it
-          // in case a future Node/undici version changes that).
-          redirect: "manual",
         });
-        if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
+        if (isRedirect(res)) {
           return { status: "failed", error: "Webhook response was a redirect, which is not followed for security reasons" };
         }
         if (!res.ok) return { status: "failed", error: `Webhook returned ${res.status} ${res.statusText}` };

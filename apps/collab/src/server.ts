@@ -1,6 +1,7 @@
 import { Server } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { adminDb, eq, schema } from "@kompast/db";
+import { loadEnv } from "@kompast/env";
 // Deliberately NOT `from "@kompast/core"` (the package's barrel): that
 // pulls in every service module through one ESM `export *` chain, including
 // attachment.ts -> @kompast/storage -> @google-cloud/storage ->
@@ -23,10 +24,34 @@ import { enqueueReindex } from "@kompast/core/rag-queue";
 const lastSnapshotAt = new Map<string, number>();
 const VERSION_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
 
+/** Largest single frame a client may send. Generous for real Yjs edits; stops one socket from pushing arbitrarily large frames into memory. */
+const MAX_WEBSOCKET_PAYLOAD_BYTES = 5 * 1024 * 1024;
+
 export function createCollabServer(port: number) {
+  const env = loadEnv();
+  const appOrigin = new URL(env.APP_URL).origin;
+
   return new Server({
     port,
     quiet: true,
+    // Passed straight to the ws server (Hocuspocus's websocketOptions).
+    websocketOptions: { maxPayload: MAX_WEBSOCKET_PAYLOAD_BYTES },
+
+    // Refuses the WebSocket handshake itself (not just the later document
+    // join) when the page opening it isn't the app — stops another site from
+    // holding sockets open here. Browsers always send Origin; only the test
+    // suite connects without one. Hocuspocus rethrows a *truthy* rejection
+    // from inside its async "upgrade" listener (crashing the process), so
+    // the socket is answered and closed here and the hook rejects with null,
+    // which Hocuspocus treats as "handled, don't upgrade".
+    async onUpgrade({ request, socket }) {
+      const origin = request.headers.origin;
+      const allowed = origin ? origin === appOrigin : process.env.NODE_ENV === "test";
+      if (allowed) return;
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+      socket.destroy();
+      throw null;
+    },
 
     async onAuthenticate(data) {
       const payload = verifyCollabToken(data.token);

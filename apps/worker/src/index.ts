@@ -281,7 +281,9 @@ async function main() {
   await workflowStepQueue.add("process-workflow-steps", {}, { repeat: { every: 5_000 } });
   await workflowScheduleQueue.add("process-workflow-schedules", {}, { repeat: { every: 60_000 } });
   await jiraMigrationQueue.add("process-jira-migrations", {}, { repeat: { every: 5_000 } });
-  console.log(`[worker] started, connected to redis at ${env.REDIS_URL}`);
+  // Log the host only: REDIS_URL can carry a password.
+  const redisHost = new URL(env.REDIS_URL);
+  console.log(`[worker] started, connected to redis at ${redisHost.protocol}//${redisHost.host}`);
 }
 
 main();

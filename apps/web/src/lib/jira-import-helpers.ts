@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { and, eq, inArray, schema } from "@kompast/db";
-import type { Tx } from "@kompast/core";
+import { guardedFetch, isRedirect, type Tx } from "@kompast/core";
 
 /**
  * The JIRA base URL both legacy-import adapters accept. https only, like the
@@ -42,8 +42,8 @@ export function buildJiraAttachmentDownloader(email: string, apiToken: string, b
   const allowedOrigin = new URL(baseUrl).origin;
   return async (url: string) => {
     if (new URL(url).origin !== allowedOrigin) throw new Error(`Attachment URL is not on the JIRA site (${allowedOrigin})`);
-    const res = await fetch(url, { headers: { authorization: `Basic ${auth}` }, redirect: "manual" });
-    if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) throw new Error("JIRA attachment fetch was redirected; redirects are not followed");
+    const res = await guardedFetch(url, { headers: { authorization: `Basic ${auth}` } });
+    if (isRedirect(res)) throw new Error("JIRA attachment fetch was redirected; redirects are not followed");
     if (!res.ok) throw new Error(`JIRA attachment fetch failed (${res.status})`);
     const declared = Number(res.headers.get("content-length") ?? 0);
     if (declared > MAX_JIRA_ATTACHMENT_BYTES) throw new Error(`JIRA attachment is larger than ${MAX_JIRA_ATTACHMENT_BYTES} bytes`);

@@ -43,6 +43,28 @@ describe("readNotionExport", () => {
   });
 });
 
+describe("readNotionExport limits (zip bombs)", () => {
+  it("rejects an export with more entries than the cap", () => {
+    const zip = zipSync({ "a.md": strToU8("# A"), "b.md": strToU8("# B"), "c.md": strToU8("# C") });
+    expect(() => readNotionExport(zip, { maxEntries: 2 })).toThrow(/more than 2 files/);
+    expect(readNotionExport(zip, { maxEntries: 3 }).pages).toHaveLength(3);
+  });
+
+  it("rejects an export whose declared uncompressed size is over the cap, before inflating", () => {
+    const zip = zipSync({ "big.md": new Uint8Array(2000) });
+    expect(() => readNotionExport(zip, { maxBytes: 1000 })).toThrow(/unpacks to more than/);
+    expect(() => readNotionExport(zip, { maxBytes: 2000 })).not.toThrow();
+  });
+
+  it("counts bytes inside nested zips toward the same total", () => {
+    const inner = zipSync({ "Inner.md": strToU8("y".repeat(600)) });
+    const zip = zipSync({ "Top.md": strToU8("x".repeat(600)), "Part-1.zip": inner });
+    // Each part fits under the cap on its own; together they don't.
+    expect(() => readNotionExport(zipSync({ "Inner.md": strToU8("y".repeat(600)) }), { maxBytes: 1000 })).not.toThrow();
+    expect(() => readNotionExport(zip, { maxBytes: 1000 })).toThrow(/unpacks to more than/);
+  });
+});
+
 describe("link resolution", () => {
   const exp = readNotionExport(notionHtmlExportZip());
   const onboardingPath = `Team Wiki ${IDS.wiki}/Onboarding ${IDS.onboarding}.html`;

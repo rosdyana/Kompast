@@ -1,3 +1,5 @@
+import { guardedFetch } from "@kompast/core";
+
 export interface JiraApiCredentials {
   /** e.g. "https://your-site.atlassian.net" — no trailing slash. */
   baseUrl: string;
@@ -84,7 +86,11 @@ class Semaphore {
  */
 export function createJiraClient(creds: JiraApiCredentials, opts: JiraClientOptions = {}): JiraClient {
   const fetchImpl: (input: string | URL | Request, init?: RequestInit) => Promise<Response> =
-    opts.fetch ?? ((input, init) => globalThis.fetch(input, init));
+    // guardedFetch: the site URL is user-supplied (a project admin's), so
+    // refuse private/loopback/link-local targets at connect time and never
+    // follow a redirect (a 3xx comes back as a non-2xx → JiraApiError).
+    // OUTBOUND_ALLOW_PRIVATE_HOSTS exempts an on-prem JIRA by hostname.
+    opts.fetch ?? ((input, init) => guardedFetch(input instanceof Request ? input.url : input, init));
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const limiter = new Semaphore(opts.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY);
