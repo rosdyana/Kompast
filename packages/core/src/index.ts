@@ -20,6 +20,7 @@ export { executeNode, type ExecuteStepResult, AUTOMATION_READABLE_PROPERTY_KEYS,
 export * from "./automation-engine";
 export * from "./comment";
 export * from "./rich-text";
+export * from "./ydoc-text";
 export * from "./watcher";
 export * from "./attachment";
 export * from "./worklog";
@@ -44,4 +45,7 @@ export * from "./ai";
 export * from "./import";
 export * from "./jira-migration";
 export * from "./rag";
+export * from "./errors";
+export * from "./issue-query";
+export * from "./ask-tools";
 export type { Tx, AnyDb } from "./types";

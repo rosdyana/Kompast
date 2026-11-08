@@ -1,5 +1,5 @@
 import { ApiError } from "./api-auth";
-import { ForbiddenError, AutomationGraphError, PageSpaceError } from "@kompast/core";
+import { ForbiddenError, AutomationGraphError, PageSpaceError, NotFoundError, ConflictError, InvalidInputError } from "@kompast/core";
 
 export function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -20,6 +20,9 @@ export async function handleApiRoute(fn: () => Promise<Response>): Promise<Respo
     // Same kind of input error: conflicting spaces (e.g. private + teamId),
     // a child in a different space from its parent, sharing a private page.
     if (err instanceof PageSpaceError) return new ApiError(400, "Bad Request", err.message).toResponse();
+    if (err instanceof NotFoundError) return new ApiError(404, "Not Found", err.message).toResponse();
+    if (err instanceof ConflictError) return new ApiError(409, "Conflict", err.message).toResponse();
+    if (err instanceof InvalidInputError) return new ApiError(400, "Bad Request", err.message).toResponse();
     // eslint-disable-next-line no-console
     console.error("[api/v1] unhandled error:", err);
     return new ApiError(500, "Internal Server Error", "Unexpected error").toResponse();

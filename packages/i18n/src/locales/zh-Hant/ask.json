@@ -24,5 +24,11 @@
   "sourcePage": "頁面",
   "composerHint": "Enter 送出 · Shift+Enter 換行",
   "thinking": "思考中…",
-  "stopped": "已停止。"
+  "stopped": "已停止。",
+  "toolListProjects": "正在查詢專案…",
+  "toolListIssues": "正在搜尋議題…",
+  "toolGetIssue": "正在讀取議題…",
+  "toolGetSprint": "正在查看衝刺…",
+  "toolSearchWorkspace": "正在搜尋文件與留言…",
+  "toolGeneric": "正在查詢資料…"
 }

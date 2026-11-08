@@ -60,6 +60,10 @@ import {
   ForbiddenError,
   AutomationGraphError,
   PageSpaceError,
+  NotFoundError,
+  ConflictError,
+  InvalidInputError,
+  queryIssues,
   listSprints,
   createSprint,
   updateSprint,
@@ -136,6 +140,8 @@ function tool(ctx: ApiAuthContext, scope: string | null, fn: () => Promise<unkno
     } catch (err) {
       if (err instanceof ApiError) return toolError(err.detail);
       if (err instanceof ForbiddenError) return toolError(err.message);
+      // Lookup and input errors thrown by packages/core's resolvers (same 404/409/400 mapping as REST's handleApiRoute).
+      if (err instanceof NotFoundError || err instanceof ConflictError || err instanceof InvalidInputError) return toolError(err.message);
       // Client input errors, same mapping as REST's handleApiRoute (400s there).
       if (err instanceof AutomationGraphError || err instanceof PageSpaceError) return toolError(err.message);
       console.error("[mcp] tool error:", err);
@@ -316,23 +322,20 @@ export function buildMcpServer(ctx: ApiAuthContext) {
     (args) =>
       tool(ctx, "issues:read", () =>
         withAuthorizedTenant(ctx, async (tx) => {
-          const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
-          const limit = args.limit ?? 25;
-          const conditions = [eq(schema.issue.projectId, project.id), gt(schema.issue.keySeq, args.cursor ?? 0)];
-          if (!args.includeArchived) conditions.push(isNull(schema.issue.archivedAt));
-          if (args.status) conditions.push(eq(schema.issue.statusId, (await resolveStatus(tx, project.id, args.status)).id));
-          if (args.assigneeEmail) conditions.push(eq(schema.issue.assigneeId, await resolveUserByEmail(tx, ctx.organizationId, args.assigneeEmail)));
-          if (args.sprintId) conditions.push(eq(schema.issue.sprintId, args.sprintId));
-          if (args.epicKey) conditions.push(eq(schema.issue.epicId, (await resolveIssue(tx, ctx.organizationId, args.epicKey)).issue.id));
-          if (args.label) conditions.push(arrayContains(schema.issue.labels, [args.label]));
-          const rows = await tx
-            .select()
-            .from(schema.issue)
-            .where(and(...conditions))
-            .orderBy(asc(schema.issue.keySeq))
-            .limit(limit);
-          const nextCursor = rows.length === limit ? rows[rows.length - 1]!.keySeq : null;
-          return { data: rows.map((r) => serializeIssue(r, project.key)), nextCursor };
+          const assigneeId = args.assigneeEmail ? await resolveUserByEmail(tx, ctx.organizationId, args.assigneeEmail) : undefined;
+          const epicIssueId = args.epicKey ? (await resolveIssue(tx, ctx.organizationId, args.epicKey)).issue.id : undefined;
+          const { rows, nextCursor } = await queryIssues(tx, ctx.organizationId, {
+            projectKey: args.projectKey,
+            statusName: args.status,
+            assigneeId,
+            sprintId: args.sprintId,
+            epicIssueId,
+            label: args.label,
+            includeArchived: args.includeArchived,
+            cursor: args.cursor,
+            limit: args.limit,
+          });
+          return { data: rows.map((r) => serializeIssue(r.issue, r.projectKey)), nextCursor };
         }),
       )(),
   );
@@ -641,7 +644,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
             });
             // Safe only because this page is brand new — see seed-page-content.ts for the full explanation.
             if (args.content) {
-              await seedPageContentFromMarkdown(tx, page.id, args.content);
+              await seedPageContentFromMarkdown(tx, page.id, args.content, ctx.organizationId);
             }
             return serializePage(page);
           };

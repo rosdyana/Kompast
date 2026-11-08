@@ -24,5 +24,11 @@
   "sourcePage": "Halaman",
   "composerHint": "Enter untuk kirim · Shift+Enter untuk baris baru",
   "thinking": "Berpikir…",
-  "stopped": "Dihentikan."
+  "stopped": "Dihentikan.",
+  "toolListProjects": "Mengambil daftar proyek…",
+  "toolListIssues": "Mencari issue…",
+  "toolGetIssue": "Membaca issue…",
+  "toolGetSprint": "Memeriksa sprint…",
+  "toolSearchWorkspace": "Mencari dokumen dan komentar…",
+  "toolGeneric": "Mencari informasi…"
 }

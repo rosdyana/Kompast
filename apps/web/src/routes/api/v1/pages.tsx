@@ -88,7 +88,7 @@ export const Route = createFileRoute("/api/v1/pages")({
               // page's content (see PATCH, deliberately not implemented for
               // that reason — see api-resolvers.ts / plan notes).
               if (body.content) {
-                await seedPageContentFromMarkdown(tx, page.id, body.content);
+                await seedPageContentFromMarkdown(tx, page.id, body.content, ctx.organizationId);
               }
 
               return serializePage(page);

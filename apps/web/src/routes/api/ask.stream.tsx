@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import { askKompast, withAuthorizedTenant } from "@kompast/core";
+import { askKompast } from "@kompast/core";
 import { ApiError, requireSessionAuth } from "@/lib/api-auth";
 
 const bodySchema = z.object({
@@ -37,15 +37,14 @@ export const Route = createFileRoute("/api/ask/stream")({
           async start(controller) {
             const send = (frame: Record<string, unknown>) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
             try {
-              const result = await withAuthorizedTenant(ctx, (tx) =>
-                askKompast(tx, {
-                  organizationId: ctx.organizationId,
-                  userId: ctx.userId,
-                  threadId: body.threadId,
-                  question: body.question,
-                  onDelta: (delta) => send({ delta }),
-                }),
-              );
+              // askKompast manages its own short transactions; no transaction is held open while the answer streams.
+              const result = await askKompast(ctx, {
+                threadId: body.threadId,
+                question: body.question,
+                onDelta: (delta) => send({ delta }),
+                // A tool frame tells the UI which lookup is running; the client shows it as a transient status.
+                onTool: (tool) => send({ tool }),
+              });
               send({ done: true, threadId: result.threadId, citations: result.citations });
             } catch (err) {
               send({ error: err instanceof Error ? err.message : "Ask Kompast request failed" });

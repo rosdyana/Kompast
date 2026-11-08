@@ -2,7 +2,7 @@ import { pgTable, text, integer, timestamp, jsonb, vector, index, uniqueIndex } 
 import { organization, user } from "./auth";
 import type { Json } from "./_shared";
 
-/** Only "issue"/"comment" are actually indexed so far (P7 stage A) — "page" is stage B, once docs indexing lands (needs @blocknote/server-util in apps/worker, verified separately for bundling risk — see README). */
+/** All three are indexed: issues, comments, and pages (a page's title plus its Yjs body, converted to plain text by packages/core's ydoc-text.ts — plain yjs, no BlockNote/jsdom). */
 export const ragEntityType = ["issue", "comment", "page"] as const;
 export type RagEntityType = (typeof ragEntityType)[number];
 
@@ -70,7 +70,7 @@ export const embeddingIndexQueue = pgTable(
   (t) => [index("embedding_index_queue_status_idx").on(t.status)],
 );
 
-/** A single Ask Kompast conversation — one user's own thread, not shared across the workspace (see ai_message's RLS: scoped to the thread, which is scoped to its owning user). */
+/** A single Ask Kompast conversation — one user's own thread, not shared across the workspace. Enforced in RLS (packages/db/rls.sql): ai_thread is visible only to its owning user, and ai_message is scoped through ai_thread. */
 export const aiThread = pgTable(
   "ai_thread",
   {

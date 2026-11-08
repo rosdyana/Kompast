@@ -41,7 +41,7 @@ The mechanism a separate docs tool + separate tracker can't truthfully copy: doc
 ## Brand Commitments
 
 - Product name: **Kompast**. Existing favicon/apple-touch-icon assets at `apps/web/public/`.
-- Independent visual identity — explicitly confirmed not to need alignment with any parent-company (e.g. ASUS) brand system.
+- Independent visual identity — explicitly confirmed not to need alignment with any parent-company or corporate brand system.
 - An existing component/token layer already exists at `packages/ui` (per README, "generated from the Claude Design mockup") — an incumbent visual world, not yet documented in DESIGN.md.
 
 ## Evidence on Hand

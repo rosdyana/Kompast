@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, isNotNull, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { rankBetween } from "./rank";
+import { enqueueReindex } from "./rag-queue";
 
 export interface CreatePageInput {
   organizationId: string;
@@ -126,6 +127,8 @@ export async function createPage(tx: Tx, input: CreatePageInput) {
     rank: await nextSiblingRank(tx, space, parentPageId),
     createdBy: input.actorUserId,
   });
+  // Title alone is indexable, so every new page is queued. Its body (if any) is picked up by the next Yjs save.
+  await enqueueReindex(tx, { organizationId: input.organizationId, entityType: "page", entityId: pageId });
 
   const [page] = await tx.select().from(schema.page).where(eq(schema.page.id, pageId));
   return page!;
@@ -189,8 +192,11 @@ export async function listTemplatePages(tx: Tx, organizationId: string) {
  * root instead of being silently deleted with their parent.
  */
 export async function permanentlyDeletePage(tx: Tx, pageId: string) {
+  const [existing] = await tx.select({ organizationId: schema.page.organizationId }).from(schema.page).where(eq(schema.page.id, pageId));
   await tx.update(schema.page).set({ parentPageId: null }).where(eq(schema.page.parentPageId, pageId));
   await tx.delete(schema.page).where(eq(schema.page.id, pageId));
+  // embedding rows have no FK to page, so the cascade above doesn't reach them — the worker deletes them explicitly.
+  if (existing) await enqueueReindex(tx, { organizationId: existing.organizationId, entityType: "page", entityId: pageId, action: "delete" });
 }
 
 export interface UpdatePageMetaInput {
@@ -202,6 +208,10 @@ export interface UpdatePageMetaInput {
 
 export async function updatePageMeta(tx: Tx, pageId: string, patch: UpdatePageMetaInput) {
   await tx.update(schema.page).set({ ...patch, updatedAt: new Date() }).where(eq(schema.page.id, pageId));
+  if (patch.title !== undefined) {
+    const [page] = await tx.select({ organizationId: schema.page.organizationId }).from(schema.page).where(eq(schema.page.id, pageId));
+    if (page) await enqueueReindex(tx, { organizationId: page.organizationId, entityType: "page", entityId: pageId });
+  }
 }
 
 /**

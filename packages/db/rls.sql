@@ -499,9 +499,15 @@ drop policy if exists tenant_isolation_embedding_index_queue on embedding_index_
 create policy tenant_isolation_embedding_index_queue on embedding_index_queue
   using (organization_id = current_setting('app.current_workspace', true));
 
+-- Owner-only, not just workspace-scoped: a thread's history quotes whatever
+-- its owner's team could see, so letting another member read (or append to)
+-- it by id would bypass team scoping. ai_message inherits this below.
 drop policy if exists tenant_isolation_ai_thread on ai_thread;
 create policy tenant_isolation_ai_thread on ai_thread
-  using (organization_id = current_setting('app.current_workspace', true));
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and user_id = current_setting('app.current_user', true)
+  );
 
 -- Indirectly scoped (via thread_id -> ai_thread.organization_id), same
 -- pattern as issue_comment -> issue above.

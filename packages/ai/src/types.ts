@@ -1,17 +1,42 @@
-export interface AiMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+/** A tool the model may call. `inputSchema` is a JSON Schema object describing the tool's input. */
+export interface AiToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
 }
+
+/** One tool invocation the model asked for. `id` pairs it with the `role: "tool"` result that answers it. */
+export interface AiToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/**
+ * The plain `{role, content}` shape every existing caller uses is still the
+ * first union member, so those call sites compile unchanged. The other two
+ * members exist only for the tool-calling loop: an assistant turn that
+ * requested tools, and the result message that answers one of those requests.
+ */
+export type AiMessage =
+  | { role: "system" | "user" | "assistant"; content: string }
+  | { role: "assistant"; content: string; toolCalls: AiToolCall[] }
+  | { role: "tool"; toolCallId: string; content: string };
 
 export interface CompletionRequest {
   messages: AiMessage[];
   maxTokens?: number;
+  tools?: AiToolDefinition[];
 }
 
 export interface CompletionResult {
   text: string;
   inputTokens: number;
   outputTokens: number;
+  /** Empty unless the model asked for tools. */
+  toolCalls: AiToolCall[];
+  /** "tool_use" when the model stopped to request tools, otherwise "end". */
+  stopReason: "end" | "tool_use";
 }
 
 export interface AiDriver {

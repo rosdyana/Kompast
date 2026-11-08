@@ -1,171 +1,170 @@
+<div align="center">
+
 # Kompast
 
-A self-hosted team workspace that brings docs, project tracking, automation, and AI assistance together in one place — instead of stitching together several disconnected tools. Real-time collaborative docs, kanban boards with configurable sprints, workflow automation, and an AI assist layer, all on one Postgres-backed workspace.
+**A self-hosted workspace for docs, projects and automation.**
 
-**Status**: the core platform — auth, boards, docs, REST/MCP API, sprints, notifications, automation, AI assist — is built and working. Data import supports JIRA (issues) and Notion (docs); importers for other tools and a production-hardening pass are still ahead.
+Real-time collaborative docs, Jira-style boards and sprints, visual workflow automation and AI assistance, all in one Postgres-backed workspace.
 
-| Area | Status |
-|---|---|
-| Foundation, auth, kanban core | Done |
-| Docs | Done |
-| REST API + MCP | Done |
-| Sprints + roadmap | Done |
-| Notifications + mail | Done |
-| Automation | Done |
-| AI assist + Ask Kompast (RAG chat) | Done |
-| Teams + team-scoped visibility | Done |
-| Private & Shared docs (Notion-style) | Done |
-| Importers | JIRA and Notion done, others not started |
-| Hardening + cutover | Not started |
+[Features](#features) · [Screenshots](#screenshots) · [Quick start](#quick-start) · [Deployment](#deployment) · [API & MCP](#rest-api--mcp) · [Architecture](#architecture)
 
-Implementation rationale, known gotchas, and verification write-ups for each area live in [`docs/ENGINEERING-NOTES.md`](docs/ENGINEERING-NOTES.md) — read the relevant section before touching that feature area.
+</div>
+
+---
+
+## Why Kompast
+
+Most teams split their work across a docs tool and an issue tracker, then spend time keeping the two in sync. Kompast keeps both in one place: docs and issues share a workspace, link to each other, embed each other, and can be searched together. It runs on your own infrastructure, so your data stays with you.
+
+- **Docs and issues together.** Live board embeds inside pages, doc↔issue links, backlinks and one search across both.
+- **Self-hosted.** Docker Compose behind your own reverse proxy, with Postgres row-level security isolating every team's content.
+- **One API surface.** The UI, the REST API and the MCP server all call the same domain layer, so they never disagree about what's allowed.
+- **Configured in the app.** Single sign-on, AI provider, mail vendor and embeddings are set from the admin UI with no redeploy.
+
+## Features
+
+### Docs
+- Real-time collaborative editing (BlockNote + Yjs) with a nested page tree, emoji icons, favorites and breadcrumbs.
+- Spaces: shared **Workspace** docs, team and project docs, and a **Private** space visible only to you.
+- Share a private page with specific people and it moves to **Shared**, sub-pages included.
+- Per-page access lists, version history, templates, trash and restore, guest share links, `@mention` backlinks and live board embeds.
+
+### Boards & sprints
+- Backlog with sprint containers, drag-and-drop planning, inline quick-create and start/complete with carry-over.
+- Kanban boards with configurable sprint cycles and assignee swimlanes.
+- Sprint table with inline editing and multi-column sort.
+- Per-issue checklists, worklogs, issue links and watchers.
+- Burndown and cumulative-flow reports, velocity history and an epic roadmap.
+
+### Automation
+- A visual node-graph workflow builder on each project.
+- Triggers on issue events or cron schedules; if/else and switch conditions.
+- Actions to set fields, label, comment, notify, link, create subtasks and call outbound webhooks.
+- Loop over query results and pass data between steps with `{{…}}` expressions.
+- Guardrails built in: chain-depth limits, per-workflow rate limits, dry-run mode and per-node run history.
+
+### AI
+- **Writing assist** in the editor: continue, improve, shorten, expand, summarize, translate.
+- AI-drafted issue descriptions and sprint summaries.
+- **Ask Kompast**: a chat that answers questions from your issues, comments and docs. It uses pgvector semantic search plus read-only lookups (issues by status, assignee or sprint; issue details; sprint reports), and only ever sees what the person asking can see.
+- Works with Anthropic, Azure OpenAI, or any OpenAI-compatible endpoint.
+
+### Teams & access control
+- One workspace split into teams. Members see only their own teams' projects, issues, sprints and docs, plus shared Workspace docs.
+- A transferable super admin role, team admins who manage their own members, and invitations by email.
+- Enforced by Postgres row-level security, so the UI, REST, MCP and AI chat all apply the same rules.
+- Private pages left behind by departed members can be recovered by the super admin, and every recovery is audit-logged.
+
+### Migration & import
+- **JIRA Cloud migration wizard.** Map statuses, issue types, priorities, people and custom fields, then import in the background.
+  - Issues keep their original keys and come with sprints, comments, history, worklogs, links, watchers and attachments.
+  - Scheduled catch-up syncs pick up what changed in JIRA since the import.
+  - A completeness check compares both sides before you finish.
+- **JIRA importer** from the live API or an exported JSON file. It's idempotent and has a dry-run mode.
+- **Notion importer** for the export zip (HTML or Markdown & CSV). It rebuilds the page tree with formatting, tables, images and links between pages.
+
+### And more
+- Per-user, per-event notification preferences (in-app and email).
+- A ⌘K command palette, a global quick-create dialog and keyboard shortcuts.
+- Light and dark themes.
+- UI in English, Bahasa Indonesia and Traditional Chinese.
+- Pluggable file storage: local disk, or Google Cloud Storage with direct browser uploads.
 
 ## Screenshots
-
-All taken from the seeded [demo workspace](docs/DEMO.md) (`pnpm demo`), "Lumen Labs 光譜科技".
 
 ![Home: assigned issues, the active sprint and recently updated pages](docs/screenshots/home.png)
 
 | | |
 |---|---|
 | ![Kanban board for the active sprint](docs/screenshots/board.png) | ![Backlog with active and planned sprints](docs/screenshots/backlog.png) |
-| **Board.** The active sprint, with epics, labels, estimates and assignees. | **Backlog.** Plan the next sprint and start or complete sprints. |
+| **Board.** The active sprint, with epics, labels, estimates and assignees. | **Backlog.** Plan upcoming sprints, then start and complete them. |
 | ![A collaborative doc in the Workspace space](docs/screenshots/doc.png) | ![Traditional Chinese UI in dark mode](docs/screenshots/board-zh-dark.png) |
-| **Docs.** Real-time collaborative pages in a sidebar of spaces: teams, Workspace, Shared, Private. | **Localized and themed.** Marketing's board in Traditional Chinese, dark mode. |
+| **Docs.** Real-time collaborative pages organized into spaces. | **Localized and themed.** Traditional Chinese, dark mode. |
+| ![A private page in the Private space](docs/screenshots/private-page.png) | ![Sharing a private page with one person](docs/screenshots/shared-page.png) |
+| **Private pages.** Visible only to their author. | **Sharing.** Invite specific people to a page and its sub-pages. |
 
-### Private & Shared docs
+## Quick start
 
-Like Notion's sidebar, every member has a **Private** section that only they can see, workspace admins included. Inviting specific people moves a page to **Shared**. If someone leaves, the super admin can recover their private pages.
+### Try the demo
 
-| | |
-|---|---|
-| ![A private page: the breadcrumb and sidebar show it lives in Private](docs/screenshots/private-page.png) | ![Sharing a private page with one person](docs/screenshots/shared-page.png) |
-| **Private.** Daniel's review notes. Nobody else can open them, not even the super admin. | **Shared.** Daniel invites Priya to their 1:1 page, and its sub-pages come along. |
-| ![The invitee sees it under Shared](docs/screenshots/shared-invitee.png) | ![Settings: recovering a departed member's private pages](docs/screenshots/departed-pages.png) |
-| **The invitee's view.** Priya sees the page under Shared. Other team members don't see it at all. | **Departed members' pages.** The super admin takes ownership of, or moves to the Workspace, the private pages of someone who left. Each recovery is audit-logged. |
-
-## Stack
-
-TanStack Start (React, SSR, Nitro `node-server`) · Better Auth (Microsoft Entra ID, `organization` = workspace, `apiKey` for PATs) · Drizzle + Postgres 17 (pgvector) · Redis · Google Cloud Storage · Tailwind v4 · BlockNote + Hocuspocus (Yjs) for real-time docs · pnpm workspaces + Turborepo.
-
-## Repo layout
-
-```
-apps/web      UI, docs editor, guest share routes, REST API, MCP server
-apps/collab   Hocuspocus (Yjs) server for real-time docs
-apps/worker   BullMQ background jobs — mail, automation, reindexing
-packages/core Domain service layer — every mutation lives here once
-packages/ai   AI provider adapter (Anthropic / Azure OpenAI / OpenAI-compatible)
-packages/db   Drizzle schema, migrations, RLS policies, tenant isolation
-packages/ui   Design tokens + primitives
-packages/env  Zod-validated environment config
-infra/        Dockerfiles, docker-compose.yml, Caddyfile.example, .env.example
-```
-
-## Local development
-
-Requires Node 22+, pnpm 10+, a Postgres 17 instance, and Redis.
+The demo seeds a sample workspace with six personas across two teams. It doesn't need SSO, AI or mail configuration.
 
 ```bash
 pnpm install
-cp infra/.env.example apps/web/.env   # infra secrets only — see below
-pnpm --filter @kompast/db generate    # writes packages/db/drizzle/*.sql
-pnpm --filter @kompast/db migrate     # applies it to DATABASE_URL
-pnpm dev                              # apps/web (:3000) + apps/collab together
+pnpm demo        # http://localhost:3000 — access code: kompast-demo
 ```
 
-Or spin up throwaway Postgres/Redis containers automatically:
+See [`docs/DEMO.md`](docs/DEMO.md) for the personas, a suggested walkthrough and hosting the demo on a server.
+
+### Local development
+
+**Requirements:** Node.js 22+, pnpm 10+, PostgreSQL 17 with pgvector, and Redis 7.
 
 ```bash
-pnpm dev:docker      # creates/starts dev containers, then pnpm dev
-pnpm dev:services    # just the containers
+pnpm install
+cp infra/.env.example apps/web/.env    # fill in infrastructure values
+pnpm db:migrate                        # apply migrations and RLS policies
+pnpm dev                               # web app (:3000) + collaboration server
 ```
 
-- Real-time docs need `apps/collab` running — `pnpm dev` starts both. Running `apps/web` alone will hang while the editor tries to sync.
-- Business config (Entra ID, AI provider, mail vendor) is set through the app itself (`/setup`, `/settings`) — not `.env`. Only infra secrets go in `.env`, and the app refuses to boot if one is missing.
-- `pnpm build` / `pnpm typecheck` / `pnpm test` run across the whole workspace.
-
-## First run
-
-Every route redirects to `/setup` until Microsoft Entra ID is configured:
-
-1. Deploy with `.env` filled in and migrations applied.
-2. Open the app — you land on `/setup`.
-3. Enter your Entra ID app's **Tenant ID**, **Client ID**, and **Client Secret**. Register the redirect URI on the Azure app first: `https://<your-domain>/api/auth/callback/microsoft-entra-id`.
-4. Submitting takes effect immediately, no restart needed. `/setup` then redirects to `/login` permanently — re-editing credentials later happens from `/settings`.
-5. **The first person to sign in becomes the owner and super admin of a new workspace.** Everyone after that needs an invite: from a workspace admin (Settings → Members), or from a team admin straight into their team.
-
-⚠️ A wrong Tenant ID — or a brief Microsoft outage — currently takes down the whole app at boot, with no UI-level fix. See `docs/ENGINEERING-NOTES.md` for the workaround.
-
-## Workspace UI
-
-A Notion-style sidebar (favorites; your teams, each with its projects and team docs; other teams as locked names; shared Workspace docs), a ⌘K command palette (jump to any project view, page, issue or person), a global Jira-style **Create issue** dialog (`C`), and keyboard shortcuts (`/` search, `⌘\` toggle sidebar, `?` shortcut list). Light and dark themes share one token set in `packages/ui/src/theme.css`; see `DESIGN.md`.
-
-## Settings (`/settings`, admin-only)
-
-Once a workspace exists, an admin can configure, without touching `.env`:
-- **AI provider** — Anthropic, Azure OpenAI, or an OpenAI-compatible endpoint.
-- **Mail vendor** — Brevo, Resend, or SMTP.
-- **Embedding provider** (for Ask Kompast) — Azure OpenAI or OpenAI-compatible.
-
-All secrets are encrypted at rest and never echoed back to the client.
-
-## Features
-
-**Teams & visibility** — the workspace is one organization, split into teams. The **super admin** (one per workspace, transferable) creates teams, appoints team admins, sees every team's content, and assigns legacy team-less projects to a team. **Team admins** create projects, add workspace members to their team, and invite new people by email straight into it. **Everyone else sees only their own teams' projects, issues, sprints and docs**, plus the shared Workspace docs. Other teams show as locked names, and a link to hidden content shows "not found, or no access". This is enforced by Postgres row-level security, so the UI, REST, MCP and Ask Kompast all honor it. Workspace owner/admin is a settings role, not a see-everything role.
-
-**Docs** — Notion-style real-time collaborative pages (BlockNote + Hocuspocus) with emoji icons, nested page tree, favorites and breadcrumbs. Every page lives in a space (shared Workspace, a team, a project, or your own **Private** space) and can be moved between them. Like Notion, Private pages are visible to you alone, the super admin included. Invite specific people and the page moves to **Shared**, where only they can see it. If someone leaves the workspace, the super admin can recover their private pages from Settings (audit-logged). Per-page access lists (Share → People & teams with access), version history, templates, trash/restore, guest share links, `@mention` backlinks, and a live read-only board embed inside a doc.
-
-**Boards & sprints** — Jira-style backlog (sprint containers with drag-and-drop between sprints and backlog, inline quick-create, start/complete sprint with carry-over), kanban boards with configurable sprint cycles and assignee swimlanes, a sprint hub table with inline-cell editing (status, assignee, priority, type, points, due date, title) and multi-column sort (incl. by epic and label), per-issue to-do checklists (Jira checklist-plugin style — check off/reorder on the issue page, progress badge + quick-edit popover on kanban cards), burndown/cumulative-flow reports, velocity history, and an epic roadmap timeline.
-
-**REST API + MCP** — every mutation lives once in `packages/core`, so the UI, REST (`/api/v1`), and MCP (`/mcp`) can never drift apart in what they allow. Personal access tokens (`/tokens`) scope both surfaces. MCP covers issues (incl. checklists, worklogs, issue links, watching, archive), sprints and their reports, docs (read as Markdown, search, move, duplicate/templates, trash, versions, comments, access lists), automation workflows, and notifications. Not on MCP: editing page content, guest share links, uploads, imports, Ask Kompast, and admin/config. See `docs/ENGINEERING-NOTES.md` for why.
+To have Postgres and Redis started in containers for you:
 
 ```bash
-claude mcp add --transport http kompast https://<domain>/mcp \
-  --header "Authorization: Bearer kmp_…"
+pnpm dev:docker      # start dev containers, then run the app
+pnpm dev:services    # start only the containers
 ```
 
-**Notifications & mail** — per-user, per-event preferences (in-app / email), transactional email delivery via a background queue; clicking a notification opens its issue/page. No digest batching or outbound webhooks yet.
+Notes:
+- `pnpm dev` starts both the web app and the real-time collaboration server. Docs editing needs both running.
+- Only infrastructure secrets (database, Redis, auth secret, storage) go in `.env`. The app validates them at startup and refuses to boot if one is missing.
+- `pnpm build`, `pnpm typecheck` and `pnpm test` run across the whole workspace. Tests run against real Postgres and Redis instances.
 
-**Automation** — an n8n-style visual node-graph workflow builder (React Flow canvas on each project's Automation tab): triggers (issue events or cron schedules), conditions (if/else and multi-way switch), actions (set property, label, comment, add/replace description, notify, link, create subtask, outbound webhook), a `find_issues` + `loop_each` pair for schedule-triggered workflows to act on a set of issues, and `{{trigger.payload.x}}` / `{{steps.<name>.output.x}}` expressions for passing data between nodes. Same guardrails as before (chain-depth limit, per-workflow rate limit, dry-run mode), now with per-node run history instead of one opaque log row. This replaced an earlier flat trigger+conditions+actions rule model in the same pass that shipped this canvas — see `docs/ENGINEERING-NOTES.md` for the migration/cutover.
+## Deployment
 
-**AI assist** — writing assist in the doc editor (continue/improve/shorten/expand/summarize/translate), AI-drafted issue descriptions, and AI sprint summaries. One provider adapter shared across features, usage logged per call.
+Kompast ships as Docker images (`web`, `collab`, `worker`, `migrate`) published to GitHub Container Registry.
 
-**Ask Kompast** — a RAG chat over issue titles, descriptions, and comments (pgvector-backed semantic search). Docs/pages indexing is planned but not built yet.
+### Installer (recommended)
 
-**Importers** — a JIRA importer (live API or exported JSON) that's idempotent and safe to re-run, with a dry-run mode. A **Notion importer** takes the export zip Notion produces (a page's ⋯ → Export, or Settings → Export all workspace content; HTML or Markdown & CSV) and rebuilds the page tree as Kompast docs: icons, headings, lists, to-dos, toggles, callouts, tables, code, images, and links between pages, which become page mentions with backlinks. Databases come in as a table page with their rows as sub-pages. Workspace owners/admins can import into the Workspace docs; everyone else imports into their own Private space (the ⤓ button on each sidebar section, or `POST /api/v1/imports/notion`). Re-importing the same export into the same space skips pages already there. Importers for other tools aren't built yet.
-
-**JIRA migration** — a project-admin wizard connects to a JIRA Cloud site, maps JIRA's statuses, types, priorities, people and fields onto the project, then runs the import in the background (a worker ticks it a page at a time, so you can leave the page). It brings issues with their original keys, sprints, rich text with inline images, comments, history, worklogs, links, watchers, custom fields and attachments up to a size limit. Files over the limit stay in JIRA and are listed for download. A catch-up sync (on demand, or every 15 minutes, hourly or every 4 hours) brings in what changed since. A completeness check then compares both sides and lists every difference with links to Kompast and JIRA, and Finish deletes the JIRA token once the check is clean or its differences are acknowledged. Not migrated: comment threads (JIRA's API has none), Development and plugin fields, and files over the limit.
-
-**Attachments** — pluggable storage (`local` for dev, Google Cloud Storage for production) behind one interface; file bytes never pass through the Node process for production uploads.
-
-See `docs/ENGINEERING-NOTES.md` for what's deliberately out of scope in each area, and why.
-
-## Stakeholder demo
-
-A self-contained demo with six personas across an English software team and a Traditional Chinese marketing team. It needs no Entra, AI or mail setup.
+On a fresh Debian or Ubuntu VM (x86_64, e.g. a GCP Compute Engine instance), as root. No clone needed:
 
 ```bash
-pnpm demo                                   # on your laptop → http://localhost:3000, access code "kompast-demo"
-cd infra && ./demo.sh init https://demo.example.com && ./demo.sh up   # on a server
+curl -fsSL https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo bash
 ```
 
-See [`docs/DEMO.md`](docs/DEMO.md) for the personas, a presentation flow and the reset/status/logs commands.
+For a private fork, pass a GitHub token with read access to the repo:
 
-## GCP storage setup
+```bash
+export GITHUB_TOKEN=ghp_...
+curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" https://raw.githubusercontent.com/rosdyana/kompast/main/infra/install.sh | sudo -E bash
+```
 
-1. Enable the Cloud Storage API on your GCP project.
-2. Create a private bucket (uniform access, no public bindings), regional close to your host.
-3. Create a service account with `roles/storage.objectAdmin` scoped to that bucket only.
-4. Download its JSON key to the host, outside the git-ignored build context (e.g. `/etc/kompast/gcs-service-account.json`, `chmod 600`).
-5. Mount it read-only via `docker-compose.yml` at `/run/secrets/gcs.json`; set `GOOGLE_APPLICATION_CREDENTIALS`, `GCS_BUCKET`, `GCS_PROJECT_ID` in `.env`.
-6. Apply CORS so direct browser→GCS uploads work:
-   ```bash
-   gcloud storage buckets update gs://<bucket> --cors-file=infra/gcs-cors.json
-   ```
-   Edit the `origin` field to your real domain first.
+Or from a clone, which copies its `infra/` files instead of downloading them:
 
-## Deploying
+```bash
+git clone https://github.com/rosdyana/kompast.git && cd kompast
+sudo ./infra/install.sh
+```
+
+- Preflight checks (OS, RAM, disk, ports, Docker versions, GCP metadata, GHCR). Nothing changes until they pass. `--check` runs only this.
+- Installs Docker and Caddy (automatic HTTPS) if you agree, checks that port 80 actually reaches the VM, and writes `.env` (chmod 600) with generated secrets.
+- Shows your answers for review before writing anything. `--reconfigure` changes domain, storage, proxy or backups later, keeping the secrets.
+- Pulls the images, runs migrations, starts the stack and waits until the app answers. Re-running upgrades: it backs up the database first and records the previous `IMAGE_TAG`.
+- Installs the daily Postgres backup and the `kompast` command. Logs go to `/var/log/kompast-install.log`.
+
+Files live in `/opt/kompast` by default (`KOMPAST_DIR`). For unattended runs (a GCE startup script), pre-answer with `KOMPAST_*` variables and `--yes`, for example `KOMPAST_DOMAIN=kompast.example.com KOMPAST_STORAGE=local sudo -E ./infra/install.sh --yes`. `sudo ./infra/install.sh --help` lists every variable.
+
+Day-to-day, through the `kompast` command:
+
+```bash
+kompast status | logs [svc] | restart [svc]
+kompast upgrade          # re-run the installer; backs up first
+kompast reconfigure      # change domain, storage, proxy or backups
+kompast version          # IMAGE_TAG and running image digests
+kompast backup | backups | restore <file>
+kompast cleanup          # prune dangling images, show disk use
+```
+
+### Manual install
 
 ### Installer (recommended)
 
@@ -217,13 +216,99 @@ docker compose pull
 docker compose up -d
 ```
 
-- Every service binds to `127.0.0.1` only — Caddy fronts them (see `infra/Caddyfile.example`). Route `/api/collab/*` to the `collab` service **before** the catch-all to `web`, or the Yjs WebSocket upgrade 404s.
-- `migrate` is a one-shot service that runs before `web` starts: Drizzle migrations, then bootstraps the restricted `kompast_app` DB role, then applies RLS policies — in that order, every deploy. **This order matters**: Postgres exempts table owners from row-level security, so `DATABASE_URL` and `DATABASE_ADMIN_URL` must always be two different roles.
-- Images are built and pushed to GHCR on every push to `main` and on version tags. Set `GHCR_OWNER` in `.env`.
+- **Reverse proxy.** Services bind to `127.0.0.1`; put a reverse proxy in front (see [`infra/Caddyfile.example`](infra/Caddyfile.example)). Route `/api/collab/*` to the `collab` service *before* the catch-all route to `web`, or the WebSocket upgrade fails.
+- **Migrations.** The one-shot `migrate` service runs before `web` on every deploy. It applies schema migrations, provisions a restricted application role, then applies row-level security policies.
+- **Database roles.** `DATABASE_URL` and `DATABASE_ADMIN_URL` **must be different roles**. Postgres exempts table owners from row-level security.
+- **Backups.** `infra/backup.sh` runs a daily `pg_dump` at 02:30 (cron, installed by the installer) into `BACKUP_DIR` (default `/var/backups/kompast`), keeps `BACKUP_RETENTION_DAYS` (default 14) days of local dumps, and copies to `BACKUP_GCS_URI` when you choose `local+gcs`. `sudo ./infra/backup.sh restore <file>` restores one after you type the database name to confirm, then re-runs `migrate` to re-apply roles and RLS. Test a restore before you need one. Local-only backups die with the VM disk, so consider a GCE snapshot schedule (the installer prints the commands).
 
-### Backups
+### First run
 
-`infra/backup.sh` runs a daily `pg_dump` at 02:30 (cron, installed by the installer) into `BACKUP_DIR` (default `/var/backups/kompast`), keeps `BACKUP_RETENTION_DAYS` (default 14) days of local dumps, and copies to `BACKUP_GCS_URI` when you choose `local+gcs`. `sudo ./infra/backup.sh restore <file>` restores one after you type the database name to confirm; it re-runs `migrate` afterwards to re-apply roles and RLS. Test a restore before you need one. Local-only backups die with the VM disk, so consider a GCE snapshot schedule (the installer prints the commands).
+Until single sign-on is configured, every route redirects to `/setup`.
+
+1. Register an app in **Microsoft Entra ID** with the redirect URI `https://<your-domain>/api/auth/callback/microsoft-entra-id`.
+2. Open Kompast and enter the **Tenant ID**, **Client ID** and **Client Secret** on `/setup`. Changes apply immediately, with no restart.
+3. **The first person to sign in becomes the workspace owner and super admin.** Everyone else joins by invitation from a workspace or team admin.
+
+> [!IMPORTANT]
+> Kompast loads Entra ID configuration at startup. An incorrect Tenant ID can stop the app from booting, so double-check it before you save.
+
+### Admin settings
+
+Workspace admins can change these at `/settings` without touching `.env`:
+
+| Setting | Options |
+|---|---|
+| Single sign-on | Microsoft Entra ID |
+| AI provider | Anthropic, Azure OpenAI, OpenAI-compatible |
+| Embedding provider (Ask Kompast) | Azure OpenAI, OpenAI-compatible |
+| Mail vendor | Brevo, Resend, SMTP |
+
+Secrets are encrypted at rest and never sent back to the browser.
+
+### Google Cloud Storage (optional)
+
+1. Create a private bucket with uniform access, close to your host.
+2. Create a service account with `roles/storage.objectAdmin` on that bucket only, and download its JSON key.
+3. Mount the key read-only into the containers (see `docker-compose.yml`). Then set `GOOGLE_APPLICATION_CREDENTIALS`, `GCS_BUCKET` and `GCS_PROJECT_ID` in `.env`.
+4. Allow direct browser uploads. Set your domain in `infra/gcs-cors.json`'s `origin` field first, then run:
+   ```bash
+   gcloud storage buckets update gs://<bucket> --cors-file=infra/gcs-cors.json
+   ```
+
+## REST API & MCP
+
+The UI, the REST API (`/api/v1`) and the MCP server (`/mcp`) all call the same domain layer, so all three enforce the same permissions. Create a personal access token at `/tokens`. A token can grant a subset of your own permissions, never more than you have.
+
+Connect an MCP client such as Claude Code:
+
+```bash
+claude mcp add --transport http kompast https://<your-domain>/mcp \
+  --header "Authorization: Bearer kmp_…"
+```
+
+MCP tools cover:
+- Issues, including checklists, worklogs, links, watching and archive.
+- Sprints and their reports.
+- Docs: read as Markdown, search, move, duplicate, versions, comments and access.
+- Automation workflows and notifications.
+
+## Architecture
+
+| Layer | Technology |
+|---|---|
+| Web app | TanStack Start (React, SSR), Tailwind CSS v4 |
+| Real-time docs | BlockNote + Hocuspocus (Yjs) |
+| Auth | Better Auth: Microsoft Entra ID, organizations, API keys |
+| Data | PostgreSQL 17 + pgvector, Drizzle ORM, row-level security |
+| Jobs | Redis + BullMQ |
+| Storage | Local disk or Google Cloud Storage |
+| Tooling | pnpm workspaces, Turborepo, Vitest |
+
+```
+apps/
+  web        UI, REST API, MCP server, guest share routes
+  collab     Real-time collaboration server (Hocuspocus)
+  worker     Background jobs: mail, automation, sync, reindexing
+packages/
+  core       Domain logic and permission checks; every mutation lives here
+  db         Schema, migrations, row-level security policies
+  ai         AI provider adapters
+  mail       Mail vendor adapters
+  storage    File storage adapters
+  import     JIRA and Notion importers
+  i18n       Translations
+  ui         Design tokens and UI primitives
+  env        Validated environment config
+infra/       Dockerfiles, Docker Compose, Caddy example
+```
+
+For implementation details and design decisions, see [`docs/ENGINEERING-NOTES.md`](docs/ENGINEERING-NOTES.md).
+
+## Roadmap
+
+- Importers for more tools.
+- Notification digests.
+- Production hardening.
 
 ## License
 

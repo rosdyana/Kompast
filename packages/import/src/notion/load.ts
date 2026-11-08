@@ -1,5 +1,5 @@
 import { and, eq, isNull, schema } from "@kompast/db";
-import { createPage, resolveExternalRef, upsertExternalRef, syncPageMentions, type PageImportTarget, type Tx } from "@kompast/core";
+import { createPage, resolveExternalRef, upsertExternalRef, syncPageMentions, enqueueReindex, type PageImportTarget, type Tx } from "@kompast/core";
 import type { NotionExport, NotionExportPage } from "./types";
 
 /** What a converted page's content resolves an internal Notion link to. */
@@ -130,6 +130,7 @@ export async function runNotionImport(tx: Tx, exp: NotionExport, ctx: NotionLoad
       const content = await ctx.convertPage(page, { pageId, linkedPage: (notionId) => imported.get(notionId) ?? null });
       await tx.transaction(async (sp) => {
         await sp.insert(schema.ydocState).values({ pageId, state: Buffer.from(content.state) });
+        await enqueueReindex(sp, { organizationId: ctx.organizationId, entityType: "page", entityId: pageId });
         await syncPageMentions(
           sp,
           ctx.organizationId,

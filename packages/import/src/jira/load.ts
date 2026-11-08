@@ -3,6 +3,7 @@ import {
   createIssue,
   updateIssue,
   addComment,
+  enqueueReindex,
   logWork,
   linkIssues,
   attachIssueFile,
@@ -2096,6 +2097,10 @@ async function syncExistingIssue(sp: Tx, issueId: string, issue: JiraIssue, env:
   }
   if (Object.keys(direct).length > 0) {
     await sp.update(schema.issue).set(direct).where(eq(schema.issue.id, issueId));
+    // Today direct never carries title/descriptionJson (those go through updateIssue above, which enqueues itself); the guard keeps a future direct field from silently skipping reindex.
+    if ("title" in direct || "descriptionJson" in direct) {
+      await enqueueReindex(sp, { organizationId: ctx.organizationId, entityType: "issue", entityId: issueId });
+    }
     changed = true;
   }
 
@@ -2140,6 +2145,7 @@ async function syncExistingIssue(sp: Tx, issueId: string, issue: JiraIssue, env:
     if (row && jiraUpdated && row.updatedAt.getTime() < jiraUpdated.getTime()) {
       const body = await settleInlineAttachments(sp, ctx.organizationId, key, env.blocksOf(c.body, attachments, key));
       await sp.update(schema.issueComment).set({ bodyJson: body as Json, updatedAt: jiraUpdated }).where(eq(schema.issueComment.id, ref.entityId));
+      await enqueueReindex(sp, { organizationId: ctx.organizationId, entityType: "comment", entityId: ref.entityId });
       out.counts.commentsUpdated++;
       changed = true;
     }
@@ -2486,7 +2492,10 @@ async function resolveIssueMentions(tx: Tx, ctx: JiraLoadContext): Promise<{ res
     );
   for (const row of descriptionRows) {
     const rewritten = rewriteIssueMentions(row.value, fill);
-    if (rewritten.changed) await tx.update(schema.issue).set({ descriptionJson: rewritten.value as Json }).where(eq(schema.issue.id, row.id));
+    if (rewritten.changed) {
+      await tx.update(schema.issue).set({ descriptionJson: rewritten.value as Json }).where(eq(schema.issue.id, row.id));
+      await enqueueReindex(tx, { organizationId: ctx.organizationId, entityType: "issue", entityId: row.id });
+    }
   }
 
   const commentRows = await tx
@@ -2498,7 +2507,10 @@ async function resolveIssueMentions(tx: Tx, ctx: JiraLoadContext): Promise<{ res
     );
   for (const row of commentRows) {
     const rewritten = rewriteIssueMentions(row.value, fill);
-    if (rewritten.changed) await tx.update(schema.issueComment).set({ bodyJson: rewritten.value as Json }).where(eq(schema.issueComment.id, row.id));
+    if (rewritten.changed) {
+      await tx.update(schema.issueComment).set({ bodyJson: rewritten.value as Json }).where(eq(schema.issueComment.id, row.id));
+      await enqueueReindex(tx, { organizationId: ctx.organizationId, entityType: "comment", entityId: row.id });
+    }
   }
 
   return { resolved, unresolved };
