@@ -35,6 +35,8 @@ export const session = pgTable("session", {
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   activeOrganizationId: text("active_organization_id"),
+  /** Required by Better Auth's organization plugin when teams are enabled (1.7.3+ schema check). Unused by Kompast itself. */
+  activeTeamId: text("active_team_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -47,13 +49,13 @@ export const account = pgTable("account", {
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
   /**
-   * Better Auth 1.7's account identity is scoped by (issuer, accountId), not
-   * just providerId — see
-   * https://better-auth.com/docs/guides/1-7-upgrade-guide#account-identity-is-scoped-by-issuer.
-   * Populated by Better Auth itself on every account creation (OAuth or
-   * credential); never written to directly here.
+   * Added (NOT NULL) for Better Auth 1.7.0–1.7.2's issuer-scoped account
+   * identity; 1.7.3+ reverted that and never writes this column, so it is
+   * nullable now (a NOT NULL here makes every account insert fail — Better
+   * Auth's startup schema check reports it). Kept rather than dropped so
+   * existing rows' values survive; see the 1.7 upgrade guide.
    */
-  issuer: text("issuer").notNull(),
+  issuer: text("issuer"),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   idToken: text("id_token"),

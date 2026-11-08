@@ -23,6 +23,8 @@ function SetupPage() {
   const [tenantId, setTenantId] = useState("");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [setupToken, setSetupToken] = useState("");
+  const { requiresSetupToken } = Route.useLoaderData();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [redirectUri, setRedirectUri] = useState("<APP_URL>/api/auth/callback/microsoft-entra-id");
@@ -34,7 +36,7 @@ function SetupPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await completeSetupFn({ data: { tenantId: tenantId.trim(), clientId: clientId.trim(), clientSecret } });
+      await completeSetupFn({ data: { tenantId: tenantId.trim(), clientId: clientId.trim(), clientSecret, setupToken: requiresSetupToken ? setupToken.trim() : undefined } });
       await router.navigate({ to: "/login" });
     } catch (err) {
       setError(err instanceof Error ? err.message : t("saveFailed"));
@@ -88,6 +90,11 @@ function SetupPage() {
             submit();
           }}
         >
+          {requiresSetupToken && (
+            <FormField label={t("setupTokenLabel")} htmlFor="setup-token" required hint={t("setupTokenHint")}>
+              <TextField id="setup-token" type="password" autoComplete="off" value={setupToken} onChange={(e) => setSetupToken(e.target.value)} className="font-mono text-[13px]" />
+            </FormField>
+          )}
           <FormField label={t("tenantIdLabel")} htmlFor="setup-tenant" required>
             <TextField id="setup-tenant" value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" className="font-mono text-[13px]" />
           </FormField>
@@ -97,7 +104,7 @@ function SetupPage() {
           <FormField label={t("clientSecretLabel")} htmlFor="setup-secret" required error={error ?? undefined}>
             <TextField id="setup-secret" type="password" autoComplete="off" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder={t("clientSecretPlaceholder")} />
           </FormField>
-          <Button type="submit" variant="primary" size="lg" disabled={submitting || !tenantId.trim() || !clientId.trim() || !clientSecret} className="w-full">
+          <Button type="submit" variant="primary" size="lg" disabled={submitting || !tenantId.trim() || !clientId.trim() || !clientSecret || (requiresSetupToken && !setupToken.trim())} className="w-full">
             {submitting ? t("savingEllipsis") : t("saveAndContinue")}
           </Button>
         </form>

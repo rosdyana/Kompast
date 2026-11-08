@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { adminDb, and, eq, isNull, or, gt, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
-import { hashPassword, verifyPassword } from "./crypto";
+import { hashPasswordAsync, verifyPasswordAsync } from "./crypto";
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -28,7 +28,7 @@ export async function createShareLink(tx: Tx, input: CreateShareLinkInput) {
     tokenHash: hashToken(token),
     scope: input.scope ?? "view",
     includeEmbeds: input.includeEmbeds ?? false,
-    passwordHash: input.password ? hashPassword(input.password) : null,
+    passwordHash: input.password ? await hashPasswordAsync(input.password) : null,
     expiresAt: input.expiresAt ?? null,
     createdBy: input.createdBy,
   });
@@ -63,7 +63,7 @@ export async function revokeShareLink(tx: Tx, shareLinkId: string) {
  * workspace/session context at all — see plan §Auth, "Guests are not
  * sessions" and packages/db's `adminDb` doc comment. The raw token is the
  * entire credential: hash it, look up the row, and reject on anything but
- * an exact match plus not-revoked/not-expired. Never widen this query.
+ * an exact match plus not-revoked/not-expired/page-not-archived. Never widen this query.
  */
 export async function resolveShareLink(token: string) {
   const [row] = await adminDb
@@ -75,6 +75,8 @@ export async function resolveShareLink(token: string) {
         eq(schema.shareLink.tokenHash, hashToken(token)),
         isNull(schema.shareLink.revokedAt),
         or(isNull(schema.shareLink.expiresAt), gt(schema.shareLink.expiresAt, new Date())),
+        // A trashed page stops being public — restoring it brings the link back.
+        isNull(schema.page.archivedAt),
       ),
     );
   return row ?? null;
@@ -84,9 +86,9 @@ export function shareLinkRequiresPassword(shareLink: { passwordHash: string | nu
   return shareLink.passwordHash !== null;
 }
 
-export function checkSharePassword(shareLink: { passwordHash: string | null }, candidate: string): boolean {
+export async function checkSharePassword(shareLink: { passwordHash: string | null }, candidate: string): Promise<boolean> {
   if (!shareLink.passwordHash) return true;
-  return verifyPassword(candidate, shareLink.passwordHash);
+  return verifyPasswordAsync(candidate, shareLink.passwordHash);
 }
 
 /**
@@ -99,7 +101,7 @@ export function checkSharePassword(shareLink: { passwordHash: string | null }, c
 export async function getSharedPageContent(token: string, password?: string) {
   const resolved = await resolveShareLink(token);
   if (!resolved) return null;
-  if (!checkSharePassword(resolved.shareLink, password ?? "")) return null;
+  if (!(await checkSharePassword(resolved.shareLink, password ?? ""))) return null;
 
   const [row] = await adminDb.select().from(schema.ydocState).where(eq(schema.ydocState.pageId, resolved.page.id));
   return { page: resolved.page, shareLink: resolved.shareLink, ydocState: row?.state ?? null };

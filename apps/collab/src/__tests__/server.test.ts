@@ -1,7 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import http from "node:http";
 import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { adminDb, eq, schema } from "@kompast/db";
+import { loadEnv } from "@kompast/env";
 import { signCollabToken, FIRST_RANK } from "@kompast/core";
 import { createCollabServer } from "../server";
 
@@ -9,6 +11,18 @@ const PORT = 14173;
 
 function connect(pageId: string, doc: Y.Doc, token: string) {
   return new HocuspocusProvider({ url: `ws://127.0.0.1:${PORT}`, name: pageId, document: doc, token });
+}
+
+/** Same as connect(), but the socket sends the given Origin header, the way a browser page would. */
+function connectFromOrigin(pageId: string, doc: Y.Doc, token: string, origin: string) {
+  class OriginSocket extends WebSocket {
+    constructor(url: string) {
+      super(url, { headers: { origin } } as never);
+    }
+  }
+  // WebSocketPolyfill is honored at runtime but missing from the config type, so it goes in through a typed variable.
+  const config = { url: `ws://127.0.0.1:${PORT}`, name: pageId, document: doc, token, WebSocketPolyfill: OriginSocket };
+  return new HocuspocusProvider(config as ConstructorParameters<typeof HocuspocusProvider>[0]);
 }
 
 async function waitForRow(pageId: string, timeoutMs = 4000) {
@@ -30,6 +44,8 @@ async function waitForOutcome(provider: HocuspocusProvider, timeoutMs = 5000): P
 }
 
 describe("collab server", () => {
+  // These sockets are made by Node, which sends no Origin header, and the server only accepts that under NODE_ENV=test.
+  vi.stubEnv("NODE_ENV", "test");
   const server = createCollabServer(PORT);
   const orgId = "test-collab-org";
   const userId = "test-collab-user";
@@ -104,6 +120,46 @@ describe("collab server", () => {
     try {
       expect(await waitForOutcome(provider)).toBe("synced");
       expect(doc.getText("content").toString()).toBe("seeded content");
+    } finally {
+      provider.destroy();
+    }
+  });
+
+  it("caps the websocket frame size at 5 MiB", () => {
+    expect(server.configuration.websocketOptions).toMatchObject({ maxPayload: 5 * 1024 * 1024 });
+  });
+
+  it("refuses the WebSocket handshake itself (403) from another site's origin", async () => {
+    // Raw upgrade request: the refusal happens before any Yjs/auth message, so
+    // a provider would just retry forever — the status code is what to check.
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = http.request({
+        host: "127.0.0.1",
+        port: PORT,
+        path: "/",
+        headers: {
+          Connection: "Upgrade",
+          Upgrade: "websocket",
+          "Sec-WebSocket-Version": "13",
+          "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+          Origin: "https://evil.example",
+        },
+      });
+      req.on("response", (res) => resolve(res.statusCode ?? 0));
+      req.on("upgrade", () => resolve(101));
+      req.on("error", reject);
+      req.end();
+    });
+    expect(status).toBe(403);
+  });
+
+  it("accepts a socket from the app's own origin", async () => {
+    const pageId = "test-collab-page-load";
+    const token = signCollabToken({ userId, organizationId: orgId, pageId, role: "view" });
+    const provider = connectFromOrigin(pageId, new Y.Doc(), token, new URL(loadEnv().APP_URL).origin);
+
+    try {
+      expect(await waitForOutcome(provider)).toBe("synced");
     } finally {
       provider.destroy();
     }

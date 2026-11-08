@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { schema, eq, inArray, adminDb as admin } from "@kompast/db";
 import type { Env } from "@kompast/env";
-import { getDevAdminConfig, seedDevAdmin, buildAuth, DEV_ADMIN_EMAIL } from "../auth";
+import { getDevAdminConfig, seedDevAdmin, buildAuth, DEV_ADMIN_EMAIL, isHttpBlockedAuthPath } from "../auth";
 
 describe("getDevAdminConfig", () => {
   const base: Pick<Env, "NODE_ENV" | "ENABLE_DEV_LOGIN" | "DEV_ADMIN_PASSWORD"> = {
@@ -81,5 +81,89 @@ describe("seedDevAdmin", () => {
     const [membership] = await admin.select().from(schema.member).where(eq(schema.member.userId, user!.id));
     expect(membership?.role).toBe("owner");
     expect(membership?.isSuperAdmin).toBe(true);
+  });
+});
+
+// Same file as seedDevAdmin's tests on purpose: both use the fixed dev-admin
+// user, and vitest only serializes tests within one file (CLAUDE.md, Testing).
+describe("Better Auth plugin REST surface is closed over HTTP", () => {
+  const baseURL = process.env.BETTER_AUTH_URL!;
+
+  async function cleanupDevAdmin() {
+    const [user] = await admin.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, DEV_ADMIN_EMAIL));
+    if (!user) return;
+    const members = await admin.select({ organizationId: schema.member.organizationId }).from(schema.member).where(eq(schema.member.userId, user.id));
+    await admin.delete(schema.member).where(eq(schema.member.userId, user.id));
+    await admin.delete(schema.session).where(eq(schema.session.userId, user.id));
+    await admin.delete(schema.account).where(eq(schema.account.userId, user.id));
+    for (const m of members) await admin.delete(schema.organization).where(eq(schema.organization.id, m.organizationId));
+    await admin.delete(schema.user).where(eq(schema.user.id, user.id));
+  }
+
+  async function signedInDevAdmin() {
+    const auth = buildAuth(null, true);
+    await seedDevAdmin(auth, "a-dev-password-1234");
+    const res = await auth.handler(
+      new Request(`${baseURL}/api/auth/sign-in/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: baseURL },
+        body: JSON.stringify({ email: DEV_ADMIN_EMAIL, password: "a-dev-password-1234" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+    return { auth, cookie };
+  }
+
+  function post(path: string, cookie: string, body: unknown) {
+    return new Request(`${baseURL}/api/auth${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseURL, cookie },
+      body: JSON.stringify(body),
+    });
+  }
+
+  beforeEach(cleanupDevAdmin);
+  afterAll(cleanupDevAdmin);
+
+  it("isHttpBlockedAuthPath covers the organization and api-key plugins only", () => {
+    expect(isHttpBlockedAuthPath("/organization/create")).toBe(true);
+    expect(isHttpBlockedAuthPath("/organization/add-team-member")).toBe(true);
+    expect(isHttpBlockedAuthPath("/api-key/create")).toBe(true);
+    expect(isHttpBlockedAuthPath("/sign-in/email")).toBe(false);
+    expect(isHttpBlockedAuthPath("/get-session")).toBe(false);
+  });
+
+  it("a signed-in user cannot create a workspace over HTTP", async () => {
+    const { auth, cookie } = await signedInDevAdmin();
+    const res = await auth.handler(post("/organization/create", cookie, { name: "Mine", slug: "test-http-guard-org" }));
+    expect(res.status).toBe(403);
+    const [org] = await admin.select().from(schema.organization).where(eq(schema.organization.slug, "test-http-guard-org"));
+    expect(org).toBeUndefined();
+  });
+
+  it("an owner cannot add themselves to a team over HTTP", async () => {
+    const { auth, cookie } = await signedInDevAdmin();
+    const res = await auth.handler(post("/organization/add-team-member", cookie, { teamId: "any-team", userId: "any-user" }));
+    expect(res.status).toBe(403);
+  });
+
+  it("a signed-in user cannot mint an API key over HTTP", async () => {
+    const { auth, cookie } = await signedInDevAdmin();
+    const res = await auth.handler(post("/api-key/create", cookie, { name: "sneaky" }));
+    expect(res.status).toBe(403);
+  });
+
+  it("even a direct session-bound auth.api.createOrganization is refused (allowUserToCreateOrganization: false)", async () => {
+    const { auth, cookie } = await signedInDevAdmin();
+    await expect(auth.api.createOrganization({ headers: new Headers({ cookie }), body: { name: "Mine", slug: "test-http-guard-org-2" } })).rejects.toThrow();
+  });
+
+  it("server-side auth.api calls (no request) still work — e.g. listing invitations", async () => {
+    const { auth, cookie } = await signedInDevAdmin();
+    const [user] = await admin.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, DEV_ADMIN_EMAIL));
+    const [membership] = await admin.select().from(schema.member).where(eq(schema.member.userId, user!.id));
+    const invitations = await auth.api.listInvitations({ headers: new Headers({ cookie }), query: { organizationId: membership!.organizationId } });
+    expect(Array.isArray(invitations)).toBe(true);
   });
 });

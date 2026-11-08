@@ -13,7 +13,11 @@ import {
   updateMailSettings,
   updateEmbeddingSettings,
   requireSystemAdmin,
+  requireDeploymentAdmin,
+  isDeploymentAdmin,
+  getEmbeddingSettings,
 } from "../settings";
+import { InvalidInputError } from "../errors";
 import { isOnlyUser } from "../bootstrap";
 import { ForbiddenError } from "../permissions";
 import { withAuthorizedTenant } from "../permissions";
@@ -230,6 +234,34 @@ describe("system settings", () => {
     expect(view.featuresEnabled).toBe(false);
   });
 
+  it("a stored AI key is never replayed against a new endpoint — changing the URL or provider without re-entering the key is refused", async () => {
+    await updateAiSettings(db, { provider: "openai-compatible", apiKey: "real-key", openAiCompatibleBaseUrl: "https://llm.internal.example/v1", featuresEnabled: true, updatedBy });
+
+    await expect(
+      updateAiSettings(db, { provider: "openai-compatible", openAiCompatibleBaseUrl: "https://attacker.example/v1", featuresEnabled: true, updatedBy }),
+    ).rejects.toThrow(InvalidInputError);
+    await expect(updateAiSettings(db, { provider: "anthropic", featuresEnabled: true, updatedBy })).rejects.toThrow(InvalidInputError);
+    expect((await getAiSettings(db)).openAiCompatibleBaseUrl).toBe("https://llm.internal.example/v1");
+
+    // Same endpoint (a blank form field arrives as "") — keeping the key is fine.
+    await updateAiSettings(db, { provider: "openai-compatible", openAiCompatibleBaseUrl: "https://llm.internal.example/v1", azureEndpoint: "", featuresEnabled: false, updatedBy });
+    // New endpoint WITH a fresh key — allowed.
+    await updateAiSettings(db, { provider: "openai-compatible", apiKey: "new-key", openAiCompatibleBaseUrl: "https://other.example/v1", featuresEnabled: true, updatedBy });
+    expect((await getAiSettings(db)).openAiCompatibleBaseUrl).toBe("https://other.example/v1");
+  });
+
+  it("the same retarget rule applies to embedding endpoints and to switching mail driver", async () => {
+    await updateEmbeddingSettings(db, { provider: "azure-openai", apiKey: "emb-key", azureEndpoint: "https://a.openai.azure.com", azureDeployment: "d", featuresEnabled: true, updatedBy });
+    await expect(
+      updateEmbeddingSettings(db, { provider: "azure-openai", azureEndpoint: "https://evil.example", azureDeployment: "d", featuresEnabled: true, updatedBy }),
+    ).rejects.toThrow(InvalidInputError);
+    expect((await getEmbeddingSettings(db)).azureEndpoint).toBe("https://a.openai.azure.com");
+
+    await updateMailSettings(db, { driver: "resend", from: "noreply@example.com", apiKey: "re_123", updatedBy });
+    await expect(updateMailSettings(db, { driver: "brevo", from: "noreply@example.com", updatedBy })).rejects.toThrow(InvalidInputError);
+    await updateMailSettings(db, { driver: "resend", from: "other@example.com", updatedBy });
+  });
+
   it("mail settings round-trip the same way", async () => {
     await updateMailSettings(db, {
       driver: "resend",
@@ -272,6 +304,59 @@ describe("requireSystemAdmin", () => {
     await expect(requireSystemAdmin(db, { userId: memberUserId, organizationId: orgId })).rejects.toThrow(
       ForbiddenError,
     );
+  });
+});
+
+describe("requireDeploymentAdmin", () => {
+  // system_settings is deployment-wide, so its gate is the super admin of the
+  // FOUNDING (oldest) workspace — never owner/admin of whichever workspace
+  // the caller happens to be in. The founding org here is backdated to 1970
+  // so it is the oldest row regardless of what other test files create.
+  const foundingOrgId = "test-deploy-founding-org";
+  const otherOrgId = "test-deploy-other-org";
+  const founderId = "test-deploy-founder";
+  const otherOwnerId = "test-deploy-other-owner";
+  const foundingOwnerId = "test-deploy-founding-owner";
+
+  async function cleanup() {
+    await db.delete(schema.member).where(eq(schema.member.organizationId, foundingOrgId));
+    await db.delete(schema.member).where(eq(schema.member.organizationId, otherOrgId));
+    await db.delete(schema.organization).where(eq(schema.organization.id, foundingOrgId));
+    await db.delete(schema.organization).where(eq(schema.organization.id, otherOrgId));
+    for (const u of [founderId, otherOwnerId, foundingOwnerId]) await db.delete(schema.user).where(eq(schema.user.id, u));
+  }
+
+  beforeEach(async () => {
+    await cleanup();
+    await db.insert(schema.organization).values([
+      { id: foundingOrgId, name: "Founding", slug: foundingOrgId, createdAt: new Date(0) },
+      { id: otherOrgId, name: "Self-made", slug: otherOrgId },
+    ]);
+    await db.insert(schema.user).values([
+      { id: founderId, name: "Founder", email: `${founderId}@example.com` },
+      { id: otherOwnerId, name: "Other", email: `${otherOwnerId}@example.com` },
+      { id: foundingOwnerId, name: "Founding owner", email: `${foundingOwnerId}@example.com` },
+    ]);
+    await db.insert(schema.member).values([
+      { id: id("mem"), organizationId: foundingOrgId, userId: founderId, role: "owner", isSuperAdmin: true },
+      { id: id("mem"), organizationId: foundingOrgId, userId: foundingOwnerId, role: "owner" },
+      // Owner AND super admin of a workspace they made themselves — the C1 attack shape.
+      { id: id("mem"), organizationId: otherOrgId, userId: otherOwnerId, role: "owner", isSuperAdmin: true },
+    ]);
+  });
+  afterEach(cleanup);
+
+  it("allows the founding workspace's super admin", async () => {
+    expect(await isDeploymentAdmin(db, founderId)).toBe(true);
+    await expect(requireDeploymentAdmin(db, { userId: founderId })).resolves.toBeUndefined();
+  });
+
+  it("rejects the owner + super admin of any other workspace", async () => {
+    await expect(requireDeploymentAdmin(db, { userId: otherOwnerId })).rejects.toThrow(ForbiddenError);
+  });
+
+  it("rejects an owner of the founding workspace who is not its super admin", async () => {
+    await expect(requireDeploymentAdmin(db, { userId: foundingOwnerId })).rejects.toThrow(ForbiddenError);
   });
 });
 

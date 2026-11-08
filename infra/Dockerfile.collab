@@ -7,13 +7,16 @@ FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @kompast/collab build
+# Production-only, self-contained deploy (same approach as Dockerfile.web).
+# tsup bundles every dependency into dist/index.js, so the runtime needs
+# little beyond dist/ and package.json; `deploy --prod` drops the root
+# node_modules' dev tooling (tsup, tsx, vitest, typescript) from the image.
+RUN pnpm --filter @kompast/collab deploy --prod --legacy /app/deploy/collab
 
 FROM base AS runtime
 ENV NODE_ENV=production
 RUN addgroup -S kompast && adduser -S kompast -G kompast
-COPY --from=build /app/apps/collab/dist ./apps/collab/dist
-COPY --from=build /app/apps/collab/package.json ./apps/collab/package.json
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/deploy/collab ./apps/collab
 USER kompast
 EXPOSE 1234
 CMD ["node", "apps/collab/dist/index.js"]

@@ -125,7 +125,7 @@ function ProjectPage() {
         {view === "docs" && <ProjectDocsTab projectId={data.project.id} />}
         {view === "automation" && (
           <div className="px-4 pb-12 pt-4 sm:px-6">
-            <WorkflowsListTab projectId={data.project.id} teamId={teamId} projectKey={data.project.key} />
+            <WorkflowsListTab projectId={data.project.id} teamId={teamId} projectKey={data.project.key} canManage={data.canManageProject} />
           </div>
         )}
         {view === "import" && <ImportView projectId={data.project.id} boardId={data.board.id} canManage={data.canManageProject} />}

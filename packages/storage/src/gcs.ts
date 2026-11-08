@@ -1,6 +1,7 @@
 import { Storage } from "@google-cloud/storage";
 import { loadEnv } from "@kompast/env";
 import type { StorageDriver, UploadUrlResult } from "./types";
+import { MAX_UPLOAD_BYTES } from "./limits";
 
 const UPLOAD_URL_TTL_MS = 5 * 60 * 1000;
 const DOWNLOAD_URL_TTL_MS = 60 * 1000;
@@ -13,15 +14,19 @@ export function createGcsDriver(): StorageDriver {
 
   return {
     async getUploadUrl(key, { contentType }): Promise<UploadUrlResult> {
+      // Signed into the URL, so GCS rejects an over-size PUT even if the client skips the app-side check.
+      const sizeHeader = { "x-goog-content-length-range": `0,${MAX_UPLOAD_BYTES}` };
       const [uploadUrl] = await bucket.file(key).getSignedUrl({
         version: "v4",
         action: "write",
         expires: Date.now() + UPLOAD_URL_TTL_MS,
         contentType,
+        extensionHeaders: sizeHeader,
       });
       // contentType is bound into the signature — the browser's PUT must
       // send this exact header or GCS rejects the request with a 403.
-      return { uploadUrl, headers: { "Content-Type": contentType }, key };
+      // The size header is bound the same way, so the browser has to send it back too.
+      return { uploadUrl, headers: { "Content-Type": contentType, ...sizeHeader }, key };
     },
 
     async getDownloadUrl(key) {

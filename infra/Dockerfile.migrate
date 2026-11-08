@@ -15,9 +15,14 @@ RUN pnpm install --frozen-lockfile
 
 FROM base AS runtime
 ENV NODE_ENV=production
+RUN addgroup -S kompast && adduser -S kompast -G kompast
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json /app/pnpm-workspace.yaml ./
 COPY --from=build /app/packages/db ./packages/db
 COPY --from=build /app/packages/env ./packages/env
 WORKDIR /app/packages/db
-CMD ["pnpm", "exec", "tsx", "src/migrate.ts"]
+USER kompast
+# Invoke tsx's entry point directly rather than `pnpm exec`: pnpm would need
+# a writable home for corepack at runtime, which the non-root user does not
+# have. The base image's corepack cache belongs to root.
+CMD ["node", "node_modules/tsx/dist/cli.mjs", "src/migrate.ts"]

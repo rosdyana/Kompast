@@ -73,11 +73,43 @@ const schema = z.object({
   // required when on (enforced in demo.ts, same reasoning as above).
   DEMO_MODE: z.enum(["true", "false"]).default("false"),
   DEMO_ACCESS_CODE: z.string().min(8).optional(),
+  // Comma-separated hostnames that user-chosen outbound requests (automation
+  // webhooks, JIRA import/migration) may reach even though they resolve to a
+  // private address — e.g. an on-prem JIRA on the internal network. Every
+  // other private/loopback/link-local destination is refused; see
+  // packages/core/src/net-guard.ts. Link-local (cloud metadata) is never exempt.
+  OUTBOUND_ALLOW_PRIVATE_HOSTS: z.string().optional(),
+  // Optional one-time secret for the unauthenticated /setup page. When set,
+  // the first-run form must include it — so on a fresh deploy whoever
+  // reaches the URL first can't pick the Entra tenant (whose first sign-in
+  // becomes the founding super admin). infra/install.sh generates and
+  // prints one. Unset = previous behavior (first submitter wins).
+  SETUP_TOKEN: z.string().min(16).optional(),
 });
 
 export type Env = z.infer<typeof schema>;
 
 let cached: Env | undefined;
+
+/**
+ * ENABLE_DEV_LOGIN enables password sign-in for a fixed dev-admin account.
+ * NODE_ENV defaults to "development" in the schema, so an unset NODE_ENV
+ * must not be enough to turn it on: require NODE_ENV to be set explicitly
+ * in the raw source. Checks the source object, not the defaulted value.
+ */
+export function assertDevLoginAllowed(source: NodeJS.ProcessEnv): void {
+  if (source.ENABLE_DEV_LOGIN !== "true") return;
+  if (source.NODE_ENV === "development" || source.NODE_ENV === "test") return;
+  // Explicit production: dev login is already forced off there (apps/web's
+  // getDevAdminConfig), so a leftover flag must not take the app down.
+  if (source.NODE_ENV === "production") return;
+  const actual = source.NODE_ENV === undefined ? "unset" : `"${source.NODE_ENV}"`;
+  throw new Error(
+    `Invalid environment configuration. Refusing to boot.\n` +
+      `  - ENABLE_DEV_LOGIN: "true" requires NODE_ENV to be set explicitly to "development" or "test" (NODE_ENV is ${actual}). ` +
+      `NODE_ENV is not defaulted for this check.`,
+  );
+}
 
 /**
  * Validates process.env against the schema and throws with a readable,
@@ -87,6 +119,7 @@ let cached: Env | undefined;
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (cached) return cached;
 
+  assertDevLoginAllowed(source);
   const parsed = schema.safeParse(source);
   if (parsed.success && parsed.data.STORAGE_DRIVER === "gcs") {
     const missing = (["GOOGLE_APPLICATION_CREDENTIALS", "GCS_BUCKET", "GCS_PROJECT_ID"] as const).filter(

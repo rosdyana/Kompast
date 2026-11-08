@@ -95,6 +95,8 @@ import {
   grantPageAccess,
   removePagePermission,
   type Tx,
+  requireCanCopyPage,
+  requireWorkflowManager,
 } from "@kompast/core";
 import type { ApiAuthContext } from "@/lib/api-auth";
 import { ApiError } from "@/lib/api-auth";
@@ -1309,13 +1311,8 @@ export function buildMcpServer(ctx: ApiAuthContext) {
       tool(ctx, "pages:write", () =>
         withAuthorizedTenant(ctx, async (tx) => {
           const source = await resolvePage(tx, ctx, args.pageId, "view");
-          // The copy doesn't carry the source's access list, so copying a
-          // restricted page would publish it to its whole space — only
-          // someone who decides who sees it may do that.
-          const { grants } = await getPageAccess(tx, source.id, ctx);
-          if (grants.length > 0 && !(await canManagePageAccess(tx, source.id, ctx))) {
-            throw new ForbiddenError(`Page ${source.id} is restricted; only someone who manages its access can copy it`);
-          }
+          // Shared with duplicatePageFn: a restricted source needs canManagePageAccess (the copy has no access list).
+          await requireCanCopyPage(tx, source.id, ctx);
           if (args.parentPageId) await resolvePage(tx, ctx, args.parentPageId, "edit");
           const copy = await duplicatePage(tx, source.id, {
             actorUserId: ctx.userId,
@@ -1499,6 +1496,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
           if (!args.workflowId) {
             if (!args.name || !args.nodes || !args.edges) throw new ApiError(400, "Bad Request", "A new workflow needs name, nodes and edges");
             const project = await resolveProject(tx, ctx.organizationId, args.projectKey);
+            await requireWorkflowManager(tx, ctx, project.id);
             return createWorkflow(tx, {
               organizationId: ctx.organizationId,
               projectId: project.id,
@@ -1510,6 +1508,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
             });
           }
           const { project } = await resolveWorkflow(tx, args.projectKey, args.workflowId);
+          await requireWorkflowManager(tx, ctx, project.id);
           await updateWorkflow(tx, {
             workflowId: args.workflowId,
             projectId: project.id,
@@ -1530,7 +1529,8 @@ export function buildMcpServer(ctx: ApiAuthContext) {
     (args) =>
       tool(ctx, "issues:write", () =>
         withAuthorizedTenant(ctx, async (tx) => {
-          await resolveWorkflow(tx, args.projectKey, args.workflowId);
+          const { project } = await resolveWorkflow(tx, args.projectKey, args.workflowId);
+          await requireWorkflowManager(tx, ctx, project.id);
           await deleteWorkflow(tx, args.workflowId);
           return { ok: true };
         }),

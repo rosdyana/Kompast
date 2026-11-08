@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { schema, eq, adminDb as admin } from "@kompast/db";
+import { schema, eq, adminDb as admin, withTenant } from "@kompast/db";
 import { createProject } from "../project";
 import { createIssue } from "../issue";
 import { createSprint } from "../sprint";
@@ -396,6 +396,26 @@ describe("automation-execution: executeNode", () => {
     expect(result.status).toBe("succeeded");
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, loopIssueId));
     expect(issue?.labels).toContain("looped");
+  });
+
+  it("issueId scoping: a loop over a literal issue id from ANOTHER project can't touch or read it (worker runs on adminDb, RLS doesn't apply)", async () => {
+    const { runId, workflowId } = await seedProjectIssueAndWorkflow("exscopea");
+    const { issueId: foreignIssueId } = await seedProjectIssueAndWorkflow("exscopeb");
+    await admin.update(schema.automationWorkflowRun).set({ context: {} }).where(eq(schema.automationWorkflowRun.id, runId));
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+    const frames = [{ loopKey: "l1", index: 0, item: foreignIssueId, itemType: "issueId" as const }];
+
+    // Same connection shape as apps/worker: withTenant on the admin (RLS-exempt) connection.
+    const asWorker = <T,>(fn: Parameters<typeof withTenant<T>>[2]) => withTenant(admin, { organizationId: orgId, userId: "system" }, fn);
+    const write = await asWorker((tx) => executeNode(tx, fakeNode("action_add_label", { label: "pwned" }), run!, workflow!, 0, frames));
+    expect(write.status).toBe("failed");
+    expect(write.error).toMatch(/not in this workflow's project/);
+    const read = await asWorker((tx) => executeNode(tx, fakeNode("condition_property", { property: "title", operator: "eq", value: "x" }), run!, workflow!, 0, frames));
+    expect(read.status).toBe("failed");
+
+    const [foreign] = await admin.select().from(schema.issue).where(eq(schema.issue.id, foreignIssueId));
+    expect(foreign?.labels ?? []).not.toContain("pwned");
   });
 
   it("issueId resolution: an issue-touching action with no run.context.issueId and no issueId loop frame fails loudly", async () => {

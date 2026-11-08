@@ -14,12 +14,20 @@ kompast.example.com {
 
 	reverse_proxy 127.0.0.1:3000
 
+	# Upper bound on request bodies, above the largest app-side upload (200 MB, Notion import).
+	request_body {
+		max_size 250MB
+	}
+
 	encode zstd gzip
 
+	# CSP is set by the app itself (apps/web), not here.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "SAMEORIGIN"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		-Server
 	}
 }

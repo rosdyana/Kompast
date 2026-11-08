@@ -5,6 +5,16 @@ import { verifyLocalStorageToken, resolveLocalPath } from "@kompast/storage";
 import { db, schema, eq } from "@kompast/db";
 import { contentTypeFor } from "@/lib/content-type";
 
+/**
+ * `filename=` is an ASCII fallback; `filename*` carries the real name. Putting a non-Latin-1 name
+ * straight into the header throws, so the fallback replaces it.
+ */
+function contentDisposition(fileName: string, inline: boolean): string {
+  const ascii = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "");
+  const encoded = encodeURIComponent(fileName).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `${inline ? "inline" : "attachment"}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
 export const Route = createFileRoute("/api/storage/download/$")({
   server: {
     handlers: {
@@ -39,10 +49,14 @@ export const Route = createFileRoute("/api/storage/download/$")({
         // so an SVG could carry script: the sandbox CSP keeps it inert
         // when opened directly, and <img> rendering doesn't run it anyway.
         const fileName = attachment?.fileName ?? key.slice(key.lastIndexOf("/") + 1);
+        const contentType = attachment?.contentType ?? contentTypeFor(fileName);
+        // Only raster images and PDFs open inline. SVG can carry script, so it downloads like any other type.
+        const mime = contentType.split(";")[0]!.trim().toLowerCase();
+        const inline = (mime.startsWith("image/") && mime !== "image/svg+xml") || mime === "application/pdf";
         return new Response(Readable.toWeb(createReadStream(path)) as never, {
           headers: {
-            "Content-Type": attachment?.contentType ?? contentTypeFor(fileName),
-            "Content-Disposition": `inline; filename="${fileName.replace(/"/g, "")}"`,
+            "Content-Type": contentType,
+            "Content-Disposition": contentDisposition(fileName, inline),
             "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
             "X-Content-Type-Options": "nosniff",
           },

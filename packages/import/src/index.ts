@@ -62,5 +62,5 @@ export {
   type ReconcileTally,
 } from "./jira/reconcile";
 export type { NotionExport, NotionExportPage } from "./notion/types";
-export { readNotionExport, resolveExportPath, linkedNotionId, MAX_NOTION_PAGES } from "./notion/extract";
+export { readNotionExport, resolveExportPath, linkedNotionId, MAX_NOTION_PAGES, MAX_NOTION_UNZIPPED_BYTES, MAX_NOTION_ZIP_ENTRIES, type NotionReadLimits } from "./notion/extract";
 export { runNotionImport, type NotionLoadContext, type NotionLoadReport, type NotionPageConverter, type ImportedPageRef } from "./notion/load";

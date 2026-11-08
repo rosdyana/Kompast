@@ -33,7 +33,13 @@ export const Route = createFileRoute("/api/v1/imports/notion")({
       POST: async ({ request }) =>
         handleApiRoute(async () => {
           const ctx = await requireApiOrSessionAuth(request, "pages:write");
-          if (Number(request.headers.get("content-length") ?? 0) > MAX_UPLOAD_BYTES) {
+          // A missing length would read as 0 and skip the size check, so require one before buffering the body.
+          const rawLength = request.headers.get("content-length");
+          const contentLength = rawLength && /^\d+$/.test(rawLength) ? Number(rawLength) : NaN;
+          if (!Number.isSafeInteger(contentLength)) {
+            throw new ApiError(411, "Length Required", "The upload must include a valid Content-Length header");
+          }
+          if (contentLength > MAX_UPLOAD_BYTES) {
             throw new ApiError(413, "Payload Too Large", "The export is over 200 MB. Export fewer pages at a time, or upload each Part zip separately.");
           }
           const form = await request.formData().catch(() => {

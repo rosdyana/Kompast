@@ -1,13 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
 import { requestAttachmentUpload, deleteAttachment, withAuthorizedTenant } from "@kompast/core";
+import { MAX_UPLOAD_BYTES } from "@kompast/storage";
 import { requireAuthContext } from "../session";
 
 const requestUploadSchema = z.object({
   issueId: z.string(),
   fileName: z.string().min(1),
   contentType: z.string().min(1),
-  sizeBytes: z.number().int().positive(),
+  sizeBytes: z.number().int().positive().max(MAX_UPLOAD_BYTES),
 });
 
 export const requestAttachmentUploadFn = createServerFn({ method: "POST" })

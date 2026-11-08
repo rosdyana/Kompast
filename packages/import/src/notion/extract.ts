@@ -4,6 +4,15 @@ import type { NotionExport, NotionExportPage } from "./types";
 /** A sync, in-request import (like JIRA's) has to stop somewhere; past this, split the export (per top-level page). */
 export const MAX_NOTION_PAGES = 2000;
 
+/** Zip-bomb guards: caps on what a Notion export may expand to, across every nested zip. */
+export const MAX_NOTION_UNZIPPED_BYTES = 1024 * 1024 * 1024;
+export const MAX_NOTION_ZIP_ENTRIES = 50_000;
+
+export interface NotionReadLimits {
+  maxBytes?: number;
+  maxEntries?: number;
+}
+
 const NOTION_ID = /^(.*?)\s*([0-9a-f]{32})$/i;
 const NOTION_URL_ID = /([0-9a-f]{32})(?:[?#]|$)/i;
 
@@ -12,21 +21,61 @@ const NOTION_URL_ID = /([0-9a-f]{32})(?:[?#]|$)/i;
  * zip inside the zip, and big ones are split into `...-Part-N.zip` files
  * that all share one folder tree, so nested zips are unpacked in place and
  * merged rather than kept as separate subtrees.
+ *
+ * `limits` exists so tests can use small caps; production uses the defaults.
  */
-export function readNotionExport(zip: Uint8Array): NotionExport {
+export function readNotionExport(zip: Uint8Array, limits?: NotionReadLimits): NotionExport {
   const entries = new Map<string, Uint8Array>();
-  collectEntries(zip, entries, 0);
+  const budget: ExtractBudget = {
+    maxBytes: limits?.maxBytes ?? MAX_NOTION_UNZIPPED_BYTES,
+    maxEntries: limits?.maxEntries ?? MAX_NOTION_ZIP_ENTRIES,
+    entries: 0,
+    declaredBytes: 0,
+    actualBytes: 0,
+  };
+  collectEntries(zip, entries, 0, budget);
   return parseNotionEntries(entries);
 }
 
-function collectEntries(zip: Uint8Array, out: Map<string, Uint8Array>, depth: number) {
+/** Running totals shared by the outer zip and every nested one, so the caps apply to the whole export. */
+interface ExtractBudget {
+  maxBytes: number;
+  maxEntries: number;
+  entries: number;
+  /** Sum of the headers' declared sizes, checked before anything is inflated. */
+  declaredBytes: number;
+  /**
+   * Sum of the real inflated lengths. fflate never inflates past a header's declared size, so this can't exceed
+   * declaredBytes today; it stays as a backstop in case that ever changes.
+   */
+  actualBytes: number;
+}
+
+function collectEntries(zip: Uint8Array, out: Map<string, Uint8Array>, depth: number, budget: ExtractBudget) {
   if (depth > 3) throw new Error("Notion export is nested more than 3 zips deep");
-  for (const [rawPath, data] of Object.entries(unzipSync(zip))) {
+  // The filter runs per entry before inflating, so a junk or oversized entry is rejected without being decompressed.
+  const inflated = unzipSync(zip, {
+    filter(file) {
+      budget.entries++;
+      if (budget.entries > budget.maxEntries) throw new Error(`Notion export has more than ${budget.maxEntries.toLocaleString("en-US")} files`);
+      const path = normalizePath(file.name);
+      if (!path || file.name.endsWith("/") || path.startsWith("__MACOSX/") || basename(path) === ".DS_Store") return false;
+      budget.declaredBytes += file.originalSize;
+      if (budget.declaredBytes > budget.maxBytes) throw unzippedTooLarge(budget.maxBytes);
+      return true;
+    },
+  });
+  for (const [rawPath, data] of Object.entries(inflated)) {
+    budget.actualBytes += data.length;
+    if (budget.actualBytes > budget.maxBytes) throw unzippedTooLarge(budget.maxBytes);
     const path = normalizePath(rawPath);
-    if (!path || rawPath.endsWith("/") || path.startsWith("__MACOSX/") || basename(path) === ".DS_Store") continue;
-    if (path.toLowerCase().endsWith(".zip")) collectEntries(data, out, depth + 1);
+    if (path.toLowerCase().endsWith(".zip")) collectEntries(data, out, depth + 1, budget);
     else out.set(path, data);
   }
+}
+
+function unzippedTooLarge(maxBytes: number) {
+  return new Error(`Notion export unpacks to more than ${Math.round(maxBytes / 1024 / 1024)} MB; export fewer pages at a time`);
 }
 
 /** Exported for tests, which build entries directly instead of zipping them. */

@@ -1,4 +1,4 @@
-import { render } from "@react-email/render";
+import { render, type Options as RenderOptions } from "@react-email/render";
 import { createBrevoDriver } from "./drivers/brevo";
 import { createResendDriver } from "./drivers/resend";
 import { createSmtpDriver } from "./drivers/smtp";
@@ -9,6 +9,18 @@ export { NotificationEmail } from "./templates/NotificationEmail";
 export type { NotificationEmailProps } from "./templates/NotificationEmail";
 export { SprintSummaryEmail } from "./templates/SprintSummaryEmail";
 export type { SprintSummaryEmailProps } from "./templates/SprintSummaryEmail";
+
+/**
+ * Plain-text fallback options. @react-email/render v2 upper-cases h1-h6 in its
+ * plain-text output (html-to-text's default heading format); v1 did not, so
+ * turn that off to keep the fallback text as it was.
+ */
+export const PLAIN_TEXT_RENDER_OPTIONS: RenderOptions = {
+  plainText: true,
+  htmlToTextOptions: {
+    selectors: [1, 2, 3, 4, 5, 6].map((n) => ({ selector: `h${n}`, options: { uppercase: false } })),
+  },
+};
 
 function createDriver(creds: MailCredentials): MailDriver {
   if (creds.driver === "brevo") {
@@ -39,7 +51,7 @@ export function createMailer(creds: MailCredentials): Mailer {
   const driver = createDriver(creds);
   return {
     async send(input) {
-      const [html, text] = await Promise.all([render(input.react), render(input.react, { plainText: true })]);
+      const [html, text] = await Promise.all([render(input.react), render(input.react, PLAIN_TEXT_RENDER_OPTIONS)]);
       return driver.send({ to: input.to, from: creds.from, subject: input.subject, html, text, replyTo: input.replyTo, tags: input.tags });
     },
   };

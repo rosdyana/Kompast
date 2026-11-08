@@ -1,7 +1,8 @@
 import { and, eq, inArray, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
-import { isSuperAdmin } from "./permissions";
+import { isSuperAdmin, ForbiddenError } from "./permissions";
+import { NotFoundError } from "./errors";
 import { collectDescendantIds, PageSpaceError, treeRootId } from "./page";
 import { notify } from "./notification";
 
@@ -53,6 +54,50 @@ export async function canAccessPage(
   const memberTeamIds = new Set(memberTeams.map((t) => t.teamId));
 
   return teamGrants.some((g) => memberTeamIds.has(g.subjectId) && ROLE_RANK[g.role as PageRole] >= ROLE_RANK[minRole]);
+}
+
+/**
+ * Throwing form of canAccessPage — the one check every page mutation adapter
+ * (UI server functions, REST, MCP) runs before touching a page. RLS only
+ * decides whether the page's *space* is visible; page_permission
+ * restrictions live here, so skipping this lets anyone in the space act on
+ * a restricted page. NotFoundError, not ForbiddenError, so a restricted
+ * page is never confirmed to exist (matches REST/MCP's resolvePage).
+ */
+export async function requirePageAccess(
+  tx: Tx,
+  pageId: string,
+  ctx: { userId: string; organizationId: string },
+  minRole: PageRole = "view",
+): Promise<void> {
+  if (!(await canAccessPage(tx, pageId, ctx, minRole))) throw new NotFoundError(`Page ${pageId} not found`);
+}
+
+/**
+ * Copying a page (duplicate / new-from-template) doesn't carry its access
+ * list over, so a copy of a restricted page would be open to its whole
+ * space. Viewing it is enough for an unrestricted page; a restricted one
+ * needs the right to decide who sees it.
+ */
+export async function requireCanCopyPage(tx: Tx, pageId: string, ctx: { userId: string; organizationId: string }): Promise<void> {
+  await requirePageAccess(tx, pageId, ctx, "view");
+  const [grant] = await tx.select({ id: schema.pagePermission.id }).from(schema.pagePermission).where(eq(schema.pagePermission.pageId, pageId)).limit(1);
+  if (grant && !(await canManagePageAccess(tx, pageId, ctx))) {
+    throw new ForbiddenError(`Page ${pageId} is restricted; only someone who manages its access can copy it`);
+  }
+}
+
+/**
+ * Guest share links publish a page outside the workspace entirely, so
+ * creating or revoking one is an access-list decision: canManagePageAccess
+ * (on an unrestricted page that is everyone who can see it; on a
+ * restricted one only its managers).
+ */
+export async function requireCanManagePageAccess(tx: Tx, pageId: string, ctx: { userId: string; organizationId: string }): Promise<void> {
+  await requirePageAccess(tx, pageId, ctx, "view");
+  if (!(await canManagePageAccess(tx, pageId, ctx))) {
+    throw new ForbiddenError(`Only someone who manages access to page ${pageId} can do that`);
+  }
 }
 
 type PersonalPage = { id: string; privateOwnerId: string; sharedWith: string[] };

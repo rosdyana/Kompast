@@ -12,4 +12,10 @@ WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile
 ENV NODE_ENV=production
-CMD ["pnpm", "--filter", "@kompast/web", "seed:demo"]
+RUN addgroup -S kompast && adduser -S kompast -G kompast
+# Same script `pnpm --filter @kompast/web seed:demo` runs (cwd apps/web,
+# tsx scripts/seed-demo.ts), but without pnpm at runtime: corepack would
+# need a writable cache under the non-root user's home.
+WORKDIR /app/apps/web
+USER kompast
+CMD ["node", "node_modules/tsx/dist/cli.mjs", "scripts/seed-demo.ts"]

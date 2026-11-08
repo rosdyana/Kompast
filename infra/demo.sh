@@ -45,6 +45,16 @@ require_demo_env() {
   [[ -f "$ENV_FILE" ]] || die "infra/.env not found. Run: ./demo.sh init <url>"
   [[ "$(env_get DEMO_MODE)" == "true" ]] || die "DEMO_MODE=true is not set in infra/.env — refusing to treat this as a demo deployment."
   [[ -n "$(env_get DEMO_ACCESS_CODE)" ]] || die "DEMO_ACCESS_CODE is empty in infra/.env."
+  # Demos initialized before Redis auth have no REDIS_PASSWORD, and
+  # docker-compose.yml refuses to start without one. Add just that pair
+  # (same as install.sh's upgrade path); Redis data is kept.
+  if [[ -z "$(env_get REDIS_PASSWORD)" ]]; then
+    local redis_pw
+    redis_pw="$(rand 24)"
+    env_set REDIS_PASSWORD "$redis_pw"
+    env_set REDIS_URL "redis://:${redis_pw}@redis:6379"
+    info "Generated REDIS_PASSWORD (Redis now requires a password; other settings untouched)"
+  fi
 }
 
 cmd_init() {
@@ -53,10 +63,11 @@ cmd_init() {
   [[ -f "$ENV_FILE" ]] && die "infra/.env already exists. Move it aside first if you really want a fresh one (it holds the database password)."
   command -v openssl >/dev/null || die "openssl is required to generate secrets."
 
-  cp .env.example "$ENV_FILE"
+  # umask in a subshell so the file is never readable by others, even briefly.
+  (umask 077; cp .env.example "$ENV_FILE")
   chmod 600 "$ENV_FILE"
 
-  local host ws admin_pw app_pw
+  local host ws admin_pw app_pw redis_pw
   host="${url#*://}"
   if [[ "$url" == https://* ]]; then
     ws="wss://${host}/api/collab"          # through Caddy's /api/collab route
@@ -65,6 +76,7 @@ cmd_init() {
   fi
   admin_pw="$(rand 16)"
   app_pw="$(rand 16)"
+  redis_pw="$(rand 24)"
 
   env_set APP_URL "$url"
   env_set BETTER_AUTH_URL "$url"
@@ -73,6 +85,8 @@ cmd_init() {
   env_set DATABASE_ADMIN_URL "postgres://kompast_admin:${admin_pw}@postgres:5432/kompast"
   env_set DATABASE_URL "postgres://kompast_app:${app_pw}@postgres:5432/kompast"
   env_set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
+  env_set REDIS_PASSWORD "$redis_pw"
+  env_set REDIS_URL "redis://:${redis_pw}@redis:6379"
   # Attachments on local disk — no GCS bucket needed for a demo. /tmp because
   # the web image runs as a non-root user; uploads don't survive a restart.
   env_set STORAGE_DRIVER local
@@ -96,7 +110,18 @@ cmd_init() {
   	@collab path /api/collab*
   	reverse_proxy @collab 127.0.0.1:1234
   	reverse_proxy 127.0.0.1:3000
+  	request_body {
+  		max_size 250MB
+  	}
   	encode zstd gzip
+  	header {
+  		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  		X-Content-Type-Options "nosniff"
+  		X-Frame-Options "SAMEORIGIN"
+  		Referrer-Policy "strict-origin-when-cross-origin"
+  		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+  		-Server
+  	}
   }
 EOF
   fi

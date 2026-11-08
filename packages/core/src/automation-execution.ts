@@ -1,4 +1,4 @@
-import dns from "node:dns/promises";
+import { guardedFetch, isRedirect } from "./net-guard";
 import { and, eq, sql, schema, type Json } from "@kompast/db";
 import type { Tx } from "./types";
 import { createIssue, moveIssue, updateIssue, updateIssueCustomField } from "./issue";
@@ -154,53 +154,6 @@ function delayResumeAt(config: { amount: number; unit: "minutes" | "hours" | "da
 }
 
 /**
- * Best-effort SSRF guard for action_webhook's own address-family check:
- * true if `address` (already DNS-resolved, never the raw hostname — a
- * hostname can resolve to a private IP without looking like one) falls in
- * a loopback/link-local/private range. Deliberately not exhaustive — no
- * full IPv6 CIDR handling beyond the common ranges below, and this can't
- * defend against DNS rebinding between this check and the fetch call
- * itself. A reasonable best effort for the common ranges (including the
- * 169.254.169.254 cloud metadata endpoint), not a complete network
- * security boundary.
- */
-function isDisallowedWebhookAddress(address: string, family: number): boolean {
-  if (family === 4) {
-    const octets = address.split(".").map(Number);
-    if (octets.length !== 4 || octets.some((n) => Number.isNaN(n))) return true; // malformed — fail closed
-    const [a, b] = octets as [number, number, number, number];
-    if (a === 127) return true; // loopback (127.0.0.0/8)
-    if (a === 10) return true; // private (10.0.0.0/8)
-    if (a === 172 && b >= 16 && b <= 31) return true; // private (172.16.0.0/12)
-    if (a === 192 && b === 168) return true; // private (192.168.0.0/16)
-    if (a === 169 && b === 254) return true; // link-local (169.254.0.0/16) — includes the cloud metadata endpoint
-    if (a === 0) return true; // "this network" (0.0.0.0/8)
-    return false;
-  }
-  const normalized = address.toLowerCase();
-  if (normalized === "::1") return true; // loopback
-  if (normalized.startsWith("fe80:")) return true; // link-local (fe80::/10)
-  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // unique local (fc00::/7)
-  if (normalized.startsWith("::ffff:")) return isDisallowedWebhookAddress(normalized.slice("::ffff:".length), 4); // IPv4-mapped IPv6
-  return false;
-}
-
-/**
- * Resolves action_webhook's user-configured target URL and rejects it if
- * it points at a loopback/link-local/private address — this is the
- * engine's only outbound-fetch primitive, reachable by any user with
- * issues:write (not just an admin), and the request originates from
- * apps/worker's own network position. Throws (caught by executeNode's
- * existing catch, same as a real network error) rather than returning a
- * boolean, so callers can't forget to check it.
- */
-async function assertWebhookUrlAllowed(rawUrl: string): Promise<void> {
-  const hostname = new URL(rawUrl).hostname;
-  const { address, family } = await dns.lookup(hostname);
-  if (isDisallowedWebhookAddress(address, family)) throw new Error("Webhook target resolves to a disallowed address");
-}
-
-/**
  * Every step in this run that has already succeeded, keyed by node.name ??
  * node.id, plus the run's fixed trigger context and the current loop
  * iteration stack — the full data a node's expressions can reference. Built
@@ -238,9 +191,23 @@ function resolveIssueId(run: AutomationWorkflowRun, frames: IterationFrame[]): s
   return (run.context as { issueId?: string }).issueId;
 }
 
-/** Every issue-touching node calls this instead of using `issueId` directly — fails loudly rather than silently acting on `undefined`. */
-function requireIssueId(issueId: string | undefined): string {
+/**
+ * Every issue-touching node calls this instead of using `issueId` directly:
+ * fails loudly rather than acting on `undefined`, AND refuses any issue
+ * outside the workflow's own project. The worker runs workflows on the
+ * admin connection, where RLS does not apply — and an issue id can come
+ * from a user-authored literal (`loop_each` over `["iss_…"]` with
+ * itemType "issueId"), so without this check a project member could write
+ * a workflow that edits, comments on, or reads other teams' or other
+ * workspaces' issues.
+ */
+async function requireScopedIssueId(tx: Tx, issueId: string | undefined, workflow: AutomationWorkflow): Promise<string> {
   if (!issueId) throw new Error("This node requires an issueId, but none is available here (not triggered by an issue event, and not inside a loop over issues)");
+  const [issue] = await tx
+    .select({ id: schema.issue.id })
+    .from(schema.issue)
+    .where(and(eq(schema.issue.id, issueId), eq(schema.issue.organizationId, workflow.organizationId), eq(schema.issue.projectId, workflow.projectId)));
+  if (!issue) throw new Error(`Issue ${issueId} is not in this workflow's project`);
   return issueId;
 }
 
@@ -288,14 +255,14 @@ export async function executeNode(
   try {
     if (node.type === "condition_property") {
       const config = resolvedConfig as { property: string; operator: string; value: Json };
-      const actual = await readIssuePropertyValue(tx, requireIssueId(issueId), config.property);
+      const actual = await readIssuePropertyValue(tx, await requireScopedIssueId(tx, issueId, workflow), config.property);
       const matched = matchCondition(actual, config.operator, config.value);
       return { status: "succeeded", branchTaken: matched ? "true" : "false", output: { actual: actual as Json, matched } };
     }
 
     if (node.type === "condition_switch") {
       const config = resolvedConfig as { property: string; cases: string[] };
-      const actual = await readIssuePropertyValue(tx, requireIssueId(issueId), config.property);
+      const actual = await readIssuePropertyValue(tx, await requireScopedIssueId(tx, issueId, workflow), config.property);
       const matchedCase = config.cases.find((c) => String(actual) === c);
       return { status: "succeeded", branchTaken: matchedCase ?? "default", output: { actual: actual as Json, matchedCase: matchedCase ?? null } };
     }
@@ -329,12 +296,12 @@ export async function executeNode(
 
     if (node.type === "action_set_property") {
       const config = resolvedConfig as { property: string; value: Json };
-      await applySetProperty(tx, requireIssueId(issueId), config.property, config.value, meta);
+      await applySetProperty(tx, await requireScopedIssueId(tx, issueId, workflow), config.property, config.value, meta);
       return { status: "succeeded", output: { property: config.property, value: config.value } };
     }
     if (node.type === "action_add_label") {
       const config = resolvedConfig as { label: string };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
       const [current] = await tx.select({ labels: schema.issue.labels }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       const labels = [...new Set([...(current?.labels ?? []), config.label])];
       await updateIssue(tx, targetIssueId, { labels, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
@@ -342,12 +309,12 @@ export async function executeNode(
     }
     if (node.type === "action_comment") {
       const config = resolvedConfig as { text: string };
-      await addComment(tx, { issueId: requireIssueId(issueId), authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
+      await addComment(tx, { issueId: await requireScopedIssueId(tx, issueId, workflow), authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
       return { status: "succeeded" };
     }
     if (node.type === "action_add_description") {
       const config = resolvedConfig as { text: string; mode?: "append" | "replace" };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
       const [current] = await tx.select({ descriptionJson: schema.issue.descriptionJson }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       const descriptionJson = composeDescription(current?.descriptionJson ?? null, config.text, config.mode ?? "append");
       await updateIssue(tx, targetIssueId, { descriptionJson, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
@@ -355,21 +322,26 @@ export async function executeNode(
     }
     if (node.type === "action_notify") {
       const config = resolvedConfig as { userId: string; title: string; body?: string };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
       const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       await notify(tx, { organizationId: issue!.organizationId, userId: config.userId, eventType: "automation.rule", entityType: "issue", entityId: targetIssueId, title: config.title, body: config.body });
       return { status: "succeeded" };
     }
     if (node.type === "action_link_issue") {
       const config = resolvedConfig as { issueId: string };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
+      const [linkTarget] = await tx
+        .select({ id: schema.issue.id })
+        .from(schema.issue)
+        .where(and(eq(schema.issue.id, config.issueId), eq(schema.issue.organizationId, workflow.organizationId)));
+      if (!linkTarget) return { status: "failed", error: `Issue ${config.issueId} not found in this workspace` };
       const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       await linkEntities(tx, { organizationId: issue!.organizationId, fromType: "issue", fromId: targetIssueId, toType: "issue", toId: config.issueId, createdBy: meta.actorId });
       return { status: "succeeded" };
     }
     if (node.type === "action_create_subtask") {
       const config = resolvedConfig as { typeId: string; title: string };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
       const [issue] = await tx.select().from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       const statuses = await tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, issue!.projectId));
       const statusId = (statuses.find((s) => s.category === "todo") ?? statuses[0])!.id;
@@ -391,8 +363,11 @@ export async function executeNode(
     if (node.type === "action_webhook") {
       const config = resolvedConfig as { url: string; method: string; headers: Record<string, string>; bodyTemplate: Json };
       try {
-        await assertWebhookUrlAllowed(config.url);
-        const res = await fetch(config.url, {
+        // guardedFetch (net-guard.ts) refuses private/loopback/link-local
+        // targets at connect time (no DNS-rebinding window) and never
+        // follows redirects. Reachable by any project admin, and the
+        // request leaves from the worker's own network position.
+        const res = await guardedFetch(config.url, {
           method: config.method,
           headers: { "Content-Type": "application/json", ...config.headers },
           body: JSON.stringify(config.bodyTemplate),
@@ -405,22 +380,8 @@ export async function executeNode(
           // rejects with a DOMException named "AbortError", handled
           // generically by the catch below like any other network error.
           signal: AbortSignal.timeout(10_000),
-          // Never auto-follow a redirect: assertWebhookUrlAllowed only
-          // DNS-resolves and range-checks the INITIAL url — fetch's default
-          // redirect: "follow" would transparently chase a Location header
-          // straight past that guard (e.g. an attacker-controlled host
-          // redirecting to http://169.254.169.254/... cloud metadata, or to
-          // a loopback address), defeating the SSRF check entirely without
-          // ever re-validating the redirect target. With "manual", Node's
-          // native fetch (undici) does not follow the redirect itself —
-          // empirically, in this repo's Node version, it returns the 3xx
-          // response as-is (status/headers intact) rather than throwing or
-          // returning an opaque-redirect response, hence the status-range
-          // check below (with an `opaqueredirect` check kept alongside it
-          // in case a future Node/undici version changes that).
-          redirect: "manual",
         });
-        if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
+        if (isRedirect(res)) {
           return { status: "failed", error: "Webhook response was a redirect, which is not followed for security reasons" };
         }
         if (!res.ok) return { status: "failed", error: `Webhook returned ${res.status} ${res.statusText}` };

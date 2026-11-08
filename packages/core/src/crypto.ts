@@ -1,4 +1,5 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 import { loadEnv } from "@kompast/env";
 
 /**
@@ -42,6 +43,28 @@ export function verifyPassword(password: string, stored: string): boolean {
   const [saltB64, hashB64] = stored.split(".");
   if (!saltB64 || !hashB64) return false;
   const derived = scryptSync(password, Buffer.from(saltB64, "base64"), 64);
+  const expected = Buffer.from(hashB64, "base64");
+  return derived.length === expected.length && timingSafeEqual(derived, expected);
+}
+
+const scryptAsync = promisify(scrypt) as (password: string, salt: Buffer, keylen: number) => Promise<Buffer>;
+
+/**
+ * Async twins of the two above, for request paths. scryptSync blocks the event
+ * loop for the whole hash, which stalls every other request on the process
+ * while a share link is being checked. Same parameters and stored format, so
+ * hashes written by either version verify with either.
+ */
+export async function hashPasswordAsync(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const derived = await scryptAsync(password, salt, 64);
+  return `${salt.toString("base64")}.${derived.toString("base64")}`;
+}
+
+export async function verifyPasswordAsync(password: string, stored: string): Promise<boolean> {
+  const [saltB64, hashB64] = stored.split(".");
+  if (!saltB64 || !hashB64) return false;
+  const derived = await scryptAsync(password, Buffer.from(saltB64, "base64"), 64);
   const expected = Buffer.from(hashB64, "base64");
   return derived.length === expected.length && timingSafeEqual(derived, expected);
 }

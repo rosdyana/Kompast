@@ -44,7 +44,7 @@ export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
 });
 
-type Integrations = Awaited<ReturnType<typeof getIntegrationSettingsFn>>;
+type Integrations = NonNullable<Awaited<ReturnType<typeof getIntegrationSettingsFn>>["global"]>;
 
 function SettingsPage() {
   const { t } = useTranslation("settings");
@@ -52,8 +52,10 @@ function SettingsPage() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const isAdmin = data.adminData !== null;
+  const globalSettings = data.adminData?.integrations.global ?? null;
   const requested: TabKey = tab === "integrations" ? "ai" : (tab ?? (isAdmin ? "general" : "notifications"));
-  const active: TabKey = !isAdmin ? "notifications" : requested;
+  const isGlobalTab = requested === "ai" || requested === "mail" || requested === "embedding" || requested === "entra";
+  const active: TabKey = !isAdmin ? "notifications" : isGlobalTab && !globalSettings ? "general" : requested;
 
   const groups: { label: string; items: { key: TabKey; label: string; icon: ReactNode; status?: boolean }[] }[] = [
     { label: t("groupAccount"), items: [{ key: "notifications", label: t("tabs.notifications"), icon: <Bell size={15} /> }] },
@@ -71,13 +73,18 @@ function SettingsPage() {
                 : []),
             ],
           },
+        ]
+      : []),
+    // Deployment-wide config — only the deployment admin gets it (see getIntegrationSettingsFn).
+    ...(globalSettings
+      ? [
           {
             label: t("groupIntegrations"),
             items: [
-              { key: "ai" as const, label: t("tabs.ai"), icon: <Bot size={15} />, status: data.adminData.integrations.ai.hasApiKey && data.adminData.integrations.ai.featuresEnabled },
-              { key: "mail" as const, label: t("tabs.mail"), icon: <Mail size={15} />, status: !!data.adminData.integrations.mail.from && (data.adminData.integrations.mail.hasApiKey || data.adminData.integrations.mail.hasSmtpUrl) },
-              { key: "embedding" as const, label: t("tabs.embedding"), icon: <Database size={15} />, status: data.adminData.integrations.embedding.hasApiKey && data.adminData.integrations.embedding.featuresEnabled },
-              { key: "entra" as const, label: t("tabs.entra"), icon: <KeyRound size={15} />, status: !!data.adminData.integrations.entra.tenantId && data.adminData.integrations.entra.hasClientSecret },
+              { key: "ai" as const, label: t("tabs.ai"), icon: <Bot size={15} />, status: globalSettings.ai.hasApiKey && globalSettings.ai.featuresEnabled },
+              { key: "mail" as const, label: t("tabs.mail"), icon: <Mail size={15} />, status: !!globalSettings.mail.from && (globalSettings.mail.hasApiKey || globalSettings.mail.hasSmtpUrl) },
+              { key: "embedding" as const, label: t("tabs.embedding"), icon: <Database size={15} />, status: globalSettings.embedding.hasApiKey && globalSettings.embedding.featuresEnabled },
+              { key: "entra" as const, label: t("tabs.entra"), icon: <KeyRound size={15} />, status: !!globalSettings.entra.tenantId && globalSettings.entra.hasClientSecret },
             ],
           },
         ]
@@ -158,10 +165,10 @@ function SettingsPage() {
         )}
         {active === "roles" && data.adminData && <RolesTab />}
         {active === "departedPages" && data.adminData?.integrations.isSuperAdmin && <DepartedPagesTab />}
-        {active === "ai" && data.adminData && <AiSection initial={data.adminData.integrations.ai} />}
-        {active === "embedding" && data.adminData && <EmbeddingSection initial={data.adminData.integrations.embedding} />}
-        {active === "mail" && data.adminData && <MailSection initial={data.adminData.integrations.mail} />}
-        {active === "entra" && data.adminData && <EntraSection initial={data.adminData.integrations.entra} />}
+        {active === "ai" && globalSettings && <AiSection initial={globalSettings.ai} />}
+        {active === "embedding" && globalSettings && <EmbeddingSection initial={globalSettings.embedding} />}
+        {active === "mail" && globalSettings && <MailSection initial={globalSettings.mail} />}
+        {active === "entra" && globalSettings && <EntraSection initial={globalSettings.entra} />}
       </main>
     </div>
   );

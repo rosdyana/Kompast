@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render } from "@react-email/render";
-import { createMailer, NotificationEmail } from "../index";
+import { createMailer, NotificationEmail, PLAIN_TEXT_RENDER_OPTIONS } from "../index";
 
 describe("packages/mail", () => {
   it("renders NotificationEmail to HTML containing the title, body, and action link", async () => {
@@ -14,7 +14,7 @@ describe("packages/mail", () => {
   });
 
   it("renders a plain-text fallback with no HTML tags", async () => {
-    const text = await render(NotificationEmail({ title: "Plain text check", actionUrl: "https://kompast.example/x", actionLabel: "Go" }), { plainText: true });
+    const text = await render(NotificationEmail({ title: "Plain text check", actionUrl: "https://kompast.example/x", actionLabel: "Go" }), PLAIN_TEXT_RENDER_OPTIONS);
     expect(text).toContain("Plain text check");
     expect(text).not.toContain("<html");
   });

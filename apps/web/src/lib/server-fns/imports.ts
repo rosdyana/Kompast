@@ -1,9 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, listImportRuns, withAuthorizedTenant } from "@kompast/core";
+import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, listImportRuns, withAuthorizedTenant, requireProjectAdmin } from "@kompast/core";
 import { fetchJiraIssues, runJiraImport, collectJiraEmails, type JiraIssue } from "@kompast/import";
 import { requireAuthContext } from "../session";
-import { resolveEmailsToUserIds, buildJiraAttachmentDownloader } from "../jira-import-helpers";
+import { resolveEmailsToUserIds, buildJiraAttachmentDownloader, jiraBaseUrlSchema } from "../jira-import-helpers";
 
 export const listImportRunsFn = createServerFn({ method: "GET" })
   .validator((projectId: string) => projectId)
@@ -15,7 +15,7 @@ export const listImportRunsFn = createServerFn({ method: "GET" })
 const startJiraImportSchema = z.object({
   projectId: z.string(),
   boardId: z.string(),
-  jiraBaseUrl: z.url(),
+  jiraBaseUrl: jiraBaseUrlSchema,
   jiraEmail: z.email(),
   jiraApiToken: z.string().min(1),
   jql: z.string().min(1),
@@ -38,16 +38,18 @@ export const startJiraImportFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
 
-    const { importRunId } = await withAuthorizedTenant(ctx, (tx) =>
-      createImportRun(tx, {
+    const { importRunId } = await withAuthorizedTenant(ctx, async (tx) => {
+      // Makes the server fetch an external URL with the caller's token — project admin only, like the migration wizard.
+      await requireProjectAdmin(tx, { ...ctx, projectId: data.projectId });
+      return createImportRun(tx, {
         organizationId: ctx.organizationId,
         projectId: data.projectId,
         source: "jira",
         dryRun: data.dryRun ?? false,
         config: { jiraBaseUrl: data.jiraBaseUrl, jql: data.jql },
         createdBy: ctx.userId,
-      }),
-    );
+      });
+    });
     await withAuthorizedTenant(ctx, (tx) => markImportRunRunning(tx, importRunId));
 
     let issues: JiraIssue[];
@@ -71,7 +73,7 @@ export const startJiraImportFn = createServerFn({ method: "POST" })
           dryRun: data.dryRun ?? false,
           jiraBaseUrl: data.jiraBaseUrl,
           resolveUserId: (u) => (u?.emailAddress ? (emailMap.get(u.emailAddress.toLowerCase()) ?? null) : null),
-          downloadAttachment: data.fetchAttachments ? buildJiraAttachmentDownloader(data.jiraEmail, data.jiraApiToken) : undefined,
+          downloadAttachment: data.fetchAttachments ? buildJiraAttachmentDownloader(data.jiraEmail, data.jiraApiToken, data.jiraBaseUrl) : undefined,
         });
         await completeImportRun(tx, importRunId, report.counts, report.errors, report.notes);
         return report;

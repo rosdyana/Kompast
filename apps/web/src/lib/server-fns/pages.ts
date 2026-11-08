@@ -45,6 +45,9 @@ import {
   removePagePermission,
   listDepartedMemberPages,
   recoverDepartedMemberPage,
+  requirePageAccess,
+  requireCanCopyPage,
+  requireCanManagePageAccess,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 
@@ -86,8 +89,9 @@ export const createPageFn = createServerFn({ method: "POST" })
   .validator(createPageSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    return withAuthorizedTenant(ctx, (tx) =>
-      createPage(tx, {
+    return withAuthorizedTenant(ctx, async (tx) => {
+      if (data.parentPageId) await requirePageAccess(tx, data.parentPageId, ctx, "edit");
+      return createPage(tx, {
         organizationId: ctx.organizationId,
         title: data.title,
         parentPageId: data.parentPageId,
@@ -96,8 +100,8 @@ export const createPageFn = createServerFn({ method: "POST" })
         privateOwnerId: data.private ? ctx.userId : undefined,
         type: data.type,
         actorUserId: ctx.userId,
-      }),
-    );
+      });
+    });
   });
 
 export const getPageDetailFn = createServerFn({ method: "GET" })
@@ -222,7 +226,10 @@ export const updatePageMetaFn = createServerFn({ method: "POST" })
   .validator(updatePageMetaSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => updatePageMeta(tx, data.pageId, { title: data.title, icon: data.icon }));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, data.pageId, ctx, "edit");
+      await updatePageMeta(tx, data.pageId, { title: data.title, icon: data.icon });
+    });
     return { ok: true } as const;
   });
 
@@ -233,6 +240,8 @@ export const movePageFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, data.pageId, ctx, "edit");
+      if (data.parentPageId) await requirePageAccess(tx, data.parentPageId, ctx, "edit");
       // Dragging under a page in another space changes the page's space.
       // Into or out of a Private/Shared space that changes who can see it,
       // so it needs the same right as the Move to… menu (movePageToSpaceFn).
@@ -254,7 +263,10 @@ export const archivePageFn = createServerFn({ method: "POST" })
   .validator((pageId: string) => pageId)
   .handler(async ({ data: pageId }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => archivePage(tx, pageId));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, pageId, ctx, "edit");
+      await archivePage(tx, pageId);
+    });
     return { ok: true } as const;
   });
 
@@ -262,7 +274,10 @@ export const restorePageFn = createServerFn({ method: "POST" })
   .validator((pageId: string) => pageId)
   .handler(async ({ data: pageId }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => restorePage(tx, pageId));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, pageId, ctx, "edit");
+      await restorePage(tx, pageId);
+    });
     return { ok: true } as const;
   });
 
@@ -272,16 +287,20 @@ export const duplicatePageFn = createServerFn({ method: "POST" })
   .validator(duplicatePageSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    return withAuthorizedTenant(ctx, (tx) =>
-      duplicatePage(tx, data.pageId, { actorUserId: ctx.userId, titleSuffix: data.titleSuffix ?? "" }),
-    );
+    return withAuthorizedTenant(ctx, async (tx) => {
+      await requireCanCopyPage(tx, data.pageId, ctx);
+      return duplicatePage(tx, data.pageId, { actorUserId: ctx.userId, titleSuffix: data.titleSuffix ?? "" });
+    });
   });
 
 export const toggleFavoritePageFn = createServerFn({ method: "POST" })
   .validator((pageId: string) => pageId)
   .handler(async ({ data: pageId }) => {
     const ctx = await requireAuthContext();
-    return withAuthorizedTenant(ctx, (tx) => toggleFavoritePage(tx, pageId, ctx.userId));
+    return withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, pageId, ctx, "view");
+      return toggleFavoritePage(tx, pageId, ctx.userId);
+    });
   });
 
 const addPageCommentSchema = z.object({ pageId: z.string(), blockId: z.string(), text: z.string().min(1) });
@@ -290,16 +309,22 @@ export const addPageCommentFn = createServerFn({ method: "POST" })
   .validator(addPageCommentSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    return withAuthorizedTenant(ctx, (tx) =>
-      addPageComment(tx, { pageId: data.pageId, blockId: data.blockId, authorId: ctx.userId, bodyJson: { text: data.text } }),
-    );
+    return withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, data.pageId, ctx, "comment");
+      return addPageComment(tx, { pageId: data.pageId, blockId: data.blockId, authorId: ctx.userId, bodyJson: { text: data.text } });
+    });
   });
 
 export const resolvePageCommentFn = createServerFn({ method: "POST" })
   .validator((commentId: string) => commentId)
   .handler(async ({ data: commentId }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => resolvePageComment(tx, commentId));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      const [comment] = await tx.select({ pageId: schema.pageComment.pageId }).from(schema.pageComment).where(eq(schema.pageComment.id, commentId));
+      if (!comment) throw notFound();
+      await requirePageAccess(tx, comment.pageId, ctx, "comment");
+      await resolvePageComment(tx, commentId);
+    });
     return { ok: true } as const;
   });
 
@@ -309,9 +334,10 @@ export const linkPageToIssueFn = createServerFn({ method: "POST" })
   .validator(linkIssueSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) =>
-      linkEntities(tx, { organizationId: ctx.organizationId, fromType: "page", fromId: data.pageId, toType: "issue", toId: data.issueId, createdBy: ctx.userId }),
-    );
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, data.pageId, ctx, "edit");
+      await linkEntities(tx, { organizationId: ctx.organizationId, fromType: "page", fromId: data.pageId, toType: "issue", toId: data.issueId, createdBy: ctx.userId });
+    });
     return { ok: true } as const;
   });
 
@@ -319,7 +345,10 @@ export const unlinkPageFromIssueFn = createServerFn({ method: "POST" })
   .validator(linkIssueSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => unlinkEntities(tx, { fromType: "page", fromId: data.pageId, toType: "issue", toId: data.issueId }));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, data.pageId, ctx, "edit");
+      await unlinkEntities(tx, { fromType: "page", fromId: data.pageId, toType: "issue", toId: data.issueId });
+    });
     return { ok: true } as const;
   });
 
@@ -330,8 +359,10 @@ export const linkPageMentionFn = createServerFn({ method: "POST" })
   .validator(linkMentionSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) =>
-      linkEntities(tx, {
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, data.fromPageId, ctx, "edit");
+      await requirePageAccess(tx, data.toPageId, ctx, "view");
+      await linkEntities(tx, {
         organizationId: ctx.organizationId,
         fromType: "page",
         fromId: data.fromPageId,
@@ -339,8 +370,8 @@ export const linkPageMentionFn = createServerFn({ method: "POST" })
         toId: data.toPageId,
         kind: "mention",
         createdBy: ctx.userId,
-      }),
-    );
+      });
+    });
     return { ok: true } as const;
   });
 
@@ -355,16 +386,23 @@ export const createShareLinkFn = createServerFn({ method: "POST" })
   .validator(createShareLinkSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    return withAuthorizedTenant(ctx, (tx) =>
-      createShareLink(tx, { pageId: data.pageId, scope: data.scope, includeEmbeds: data.includeEmbeds, password: data.password, createdBy: ctx.userId }),
-    );
+    return withAuthorizedTenant(ctx, async (tx) => {
+      // A guest link publishes the page outside the workspace — an access-list decision, not a viewer's.
+      await requireCanManagePageAccess(tx, data.pageId, ctx);
+      return createShareLink(tx, { pageId: data.pageId, scope: data.scope, includeEmbeds: data.includeEmbeds, password: data.password, createdBy: ctx.userId });
+    });
   });
 
 export const revokeShareLinkFn = createServerFn({ method: "POST" })
   .validator((shareLinkId: string) => shareLinkId)
   .handler(async ({ data: shareLinkId }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => revokeShareLink(tx, shareLinkId));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      const [link] = await tx.select({ pageId: schema.shareLink.pageId }).from(schema.shareLink).where(eq(schema.shareLink.id, shareLinkId));
+      if (!link) throw notFound();
+      await requireCanManagePageAccess(tx, link.pageId, ctx);
+      await revokeShareLink(tx, shareLinkId);
+    });
     return { ok: true } as const;
   });
 
@@ -377,7 +415,10 @@ export const permanentlyDeletePageFn = createServerFn({ method: "POST" })
   .validator((pageId: string) => pageId)
   .handler(async ({ data: pageId }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => permanentlyDeletePage(tx, pageId));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, pageId, ctx, "full");
+      await permanentlyDeletePage(tx, pageId);
+    });
     return { ok: true } as const;
   });
 
@@ -403,7 +444,10 @@ export const setPageTemplateFn = createServerFn({ method: "POST" })
   .validator(setTemplateSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => updatePageMeta(tx, data.pageId, { type: data.isTemplate ? "template" : "doc" }));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, data.pageId, ctx, "edit");
+      await updatePageMeta(tx, data.pageId, { type: data.isTemplate ? "template" : "doc" });
+    });
     return { ok: true } as const;
   });
 
@@ -413,9 +457,11 @@ export const createPageFromTemplateFn = createServerFn({ method: "POST" })
   .validator(newFromTemplateSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    return withAuthorizedTenant(ctx, (tx) =>
-      duplicatePage(tx, data.templatePageId, { actorUserId: ctx.userId, parentPageId: data.parentPageId, titleSuffix: "" }),
-    );
+    return withAuthorizedTenant(ctx, async (tx) => {
+      await requireCanCopyPage(tx, data.templatePageId, ctx);
+      if (data.parentPageId) await requirePageAccess(tx, data.parentPageId, ctx, "edit");
+      return duplicatePage(tx, data.templatePageId, { actorUserId: ctx.userId, parentPageId: data.parentPageId, titleSuffix: "" });
+    });
   });
 
 export const listPageVersionsFn = createServerFn({ method: "GET" })
@@ -467,6 +513,7 @@ export const createIssueFromDocLineFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, data.pageId, ctx, "edit");
       const page = await getPage(tx, data.pageId);
       if (!page.projectId) throw new Error("This document isn't filed under a project, so no issue can be created from it.");
 

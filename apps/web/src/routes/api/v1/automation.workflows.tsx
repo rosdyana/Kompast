@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import { createWorkflow, listWorkflows, withAuthorizedTenant } from "@kompast/core";
+import { createWorkflow, listWorkflows, withAuthorizedTenant, requireWorkflowManager } from "@kompast/core";
 import { requireApiAuth, ApiError } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
 import { resolveProject } from "@/lib/api-resolvers";
@@ -64,6 +64,7 @@ export const Route = createFileRoute("/api/v1/automation/workflows")({
 
           return withAuthorizedTenant(ctx, async (tx) => {
             const project = await resolveProject(tx, ctx.organizationId, body.projectKey);
+            await requireWorkflowManager(tx, ctx, project.id);
             const { workflowId } = await createWorkflow(tx, {
               organizationId: ctx.organizationId,
               projectId: project.id,
