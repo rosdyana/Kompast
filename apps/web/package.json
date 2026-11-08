@@ -35,7 +35,7 @@
     "better-auth": "^1.7.18",
     "dompurify": "^3.4.17",
     "ioredis": "^5.4.2",
-    "jsdom": "29.1.1",
+    "jsdom": "31.0.0",
     "lucide-react": "^1.41.0",
     "react": "^19.2.8",
     "react-colorful": "^5.8.1",
