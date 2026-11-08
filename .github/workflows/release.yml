@@ -12,6 +12,9 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     strategy:
+      # Build and scan every image even if one fails, so a release run reports
+      # all four results (publish-installer still needs all of them to pass).
+      fail-fast: false
       matrix:
         service: [web, collab, worker, migrate]
     steps:
