@@ -55,7 +55,8 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          # Exact patched release (CVE-2026-111497): a bare "22" can resolve to an older cached 22.x on the runner.
+          node-version: 22.23.4
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -77,3 +78,26 @@ jobs:
       - run: pnpm --filter @kompast/db migrate
 
       - run: pnpm test
+
+  # Builds every deployable image (no push), so a broken Dockerfile or base
+  # image fails the PR instead of the release. `pnpm build` and the tests
+  # never touch the built image — e.g. a Dependabot bump to node:25-alpine
+  # (no corepack) passed every other check and only broke at release time.
+  docker-images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [web, collab, worker, migrate]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build kompast-${{ matrix.service }} (not pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: infra/Dockerfile.${{ matrix.service }}
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+
