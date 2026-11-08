@@ -1460,7 +1460,10 @@ deploy_and_verify() {
 
   step "Storage permissions"
   if [[ "$(env_get STORAGE_DRIVER)" == local ]]; then
-    docker compose run --rm --no-deps --user root --entrypoint sh web -c 'chown -R kompast:kompast /data/attachments'
+    # The web service drops every capability (cap_drop: ALL), and this one-off
+    # container inherits that, so root cannot chown without adding them back.
+    docker compose run --rm --no-deps --user root \
+      --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --entrypoint sh web -c 'chown -R kompast:kompast /data/attachments'
     ok "Attachments volume owned by kompast"
   else
     fix_gcs_key_ownership
