@@ -1,3 +1,4 @@
+import { ZodError } from "zod";
 import { ApiError } from "./api-auth";
 import { ForbiddenError, AutomationGraphError, PageSpaceError, NotFoundError, ConflictError, InvalidInputError } from "@kompast/core";
 
@@ -23,6 +24,8 @@ export async function handleApiRoute(fn: () => Promise<Response>): Promise<Respo
     if (err instanceof NotFoundError) return new ApiError(404, "Not Found", err.message).toResponse();
     if (err instanceof ConflictError) return new ApiError(409, "Conflict", err.message).toResponse();
     if (err instanceof InvalidInputError) return new ApiError(400, "Bad Request", err.message).toResponse();
+    // Request-body validation (schema.parse(await request.json())) — the caller's mistake, not a server bug.
+    if (err instanceof ZodError) return new ApiError(400, "Bad Request", err.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; ")).toResponse();
     // eslint-disable-next-line no-console
     console.error("[api/v1] unhandled error:", err);
     return new ApiError(500, "Internal Server Error", "Unexpected error").toResponse();

@@ -64,7 +64,8 @@ describe("/api/v1/imports", () => {
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
     // The fixture user must belong to the team that owns the project, or
     // team-scoped RLS (packages/db/rls.sql) hides it from them.
-    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
+    // Team admin: starting an import / managing automations is a project-admin action (requireProjectAdmin).
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}`, role: "admin" });
 
     projectKey = Array.from({ length: 5 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
     await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
@@ -82,6 +83,40 @@ describe("/api/v1/imports", () => {
 
   afterAll(async () => {
     await cleanup();
+  });
+
+  it("a plain team member (not project admin) can't start an import — the server would fetch a URL of their choosing", async () => {
+    await admin.update(schema.teamMember).set({ role: "member" }).where(eq(schema.teamMember.userId, userId));
+    // createProject also made them project lead, which requireProjectAdmin accepts too.
+    await admin.delete(schema.projectMember).where(eq(schema.projectMember.userId, userId));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await importsHandlers.POST({
+      request: req("http://x/api/v1/imports", {
+        method: "POST",
+        token,
+        body: { source: "jira", projectKey, jiraBaseUrl: "https://demo.atlassian.net", jiraEmail: "a@example.com", jiraApiToken: "tok", jql: "project = DEMO" },
+      }),
+      params: {},
+    });
+    expect(res.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-https JIRA base URL before fetching anything", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await importsHandlers.POST({
+      request: req("http://x/api/v1/imports", {
+        method: "POST",
+        token,
+        body: { source: "jira", projectKey, jiraBaseUrl: "http://169.254.169.254", jiraEmail: "a@example.com", jiraApiToken: "tok", jql: "project = DEMO" },
+      }),
+      params: {},
+    });
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("a dry run reports the mapping and creates no issue", async () => {

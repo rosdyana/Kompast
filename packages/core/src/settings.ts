@@ -1,7 +1,8 @@
-import { and, eq, schema, SYSTEM_SETTINGS_ID } from "@kompast/db";
+import { and, asc, eq, schema, SYSTEM_SETTINGS_ID } from "@kompast/db";
 import type { AnyDb } from "./types";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { ForbiddenError } from "./permissions";
+import { InvalidInputError } from "./errors";
 
 const MICROSOFT_TENANT_GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -95,7 +96,61 @@ export async function completeSetup(db: AnyDb, input: CompleteSetupInput) {
     });
 }
 
-/** Whether ctx.userId is an owner/admin of ctx.organizationId — the gate for /settings. */
+/**
+ * Whether userId may change DEPLOYMENT-wide config (the single
+ * system_settings row: Entra, AI, embedding, mail). That row is shared by
+ * every workspace, so a per-workspace role can never be the gate for it —
+ * owner/admin of *some* workspace (requireSystemAdmin below) is something
+ * any user could once grant themselves by creating their own workspace.
+ * The deployment admin is the super admin of the founding workspace: the
+ * oldest organization, i.e. the one the first-ever sign-in created (see
+ * apps/web/src/lib/auth.ts's databaseHooks.user.create.after) — and the
+ * flag moves with transferSuperAdmin, so it never needs a schema column of
+ * its own. Reads organization/member, which carry no RLS, so the plain
+ * (non-tenant) connection is enough.
+ */
+export async function isDeploymentAdmin(db: AnyDb, userId: string): Promise<boolean> {
+  const [founding] = await db
+    .select({ id: schema.organization.id })
+    .from(schema.organization)
+    .orderBy(asc(schema.organization.createdAt), asc(schema.organization.id))
+    .limit(1);
+  if (!founding) return false;
+  const [row] = await db
+    .select({ isSuperAdmin: schema.member.isSuperAdmin })
+    .from(schema.member)
+    .where(and(eq(schema.member.organizationId, founding.id), eq(schema.member.userId, userId)));
+  return row?.isSuperAdmin === true;
+}
+
+/** Throwing form of isDeploymentAdmin — the gate for every system_settings write (and its masked read). */
+export async function requireDeploymentAdmin(db: AnyDb, ctx: { userId: string }) {
+  if (!(await isDeploymentAdmin(db, ctx.userId))) {
+    throw new ForbiddenError(`User ${ctx.userId} is not the deployment admin (super admin of the founding workspace)`);
+  }
+}
+
+/**
+ * A stored provider key must never be replayed against a different host:
+ * if the endpoint a key is sent to changes, the caller has to re-enter the
+ * key. Otherwise "leave the key blank to keep it" lets whoever can edit the
+ * URL redirect the existing secret (plus every prompt) to a server they run.
+ */
+function assertKeyNotRetargeted(
+  hasStoredKey: boolean,
+  newKey: string | undefined,
+  before: Record<string, string | null | undefined>,
+  after: Record<string, string | null | undefined>,
+) {
+  if (newKey || !hasStoredKey) return;
+  // `||`, not `??`: the settings form sends "" for a blank field that is stored as null.
+  const changed = Object.keys(after).filter((k) => (before[k] || null) !== (after[k] || null));
+  if (changed.length > 0) {
+    throw new InvalidInputError(`Re-enter the API key: ${changed.join(", ")} changed, and the stored key is never sent to a new endpoint`);
+  }
+}
+
+/** Whether ctx.userId is an owner/admin of ctx.organizationId — the gate for workspace-scoped /settings tabs (members, general). NOT for system_settings — see requireDeploymentAdmin. */
 export async function requireSystemAdmin(db: AnyDb, ctx: { userId: string; organizationId: string }) {
   const [row] = await db
     .select({ role: schema.member.role })
@@ -142,6 +197,13 @@ export interface UpdateAiSettingsInput {
 }
 
 export async function updateAiSettings(db: AnyDb, input: UpdateAiSettingsInput) {
+  const row = await getRow(db);
+  assertKeyNotRetargeted(
+    Boolean(row?.aiApiKeyEncrypted),
+    input.apiKey,
+    { provider: row?.aiProvider, azureEndpoint: row?.aiAzureEndpoint, openAiCompatibleBaseUrl: row?.aiOpenAiCompatibleBaseUrl },
+    { provider: input.provider, azureEndpoint: input.azureEndpoint, openAiCompatibleBaseUrl: input.openAiCompatibleBaseUrl },
+  );
   await db
     .insert(schema.systemSettings)
     .values({
@@ -229,6 +291,13 @@ export interface UpdateEmbeddingSettingsInput {
 }
 
 export async function updateEmbeddingSettings(db: AnyDb, input: UpdateEmbeddingSettingsInput) {
+  const row = await getRow(db);
+  assertKeyNotRetargeted(
+    Boolean(row?.embeddingApiKeyEncrypted),
+    input.apiKey,
+    { provider: row?.embeddingProvider, azureEndpoint: row?.embeddingAzureEndpoint, openAiCompatibleBaseUrl: row?.embeddingOpenAiCompatibleBaseUrl },
+    { provider: input.provider, azureEndpoint: input.azureEndpoint, openAiCompatibleBaseUrl: input.openAiCompatibleBaseUrl },
+  );
   await db
     .insert(schema.systemSettings)
     .values({
@@ -316,6 +385,9 @@ export interface UpdateMailSettingsInput {
 }
 
 export async function updateMailSettings(db: AnyDb, input: UpdateMailSettingsInput) {
+  const row = await getRow(db);
+  // brevo/resend keys go to a fixed vendor host, so only a driver switch retargets one.
+  assertKeyNotRetargeted(Boolean(row?.mailApiKeyEncrypted), input.apiKey, { driver: row?.mailDriver }, { driver: input.driver });
   await db
     .insert(schema.systemSettings)
     .values({

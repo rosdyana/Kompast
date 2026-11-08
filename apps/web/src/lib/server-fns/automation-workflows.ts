@@ -1,6 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { createWorkflow, listWorkflows, getWorkflow, updateWorkflow, deleteWorkflow, listWorkflowRuns, getWorkflowRun, withAuthorizedTenant } from "@kompast/core";
+import {
+  createWorkflow,
+  listWorkflows,
+  getWorkflow,
+  updateWorkflow,
+  deleteWorkflow,
+  listWorkflowRuns,
+  getWorkflowRun,
+  withAuthorizedTenant,
+  requireWorkflowManager,
+  requireWorkflowManagerFor,
+} from "@kompast/core";
 import { and, desc, inArray, like, schema, type Json } from "@kompast/db";
 import { requireAuthContext } from "../session";
 
@@ -85,9 +96,10 @@ export const createWorkflowFn = createServerFn({ method: "POST" })
   .validator(createWorkflowSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    return withAuthorizedTenant(ctx, (tx) =>
-      createWorkflow(tx, { organizationId: ctx.organizationId, projectId: data.projectId, name: data.name, nodes: data.nodes, edges: data.edges, createdBy: ctx.userId }),
-    );
+    return withAuthorizedTenant(ctx, async (tx) => {
+      await requireWorkflowManager(tx, ctx, data.projectId);
+      return createWorkflow(tx, { organizationId: ctx.organizationId, projectId: data.projectId, name: data.name, nodes: data.nodes, edges: data.edges, createdBy: ctx.userId });
+    });
   });
 
 const updateWorkflowSchema = z.object({
@@ -104,7 +116,10 @@ export const updateWorkflowFn = createServerFn({ method: "POST" })
   .validator(updateWorkflowSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => updateWorkflow(tx, data));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      const { projectId } = await requireWorkflowManagerFor(tx, ctx, data.workflowId);
+      await updateWorkflow(tx, { ...data, projectId });
+    });
     return { ok: true } as const;
   });
 
@@ -112,7 +127,10 @@ export const deleteWorkflowFn = createServerFn({ method: "POST" })
   .validator((workflowId: string) => workflowId)
   .handler(async ({ data: workflowId }) => {
     const ctx = await requireAuthContext();
-    await withAuthorizedTenant(ctx, (tx) => deleteWorkflow(tx, workflowId));
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requireWorkflowManagerFor(tx, ctx, workflowId);
+      await deleteWorkflow(tx, workflowId);
+    });
     return { ok: true } as const;
   });
 

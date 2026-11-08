@@ -238,9 +238,23 @@ function resolveIssueId(run: AutomationWorkflowRun, frames: IterationFrame[]): s
   return (run.context as { issueId?: string }).issueId;
 }
 
-/** Every issue-touching node calls this instead of using `issueId` directly — fails loudly rather than silently acting on `undefined`. */
-function requireIssueId(issueId: string | undefined): string {
+/**
+ * Every issue-touching node calls this instead of using `issueId` directly:
+ * fails loudly rather than acting on `undefined`, AND refuses any issue
+ * outside the workflow's own project. The worker runs workflows on the
+ * admin connection, where RLS does not apply — and an issue id can come
+ * from a user-authored literal (`loop_each` over `["iss_…"]` with
+ * itemType "issueId"), so without this check a project member could write
+ * a workflow that edits, comments on, or reads other teams' or other
+ * workspaces' issues.
+ */
+async function requireScopedIssueId(tx: Tx, issueId: string | undefined, workflow: AutomationWorkflow): Promise<string> {
   if (!issueId) throw new Error("This node requires an issueId, but none is available here (not triggered by an issue event, and not inside a loop over issues)");
+  const [issue] = await tx
+    .select({ id: schema.issue.id })
+    .from(schema.issue)
+    .where(and(eq(schema.issue.id, issueId), eq(schema.issue.organizationId, workflow.organizationId), eq(schema.issue.projectId, workflow.projectId)));
+  if (!issue) throw new Error(`Issue ${issueId} is not in this workflow's project`);
   return issueId;
 }
 
@@ -288,14 +302,14 @@ export async function executeNode(
   try {
     if (node.type === "condition_property") {
       const config = resolvedConfig as { property: string; operator: string; value: Json };
-      const actual = await readIssuePropertyValue(tx, requireIssueId(issueId), config.property);
+      const actual = await readIssuePropertyValue(tx, await requireScopedIssueId(tx, issueId, workflow), config.property);
       const matched = matchCondition(actual, config.operator, config.value);
       return { status: "succeeded", branchTaken: matched ? "true" : "false", output: { actual: actual as Json, matched } };
     }
 
     if (node.type === "condition_switch") {
       const config = resolvedConfig as { property: string; cases: string[] };
-      const actual = await readIssuePropertyValue(tx, requireIssueId(issueId), config.property);
+      const actual = await readIssuePropertyValue(tx, await requireScopedIssueId(tx, issueId, workflow), config.property);
       const matchedCase = config.cases.find((c) => String(actual) === c);
       return { status: "succeeded", branchTaken: matchedCase ?? "default", output: { actual: actual as Json, matchedCase: matchedCase ?? null } };
     }
@@ -329,12 +343,12 @@ export async function executeNode(
 
     if (node.type === "action_set_property") {
       const config = resolvedConfig as { property: string; value: Json };
-      await applySetProperty(tx, requireIssueId(issueId), config.property, config.value, meta);
+      await applySetProperty(tx, await requireScopedIssueId(tx, issueId, workflow), config.property, config.value, meta);
       return { status: "succeeded", output: { property: config.property, value: config.value } };
     }
     if (node.type === "action_add_label") {
       const config = resolvedConfig as { label: string };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
       const [current] = await tx.select({ labels: schema.issue.labels }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       const labels = [...new Set([...(current?.labels ?? []), config.label])];
       await updateIssue(tx, targetIssueId, { labels, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
@@ -342,12 +356,12 @@ export async function executeNode(
     }
     if (node.type === "action_comment") {
       const config = resolvedConfig as { text: string };
-      await addComment(tx, { issueId: requireIssueId(issueId), authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
+      await addComment(tx, { issueId: await requireScopedIssueId(tx, issueId, workflow), authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
       return { status: "succeeded" };
     }
     if (node.type === "action_add_description") {
       const config = resolvedConfig as { text: string; mode?: "append" | "replace" };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
       const [current] = await tx.select({ descriptionJson: schema.issue.descriptionJson }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       const descriptionJson = composeDescription(current?.descriptionJson ?? null, config.text, config.mode ?? "append");
       await updateIssue(tx, targetIssueId, { descriptionJson, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
@@ -355,21 +369,26 @@ export async function executeNode(
     }
     if (node.type === "action_notify") {
       const config = resolvedConfig as { userId: string; title: string; body?: string };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
       const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       await notify(tx, { organizationId: issue!.organizationId, userId: config.userId, eventType: "automation.rule", entityType: "issue", entityId: targetIssueId, title: config.title, body: config.body });
       return { status: "succeeded" };
     }
     if (node.type === "action_link_issue") {
       const config = resolvedConfig as { issueId: string };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
+      const [linkTarget] = await tx
+        .select({ id: schema.issue.id })
+        .from(schema.issue)
+        .where(and(eq(schema.issue.id, config.issueId), eq(schema.issue.organizationId, workflow.organizationId)));
+      if (!linkTarget) return { status: "failed", error: `Issue ${config.issueId} not found in this workspace` };
       const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       await linkEntities(tx, { organizationId: issue!.organizationId, fromType: "issue", fromId: targetIssueId, toType: "issue", toId: config.issueId, createdBy: meta.actorId });
       return { status: "succeeded" };
     }
     if (node.type === "action_create_subtask") {
       const config = resolvedConfig as { typeId: string; title: string };
-      const targetIssueId = requireIssueId(issueId);
+      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
       const [issue] = await tx.select().from(schema.issue).where(eq(schema.issue.id, targetIssueId));
       const statuses = await tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, issue!.projectId));
       const statusId = (statuses.find((s) => s.category === "todo") ?? statuses[0])!.id;

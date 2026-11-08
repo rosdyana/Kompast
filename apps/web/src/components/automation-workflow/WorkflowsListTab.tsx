@@ -29,7 +29,8 @@ function relative(date: Date, locale: string) {
 }
 
 
-export function WorkflowsListTab({ projectId, teamId, projectKey }: { projectId: string; teamId: string; projectKey: string }) {
+/** `canManage`: project admin/lead (requireWorkflowManager) — everyone else sees the list read-only. */
+export function WorkflowsListTab({ projectId, teamId, projectKey, canManage }: { projectId: string; teamId: string; projectKey: string; canManage: boolean }) {
   const { t, i18n } = useTranslation("workflow");
   const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const navigate = useNavigate();
@@ -109,12 +110,12 @@ export function WorkflowsListTab({ projectId, teamId, projectKey }: { projectId:
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="max-w-[640px] type-body text-text-2">{t("list.subtitle")}</p>
-        {workflows.length > 0 && createForm}
+        {workflows.length > 0 && canManage && createForm}
       </div>
       {error && <p role="alert" className="rounded-[6px] bg-danger-soft px-3 py-2 text-[13px] text-danger">{error}</p>}
 
       {workflows.length === 0 ? (
-        <EmptyState icon={<Zap size={18} />} title={t("list.emptyTitle")} description={t("list.emptyBody")} action={createForm} />
+        <EmptyState icon={<Zap size={18} />} title={t("list.emptyTitle")} description={t("list.emptyBody")} action={canManage ? createForm : undefined} />
       ) : (
         <div className="overflow-x-auto rounded-[8px] border border-border bg-surface">
           <table className="w-full min-w-[720px] border-separate border-spacing-0 text-[14px]">
@@ -133,7 +134,7 @@ export function WorkflowsListTab({ projectId, teamId, projectKey }: { projectId:
                 return (
                   <tr key={wf.id} className="group/row hover:bg-surface-2">
                     <td className="h-12 border-b border-border px-3">
-                      <Switch srOnlyLabel checked={wf.enabled} onChange={(v) => toggle(wf, v)} label={t("list.toggleLabel", { name: wf.name })} />
+                      <Switch srOnlyLabel disabled={!canManage} checked={wf.enabled} onChange={(v) => toggle(wf, v)} label={t("list.toggleLabel", { name: wf.name })} />
                     </td>
                     <td className="h-12 border-b border-border px-2">
                       <Link

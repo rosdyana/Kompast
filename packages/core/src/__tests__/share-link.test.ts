@@ -3,7 +3,10 @@ import { schema, eq } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { createPage } from "../page";
+import { createPage, archivePage, restorePage } from "../page";
+import { requirePageAccess, requireCanCopyPage, requireCanManagePageAccess } from "../page-permission";
+import { ForbiddenError } from "../permissions";
+import { NotFoundError } from "../errors";
 import { createShareLink, listShareLinks, revokeShareLink, resolveShareLink, checkSharePassword, getSharedPageContent } from "../share-link";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
@@ -15,11 +18,13 @@ describe("share links", () => {
 
   const orgId = "test-sharelink-org";
   const userId = "test-sharelink-user";
+  const otherId = "test-sharelink-other";
 
   async function cleanup() {
     await admin.delete(schema.page).where(eq(schema.page.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(eq(schema.user.id, userId));
+    await admin.delete(schema.user).where(eq(schema.user.id, otherId));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
   }
 
@@ -27,7 +32,11 @@ describe("share links", () => {
     await cleanup();
     await admin.insert(schema.organization).values({ id: orgId, name: "Share Org", slug: orgId });
     await admin.insert(schema.user).values({ id: userId, name: "User", email: `${userId}@example.com` });
-    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId, role: "member" });
+    await admin.insert(schema.user).values({ id: otherId, name: "Other", email: `${otherId}@example.com` });
+    await admin.insert(schema.member).values([
+      { id: id("mem"), organizationId: orgId, userId, role: "member" },
+      { id: id("mem"), organizationId: orgId, userId: otherId, role: "member" },
+    ]);
   });
 
   afterAll(async () => {
@@ -113,5 +122,54 @@ describe("share links", () => {
     expect(links[0]).not.toHaveProperty("tokenHash");
     expect(links[0]).not.toHaveProperty("passwordHash");
     expect(links[0]?.hasPassword).toBe(true);
+  });
+  it("a trashed page's link stops resolving, and comes back on restore", async () => {
+    const ctx = { userId, organizationId: orgId };
+    const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Shared", actorUserId: userId }));
+    const { token } = await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId }));
+
+    await withAuthorizedTenant(ctx, (tx) => archivePage(tx, page.id));
+    expect(await resolveShareLink(token)).toBeNull();
+
+    await withAuthorizedTenant(ctx, (tx) => restorePage(tx, page.id));
+    expect((await resolveShareLink(token))?.page.id).toBe(page.id);
+  });
+
+  describe("page access gates used by every page mutation adapter", () => {
+    // `userId` restricts the page to themselves; `otherId` is in the same
+    // workspace space (RLS shows them the row) but is not on the access list.
+    async function restrictedPage() {
+      const ctx = { userId, organizationId: orgId };
+      const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Restricted", actorUserId: userId }));
+      await admin.insert(schema.pagePermission).values({ id: id("pperm"), pageId: page.id, subjectType: "user", subjectId: userId, role: "full" });
+      return page;
+    }
+    const owner = { userId, organizationId: orgId };
+    const outsider = { userId: otherId, organizationId: orgId };
+
+    it("someone off a restricted page's access list can't publish it via a share link", async () => {
+      const page = await restrictedPage();
+      await expect(withAuthorizedTenant(outsider, (tx) => requireCanManagePageAccess(tx, page.id, outsider))).rejects.toThrow(NotFoundError);
+      await expect(withAuthorizedTenant(owner, (tx) => requireCanManagePageAccess(tx, page.id, owner))).resolves.toBeUndefined();
+    });
+
+    it("a view-only grantee can see a restricted page but not copy, share, edit or delete it", async () => {
+      const page = await restrictedPage();
+      await admin.insert(schema.pagePermission).values({ id: id("pperm"), pageId: page.id, subjectType: "user", subjectId: otherId, role: "view" });
+
+      await withAuthorizedTenant(outsider, async (tx) => {
+        await expect(requirePageAccess(tx, page.id, outsider, "view")).resolves.toBeUndefined();
+        await expect(requirePageAccess(tx, page.id, outsider, "edit")).rejects.toThrow(NotFoundError);
+        await expect(requirePageAccess(tx, page.id, outsider, "full")).rejects.toThrow(NotFoundError);
+      });
+      await expect(withAuthorizedTenant(outsider, (tx) => requireCanCopyPage(tx, page.id, outsider))).rejects.toThrow(ForbiddenError);
+      await expect(withAuthorizedTenant(outsider, (tx) => requireCanManagePageAccess(tx, page.id, outsider))).rejects.toThrow(ForbiddenError);
+    });
+
+    it("an unrestricted page stays open: anyone in its space may copy and share it", async () => {
+      const page = await withAuthorizedTenant(owner, (tx) => createPage(tx, { organizationId: orgId, title: "Open", actorUserId: userId }));
+      await expect(withAuthorizedTenant(outsider, (tx) => requireCanCopyPage(tx, page.id, outsider))).resolves.toBeUndefined();
+      await expect(withAuthorizedTenant(outsider, (tx) => requireCanManagePageAccess(tx, page.id, outsider))).resolves.toBeUndefined();
+    });
   });
 });

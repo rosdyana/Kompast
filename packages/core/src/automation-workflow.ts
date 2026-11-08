@@ -2,6 +2,7 @@ import { and, desc, eq, schema, type Json } from "@kompast/db";
 import { CronExpressionParser } from "cron-parser";
 import type { Tx } from "./types";
 import { id } from "./ids";
+import { ForbiddenError, requireProjectAdmin, type AuthContext } from "./permissions";
 
 export type AutomationNodeType = (typeof schema.automationWorkflowNodeType)[number];
 
@@ -57,6 +58,29 @@ async function insertGraph(tx: Tx, workflowId: string, nodes: AutomationNodeInpu
       edges.map((e) => ({ id: id("aedge"), workflowId, fromNodeId: e.fromNodeId, fromHandle: e.fromHandle ?? null, toNodeId: e.toNodeId })),
     );
   }
+}
+
+/**
+ * Who may create, change, enable/disable or delete a project's automation
+ * workflows: the project's admin/lead (requireProjectAdmin). A workflow
+ * runs on the worker as its creator with no further per-action checks
+ * against the person who triggered it, and can fire on every issue in the
+ * project and call outbound webhooks — the same trust level as the other
+ * project-settings changes requireProjectAdmin already gates. Every
+ * adapter (UI server functions, REST, MCP) calls this before the
+ * mutation. Pass the workflow's own projectId (from getWorkflow), never a
+ * client-supplied one, when changing an existing workflow.
+ */
+export async function requireWorkflowManager(tx: Tx, ctx: AuthContext, projectId: string): Promise<void> {
+  await requireProjectAdmin(tx, { ...ctx, projectId });
+}
+
+/** Loads an existing workflow and applies requireWorkflowManager to ITS project. Throws Error if it doesn't exist (or RLS hides it). */
+export async function requireWorkflowManagerFor(tx: Tx, ctx: AuthContext, workflowId: string): Promise<{ projectId: string }> {
+  const [wf] = await tx.select({ projectId: schema.automationWorkflow.projectId }).from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+  if (!wf) throw new ForbiddenError(`Workflow ${workflowId} not found`);
+  await requireWorkflowManager(tx, ctx, wf.projectId);
+  return wf;
 }
 
 export async function createWorkflow(tx: Tx, input: CreateWorkflowInput): Promise<{ workflowId: string }> {

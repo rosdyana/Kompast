@@ -44,7 +44,8 @@ describe("/api/v1/automation/workflows", () => {
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Test Team" });
     // The fixture user must belong to the team that owns the project, or
     // team-scoped RLS (packages/db/rls.sql) hides it from them.
-    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}` });
+    // Team admin: starting an import / managing automations is a project-admin action (requireProjectAdmin).
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${userId}`, teamId, userId, membershipKey: `${teamId}:${userId}`, role: "admin" });
 
     projectKey = Array.from({ length: 5 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
     await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
@@ -220,6 +221,21 @@ describe("/api/v1/automation/workflows", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.detail).toMatch(/does not exist in this graph/);
+  });
+
+  it("a plain team member (not project admin) can't create a workflow", async () => {
+    await admin.update(schema.teamMember).set({ role: "member" }).where(eq(schema.teamMember.userId, userId));
+    // createProject also made them project lead, which requireProjectAdmin accepts too.
+    await admin.delete(schema.projectMember).where(eq(schema.projectMember.userId, userId));
+    const res = await workflowsHandlers.POST({
+      request: req("http://x/api/v1/automation/workflows", {
+        method: "POST",
+        token,
+        body: { projectKey, name: "Not allowed", nodes: [{ id: "n1", type: "trigger_event", config: {}, position: { x: 0, y: 0 } }], edges: [] },
+      }),
+      params: {},
+    });
+    expect(res.status).toBe(403);
   });
 
   it("rejects workflow creation from a token without issues:write", async () => {

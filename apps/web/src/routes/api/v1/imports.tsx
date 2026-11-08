@@ -1,17 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, listImportRuns, withAuthorizedTenant } from "@kompast/core";
+import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, listImportRuns, withAuthorizedTenant, requireProjectAdmin } from "@kompast/core";
 import { fetchJiraIssues, runJiraImport, collectJiraEmails, type JiraIssue } from "@kompast/import";
 import { requireApiAuth } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
 import { resolveProject, resolveBoardForProject } from "@/lib/api-resolvers";
-import { resolveEmailsToUserIds, buildJiraAttachmentDownloader } from "@/lib/jira-import-helpers";
+import { resolveEmailsToUserIds, buildJiraAttachmentDownloader, jiraBaseUrlSchema } from "@/lib/jira-import-helpers";
 
 const startImportSchema = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("jira"),
     projectKey: z.string(),
-    jiraBaseUrl: z.url(),
+    jiraBaseUrl: jiraBaseUrlSchema,
     jiraEmail: z.email(),
     jiraApiToken: z.string().min(1),
     /** Required, not defaulted from projectKey — a Kompast project key (e.g. "KPT") has no necessary relationship to the source JIRA project's own key. */
@@ -54,6 +54,8 @@ export const Route = createFileRoute("/api/v1/imports")({
 
           const { project, board, importRunId } = await withAuthorizedTenant(ctx, async (tx) => {
             const project = await resolveProject(tx, ctx.organizationId, body.projectKey);
+            // Makes the server fetch an external URL with the caller's token — project admin only, like the migration wizard.
+            await requireProjectAdmin(tx, { ...ctx, projectId: project.id });
             const board = await resolveBoardForProject(tx, project.id);
             const { importRunId } = await createImportRun(tx, {
               organizationId: ctx.organizationId,
@@ -88,7 +90,7 @@ export const Route = createFileRoute("/api/v1/imports")({
                 dryRun: body.dryRun ?? false,
                 jiraBaseUrl: body.jiraBaseUrl,
                 resolveUserId: (u) => (u?.emailAddress ? (emailMap.get(u.emailAddress.toLowerCase()) ?? null) : null),
-                downloadAttachment: body.fetchAttachments ? buildJiraAttachmentDownloader(body.jiraEmail, body.jiraApiToken) : undefined,
+                downloadAttachment: body.fetchAttachments ? buildJiraAttachmentDownloader(body.jiraEmail, body.jiraApiToken, body.jiraBaseUrl) : undefined,
               });
               await completeImportRun(tx, importRunId, report.counts, report.errors, report.notes);
               return report;

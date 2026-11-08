@@ -12,25 +12,35 @@ import {
   updateEmbeddingSettings,
   enqueueFullReindex,
   requireSystemAdmin,
+  requireDeploymentAdmin,
+  isDeploymentAdmin,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 import { invalidateAuthCache } from "../auth";
 
+/**
+ * Loaded by /settings for workspace owner/admins (requireSystemAdmin). The
+ * deployment-wide integration config (system_settings) is only included
+ * for the deployment admin (requireDeploymentAdmin) — a workspace owner
+ * still gets the workspace tabs, just not the global ones.
+ */
 export const getIntegrationSettingsFn = createServerFn({ method: "GET" }).handler(async () => {
   const ctx = await requireAuthContext();
   await requireSystemAdmin(db, ctx);
-  const [ai, mail, entra, embedding, member] = await Promise.all([
-    getAiSettings(db),
-    getMailSettings(db),
-    getMicrosoftAuthSettingsView(db),
-    getEmbeddingSettings(db),
+  const [member, canManageIntegrations] = await Promise.all([
     db
       .select({ isSuperAdmin: schema.member.isSuperAdmin })
       .from(schema.member)
       .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)))
       .then((rows) => rows[0]),
+    isDeploymentAdmin(db, ctx.userId),
   ]);
-  return { ai, mail, entra, embedding, isSuperAdmin: member?.isSuperAdmin ?? false };
+  const global = canManageIntegrations
+    ? await Promise.all([getAiSettings(db), getMailSettings(db), getMicrosoftAuthSettingsView(db), getEmbeddingSettings(db)]).then(
+        ([ai, mail, entra, embedding]) => ({ ai, mail, entra, embedding }),
+      )
+    : null;
+  return { global, isSuperAdmin: member?.isSuperAdmin ?? false };
 });
 
 const updateMicrosoftAuthSchema = z.object({
@@ -51,7 +61,7 @@ export const updateMicrosoftAuthFn = createServerFn({ method: "POST" })
   .validator(updateMicrosoftAuthSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await requireSystemAdmin(db, ctx);
+    await requireDeploymentAdmin(db, ctx);
     await completeSetup(db, { ...data, updatedBy: ctx.userId });
     invalidateAuthCache();
     return { ok: true } as const;
@@ -71,7 +81,7 @@ export const updateAiSettingsFn = createServerFn({ method: "POST" })
   .validator(updateAiSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await requireSystemAdmin(db, ctx);
+    await requireDeploymentAdmin(db, ctx);
     await updateAiSettings(db, { ...data, updatedBy: ctx.userId });
     return { ok: true } as const;
   });
@@ -91,7 +101,7 @@ export const updateEmbeddingSettingsFn = createServerFn({ method: "POST" })
   .validator(updateEmbeddingSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await requireSystemAdmin(db, ctx);
+    await requireDeploymentAdmin(db, ctx);
     await updateEmbeddingSettings(db, { ...data, updatedBy: ctx.userId });
     return { ok: true } as const;
   });
@@ -119,7 +129,7 @@ export const updateMailSettingsFn = createServerFn({ method: "POST" })
   .validator(updateMailSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    await requireSystemAdmin(db, ctx);
+    await requireDeploymentAdmin(db, ctx);
     await updateMailSettings(db, { ...data, updatedBy: ctx.userId });
     return { ok: true } as const;
   });

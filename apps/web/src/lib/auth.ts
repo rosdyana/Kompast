@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins/organization";
 import { genericOAuth, microsoftEntraId } from "better-auth/plugins/generic-oauth";
@@ -175,6 +176,32 @@ export async function seedDevAdmin(auth: ReturnType<typeof buildAuth>, password:
   }
 }
 
+/**
+ * Better Auth paths that must never be reachable over HTTP. The organization
+ * and apiKey plugins mount their full REST surface under /api/auth/*, and
+ * those endpoints only know Better Auth's own owner/admin/member roles —
+ * not Kompast's super admin, team-admin or deployment-admin gates. Over
+ * HTTP, any signed-in user could create their own workspace (and become
+ * its owner), any workspace admin could add themselves to any team (which
+ * is what RLS keys project visibility on), and anyone could mint a PAT
+ * outside apps/web/src/lib/server-fns/tokens.ts's scope rules. The browser
+ * client only ever signs in/out (auth-client.ts); every org/team/
+ * invitation/API-key operation goes through a server function that applies
+ * Kompast's own checks and then calls `auth.api.*` directly — and a direct
+ * call carries no `ctx.request`, so it is unaffected by this guard.
+ */
+const HTTP_BLOCKED_AUTH_PATH_PREFIXES = ["/organization/", "/api-key/"];
+
+export function isHttpBlockedAuthPath(path: string): boolean {
+  return HTTP_BLOCKED_AUTH_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+const blockPluginRestSurface = createAuthMiddleware(async (ctx) => {
+  if (ctx.request && isHttpBlockedAuthPath(ctx.path)) {
+    throw new APIError("FORBIDDEN", { message: "This endpoint is not available over HTTP" });
+  }
+});
+
 export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>, devLoginEnabled: boolean, demoModeEnabled = false) {
   return betterAuth({
     baseURL: env.BETTER_AUTH_URL,
@@ -200,6 +227,7 @@ export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthC
     // Exposing the port directly would only let a client spoof its way
     // around rate limits, not past auth.
     advanced: { ipAddress: { ipAddressHeaders: ["x-forwarded-for"] } },
+    hooks: { before: blockPluginRestSurface },
     databaseHooks: {
       user: {
         create: {
@@ -276,6 +304,13 @@ export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthC
         // explicit, gated apps/web/src/lib/server-fns/teams.ts createTeamFn
         // path — including the first team, via onboarding.
         teams: { enabled: true, defaultTeam: { enabled: false } },
+        // Workspaces are only ever created server-side (the first sign-in /
+        // seedDevAdmin, each through its own seedAuth instance). Left at the
+        // plugin default (true), any signed-in user could create a
+        // workspace and become its owner — which /settings used to treat as
+        // enough to edit deployment-wide config. Defense in depth alongside
+        // blockPluginRestSurface above.
+        allowUserToCreateOrganization: false,
         // Better Auth never builds the accept-invitation URL itself — the
         // plugin's own docs say so explicitly ("Better Auth doesn't
         // generate invitation URLs"). See sendInvitationEmail's own doc

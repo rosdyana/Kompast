@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import { deleteWorkflow, getWorkflow, updateWorkflow, withAuthorizedTenant } from "@kompast/core";
+import { deleteWorkflow, getWorkflow, updateWorkflow, withAuthorizedTenant, requireWorkflowManager } from "@kompast/core";
 import { requireApiAuth, ApiError } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
 import { resolveProject } from "@/lib/api-resolvers";
@@ -63,6 +63,7 @@ export const Route = createFileRoute("/api/v1/automation/workflows/$workflowId")
             const project = await resolveProject(tx, ctx.organizationId, body.projectKey);
             const existing = await getWorkflow(tx, params.workflowId);
             if (!existing || existing.projectId !== project.id) throw new ApiError(404, "Not Found", `Workflow ${params.workflowId} not found`);
+            await requireWorkflowManager(tx, ctx, existing.projectId);
             if (body.nodes !== undefined || body.edges !== undefined) {
               if (body.nodes === undefined || body.edges === undefined) throw new ApiError(400, "Bad Request", "nodes and edges must be sent together");
             }
@@ -85,6 +86,7 @@ export const Route = createFileRoute("/api/v1/automation/workflows/$workflowId")
           return withAuthorizedTenant(ctx, async (tx) => {
             const existing = await getWorkflow(tx, params.workflowId);
             if (!existing) throw new ApiError(404, "Not Found", `Workflow ${params.workflowId} not found`);
+            await requireWorkflowManager(tx, ctx, existing.projectId);
             await deleteWorkflow(tx, params.workflowId);
             return jsonResponse({ ok: true });
           });

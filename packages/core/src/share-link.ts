@@ -63,7 +63,7 @@ export async function revokeShareLink(tx: Tx, shareLinkId: string) {
  * workspace/session context at all — see plan §Auth, "Guests are not
  * sessions" and packages/db's `adminDb` doc comment. The raw token is the
  * entire credential: hash it, look up the row, and reject on anything but
- * an exact match plus not-revoked/not-expired. Never widen this query.
+ * an exact match plus not-revoked/not-expired/page-not-archived. Never widen this query.
  */
 export async function resolveShareLink(token: string) {
   const [row] = await adminDb
@@ -75,6 +75,8 @@ export async function resolveShareLink(token: string) {
         eq(schema.shareLink.tokenHash, hashToken(token)),
         isNull(schema.shareLink.revokedAt),
         or(isNull(schema.shareLink.expiresAt), gt(schema.shareLink.expiresAt, new Date())),
+        // A trashed page stops being public — restoring it brings the link back.
+        isNull(schema.page.archivedAt),
       ),
     );
   return row ?? null;
