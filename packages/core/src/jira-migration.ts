@@ -838,7 +838,11 @@ export async function deleteJiraMigration(tx: Tx, ctx: AuthContext, migrationId:
  * system-wide scan across every workspace, the same exception as
  * claimPendingEmails (packages/db/rls.sql).
  */
-export async function claimJiraMigrations(db: AnyDb, leaseMs = JIRA_MIGRATION_LEASE_MS): Promise<JiraMigrationPublic[]> {
+/**
+ * `onlyIds` scopes the claim to those rows. The worker never passes it (it claims across every workspace); tests
+ * do, so parallel test files sharing one database can't lease each other's rows.
+ */
+export async function claimJiraMigrations(db: AnyDb, leaseMs = JIRA_MIGRATION_LEASE_MS, onlyIds?: string[]): Promise<JiraMigrationPublic[]> {
   const claimed = await db.execute<{ id: string }>(
     sql`update jira_migration
         set lease_expires_at = now() + (${leaseMs}::int * interval '1 millisecond')
@@ -846,6 +850,7 @@ export async function claimJiraMigrations(db: AnyDb, leaseMs = JIRA_MIGRATION_LE
           select id from jira_migration
           where state in ('discovering', 'running')
             and (lease_expires_at is null or lease_expires_at < now())
+            ${onlyIds ? sql`and id in (${sql.join(onlyIds.map((i) => sql`${i}`), sql`, `)})` : sql``}
           order by updated_at
           limit 2
           for update skip locked

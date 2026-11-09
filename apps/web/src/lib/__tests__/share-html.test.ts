@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { JSDOM } from "jsdom";
-import { ServerBlockNoteEditor } from "@blocknote/server-util";
-import { createServerSchema } from "../blocknote-schema";
+import { createServerEditor } from "../server-editor";
 import { sanitizeShareHtml } from "../share-html";
 
 // The vitest environment is node, so parse the output with a throwaway jsdom.
@@ -74,7 +73,7 @@ describe("sanitizeShareHtml — hostile markup is inert", () => {
 
 describe("sanitizeShareHtml — normal BlockNote markup survives", () => {
   it("keeps headings, lists, links, code and BlockNote's data-* attributes from a real export", async () => {
-    const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+    const editor = createServerEditor();
     const blocks = [
       { type: "heading", props: { level: 2 }, content: "Plan" },
       { type: "bulletListItem", content: "first item" },

@@ -1,13 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
 import * as Y from "yjs";
-import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { eq, schema } from "@kompast/db";
 import { updatePageMeta, withAuthorizedTenant } from "@kompast/core";
 import { requireApiAuth } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
 import { resolvePage } from "@/lib/api-resolvers";
-import { createServerSchema } from "@/lib/blocknote-schema";
+import { createServerEditor } from "@/lib/server-editor";
 
 const updatePageSchema = z.object({
   title: z.string().min(1).optional(),
@@ -28,7 +27,7 @@ export const Route = createFileRoute("/api/v1/pages/$pageId")({
             if (state) {
               const ydoc = new Y.Doc();
               Y.applyUpdate(ydoc, state.state);
-              const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+              const editor = createServerEditor();
               const blocks = editor.yDocToBlocks(ydoc, "document-store");
               content = await editor.blocksToMarkdownLossy(blocks);
             }

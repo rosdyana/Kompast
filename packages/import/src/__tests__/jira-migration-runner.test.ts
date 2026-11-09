@@ -19,8 +19,8 @@ import type { JiraMigrationMapping } from "../jira/mapping";
 /**
  * The batched migration end to end, against real Postgres with JIRA mocked
  * behind the real client. One file, run serially (vitest's in-file order),
- * because claimJiraMigrations is a system-wide scan: each test leases its own
- * row by pushing it to the front of the claim order (see claimOurs).
+ * because claimJiraMigrations is a system-wide scan: each test claims only its
+ * own row (see claimOurs).
  */
 describe("JIRA migration runner (real Postgres, mocked JIRA)", () => {
   const orgId = "test-jira-runner-org";
@@ -87,10 +87,9 @@ describe("JIRA migration runner (real Postgres, mocked JIRA)", () => {
     };
   }
 
-  /** The worker's path: lease our row, then tick it. Our row is pushed to the front of the claim order so rows from other test files can't crowd it out of the batch of two. */
+  /** The worker's path: lease our row (the claim is scoped to it), then tick it. */
   async function claimOurs(): Promise<JiraMigrationPublic> {
-    await admin.update(schema.jiraMigration).set({ updatedAt: new Date("1999-01-01T00:00:00Z") }).where(eq(schema.jiraMigration.id, migrationId));
-    const claimed = await claimJiraMigrations(admin, 60_000);
+    const claimed = await claimJiraMigrations(admin, 60_000, [migrationId]);
     const row = claimed.find((m) => m.id === migrationId);
     if (!row) throw new Error("the migration was not claimed");
     return row;

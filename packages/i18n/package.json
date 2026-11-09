@@ -10,10 +10,10 @@
     "react": "^19.0.0"
   },
   "dependencies": {
-    "i18next": "^26.4.2"
+    "i18next": "^26.7.2"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.3.0",
     "typescript": "^7.0.2"
   },
   "scripts": {

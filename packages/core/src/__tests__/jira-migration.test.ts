@@ -121,27 +121,24 @@ describe("JIRA migration record (core)", () => {
 
   it("the worker lease is exclusive: a second claim gets nothing while leased, and the row comes back once the lease expires", async () => {
     await withAuthorizedTenant(ctx, (tx) => requestJiraDiscovery(tx, ctx, migrationId));
-    // The claim takes the two oldest eligible rows, and other test files share this table. Push our row to the front.
-    await admin.update(schema.jiraMigration).set({ updatedAt: new Date("1999-01-01T00:00:00Z") }).where(eq(schema.jiraMigration.id, migrationId));
-
-    const first = await claimJiraMigrations(admin, 60_000);
+    const first = await claimJiraMigrations(admin, 60_000, [migrationId]);
     const claimedRow = first.find((m) => m.id === migrationId);
     expect(claimedRow).toBeDefined();
     expect(claimedRow).not.toHaveProperty("apiTokenEncrypted");
 
-    const second = await claimJiraMigrations(admin, 60_000);
+    const second = await claimJiraMigrations(admin, 60_000, [migrationId]);
     expect(second.map((m) => m.id)).not.toContain(migrationId);
 
     // The worker died mid-tick: the lease lapses, so the row becomes claimable again.
     await admin.update(schema.jiraMigration).set({ leaseExpiresAt: new Date(Date.now() - 1000) }).where(eq(schema.jiraMigration.id, migrationId));
-    const third = await claimJiraMigrations(admin, 60_000);
+    const third = await claimJiraMigrations(admin, 60_000, [migrationId]);
     expect(third.map((m) => m.id)).toContain(migrationId);
 
     // Renewing pushes the lease out again, so it's leased and skipped; releasing makes it claimable.
     await renewJiraMigrationLease(admin, migrationId, 60_000);
-    expect((await claimJiraMigrations(admin, 60_000)).map((m) => m.id)).not.toContain(migrationId);
+    expect((await claimJiraMigrations(admin, 60_000, [migrationId])).map((m) => m.id)).not.toContain(migrationId);
     await releaseJiraMigrationLease(admin, migrationId);
-    expect((await claimJiraMigrations(admin, 60_000)).map((m) => m.id)).toContain(migrationId);
+    expect((await claimJiraMigrations(admin, 60_000, [migrationId])).map((m) => m.id)).toContain(migrationId);
   });
 
   it("a workspace member outside the project's team cannot see the migration", async () => {

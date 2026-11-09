@@ -17,12 +17,12 @@
   },
   "dependencies": {
     "@kompast/env": "workspace:*",
-    "drizzle-orm": "^0.45.2",
-    "postgres": "^4.0.0"
+    "drizzle-orm": "^0.45.4",
+    "postgres": "^4.1.0"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.10",
-    "tsx": "^4.23.13",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0",
     "tsup": "^9.0.0"

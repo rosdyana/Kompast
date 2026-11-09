@@ -1,6 +1,5 @@
 import * as z from "zod";
 import * as Y from "yjs";
-import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { and, arrayContains, asc, eq, gt, ilike, inArray, isNull, schema, type Json } from "@kompast/db";
 import {
@@ -110,7 +109,7 @@ import {
   resolveBoardForProject,
   resolveSprint,
 } from "@/lib/api-resolvers";
-import { createServerSchema } from "@/lib/blocknote-schema";
+import { createServerEditor } from "@/lib/server-editor";
 import { seedPageContentFromMarkdown } from "./seed-page-content";
 
 function hasScope(ctx: ApiAuthContext, scope: string): boolean {
@@ -191,7 +190,7 @@ function serializePage(page: typeof schema.page.$inferSelect) {
 function yjsStateToMarkdown(state: Uint8Array): Promise<string> {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, state);
-  const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+  const editor = createServerEditor();
   const blocks = editor.yDocToBlocks(ydoc, "document-store");
   return editor.blocksToMarkdownLossy(blocks);
 }

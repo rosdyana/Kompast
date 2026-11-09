@@ -14,11 +14,11 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
-    "lucide-react": "^1.41.0"
+    "lucide-react": "^1.70.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "typescript": "^7.0.2"
   },
   "scripts": {

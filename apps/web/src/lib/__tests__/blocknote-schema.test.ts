@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import { ServerBlockNoteEditor } from "@blocknote/server-util";
-import { createServerSchema, redactEmbedsForGuests } from "../blocknote-schema";
+import { redactEmbedsForGuests } from "../blocknote-schema";
+import { createServerEditor } from "../server-editor";
 
 describe("kompastView block schema", () => {
   it("round-trips through a real Yjs encode/decode without losing its props", async () => {
-    const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+    const editor = createServerEditor();
     const blocks = [
       { type: "paragraph", content: "Hello" },
       { type: "kompastView", props: { boardId: "board_123", viewId: "view_456", projectKey: "KPT" } },
@@ -26,7 +26,7 @@ describe("kompastView block schema", () => {
   });
 
   it("blocksToFullHTML alone leaks raw prop values as data-* attributes (documents why redaction happens before export, not inside the block's own render)", async () => {
-    const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+    const editor = createServerEditor();
     const blocks = [{ type: "kompastView", props: { boardId: "board_123", viewId: "view_456", projectKey: "KPT" } }];
 
     const ydoc = editor.blocksToYDoc(blocks as any, "document-store");
@@ -37,7 +37,7 @@ describe("kompastView block schema", () => {
   });
 
   it("redactEmbedsForGuests strips kompastView blocks before export, so no board data reaches the guest HTML", async () => {
-    const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+    const editor = createServerEditor();
     const blocks = [{ type: "kompastView", props: { boardId: "board_123", viewId: "view_456", projectKey: "KPT" } }];
 
     const ydoc = editor.blocksToYDoc(blocks as any, "document-store");
@@ -65,7 +65,7 @@ describe("kompastView block schema", () => {
 
 describe("mention inline content schema", () => {
   it("round-trips an inline @mention through a real Yjs encode/decode without losing its props", async () => {
-    const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+    const editor = createServerEditor();
     const blocks = [
       {
         type: "paragraph",
@@ -89,7 +89,7 @@ describe("mention inline content schema", () => {
   });
 
   it("exports a mention's denormalized title as plain text, unaffected by guest redaction", async () => {
-    const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+    const editor = createServerEditor();
     const blocks = [
       { type: "paragraph", content: [{ type: "mention", props: { pageId: "page_abc", title: "Design doc", icon: "📄" } }] },
     ];
