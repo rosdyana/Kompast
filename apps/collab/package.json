@@ -11,17 +11,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@hocuspocus/server": "4.6.0",
+    "@hocuspocus/server": "4.8.0",
     "@kompast/core": "workspace:*",
     "@kompast/db": "workspace:*",
     "@kompast/env": "workspace:*",
-    "yjs": "13.6.32"
+    "yjs": "13.6.33"
   },
   "devDependencies": {
-    "@hocuspocus/provider": "4.6.0",
+    "@hocuspocus/provider": "4.8.0",
     "@types/node": "^26.6.6",
     "tsup": "^9.0.0",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^5.1.0"
   }
