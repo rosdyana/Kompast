@@ -4,8 +4,7 @@ import * as z from "zod";
 import { loadEnv } from "@kompast/env";
 import { eq, inArray, schema } from "@kompast/db";
 import * as Y from "yjs";
-import { ServerBlockNoteEditor } from "@blocknote/server-util";
-import { createServerSchema } from "../blocknote-schema";
+import { createServerEditor } from "../server-editor";
 import {
   createPage,
   createIssue,
@@ -502,7 +501,7 @@ export const getPageVersionBlocksFn = createServerFn({ method: "POST" })
 
     const ydoc = new Y.Doc();
     Y.applyUpdate(ydoc, snapshot);
-    const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+    const editor = createServerEditor();
     return editor.yDocToBlocks(ydoc, "document-store");
   });
 

@@ -3,9 +3,9 @@ import { getRequest } from "@tanstack/react-start/server";
 import { createHash } from "node:crypto";
 import * as z from "zod";
 import * as Y from "yjs";
-import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { resolveShareLink, getSharedPageContent, shareLinkRequiresPassword } from "@kompast/core";
-import { createServerSchema, redactEmbedsForGuests } from "../blocknote-schema";
+import { redactEmbedsForGuests } from "../blocknote-schema";
+import { createServerEditor } from "../server-editor";
 import { clientIp, rateLimit } from "../rate-limit";
 import { sanitizeShareHtml } from "../share-html";
 
@@ -47,7 +47,7 @@ export const getSharedPageContentFn = createServerFn({ method: "POST" })
     if (content.ydocState) {
       const ydoc = new Y.Doc();
       Y.applyUpdate(ydoc, content.ydocState);
-      const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+      const editor = createServerEditor();
       const blocks = editor.yDocToBlocks(ydoc, "document-store");
       // Page content is user-authored and this URL is public: the HTML is
       // rendered with dangerouslySetInnerHTML, so it must be inert here.

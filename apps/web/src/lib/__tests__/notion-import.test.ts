@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { readNotionExport, type ImportedPageRef } from "@kompast/import";
-import { createServerSchema } from "../blocknote-schema";
+import { createServerEditor } from "../server-editor";
 import { createNotionPageConverter, type UploadPageAsset } from "../notion-import";
 import { IDS, notionHtmlExportZip, notionMarkdownExportZip } from "../../../../../packages/import/src/__tests__/fixtures/notion";
 
-const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+const editor = createServerEditor();
 
 function decode(state: Uint8Array): any[] {
   const doc = new Y.Doc();

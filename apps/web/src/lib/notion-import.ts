@@ -1,9 +1,8 @@
 import * as Y from "yjs";
 import { JSDOM } from "jsdom";
-import { ServerBlockNoteEditor } from "@blocknote/server-util";
 import { putPageAsset } from "@kompast/storage/page-assets";
 import { linkedNotionId, resolveExportPath, type NotionExport, type NotionExportPage, type NotionPageConverter } from "@kompast/import";
-import { createServerSchema } from "./blocknote-schema";
+import { createServerEditor } from "./server-editor";
 
 /**
  * Stand-in href for a link to another page in the same export. BlockNote
@@ -27,7 +26,7 @@ export const uploadPageAsset: UploadPageAsset = (pageId, fileName, data) => putP
  * are dropped (columns are flattened into one).
  */
 export function createNotionPageConverter(exp: NotionExport, upload: UploadPageAsset = uploadPageAsset): NotionPageConverter {
-  const editor = ServerBlockNoteEditor.create({ schema: createServerSchema() as any });
+  const editor = createServerEditor();
 
   return async (page, ctx) => {
     let assetsUploaded = 0;
