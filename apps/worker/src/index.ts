@@ -65,7 +65,7 @@ function buildTemplate(templateKey: string, props: unknown) {
  * explicit "wake up now" signal from apps/web yet (it only writes the
  * outbox row inside the same transaction as whatever triggered it — see
  * packages/db/src/schema/notification.ts) — this function is driven purely
- * by the repeatable "process-outbox" job below, so worst-case delivery
+ * by the "process-outbox" job scheduler below, so worst-case delivery
  * latency is that job's interval. Fine for notification email; would need
  * revisiting for something latency-sensitive.
  */
@@ -299,18 +299,28 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
+/**
+ * Gives `queue` exactly one repeating job: the scheduler `id`, firing every `everyMs`. Upserting by a fixed id is
+ * idempotent, so a restart updates the schedule instead of stacking duplicates. Any other scheduler on the queue is
+ * removed first: that covers a legacy BullMQ 5 `repeat` job left in Redis by an older worker (BullMQ 6 keeps firing
+ * those under their hashed key, next to the new scheduler, so each queue would run twice as often) and an id renamed
+ * in code.
+ */
+async function ensureScheduler(queue: Queue, id: string, everyMs: number) {
+  for (const scheduler of await queue.getJobSchedulers()) {
+    if (scheduler.key !== id) await queue.removeJobScheduler(scheduler.key);
+  }
+  await queue.upsertJobScheduler(id, { every: everyMs }, { name: id, data: {} });
+}
+
 async function main() {
-  // Re-adding a repeatable job with the same name + repeat options on
-  // every boot is idempotent — BullMQ keys a repeatable job by those, not
-  // by a fresh id each time — so this is safe to run on every worker
-  // restart.
-  await mailQueue.add("process-outbox", {}, { repeat: { every: 15_000 } });
-  await reindexQueue.add("process-reindex", {}, { repeat: { every: 10_000 } });
-  await workflowEventQueue.add("process-workflow-events", {}, { repeat: { every: 5_000 } });
-  await workflowStepQueue.add("process-workflow-steps", {}, { repeat: { every: 5_000 } });
-  await workflowScheduleQueue.add("process-workflow-schedules", {}, { repeat: { every: 60_000 } });
-  await jiraMigrationQueue.add("process-jira-migrations", {}, { repeat: { every: 5_000 } });
-  await notionMigrationQueue.add("process-notion-migrations", {}, { repeat: { every: 5_000 } });
+  await ensureScheduler(mailQueue, "process-outbox", 15_000);
+  await ensureScheduler(reindexQueue, "process-reindex", 10_000);
+  await ensureScheduler(workflowEventQueue, "process-workflow-events", 5_000);
+  await ensureScheduler(workflowStepQueue, "process-workflow-steps", 5_000);
+  await ensureScheduler(workflowScheduleQueue, "process-workflow-schedules", 60_000);
+  await ensureScheduler(jiraMigrationQueue, "process-jira-migrations", 5_000);
+  await ensureScheduler(notionMigrationQueue, "process-notion-migrations", 5_000);
   // Log the host only: REDIS_URL can carry a password.
   const redisHost = new URL(env.REDIS_URL);
   console.log(`[worker] started, connected to redis at ${redisHost.protocol}//${redisHost.host}`);
