@@ -18,7 +18,7 @@
     "@google-cloud/storage": "^8.0.1"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^5.1.0",
     "@types/node": "^26.6.6"
   }
