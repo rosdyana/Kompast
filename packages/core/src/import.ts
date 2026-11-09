@@ -102,10 +102,22 @@ export async function upsertExternalRef(tx: Tx, input: UpsertExternalRefInput) {
 }
 
 /**
- * Where a page import (Notion) lands: the shared Workspace docs, or the
- * caller's own Private space. Not a team or project space yet.
+ * Where a page import (Notion) lands: the shared Workspace docs, the
+ * caller's own Private space, or a team's space (`{ team }`, a team id).
  */
-export type PageImportTarget = "workspace" | "private";
+export type PageImportTarget = "workspace" | "private" | { team: string };
+
+/**
+ * The part of an import's external_ref key that names the target space:
+ * `workspace`, `private:<userId>` or `team:<teamId>`. The Notion loader
+ * appends `:<notionId>`. The workspace and private strings are the ones
+ * earlier runs stored, so they must not change.
+ */
+export function pageImportTargetKey(target: PageImportTarget, actorUserId: string): string {
+  if (target === "workspace") return "workspace";
+  if (target === "private") return `private:${actorUserId}`;
+  return `team:${target.team}`;
+}
 
 /**
  * Who may import into which docs space. Workspace docs are everyone's, so
@@ -113,6 +125,10 @@ export type PageImportTarget = "workspace" | "private";
  * and the super admin, even though any member can create a single
  * Workspace page by hand. Private needs no check beyond membership: the
  * pages are owned by the caller (RLS refuses anyone else's Private space).
+ * A team space is open to that team's members and the super admin, and
+ * the team must belong to this workspace. Not to a workspace admin outside
+ * the team: the page RLS policy only admits team members and the super
+ * admin, so their inserts would fail on every page.
  */
 export async function requirePageImportTarget(db: AnyDb, ctx: AuthContext, target: PageImportTarget): Promise<void> {
   if (target === "private") return;
@@ -120,8 +136,28 @@ export async function requirePageImportTarget(db: AnyDb, ctx: AuthContext, targe
     .select({ role: schema.member.role, isSuperAdmin: schema.member.isSuperAdmin })
     .from(schema.member)
     .where(and(eq(schema.member.organizationId, ctx.organizationId), eq(schema.member.userId, ctx.userId)));
-  if (!row || (row.role !== "owner" && row.role !== "admin" && !row.isSuperAdmin)) {
-    throw new ForbiddenError("Only workspace admins can import into the Workspace docs. Import into your Private space instead.");
+  const isWorkspaceAdmin = !!row && (row.role === "owner" || row.role === "admin" || row.isSuperAdmin);
+
+  if (target === "workspace") {
+    if (!isWorkspaceAdmin) {
+      throw new ForbiddenError("Only workspace admins can import into the Workspace docs. Import into your Private space instead.");
+    }
+    return;
+  }
+
+  const [team] = await db
+    .select({ id: schema.team.id })
+    .from(schema.team)
+    .where(and(eq(schema.team.id, target.team), eq(schema.team.organizationId, ctx.organizationId)));
+  if (!team) throw new ForbiddenError("That team is not in this workspace.");
+  if (row?.isSuperAdmin) return;
+
+  const [membership] = await db
+    .select({ id: schema.teamMember.id })
+    .from(schema.teamMember)
+    .where(and(eq(schema.teamMember.teamId, target.team), eq(schema.teamMember.userId, ctx.userId)));
+  if (!membership) {
+    throw new ForbiddenError("Only members of that team can import into its space. Choose another team or import into your Private space.");
   }
 }
 

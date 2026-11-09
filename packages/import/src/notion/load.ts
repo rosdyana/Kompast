@@ -1,5 +1,5 @@
 import { and, eq, isNull, schema } from "@kompast/db";
-import { createPage, resolveExternalRef, upsertExternalRef, syncPageMentions, enqueueReindex, type PageImportTarget, type Tx } from "@kompast/core";
+import { createPage, pageImportTargetKey, resolveExternalRef, upsertExternalRef, syncPageMentions, enqueueReindex, type PageImportTarget, type Tx } from "@kompast/core";
 import type { NotionExport, NotionExportPage } from "./types";
 
 /** What a converted page's content resolves an internal Notion link to. */
@@ -53,7 +53,13 @@ export interface NotionLoadReport {
  * importer may not be able to see.
  */
 function sourceId(ctx: NotionLoadContext, notionId: string) {
-  return `${ctx.target === "private" ? `private:${ctx.actorUserId}` : "workspace"}:${notionId}`;
+  return `${pageImportTargetKey(ctx.target, ctx.actorUserId)}:${notionId}`;
+}
+
+/** The space a root page is created in. Its children inherit it from their parent. */
+function rootSpace(ctx: NotionLoadContext): { privateOwnerId: string | null } | { teamId: string } {
+  if (typeof ctx.target === "object") return { teamId: ctx.target.team };
+  return { privateOwnerId: ctx.target === "private" ? ctx.actorUserId : null };
 }
 
 /**
@@ -99,7 +105,7 @@ export async function runNotionImport(tx: Tx, exp: NotionExport, ctx: NotionLoad
         const row = await createPage(sp, {
           organizationId: ctx.organizationId,
           // A child takes its parent's space (createPage refuses a second, explicit one).
-          ...(parentPageId ? {} : { privateOwnerId: ctx.target === "private" ? ctx.actorUserId : null }),
+          ...(parentPageId ? {} : rootSpace(ctx)),
           parentPageId,
           title: page.title,
           icon: page.icon ?? undefined,

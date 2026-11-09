@@ -20,10 +20,13 @@ import {
   markWorkflowStepFailed,
   claimDueWorkflowSchedules,
   claimJiraMigrations,
+  claimNotionMigrations,
   withAuthorizedTenant,
 } from "@kompast/core";
 import { createMailer, NotificationEmail, SprintSummaryEmail } from "@kompast/mail";
-import { runJiraMigrationTick, startDueJiraAutoSyncs } from "@kompast/import";
+import { runJiraMigrationTick, runNotionMigrationTick, startDueJiraAutoSyncs } from "@kompast/import";
+import { blocksToYDocState } from "@kompast/editor";
+import { putPageAsset } from "@kompast/storage/page-assets";
 
 const env = loadEnv();
 const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
@@ -31,6 +34,7 @@ const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const MAIL_QUEUE = "mail";
 const REINDEX_QUEUE = "reindex";
 const JIRA_MIGRATION_QUEUE = "jira-migration";
+const NOTION_MIGRATION_QUEUE = "notion-migration";
 
 interface NotificationTemplateProps {
   title: string;
@@ -223,6 +227,25 @@ async function processJiraMigrationBatch() {
   }
 }
 
+/**
+ * Leases up to two Notion API migrations that are discovering or running and runs one bounded tick for each
+ * (packages/import/src/notion-api/migration-runner.ts). Same shape as the JIRA batch above: the cursor saves each
+ * unit's place, and the claim runs on the admin connection. Each tick runs as the migration's creator.
+ */
+async function processNotionMigrationBatch() {
+  const migrations = await claimNotionMigrations(adminDb);
+  for (const migration of migrations) {
+    try {
+      await runNotionMigrationTick(
+        { adminDb, withTenantAs: withAuthorizedTenant, blocksToYDocState, putPageAsset },
+        migration,
+      );
+    } catch (err) {
+      console.error(`[worker] notion migration ${migration.id} tick failed:`, err);
+    }
+  }
+}
+
 const mailQueue = new Queue(MAIL_QUEUE, { connection });
 const reindexQueue = new Queue(REINDEX_QUEUE, { connection });
 const workflowEventQueue = new Queue("automation-workflow-events", { connection });
@@ -234,6 +257,7 @@ const workflowStepQueue = new Queue("automation-workflow-steps", { connection })
 // shape — revisit if that ever changes.
 const workflowScheduleQueue = new Queue("automation-workflow-schedules", { connection });
 const jiraMigrationQueue = new Queue(JIRA_MIGRATION_QUEUE, { connection });
+const notionMigrationQueue = new Queue(NOTION_MIGRATION_QUEUE, { connection });
 const mailWorker = new Worker(MAIL_QUEUE, () => processOutboxBatch(), { connection });
 const reindexWorker = new Worker(REINDEX_QUEUE, () => processReindexBatch(), { connection });
 const workflowEventWorker = new Worker("automation-workflow-events", () => processWorkflowEventBatch(), { connection });
@@ -253,6 +277,9 @@ workflowEventWorker.on("failed", (job, err) => console.error(`[worker] workflow 
 workflowStepWorker.on("failed", (job, err) => console.error(`[worker] workflow step job ${job?.id} failed:`, err));
 workflowScheduleWorker.on("failed", (job, err) => console.error(`[worker] workflow schedule job ${job?.id} failed:`, err));
 jiraMigrationWorker.on("failed", (job, err) => console.error(`[worker] jira migration job ${job?.id} failed:`, err));
+// Same lock as the JIRA job: a tick stops starting units after its 4-minute budget, so a job can run a few minutes.
+const notionMigrationWorker = new Worker(NOTION_MIGRATION_QUEUE, () => processNotionMigrationBatch(), { connection, lockDuration: JIRA_MIGRATION_LOCK_MS });
+notionMigrationWorker.on("failed", (job, err) => console.error(`[worker] notion migration job ${job?.id} failed:`, err));
 
 process.on("SIGTERM", async () => {
   await mailWorker.close();
@@ -261,12 +288,14 @@ process.on("SIGTERM", async () => {
   await workflowStepWorker.close();
   await workflowScheduleWorker.close();
   await jiraMigrationWorker.close();
+  await notionMigrationWorker.close();
   await mailQueue.close();
   await reindexQueue.close();
   await workflowEventQueue.close();
   await workflowStepQueue.close();
   await workflowScheduleQueue.close();
   await jiraMigrationQueue.close();
+  await notionMigrationQueue.close();
   process.exit(0);
 });
 
@@ -281,6 +310,7 @@ async function main() {
   await workflowStepQueue.add("process-workflow-steps", {}, { repeat: { every: 5_000 } });
   await workflowScheduleQueue.add("process-workflow-schedules", {}, { repeat: { every: 60_000 } });
   await jiraMigrationQueue.add("process-jira-migrations", {}, { repeat: { every: 5_000 } });
+  await notionMigrationQueue.add("process-notion-migrations", {}, { repeat: { every: 5_000 } });
   // Log the host only: REDIS_URL can carry a password.
   const redisHost = new URL(env.REDIS_URL);
   console.log(`[worker] started, connected to redis at ${redisHost.protocol}//${redisHost.host}`);

@@ -1,8 +1,33 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { nitro } from "nitro/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+
+/**
+ * Dev only. Nitro's dev middleware treats a GET whose path ends in an asset
+ * extension (.png, .jpg, ...) and whose request is an image fetch as a static
+ * file, and hands it to Vite's static server instead of the app. Vite has no such
+ * file, so the page-asset URLs (/api/page-assets/<pageId>/<name>.png) die as a bare
+ * "Cannot GET" 404. The production Nitro build serves them. Marking these
+ * requests as document fetches sends them down the path the app's routes already
+ * get for extensions like .txt. The stored URL format is unchanged.
+ */
+function pageAssetsDevRoute(): Plugin {
+  return {
+    name: "kompast:page-assets-dev-route",
+    apply: "serve",
+    enforce: "pre",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        // /api/storage/ too: the local storage driver's signed download URL (what
+        // /api/page-assets redirects to in dev) also ends in the file's extension.
+        if (req.url?.startsWith("/api/page-assets/") || req.url?.startsWith("/api/storage/")) req.headers["sec-fetch-dest"] = "document";
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig({
   server: {
@@ -38,5 +63,5 @@ export default defineConfig({
       external: ["jsdom"],
     },
   },
-  plugins: [tailwindcss(), tanstackStart(), viteReact(), nitro()],
+  plugins: [pageAssetsDevRoute(), tailwindcss(), tanstackStart(), viteReact(), nitro()],
 });

@@ -1,12 +1,21 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "@tanstack/react-router";
-import { Lock, Users } from "lucide-react";
+import { FileArchive, Lock, Users, UsersRound } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { Dialog } from "@kompast/ui/Dialog";
 import { useTranslation } from "@kompast/i18n";
 import { cn } from "@/lib/cn";
+import { listTeamsFn } from "@/lib/server-fns/teams";
 
 export type NotionImportTarget = "workspace" | "private";
+
+/** The dialog's choices: the two docs spaces, or a team's space (which also needs a team picked). */
+type ImportDestination = NotionImportTarget | "team";
+
+interface TeamOption {
+  id: string;
+  name: string;
+}
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
@@ -21,21 +30,31 @@ interface ImportReport {
  * session cookie (a server function doesn't carry a file upload well).
  * Workspace is offered only to workspace admins; the server checks that
  * again (requirePageImportTarget), this just hides a choice that would fail.
+ * Team lists every team the caller may import into: the teams they belong
+ * to (every team for the super admin), matching the page RLS policy.
+ *
+ * Opens on a chooser: connect to Notion through the API wizard (`onConnect`),
+ * or upload an export zip (the form below).
  */
 export function NotionImportDialog({
   open,
   onClose,
   initialTarget,
   canImportToWorkspace,
+  onConnect,
 }: {
   open: boolean;
   onClose: () => void;
   initialTarget: NotionImportTarget;
   canImportToWorkspace: boolean;
+  onConnect: () => void;
 }) {
   const { t } = useTranslation("docs");
   const router = useRouter();
-  const [target, setTarget] = useState<NotionImportTarget>(initialTarget);
+  const [mode, setMode] = useState<"choose" | "zip">("choose");
+  const [target, setTarget] = useState<ImportDestination>(initialTarget);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [teamId, setTeamId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,10 +62,24 @@ export function NotionImportDialog({
 
   useEffect(() => {
     if (!open) return;
+    setMode("choose");
     setTarget(canImportToWorkspace ? initialTarget : "private");
+    setTeamId("");
     setFile(null);
     setError(null);
     setReport(null);
+    let cancelled = false;
+    listTeamsFn().then(
+      (all) => {
+        if (!cancelled) setTeams(all.filter((team) => !team.locked).map((team) => ({ id: team.id, name: team.name })));
+      },
+      () => {
+        if (!cancelled) setTeams([]);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
   }, [open, initialTarget, canImportToWorkspace]);
 
   async function runImport() {
@@ -61,6 +94,7 @@ export function NotionImportDialog({
       const form = new FormData();
       form.set("file", file);
       form.set("target", target);
+      if (target === "team") form.set("teamId", teamId);
       const res = await fetch("/api/v1/imports/notion", { method: "POST", body: form });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.report) throw new Error(body.error ?? body.detail ?? res.statusText);
@@ -79,9 +113,12 @@ export function NotionImportDialog({
     if (pageId) await router.navigate({ to: "/docs/$pageId", params: { pageId } });
   }
 
-  const choices: { value: NotionImportTarget; label: string; hint: string; icon: ReactNode }[] = [
+  const choices: { value: ImportDestination; label: string; hint: string; icon: ReactNode }[] = [
     ...(canImportToWorkspace
       ? [{ value: "workspace" as const, label: t("notionImport.workspace"), hint: t("notionImport.workspaceHint"), icon: <Users size={15} strokeWidth={1.75} /> }]
+      : []),
+    ...(teams.length > 0
+      ? [{ value: "team" as const, label: t("notionImport.team"), hint: t("notionImport.teamHint"), icon: <UsersRound size={15} strokeWidth={1.75} /> }]
       : []),
     { value: "private", label: t("notionImport.private"), hint: t("notionImport.privateHint"), icon: <Lock size={15} strokeWidth={1.75} /> },
   ];
@@ -94,7 +131,11 @@ export function NotionImportDialog({
       title={t("notionImport.title")}
       closeLabel={t("common:close")}
       footer={
-        report ? (
+        mode === "choose" ? (
+          <Button variant="ghost" onClick={onClose}>
+            {t("common:cancel")}
+          </Button>
+        ) : report ? (
           <>
             <Button variant="ghost" onClick={onClose}>
               {t("common:close")}
@@ -107,17 +148,46 @@ export function NotionImportDialog({
           </>
         ) : (
           <>
+            <Button variant="ghost" onClick={() => setMode("choose")} disabled={busy}>
+              {t("notionMigration.back")}
+            </Button>
             <Button variant="ghost" onClick={onClose} disabled={busy}>
               {t("common:cancel")}
             </Button>
-            <Button variant="primary" onClick={runImport} disabled={!file || busy}>
+            <Button variant="primary" onClick={runImport} disabled={!file || busy || (target === "team" && !teamId)}>
               {t("notionImport.import")}
             </Button>
           </>
         )
       }
     >
-      {report ? (
+      {mode === "choose" ? (
+        <div className="flex flex-col gap-3">
+          <p className="type-body text-text-2">{t("notionMigration.chooserHeading")}</p>
+          <button
+            type="button"
+            onClick={onConnect}
+            className="flex flex-col items-start gap-1 rounded-[8px] border border-accent bg-accent-soft px-4 py-3 text-left hover:opacity-90"
+          >
+            <span className="flex items-center gap-2 text-[14px] font-medium text-text">
+              {t("notionMigration.chooseConnect")}
+              <span className="rounded-full bg-surface px-2 py-0.5 text-[11.5px] font-medium text-accent-text">{t("notionMigration.chooseConnectTag")}</span>
+            </span>
+            <span className="text-[13px] text-text-2">{t("notionMigration.chooseConnectHint")}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("zip")}
+            className="flex flex-col items-start gap-1 rounded-[8px] border border-border px-4 py-3 text-left hover:bg-surface-2"
+          >
+            <span className="flex items-center gap-2 text-[14px] font-medium text-text">
+              <FileArchive size={15} strokeWidth={1.75} className="text-text-3" />
+              {t("notionMigration.chooseZip")}
+            </span>
+            <span className="text-[13px] text-text-3">{t("notionMigration.chooseZipHint")}</span>
+          </button>
+        </div>
+      ) : report ? (
         <div className="flex flex-col gap-1.5 text-[14px] text-text-2">
           <p>{t("notionImport.created", { count: report.counts.pagesCreated })}</p>
           {report.counts.pagesSkipped > 0 && <p>{t("notionImport.skipped", { count: report.counts.pagesSkipped })}</p>}
@@ -158,6 +228,20 @@ export function NotionImportDialog({
               </label>
             ))}
           </fieldset>
+
+          {target === "team" && (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[13px] font-medium text-text-2">{t("notionImport.teamLabel")}</span>
+              <select value={teamId} onChange={(e) => setTeamId(e.target.value)} disabled={busy} className="kp-field kp-select h-8">
+                <option value="">{t("notionImport.teamPlaceholder")}</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-medium text-text-2">{t("notionImport.file")}</span>

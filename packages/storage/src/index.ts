@@ -6,6 +6,7 @@ import type { StorageDriver } from "./types";
 export type { StorageDriver, UploadUrlResult } from "./types";
 export { MAX_UPLOAD_BYTES } from "./limits";
 export { verifyLocalStorageToken, signLocalStorageToken, resolveLocalPath, ensureLocalDir } from "./local";
+export { contentTypeFor } from "./content-type";
 
 let cached: StorageDriver | undefined;
 

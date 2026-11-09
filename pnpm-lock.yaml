@@ -92,6 +92,9 @@ importers:
       '@kompast/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@kompast/editor':
+        specifier: workspace:*
+        version: link:../../packages/editor
       '@kompast/env':
         specifier: workspace:*
         version: link:../../packages/env
@@ -201,6 +204,9 @@ importers:
       '@kompast/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@kompast/editor':
+        specifier: workspace:*
+        version: link:../../packages/editor
       '@kompast/env':
         specifier: workspace:*
         version: link:../../packages/env
@@ -210,6 +216,9 @@ importers:
       '@kompast/mail':
         specifier: workspace:*
         version: link:../../packages/mail
+      '@kompast/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       bullmq:
         specifier: ^5.34.0
         version: 5.81.4
@@ -313,6 +322,28 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
 
+  packages/editor:
+    dependencies:
+      '@blocknote/core':
+        specifier: 0.54.0
+        version: 0.54.0(@types/hast@3.0.5)(y-prosemirror@1.3.7(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.42.3)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
+      y-prosemirror:
+        specifier: 1.3.7
+        version: 1.3.7(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.42.3)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
+      yjs:
+        specifier: 13.6.32
+        version: 13.6.32
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^5.1.0
+        version: 5.1.0(@types/node@26.6.6)(jsdom@31.0.0(@noble/hashes@2.4.0))(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
+
   packages/env:
     dependencies:
       zod:
@@ -363,6 +394,9 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
     devDependencies:
+      '@kompast/editor':
+        specifier: workspace:*
+        version: link:../editor
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6

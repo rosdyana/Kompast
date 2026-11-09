@@ -84,6 +84,8 @@ alter table external_ref enable row level security;
 alter table external_ref force row level security;
 alter table jira_migration enable row level security;
 alter table jira_migration force row level security;
+alter table notion_migration enable row level security;
+alter table notion_migration force row level security;
 alter table embedding enable row level security;
 alter table embedding force row level security;
 alter table embedding_index_queue enable row level security;
@@ -470,6 +472,17 @@ create policy tenant_isolation_jira_migration on jira_migration
   using (
     organization_id = current_setting('app.current_workspace', true)
     and project_id in (select id from project)
+  );
+
+-- A Notion migration belongs to no project, so it can't inherit a project's
+-- visibility. Only the member who connected the Notion workspace sees it:
+-- its discovery lists page titles from a workspace nobody else connected.
+-- The token column is never read by app queries (packages/core/src/notion-migration.ts).
+drop policy if exists tenant_isolation_notion_migration on notion_migration;
+create policy tenant_isolation_notion_migration on notion_migration
+  using (
+    organization_id = current_setting('app.current_workspace', true)
+    and created_by = current_setting('app.current_user', true)
   );
 
 drop policy if exists tenant_isolation_external_ref on external_ref;

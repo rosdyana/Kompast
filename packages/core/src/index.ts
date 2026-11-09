@@ -44,6 +44,7 @@ export * from "./crypto";
 export * from "./ai";
 export * from "./import";
 export * from "./jira-migration";
+export * from "./notion-migration";
 export * from "./rag";
 export * from "./errors";
 export * from "./issue-query";

@@ -48,6 +48,7 @@ describe("/api/v1/imports/notion", () => {
   const memberId = "test-rest-notion-member";
   const otherId = "test-rest-notion-other";
   const userIds = [ownerId, memberId, otherId];
+  const teamId = "test-rest-notion-team";
   const tokens: Record<string, string> = {};
 
   async function cleanup() {
@@ -55,6 +56,7 @@ describe("/api/v1/imports/notion", () => {
     await admin.delete(schema.externalRef).where(eq(schema.externalRef.organizationId, orgId));
     await admin.delete(schema.importRun).where(eq(schema.importRun.organizationId, orgId));
     await admin.delete(schema.page).where(eq(schema.page.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.apikey).where(inArray(schema.apikey.referenceId, userIds));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(inArray(schema.user.id, userIds));
@@ -71,6 +73,8 @@ describe("/api/v1/imports/notion", () => {
       { id: id("mem"), organizationId: orgId, userId: memberId, role: "member" },
       { id: id("mem"), organizationId: orgId, userId: otherId, role: "member" },
     ]);
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "REST Notion Team" });
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${memberId}`, teamId, userId: memberId, membershipKey: `${teamId}:${memberId}` });
     const auth = await getAuth();
     for (const userId of userIds) {
       const created = await auth.api.createApiKey({ body: { userId, permissions: { pages: ["read", "write"] }, metadata: { organizationId: orgId } } });
@@ -118,6 +122,25 @@ describe("/api/v1/imports/notion", () => {
     const pages = await admin.select().from(schema.page).where(eq(schema.page.organizationId, orgId));
     expect(pages).toHaveLength(4);
     expect(pages.every((p) => p.privateOwnerId === null && p.teamId === null && p.projectId === null)).toBe(true);
+  });
+
+  it("imports into a team's space: a team member can, a member outside the team gets 403", async () => {
+    const outside = await upload(tokens[otherId]!, { target: "team", teamId });
+    expect(outside.status).toBe(403);
+    expect(await admin.select().from(schema.importRun).where(eq(schema.importRun.organizationId, orgId))).toHaveLength(0);
+    expect(await admin.select().from(schema.page).where(eq(schema.page.organizationId, orgId))).toHaveLength(0);
+
+    const res = await upload(tokens[memberId]!, { target: "team", teamId });
+    expect(res.status).toBe(201);
+    const { importRunId, report } = await res.json();
+    expect(report.counts).toMatchObject({ pagesFound: 4, pagesCreated: 4 });
+    const pages = await admin.select().from(schema.page).where(eq(schema.page.organizationId, orgId));
+    expect(pages).toHaveLength(4);
+    expect(pages.every((p) => p.teamId === teamId && p.privateOwnerId === null && p.projectId === null)).toBe(true);
+    const [run] = await admin.select().from(schema.importRun).where(eq(schema.importRun.id, importRunId));
+    expect(run).toMatchObject({ status: "completed", source: "notion", config: { target: "team", teamId } });
+
+    expect((await upload(tokens[memberId]!, { target: "team" })).status).toBe(400);
   });
 
   it("dry run writes nothing; bad input is a 400/422 with the run marked failed", async () => {

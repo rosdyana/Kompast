@@ -1,0 +1,1 @@
+ALTER TABLE "notion_migration" ADD COLUMN "lease_owner" text;
