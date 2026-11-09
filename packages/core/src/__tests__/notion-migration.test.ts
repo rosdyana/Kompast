@@ -143,19 +143,16 @@ describe("Notion migration record (core)", () => {
 
   it("claims leases exclusively, and the row comes back once its lease expires", async () => {
     const migrationId = await connect();
-    // The claim takes the two oldest eligible rows, and other test files may share this table. Push our row to the front.
-    await admin.update(schema.notionMigration).set({ updatedAt: new Date("1999-01-01T00:00:00Z") }).where(eq(schema.notionMigration.id, migrationId));
-
-    const first = await claimNotionMigrations(admin, 60_000);
+    const first = await claimNotionMigrations(admin, 60_000, [migrationId]);
     const claimed = first.find((m) => m.id === migrationId);
     expect(claimed).toBeDefined();
     expect(claimed).not.toHaveProperty("tokenEncrypted");
     expect(claimed).toMatchObject({ hasToken: true, state: "discovering" });
 
-    expect((await claimNotionMigrations(admin, 60_000)).map((m) => m.id)).not.toContain(migrationId);
+    expect((await claimNotionMigrations(admin, 60_000, [migrationId])).map((m) => m.id)).not.toContain(migrationId);
 
     await admin.update(schema.notionMigration).set({ leaseExpiresAt: new Date(Date.now() - 1000) }).where(eq(schema.notionMigration.id, migrationId));
-    expect((await claimNotionMigrations(admin, 60_000)).map((m) => m.id)).toContain(migrationId);
+    expect((await claimNotionMigrations(admin, 60_000, [migrationId])).map((m) => m.id)).toContain(migrationId);
   });
 
   it("a finished run keeps its token; a failed one can be retried; deletion clears the token and waits for a live lease", async () => {
@@ -200,13 +197,12 @@ describe("Notion migration record (core)", () => {
 
   it("a tick whose lease was taken over can't renew, write its cursor, finish, or release the newer lease", async () => {
     const migrationId = await connect();
-    await admin.update(schema.notionMigration).set({ updatedAt: new Date("1999-01-01T00:00:00Z") }).where(eq(schema.notionMigration.id, migrationId));
-    const stale = (await claimNotionMigrations(admin, 60_000)).find((m) => m.id === migrationId)!;
+    const stale = (await claimNotionMigrations(admin, 60_000, [migrationId])).find((m) => m.id === migrationId)!;
     expect(stale.leaseOwner).toBeTruthy();
 
     // The stale tick ran past its lease, and a second tick claimed the row.
     await admin.update(schema.notionMigration).set({ leaseExpiresAt: new Date(Date.now() - 1000) }).where(eq(schema.notionMigration.id, migrationId));
-    const fresh = (await claimNotionMigrations(admin, 60_000)).find((m) => m.id === migrationId)!;
+    const fresh = (await claimNotionMigrations(admin, 60_000, [migrationId])).find((m) => m.id === migrationId)!;
     expect(fresh.leaseOwner).toBeTruthy();
     expect(fresh.leaseOwner).not.toBe(stale.leaseOwner);
 

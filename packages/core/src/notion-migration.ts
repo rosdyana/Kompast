@@ -251,7 +251,11 @@ export async function deleteNotionMigration(tx: Tx, ctx: AuthContext, migrationI
  * processes from claiming the same row. Admin connection only: this is a
  * system-wide scan across every workspace (packages/db/rls.sql).
  */
-export async function claimNotionMigrations(db: AnyDb, leaseMs = NOTION_MIGRATION_LEASE_MS): Promise<NotionMigrationPublic[]> {
+/**
+ * `onlyIds` scopes the claim to those rows. The worker never passes it (it claims across every workspace); tests
+ * do, so parallel test files sharing one database can't lease each other's rows.
+ */
+export async function claimNotionMigrations(db: AnyDb, leaseMs = NOTION_MIGRATION_LEASE_MS, onlyIds?: string[]): Promise<NotionMigrationPublic[]> {
   const claimed = await db.execute<{ id: string }>(
     sql`update notion_migration
         set lease_expires_at = now() + (${leaseMs}::int * interval '1 millisecond'),
@@ -260,6 +264,7 @@ export async function claimNotionMigrations(db: AnyDb, leaseMs = NOTION_MIGRATIO
           select id from notion_migration
           where state in ('discovering', 'running')
             and (lease_expires_at is null or lease_expires_at < now())
+            ${onlyIds ? sql`and id in (${sql.join(onlyIds.map((i) => sql`${i}`), sql`, `)})` : sql``}
           order by updated_at
           limit 2
           for update skip locked

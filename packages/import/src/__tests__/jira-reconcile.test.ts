@@ -18,8 +18,8 @@ import { RECONCILE_DIFFERENCE_CAP, ReconcileLog, emptyReconcileCounts, reconcile
 
 /**
  * The reconciliation report against real Postgres, with JIRA mocked behind the real client. One file, run in order:
- * each test loads its own migration, then reconciles it. Claims are pushed to the front of the claim order, as in
- * jira-migration-runner.test.ts, because claimJiraMigrations is a system-wide scan.
+ * each test loads its own migration, then reconciles it. Claims are scoped to the
+ * test's own row, as in jira-migration-runner.test.ts, because claimJiraMigrations is a system-wide scan.
  */
 describe("JIRA reconciliation (real Postgres, mocked JIRA)", () => {
   const orgId = "test-jira-reconcile-org";
@@ -83,10 +83,9 @@ describe("JIRA reconciliation (real Postgres, mocked JIRA)", () => {
     };
   }
 
-  /** The worker's path: lease our row, then tick it. */
+  /** The worker's path: lease our row (the claim is scoped to it), then tick it. */
   async function claimOurs(): Promise<JiraMigrationPublic> {
-    await admin.update(schema.jiraMigration).set({ updatedAt: new Date("1999-01-01T00:00:00Z") }).where(eq(schema.jiraMigration.id, migrationId));
-    const claimed = await claimJiraMigrations(admin, 60_000);
+    const claimed = await claimJiraMigrations(admin, 60_000, [migrationId]);
     const row = claimed.find((m) => m.id === migrationId);
     if (!row) throw new Error("the migration was not claimed");
     return row;
