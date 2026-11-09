@@ -22,6 +22,7 @@
     "@hocuspocus/provider": "4.6.0",
     "@kompast/core": "workspace:*",
     "@kompast/db": "workspace:*",
+    "@kompast/editor": "workspace:*",
     "@kompast/env": "workspace:*",
     "@kompast/i18n": "workspace:*",
     "@kompast/import": "workspace:*",

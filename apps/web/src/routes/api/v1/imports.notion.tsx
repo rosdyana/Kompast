@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, requirePageImportTarget, withAuthorizedTenant } from "@kompast/core";
+import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, requirePageImportTarget, withAuthorizedTenant, type PageImportTarget } from "@kompast/core";
 import { readNotionExport, runNotionImport, MAX_NOTION_PAGES, type NotionExport } from "@kompast/import";
 import { ApiError, requireApiOrSessionAuth } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
@@ -10,18 +10,21 @@ import { createNotionPageConverter } from "@/lib/notion-import";
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 const fieldsSchema = z.object({
-  target: z.enum(["workspace", "private"]),
+  target: z.enum(["workspace", "private", "team"]),
+  teamId: z.string().min(1).max(100).optional(),
   dryRun: z.enum(["true", "false"]).optional(),
 });
 
 /**
  * Imports a Notion export zip (Markdown & CSV or HTML, from a page's
  * "Export" or Settings → Export all workspace content) into the Workspace
- * docs (workspace admins only) or the caller's own Private space.
+ * docs (workspace admins only), the caller's own Private space, or a team's
+ * space (see requirePageImportTarget for who may pick which team).
  *
- * multipart/form-data, not JSON: `file` (the zip), `target`, optional
- * `dryRun`. The app's own import dialog calls this too, with its session
- * cookie, since server functions don't carry file uploads well.
+ * multipart/form-data, not JSON: `file` (the zip), `target` ("workspace",
+ * "private" or "team"), `teamId` (required with "team"), optional `dryRun`.
+ * The app's own import dialog calls this too, with its session cookie,
+ * since server functions don't carry file uploads well.
  *
  * Synchronous, like the JIRA import: the zip is parsed outside any
  * transaction, then everything is loaded in one. A very large export can
@@ -48,19 +51,25 @@ export const Route = createFileRoute("/api/v1/imports/notion")({
           const file = form.get("file");
           if (!(file instanceof File)) throw new ApiError(400, "Bad Request", "Missing `file` (the Notion export .zip)");
           if (file.size > MAX_UPLOAD_BYTES) throw new ApiError(413, "Payload Too Large", "The export is over 200 MB.");
-          const fields = fieldsSchema.safeParse({ target: form.get("target"), dryRun: form.get("dryRun") ?? undefined });
-          if (!fields.success) throw new ApiError(400, "Bad Request", "`target` must be \"workspace\" or \"private\"");
-          const { target } = fields.data;
+          const fields = fieldsSchema.safeParse({
+            target: form.get("target"),
+            teamId: form.get("teamId") || undefined,
+            dryRun: form.get("dryRun") ?? undefined,
+          });
+          if (!fields.success) throw new ApiError(400, "Bad Request", "`target` must be \"workspace\", \"private\" or \"team\"");
+          const { target, teamId } = fields.data;
+          if (target === "team" && !teamId) throw new ApiError(400, "Bad Request", "Choose the team to import into (`teamId`)");
+          const pageTarget: PageImportTarget = target === "team" ? { team: teamId! } : target;
           const dryRun = fields.data.dryRun === "true";
 
           const { importRunId } = await withAuthorizedTenant(ctx, async (tx) => {
-            await requirePageImportTarget(tx, ctx, target);
+            await requirePageImportTarget(tx, ctx, pageTarget);
             const run = await createImportRun(tx, {
               organizationId: ctx.organizationId,
               projectId: null,
               source: "notion",
               dryRun,
-              config: { target, fileName: file.name },
+              config: { target, ...(target === "team" ? { teamId } : {}), fileName: file.name },
               createdBy: ctx.userId,
             });
             await markImportRunRunning(tx, run.importRunId);
@@ -86,7 +95,7 @@ export const Route = createFileRoute("/api/v1/imports/notion")({
                 organizationId: ctx.organizationId,
                 actorUserId: ctx.userId,
                 importRunId,
-                target,
+                target: pageTarget,
                 dryRun,
                 convertPage: createNotionPageConverter(exp),
               });

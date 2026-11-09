@@ -64,3 +64,20 @@ export {
 export type { NotionExport, NotionExportPage } from "./notion/types";
 export { readNotionExport, resolveExportPath, linkedNotionId, MAX_NOTION_PAGES, MAX_NOTION_UNZIPPED_BYTES, MAX_NOTION_ZIP_ENTRIES, type NotionReadLimits } from "./notion/extract";
 export { runNotionImport, type NotionLoadContext, type NotionLoadReport, type NotionPageConverter, type ImportedPageRef } from "./notion/load";
+export { createNotionClient, NotionApiError, DEFAULT_MIN_INTERVAL_MS, MAX_RETRIES as NOTION_MAX_RETRIES, type NotionClient, type NotionClientOptions } from "./notion-api/client";
+export { discoverNotionWorkspace, buildNotionTree, summarizeNotionObject, containingPageOf, MAX_DISCOVERY_RESULTS, type NotionNode, type NotionDiscovery, type NotionObjectSummary, type NotionParentRef } from "./notion-api/discover";
+export { indexDiscovery, planRootItems, MAX_NOTION_API_PAGES, NotionPlanLimitError, type PlannedItem, type PlanRoot, type PlanIndex } from "./notion-api/plan";
+export {
+  notionBlocksToBlockNote,
+  propertiesTable,
+  propertyValueText,
+  databaseTable,
+  type BlockNode as NotionBlockNode,
+  type InlineNode as NotionInlineNode,
+  type NotionBlockWithChildren,
+  type NotionConvertContext,
+  type NotionConvertStats,
+  type PageRef,
+} from "./notion-api/blocks-to-blocknote";
+export { runNotionMigrationTick, type NotionMigrationRunnerDeps, type NotionMigrationCursor, type NotionRunCounts, type NotionQueueItem } from "./notion-api/migration-runner";
+export { normalizeNotionId, notionIdFromUrl } from "./notion-api/util";

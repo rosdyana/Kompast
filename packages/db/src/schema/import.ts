@@ -72,6 +72,68 @@ export const jiraMigration = pgTable(
   ],
 );
 
+export const notionMigrationStates = ["draft", "discovering", "ready", "running", "done", "failed"] as const;
+export type NotionMigrationState = (typeof notionMigrationStates)[number];
+
+/**
+ * One row per Notion API migration: the wizard's long-lived record of a
+ * connection to a Notion workspace. Unlike a JIRA migration it belongs to
+ * no project. The page-selection targets (workspace, Private, or a team
+ * space) are chosen per root page, in `selection`.
+ *
+ * `tokenEncrypted` is the Notion integration token, encrypted with
+ * packages/core/src/crypto.ts (same as jira_migration.api_token_encrypted).
+ * Unlike JIRA it is NOT cleared when a run finishes: a finished migration
+ * keeps its token so the user can re-run it. It is cleared only when the
+ * row is deleted. Never returned by read APIs.
+ *
+ * `discovery` is the page tree the worker read from Notion, and
+ * `selection` the roots the user picked, with their targets. `importRunId`
+ * is the import_run of the current or last run (bare id, no FK, as
+ * jira_migration.boardId does). `leaseExpiresAt` is the worker lease, the
+ * same pattern as jira_migration.
+ *
+ * Visibility is the creator's alone (see packages/db/rls.sql): the
+ * discovery lists page titles from a workspace only the creator connected.
+ */
+export const notionMigration = pgTable(
+  "notion_migration",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    /** The Notion workspace's name, read during discovery (empty until then). */
+    workspaceName: text("workspace_name").notNull().default(""),
+    tokenEncrypted: text("token_encrypted"),
+    tokenClearedAt: timestamp("token_cleared_at"),
+    state: text("state", { enum: notionMigrationStates }).notNull().default("draft"),
+    /** NotionDiscovery snapshot (the page tree), written by the discovering step. */
+    discovery: jsonb("discovery").$type<Json>(),
+    /** NotionSelection (packages/core/src/notion-migration.ts): the root pages picked and their targets. */
+    selection: jsonb("selection").$type<Json>(),
+    progress: jsonb("progress").$type<Json>(),
+    /** Runner resume state, written as the run goes. Cleared when the run finishes. */
+    cursor: jsonb("cursor").$type<Json>(),
+    /** The import_run of the current or most recent run. Bare id, no FK. */
+    importRunId: text("import_run_id"),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    /**
+     * Set to a fresh id by each claim. A tick passes it to every lease renewal and
+     * cursor write, so a tick that lost its lease (it ran past the expiry and
+     * another tick claimed the row) can't overwrite the newer tick's cursor.
+     */
+    leaseOwner: text("lease_owner"),
+    error: text("error"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("notion_migration_org_idx").on(t.organizationId), index("notion_migration_state_idx").on(t.state)],
+);
+
 /**
  * One row per importer invocation (dry-run or real). `config` holds only
  * non-secret parameters (project key, base URL, Notion page id) — the

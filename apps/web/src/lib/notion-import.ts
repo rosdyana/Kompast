@@ -1,10 +1,9 @@
 import * as Y from "yjs";
 import { JSDOM } from "jsdom";
 import { ServerBlockNoteEditor } from "@blocknote/server-util";
-import { getStorageDriver } from "@kompast/storage";
+import { putPageAsset } from "@kompast/storage/page-assets";
 import { linkedNotionId, resolveExportPath, type NotionExport, type NotionExportPage, type NotionPageConverter } from "@kompast/import";
 import { createServerSchema } from "./blocknote-schema";
-import { contentTypeFor } from "./content-type";
 
 /**
  * Stand-in href for a link to another page in the same export. BlockNote
@@ -16,18 +15,8 @@ const PAGE_LINK_PREFIX = "https://kompast.invalid/notion/";
 
 export type UploadPageAsset = (pageId: string, fileName: string, data: Uint8Array) => Promise<string>;
 
-/**
- * Stores an imported image/attachment under the page and returns the URL
- * the doc should point at. /api/page-assets checks the reader can see the
- * page before handing out a short-lived storage URL, so the asset is
- * exactly as private as the page.
- */
-export const uploadPageAsset: UploadPageAsset = async (pageId, fileName, data) => {
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100) || "file";
-  const name = `${crypto.randomUUID().slice(0, 8)}-${safeName}`;
-  await getStorageDriver().putObject(`page-assets/${pageId}/${name}`, Buffer.from(data), { contentType: contentTypeFor(name) });
-  return `/api/page-assets/${pageId}/${encodeURIComponent(name)}`;
-};
+/** Stores an imported image/attachment under the page (see putPageAsset in @kompast/storage). */
+export const uploadPageAsset: UploadPageAsset = (pageId, fileName, data) => putPageAsset(pageId, fileName, data);
 
 /**
  * Builds the converter runNotionImport calls once per created page:

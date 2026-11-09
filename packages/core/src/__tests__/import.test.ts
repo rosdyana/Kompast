@@ -4,8 +4,8 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
-import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, getImportRun, listImportRuns, resolveExternalRef, upsertExternalRef } from "../import";
-import { withAuthorizedTenant } from "../permissions";
+import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, getImportRun, listImportRuns, pageImportTargetKey, requirePageImportTarget, resolveExternalRef, upsertExternalRef } from "../import";
+import { ForbiddenError, withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
 describe("packages/core/import", () => {
@@ -47,6 +47,26 @@ describe("packages/core/import", () => {
   async function seedProject() {
     return withAuthorizedTenant(ctx, (tx) => createProject(tx, { organizationId: orgId, teamId, key: "imp", name: "Import Test", actorUserId: userId }));
   }
+
+  it("pageImportTargetKey keeps the workspace and private keys as earlier runs stored them, and namespaces teams", () => {
+    expect(pageImportTargetKey("workspace", userId)).toBe("workspace");
+    expect(pageImportTargetKey("private", userId)).toBe(`private:${userId}`);
+    expect(pageImportTargetKey({ team: teamId }, userId)).toBe(`team:${teamId}`);
+  });
+
+  it("a team target needs a team in this workspace, and membership of it (the team member here)", async () => {
+    await expect(requirePageImportTarget(admin as never, ctx, { team: teamId })).resolves.toBeUndefined();
+    await expect(requirePageImportTarget(admin as never, ctx, { team: "test-import-no-such-team" })).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("a workspace owner outside the team is refused (page RLS would reject every insert), the super admin is not", async () => {
+    const otherTeam = "test-import-other-team";
+    await admin.insert(schema.team).values({ id: otherTeam, organizationId: orgId, name: "Other Team" });
+    await admin.update(schema.member).set({ role: "owner" }).where(eq(schema.member.userId, userId));
+    await expect(requirePageImportTarget(admin as never, ctx, { team: otherTeam })).rejects.toBeInstanceOf(ForbiddenError);
+    await admin.update(schema.member).set({ isSuperAdmin: true }).where(eq(schema.member.userId, userId));
+    await expect(requirePageImportTarget(admin as never, ctx, { team: otherTeam })).resolves.toBeUndefined();
+  });
 
   it("runs the import_run lifecycle: pending -> running -> completed, with counts/errors recorded", async () => {
     const { projectId } = await seedProject();

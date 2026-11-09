@@ -302,6 +302,20 @@
       "when": 1794136223727,
       "tag": "0042_premium_puck",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794183798062,
+      "tag": "0043_common_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794229664595,
+      "tag": "0044_cooing_fabian_cortez",
+      "breakpoints": true
     }
   ]
 }

@@ -19,12 +19,14 @@ describe("Notion importer", () => {
   const memberId = "test-notion-import-member";
   const otherId = "test-notion-import-other";
   const userIds = [ownerId, memberId, otherId];
+  const teamId = "test-notion-import-team";
 
   async function cleanup() {
     await admin.delete(schema.link).where(eq(schema.link.organizationId, orgId));
     await admin.delete(schema.externalRef).where(eq(schema.externalRef.organizationId, orgId));
     await admin.delete(schema.importRun).where(eq(schema.importRun.organizationId, orgId));
     await admin.delete(schema.page).where(eq(schema.page.organizationId, orgId));
+    await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
     await admin.delete(schema.user).where(inArray(schema.user.id, userIds));
     await admin.delete(schema.organization).where(eq(schema.organization.id, orgId));
@@ -39,6 +41,9 @@ describe("Notion importer", () => {
       { id: id("mem"), organizationId: orgId, userId: memberId, role: "member" },
       { id: id("mem"), organizationId: orgId, userId: otherId, role: "member" },
     ]);
+    // Only the member is on the team. The other member is a workspace member with no team, so RLS must hide team pages from them.
+    await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Notion Import Team" });
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${memberId}`, teamId, userId: memberId, membershipKey: `${teamId}:${memberId}` });
   });
 
   afterAll(async () => {
@@ -123,6 +128,33 @@ describe("Notion importer", () => {
     expect(workspaceCopy.counts.pagesCreated).toBe(3);
     const workspacePages = (await pagesOf()).filter((p) => !p.privateOwnerId);
     expect(workspacePages).toHaveLength(3);
+  });
+
+  it("imports into a team's space: only that team sees the pages; a non-member or an unknown team is refused; re-running skips", async () => {
+    await expect(runImport(otherId, { team: teamId })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(runImport(memberId, { team: "test-notion-import-no-such-team" })).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await pagesOf()).toHaveLength(0);
+
+    const report = await runImport(memberId, { team: teamId });
+    expect(report.counts).toMatchObject({ pagesFound: 3, pagesCreated: 3, pagesSkipped: 0 });
+    expect(report.errors).toEqual([]);
+    const pages = await pagesOf();
+    expect(pages).toHaveLength(3);
+    expect(pages.every((p) => p.teamId === teamId && p.privateOwnerId === null && p.projectId === null)).toBe(true);
+    // pagesOf() has no ORDER BY, so compare as sets.
+    expect([...report.rootPageIds].sort()).toEqual(pages.filter((p) => !p.parentPageId).map((p) => p.id).sort());
+    const refs = await admin.select().from(schema.externalRef).where(eq(schema.externalRef.organizationId, orgId));
+    expect(refs).toHaveLength(3);
+    expect(refs.every((r) => r.sourceId.startsWith(`team:${teamId}:`))).toBe(true);
+
+    const teamView = await withAuthorizedTenant({ userId: memberId, organizationId: orgId }, (tx) => tx.select().from(schema.page));
+    expect(teamView.filter((p) => p.organizationId === orgId)).toHaveLength(3);
+    const outsiderView = await withAuthorizedTenant({ userId: otherId, organizationId: orgId }, (tx) => tx.select().from(schema.page));
+    expect(outsiderView.filter((p) => p.organizationId === orgId)).toHaveLength(0);
+
+    const again = await runImport(memberId, { team: teamId });
+    expect(again.counts).toMatchObject({ pagesCreated: 0, pagesSkipped: 3 });
+    expect(await pagesOf()).toHaveLength(3);
   });
 
   it("dry run counts without writing pages", async () => {

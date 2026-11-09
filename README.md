@@ -61,7 +61,7 @@ Most teams split their work across a docs tool and an issue tracker, then spend 
   - Scheduled catch-up syncs pick up what changed in JIRA since the import.
   - A completeness check compares both sides before you finish.
 - **JIRA importer** from the live API or an exported JSON file. It's idempotent and has a dry-run mode.
-- **Notion importer** for the export zip (HTML or Markdown & CSV). It rebuilds the page tree with formatting, tables, images and links between pages.
+- **Notion importer**, two ways in. **Connect to Notion** (recommended): paste an internal integration token, pick the pages shared with it, choose where each one goes (Workspace, Private, or a team you're on), and Kompast copies them in the background, with progress and a report. Or **upload the export .zip** (HTML or Markdown & CSV). Both rebuild the page tree with formatting, tables, images and links between pages.
 
 ### And more
 - Per-user, per-event notification preferences (in-app and email).
