@@ -126,6 +126,8 @@ export const automationWorkflowEvent = pgTable(
     depth: integer("depth").notNull().default(0),
     causedByWorkflowId: text("caused_by_workflow_id").references(() => automationWorkflow.id, { onDelete: "set null" }),
     status: text("status", { enum: ["pending", "processing", "processed", "failed"] }).notNull().default("pending"),
+    /** When a worker last claimed this row. A row left "processing" past the stale timeout is claimed again. */
+    claimedAt: timestamp("claimed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("automation_workflow_event_status_idx").on(t.status), index("automation_workflow_event_project_idx").on(t.projectId)],
@@ -170,6 +172,8 @@ export const automationWorkflowRunStep = pgTable(
     error: text("error"),
     /** Set only when status = "waiting" (a delay node) — the claim query re-picks this row up once resumeAt has passed. */
     resumeAt: timestamp("resume_at"),
+    /** When a worker last claimed this row. A row left "processing" past the stale timeout is claimed again. */
+    claimedAt: timestamp("claimed_at"),
     /**
      * Stack of enclosing loop_each iterations (IterationFrame[], see
      * automation-expressions.ts), innermost last. Copied verbatim onto a

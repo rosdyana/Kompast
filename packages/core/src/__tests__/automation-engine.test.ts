@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { schema, eq, and, adminDb as admin, withTenant } from "@kompast/db";
+import { schema, eq, and, sql, adminDb as admin, withTenant } from "@kompast/db";
 import { createProject } from "../project";
 import { createIssue, moveIssue } from "../issue";
 import { withAuthorizedTenant } from "../permissions";
@@ -319,6 +319,64 @@ describe("automation engine", () => {
 
     const [issue] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
     expect(issue?.labels).toEqual(["claimed"]);
+  });
+
+  it("claimDueWorkflowSteps reclaims a step left 'processing' by a dead worker once the claim is stale, and a resumed delay keeps its resumeAt", async () => {
+    const { projectId } = await seedProjectAndIssue("stc");
+    const triggerId = id("anode");
+    const actionId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Stale step claim test",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_event", config: { eventType: "issue.transitioned" }, position: { x: 0, y: 0 } },
+          { id: actionId, type: "action_add_label", config: { label: "stale" }, position: { x: 200, y: 0 } },
+        ],
+        edges: [{ fromNodeId: triggerId, toNodeId: actionId }],
+      }),
+    );
+
+    // Run and steps are inserted directly so each step's status, claimedAt and resumeAt are exact. Timestamps are
+    // SQL (computed by the database, the same clock the claim query uses), not JS Dates.
+    const runId = id("wfrun");
+    await admin.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: orgId, workflowId, context: {} });
+    const stepA = id("wfstep"); // stale claim, not a delay
+    const stepB = id("wfstep"); // fresh claim: must NOT be reclaimed
+    const stepC = id("wfstep"); // stale claim, resumed delay: must keep its resumeAt
+    await admin.insert(schema.automationWorkflowRunStep).values([
+      { id: stepA, runId, nodeId: actionId, depth: 0, status: "processing", claimedAt: sql`now() - interval '2 hours'`, resumeAt: null },
+      { id: stepB, runId, nodeId: actionId, depth: 0, status: "processing", claimedAt: sql`now()` },
+      { id: stepC, runId, nodeId: actionId, depth: 0, status: "processing", claimedAt: sql`now() - interval '2 hours'`, resumeAt: sql`now() - interval '3 hours'` },
+    ]);
+
+    // Claims are system-wide (see the test above), so stop as soon as A and C have both come back, or the batch is empty.
+    const ourClaims: Awaited<ReturnType<typeof claimDueWorkflowSteps>> = [];
+    for (let i = 0; i < 20; i++) {
+      const batch = await claimDueWorkflowSteps(admin, 500);
+      if (batch.length === 0) break;
+      ourClaims.push(...batch.filter((s) => s.runId === runId));
+      if (ourClaims.some((s) => s.id === stepA) && ourClaims.some((s) => s.id === stepC)) break;
+    }
+
+    const claimedIds = ourClaims.map((s) => s.id);
+    expect(claimedIds).toContain(stepA);
+    expect(claimedIds).toContain(stepC);
+    expect(claimedIds).not.toContain(stepB);
+    expect(ourClaims.find((s) => s.id === stepC)?.resumeAt).toBeTruthy();
+
+    // Read back: both reclaimed steps have a fresh claimed_at, judged by the database clock.
+    const recent = await admin.execute<{ id: string; recent: boolean }>(
+      sql`select id, claimed_at > now() - interval '1 minute' as recent from automation_workflow_run_step where run_id = ${runId}`,
+    );
+    expect(recent.find((r) => r.id === stepA)?.recent).toBe(true);
+    expect(recent.find((r) => r.id === stepC)?.recent).toBe(true);
+    const [stepCRow] = await admin.select().from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.id, stepC));
+    expect(stepCRow?.resumeAt).toBeTruthy();
+
+    await admin.delete(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
   });
 
   it("action_comment also respects self-trigger loop prevention (doesn't bypass it like the old bug did)", async () => {

@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth";
 import type { Json } from "./_shared";
 
@@ -77,6 +77,10 @@ export const emailOutbox = pgTable(
     status: text("status", { enum: ["pending", "sending", "sent", "failed", "bounced", "complained"] }).notNull().default("pending"),
     providerMessageId: text("provider_message_id"),
     error: text("error"),
+    /** Failed delivery attempts so far. The row fails for good after MAX_EMAIL_ATTEMPTS (packages/core/src/email.ts). */
+    attempts: integer("attempts").notNull().default(0),
+    /** When a worker last claimed this row, or last recorded a failed attempt. Drives stale-claim reclaim and retry backoff. Null until first claimed. */
+    claimedAt: timestamp("claimed_at"),
     dedupeKey: text("dedupe_key").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     sentAt: timestamp("sent_at"),

@@ -5,12 +5,12 @@ import { adminDb, schema, eq, withTenant } from "@kompast/db";
 import {
   claimPendingEmails,
   markEmailSent,
-  markEmailFailed,
+  recordEmailFailure,
   getMailCredentials,
   claimPendingReindexTasks,
   processReindexTask,
   markReindexTaskProcessed,
-  markReindexTaskFailed,
+  recordReindexFailure,
   claimPendingWorkflowEvents,
   markWorkflowEventProcessed,
   markWorkflowEventFailed,
@@ -75,7 +75,7 @@ async function processOutboxBatch() {
 
   const creds = await getMailCredentials(adminDb);
   if (!creds) {
-    for (const row of claimed) await markEmailFailed(adminDb, row.id, "Mail is not configured — see /settings");
+    for (const row of claimed) await recordEmailFailure(adminDb, row.id, "Mail is not configured — see /settings");
     return;
   }
 
@@ -86,7 +86,7 @@ async function processOutboxBatch() {
       const result = await mailer.send({ to: row.toEmail, subject: row.subject, react });
       await markEmailSent(adminDb, row.id, result.providerMessageId);
     } catch (err) {
-      await markEmailFailed(adminDb, row.id, err instanceof Error ? err.message : String(err));
+      await recordEmailFailure(adminDb, row.id, err instanceof Error ? err.message : String(err));
     }
   }
 }
@@ -109,7 +109,7 @@ async function processReindexBatch() {
       await markReindexTaskProcessed(adminDb, task.id);
     } catch (err) {
       console.error(`[worker] reindex task ${task.id} failed:`, err);
-      await markReindexTaskFailed(adminDb, task.id, err instanceof Error ? err.message : String(err));
+      await recordReindexFailure(adminDb, task.id, err instanceof Error ? err.message : String(err));
     }
   }
 }

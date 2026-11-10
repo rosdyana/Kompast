@@ -95,6 +95,8 @@ MCP is stateless (a fresh server is built per request, scoped to that request's 
 
 Mail delivery is a transactional outbox (`email_outbox` written in the same transaction as whatever triggered it), polled every 15s by `apps/worker` — worst-case delivery latency is that interval, fine for notification email, not for anything latency-sensitive.
 
+Every claim records `claimed_at`. A row left `sending`/`processing` longer than the stale timeout (10 minutes; 60 minutes for workflow steps) is claimed again, on all four queues (`email_outbox`, `embedding_index_queue`, `automation_workflow_event`, `automation_workflow_run_step`). Email and reindex failures are retried with doubling backoff (2, 4, 8, … minutes) up to `MAX_EMAIL_ATTEMPTS` / `MAX_REINDEX_ATTEMPTS`, then fail for good; workflow event and step failures stay terminal. Delivery is therefore at-least-once: a crash between sending and marking sent re-sends after the timeout. Rows stuck before this change have a null `claimed_at` and are not reclaimed automatically.
+
 ## Automation
 
 **Who can change workflows, and what they can touch.** Creating, editing, enabling/disabling and deleting a workflow needs project admin/lead (`requireWorkflowManager` in `packages/core/src/automation-workflow.ts`, called by the UI, REST and MCP adapters). At run time every issue-touching node goes through `requireScopedIssueId` (`automation-execution.ts`): the issue must be in the workflow's own project. This matters because the worker runs on the admin connection (RLS does not apply) and a `loop_each` can iterate a user-typed list of issue ids. `action_link_issue`'s target must be in the same workspace.

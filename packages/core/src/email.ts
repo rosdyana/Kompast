@@ -2,6 +2,11 @@ import { sql, and, eq, inArray, schema, type Json } from "@kompast/db";
 import type { Tx, AnyDb } from "./types";
 import { id } from "./ids";
 
+/** A row claimed ("sending") longer ago than this is assumed abandoned by a dead worker and is claimed again. */
+export const EMAIL_CLAIM_STALE_MINUTES = 10;
+/** Delivery attempts before a row fails for good. Backoff doubles from 2 minutes: 2, 4, 8, 16, 32. */
+export const MAX_EMAIL_ATTEMPTS = 6;
+
 export interface EnqueueEmailInput {
   organizationId: string;
   to: string;
@@ -49,13 +54,19 @@ export async function enqueueEmail(tx: Tx, input: EnqueueEmailInput): Promise<{ 
  * `db` MUST be the admin connection (bypasses RLS by role, same as
  * apps/collab and the guest share-link route — see rls.sql). `FOR UPDATE
  * SKIP LOCKED` lets more than one worker process run without both
- * claiming the same row.
+ * claiming the same row. Also reclaims rows whose "sending" claim went stale
+ * (a worker died mid-send) and honours retry backoff after a failed attempt.
  */
 export async function claimPendingEmails(db: AnyDb, limit = 10) {
   const claimed = await db.execute<{ id: string }>(
-    sql`update email_outbox set status = 'sending'
+    sql`update email_outbox set status = 'sending', claimed_at = now()
         where id in (
-          select id from email_outbox where status = 'pending' order by created_at limit ${limit} for update skip locked
+          select id from email_outbox
+          where (status = 'pending'
+                 and (attempts = 0 or claimed_at is null
+                      or claimed_at <= now() - make_interval(mins => (2 ^ least(attempts, 6))::int)))
+             or (status = 'sending' and claimed_at < now() - make_interval(mins => ${EMAIL_CLAIM_STALE_MINUTES}))
+          order by created_at limit ${limit} for update skip locked
         )
         returning id`,
   );
@@ -70,6 +81,24 @@ export async function markEmailSent(db: AnyDb, outboxId: string, providerMessage
 
 export async function markEmailFailed(db: AnyDb, outboxId: string, error: string) {
   await db.update(schema.emailOutbox).set({ status: "failed", error }).where(eq(schema.emailOutbox.id, outboxId));
+}
+
+/**
+ * Records one failed delivery attempt. The row goes back to "pending" (to be
+ * retried after a backoff, see claimPendingEmails) until MAX_EMAIL_ATTEMPTS
+ * is reached, then fails for good. Returns the resulting status.
+ */
+export async function recordEmailFailure(db: AnyDb, outboxId: string, error: string): Promise<"pending" | "failed"> {
+  const rows = await db.execute<{ status: "pending" | "failed" }>(
+    sql`update email_outbox
+        set attempts = attempts + 1,
+            error = ${error},
+            claimed_at = now(),
+            status = case when attempts + 1 >= ${MAX_EMAIL_ATTEMPTS} then 'failed' else 'pending' end
+        where id = ${outboxId}
+        returning status`,
+  );
+  return rows[0]?.status ?? "failed";
 }
 
 export interface SendSprintSummaryEmailInput {

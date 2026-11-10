@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { schema, eq, and, inArray, adminDb as admin } from "@kompast/db";
-import { enqueueEmail, claimPendingEmails, markEmailSent, markEmailFailed, sendSprintSummaryEmail } from "../email";
+import { schema, eq, and, inArray, sql, adminDb as admin } from "@kompast/db";
+import { enqueueEmail, claimPendingEmails, markEmailSent, markEmailFailed, sendSprintSummaryEmail, recordEmailFailure, MAX_EMAIL_ATTEMPTS } from "../email";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -131,5 +131,102 @@ describe("email outbox", () => {
     await expect(
       withAuthorizedTenant(ctx, (tx) => sendSprintSummaryEmail(tx, { organizationId: orgId, sprintId: "test-sprint-3", recipients: [], subject: "Empty", body: "" })),
     ).rejects.toThrow(/recipient/i);
+  });
+
+  /**
+   * Inserts one outbox row for orgId with the admin connection, so a test controls status, attempts and
+   * claimedAt exactly. Timestamps are given as SQL (now() - interval ...), so they are computed by the database,
+   * the same clock the claim query uses.
+   */
+  async function insertOutboxRow(fields: Partial<Omit<typeof schema.emailOutbox.$inferInsert, "claimedAt">> & { claimedAt?: Date | ReturnType<typeof sql> | null } = {}) {
+    const rowId = id("outbox");
+    await admin.insert(schema.emailOutbox).values({
+      id: rowId,
+      organizationId: orgId,
+      toEmail: "a@example.com",
+      subject: "s",
+      templateKey: "test",
+      templateProps: {},
+      dedupeKey: id("dk"),
+      ...fields,
+    } as typeof schema.emailOutbox.$inferInsert);
+    return rowId;
+  }
+
+  /**
+   * Claims in batches of 500 and returns the ids of OUR rows that came back. Other workspaces' rows in a batch
+   * are restored to "pending" (as in the claim test above). A restored row is claimable again at once, so this
+   * stops when a batch holds none of other workspaces' rows, or after a fixed number of batches: waiting for an
+   * empty batch could never finish while another file has a pending row.
+   */
+  async function claimAndCollectOurs(): Promise<string[]> {
+    const ours: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const claimed = await claimPendingEmails(admin, 500);
+      if (claimed.length === 0) break;
+      ours.push(...claimed.filter((r) => r.organizationId === orgId).map((r) => r.id));
+      const theirs = claimed.filter((r) => r.organizationId !== orgId);
+      if (theirs.length === 0) break;
+      await admin.update(schema.emailOutbox).set({ status: "pending" }).where(inArray(schema.emailOutbox.id, theirs.map((r) => r.id)));
+    }
+    return ours;
+  }
+
+  /** Whether the row's claimed_at is within the last minute, judged by the database clock. */
+  async function claimedWithinMinute(rowId: string): Promise<boolean> {
+    const rows = await admin.execute<{ recent: boolean }>(
+      sql`select claimed_at > now() - interval '1 minute' as recent from email_outbox where id = ${rowId}`,
+    );
+    return rows[0]?.recent === true;
+  }
+
+  it("reclaims a row left 'sending' by a dead worker once the claim is stale", async () => {
+    const rowId = await insertOutboxRow({ status: "sending", claimedAt: sql`now() - interval '2 hours'` });
+
+    const ours = await claimAndCollectOurs();
+
+    expect(ours).toContain(rowId);
+    const [row] = await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.id, rowId));
+    expect(row?.status).toBe("sending");
+    expect(await claimedWithinMinute(rowId)).toBe(true);
+  });
+
+  it("does not reclaim a fresh 'sending' row, or one stuck from before claimed_at existed", async () => {
+    const freshId = await insertOutboxRow({ status: "sending", claimedAt: sql`now()` });
+    const legacyId = await insertOutboxRow({ status: "sending", claimedAt: null });
+
+    const ours = await claimAndCollectOurs();
+
+    expect(ours).not.toContain(freshId);
+    expect(ours).not.toContain(legacyId);
+    const [legacy] = await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.id, legacyId));
+    expect(legacy?.status).toBe("sending");
+    expect(legacy?.claimedAt).toBeNull();
+  });
+
+  it("recordEmailFailure retries with backoff, then fails for good", async () => {
+    const { outboxId } = await withAuthorizedTenant(ctx, (tx) =>
+      enqueueEmail(tx, { organizationId: orgId, to: "a@example.com", subject: "Retry", templateKey: "test", templateProps: {}, dedupeKey: "dk-retry" }),
+    );
+
+    expect(await recordEmailFailure(admin, outboxId, "boom")).toBe("pending");
+    const [afterFirst] = await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.id, outboxId));
+    expect(afterFirst).toMatchObject({ attempts: 1, error: "boom", status: "pending" });
+
+    // The failed attempt was just now, so the 2-minute backoff has not passed.
+    expect(await claimAndCollectOurs()).not.toContain(outboxId);
+
+    // Two hours on, the backoff has passed and the row is claimed again.
+    await admin.update(schema.emailOutbox).set({ claimedAt: sql`now() - interval '2 hours'` }).where(eq(schema.emailOutbox.id, outboxId));
+    expect(await claimAndCollectOurs()).toContain(outboxId);
+    const [claimed] = await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.id, outboxId));
+    expect(claimed?.status).toBe("sending");
+
+    // The last allowed attempt fails the row for good.
+    await admin.update(schema.emailOutbox).set({ attempts: MAX_EMAIL_ATTEMPTS - 1 }).where(eq(schema.emailOutbox.id, outboxId));
+    expect(await recordEmailFailure(admin, outboxId, "still down")).toBe("failed");
+    const [terminal] = await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.id, outboxId));
+    expect(terminal?.status).toBe("failed");
+    expect(terminal?.attempts).toBe(MAX_EMAIL_ATTEMPTS);
   });
 });

@@ -65,6 +65,10 @@ export const embeddingIndexQueue = pgTable(
     action: text("action", { enum: ["index", "delete"] }).notNull(),
     status: text("status", { enum: ["pending", "processing", "processed", "failed"] }).notNull().default("pending"),
     error: text("error"),
+    /** Failed indexing attempts so far. The task fails for good after MAX_REINDEX_ATTEMPTS (packages/core/src/rag.ts). */
+    attempts: integer("attempts").notNull().default(0),
+    /** When a worker last claimed this row, or last recorded a failed attempt. Drives stale-claim reclaim and retry backoff. Null until first claimed. */
+    claimedAt: timestamp("claimed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("embedding_index_queue_status_idx").on(t.status)],
