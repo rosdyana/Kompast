@@ -79,12 +79,25 @@ export async function indexEntity(tx: Tx, input: { organizationId: string; entit
 // enqueueReindex lives in rag-queue.ts (no @kompast/ai dependency, so apps/collab can import it). Re-exported here so existing imports keep working.
 export { enqueueReindex, type EnqueueReindexInput } from "./rag-queue";
 
-/** System-wide scan across every workspace's queue — same admin-connection exception as claimPendingEmails/claimPendingAutomationEvents (see rls.sql). */
+/** A reindex task left "processing" longer than this was abandoned by a dead worker and is claimed again. */
+export const REINDEX_CLAIM_STALE_MINUTES = 10;
+/** Indexing attempts before a reindex task fails for good. Backoff doubles from 2 minutes. */
+export const MAX_REINDEX_ATTEMPTS = 5;
+
+/**
+ * System-wide scan across every workspace's queue — same admin-connection exception as claimPendingEmails/claimPendingAutomationEvents (see rls.sql).
+ * Also reclaims tasks whose "processing" claim went stale, and honours retry backoff after a failed attempt.
+ */
 export async function claimPendingReindexTasks(db: AnyDb, limit = 10) {
   const claimed = await db.execute<{ id: string }>(
-    sql`update embedding_index_queue set status = 'processing'
+    sql`update embedding_index_queue set status = 'processing', claimed_at = now()
         where id in (
-          select id from embedding_index_queue where status = 'pending' order by created_at limit ${limit} for update skip locked
+          select id from embedding_index_queue
+          where (status = 'pending'
+                 and (attempts = 0 or claimed_at is null
+                      or claimed_at <= now() - make_interval(mins => (2 ^ least(attempts, 6))::int)))
+             or (status = 'processing' and claimed_at < now() - make_interval(mins => ${REINDEX_CLAIM_STALE_MINUTES}))
+          order by created_at limit ${limit} for update skip locked
         )
         returning id`,
   );
@@ -99,6 +112,24 @@ export async function markReindexTaskProcessed(db: AnyDb, taskId: string) {
 
 export async function markReindexTaskFailed(db: AnyDb, taskId: string, error: string) {
   await db.update(schema.embeddingIndexQueue).set({ status: "failed", error }).where(eq(schema.embeddingIndexQueue.id, taskId));
+}
+
+/**
+ * Records one failed indexing attempt. The task goes back to "pending" (retried
+ * after a backoff, see claimPendingReindexTasks) until MAX_REINDEX_ATTEMPTS is
+ * reached, then fails for good. Returns the resulting status.
+ */
+export async function recordReindexFailure(db: AnyDb, taskId: string, error: string): Promise<"pending" | "failed"> {
+  const rows = await db.execute<{ status: "pending" | "failed" }>(
+    sql`update embedding_index_queue
+        set attempts = attempts + 1,
+            error = ${error},
+            claimed_at = now(),
+            status = case when attempts + 1 >= ${MAX_REINDEX_ATTEMPTS} then 'failed' else 'pending' end
+        where id = ${taskId}
+        returning status`,
+  );
+  return rows[0]?.status ?? "failed";
 }
 
 /**

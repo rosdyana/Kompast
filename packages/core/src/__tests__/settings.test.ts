@@ -34,6 +34,8 @@ import {
   enqueueReindex,
   claimPendingReindexTasks,
   markReindexTaskProcessed,
+  recordReindexFailure,
+  MAX_REINDEX_ATTEMPTS,
   processReindexTask,
   searchEmbeddings,
   askKompast,
@@ -692,6 +694,55 @@ describe("packages/core/rag", () => {
       }
       expect(ours).toHaveLength(1);
       expect(ours[0]!.status).toBe("processing");
+    });
+
+    it("reclaims a reindex task left 'processing' once the claim is stale, but not a fresh one", async () => {
+      const staleId = id("idxq");
+      const freshId = id("idxq");
+      // Timestamps are SQL (computed by the database, the same clock the claim query uses), not JS Dates.
+      await adminDb.insert(schema.embeddingIndexQueue).values([
+        { id: staleId, organizationId: orgId, entityType: "issue", entityId: id("ghost"), action: "index", status: "processing", claimedAt: sql`now() - interval '2 hours'` },
+        { id: freshId, organizationId: orgId, entityType: "issue", entityId: id("ghost"), action: "index", status: "processing", claimedAt: sql`now()` },
+      ]);
+
+      // Drains until a batch comes back empty. Claimed rows become "processing", so this terminates. Pending rows
+      // of other files are claimed on the way, the same as the claim test above.
+      const claimedIds = new Set<string>();
+      for (let batch = await claimPendingReindexTasks(adminDb, 500); batch.length > 0; batch = await claimPendingReindexTasks(adminDb, 500)) {
+        for (const t of batch) claimedIds.add(t.id);
+      }
+      expect(claimedIds.has(staleId)).toBe(true);
+      expect(claimedIds.has(freshId)).toBe(false);
+
+      const [stale] = await adminDb.select().from(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.id, staleId));
+      expect(stale?.status).toBe("processing");
+      const recent = await adminDb.execute<{ recent: boolean }>(
+        sql`select claimed_at > now() - interval '1 minute' as recent from embedding_index_queue where id = ${staleId}`,
+      );
+      expect(recent[0]?.recent).toBe(true);
+      const [fresh] = await adminDb.select().from(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.id, freshId));
+      expect(fresh?.status).toBe("processing");
+
+      await adminDb.delete(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.organizationId, orgId));
+    });
+
+    it("recordReindexFailure sends a task back to pending until MAX_REINDEX_ATTEMPTS", async () => {
+      const retryId = id("idxq");
+      const lastId = id("idxq");
+      await adminDb.insert(schema.embeddingIndexQueue).values([
+        { id: retryId, organizationId: orgId, entityType: "issue", entityId: id("ghost"), action: "index" },
+        { id: lastId, organizationId: orgId, entityType: "issue", entityId: id("ghost"), action: "index", attempts: MAX_REINDEX_ATTEMPTS - 1 },
+      ]);
+
+      expect(await recordReindexFailure(adminDb, retryId, "boom")).toBe("pending");
+      const [retried] = await adminDb.select().from(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.id, retryId));
+      expect(retried).toMatchObject({ attempts: 1, error: "boom", status: "pending" });
+
+      expect(await recordReindexFailure(adminDb, lastId, "still boom")).toBe("failed");
+      const [terminal] = await adminDb.select().from(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.id, lastId));
+      expect(terminal).toMatchObject({ attempts: MAX_REINDEX_ATTEMPTS, status: "failed" });
+
+      await adminDb.delete(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.organizationId, orgId));
     });
 
     it("searchEmbeddings ranks the chunk whose text exactly matches the query ahead of an unrelated one", async () => {

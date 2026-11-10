@@ -7,6 +7,14 @@ import type { IterationFrame } from "./automation-expressions";
 
 const RATE_LIMIT_PER_WORKFLOW_PER_HOUR = 50;
 
+/** An event left "processing" this long was abandoned by a dead worker; its transaction rolled back, so it is safe to process again. */
+const WORKFLOW_EVENT_CLAIM_STALE_MINUTES = 10;
+/**
+ * Same for a step, but far longer: one step's transaction can legitimately run a 200-item loop
+ * of 10-second webhooks, and reclaiming a step that is still running would execute it twice.
+ */
+const WORKFLOW_STEP_CLAIM_STALE_MINUTES = 60;
+
 /** Node types whose outgoing edges are filtered by `result.branchTaken` rather than fired unconditionally — see advanceWorkflowStep. */
 const BRANCHING_NODE_TYPES = new Set(["condition_property", "condition_switch"]);
 
@@ -26,9 +34,12 @@ type AutomationWorkflowRunStepRow = typeof schema.automationWorkflowRunStep.$inf
 /** System-wide scan across every workspace — admin connection only, same shape as claimPendingAutomationEvents. */
 export async function claimPendingWorkflowEvents(db: AnyDb, limit = 10) {
   const claimed = await db.execute<{ id: string }>(
-    sql`update automation_workflow_event set status = 'processing'
+    sql`update automation_workflow_event set status = 'processing', claimed_at = now()
         where id in (
-          select id from automation_workflow_event where status = 'pending' order by created_at limit ${limit} for update skip locked
+          select id from automation_workflow_event
+          where status = 'pending'
+             or (status = 'processing' and claimed_at < now() - make_interval(mins => ${WORKFLOW_EVENT_CLAIM_STALE_MINUTES}))
+          order by created_at limit ${limit} for update skip locked
         )
         returning id`,
   );
@@ -49,10 +60,12 @@ export async function markWorkflowEventFailed(db: AnyDb, eventId: string): Promi
 /** Same shape, for automation_workflow_run_step: pending, or waiting past its resumeAt. */
 export async function claimDueWorkflowSteps(db: AnyDb, limit = 10) {
   const claimed = await db.execute<{ id: string }>(
-    sql`update automation_workflow_run_step set status = 'processing'
+    sql`update automation_workflow_run_step set status = 'processing', claimed_at = now()
         where id in (
           select id from automation_workflow_run_step
-          where status = 'pending' or (status = 'waiting' and resume_at <= now())
+          where status = 'pending'
+             or (status = 'waiting' and resume_at <= now())
+             or (status = 'processing' and claimed_at < now() - make_interval(mins => ${WORKFLOW_STEP_CLAIM_STALE_MINUTES}))
           order by created_at limit ${limit} for update skip locked
         )
         returning id`,
