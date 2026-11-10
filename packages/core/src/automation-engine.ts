@@ -274,10 +274,14 @@ export async function claimDueWorkflowSchedules(tx: Tx, organizationId: string):
       const config = node.config as { cron: string };
       if (!isScheduleDue(config.cron, node.lastFiredAt)) continue;
 
-      const runId = id("wfrun");
-      await tx.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: workflow.organizationId, workflowId: workflow.id, context: {} as Json });
-      await tx.insert(schema.automationWorkflowRunStep).values({ id: id("wfstep"), runId, nodeId: node.id, depth: 0, status: "pending" });
-      await tx.update(schema.automationNode).set({ lastFiredAt: new Date() }).where(eq(schema.automationNode.id, node.id));
+      // Savepoint per node: a DB error here would otherwise abort the whole
+      // org's transaction, so the catch below could not actually isolate it.
+      await tx.transaction(async (sp) => {
+        const runId = id("wfrun");
+        await sp.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: workflow.organizationId, workflowId: workflow.id, context: {} as Json });
+        await sp.insert(schema.automationWorkflowRunStep).values({ id: id("wfstep"), runId, nodeId: node.id, depth: 0, status: "pending" });
+        await sp.update(schema.automationNode).set({ lastFiredAt: new Date() }).where(eq(schema.automationNode.id, node.id));
+      });
     } catch (err) {
       // A single malformed node (e.g. a cron string that predates
       // validateGraph's own save-time check — belt-and-braces, not the
