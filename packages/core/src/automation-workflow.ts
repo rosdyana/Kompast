@@ -1,8 +1,9 @@
-import { and, desc, eq, schema, type Json } from "@kompast/db";
+import { and, desc, eq, inArray, schema, type Json } from "@kompast/db";
 import { CronExpressionParser } from "cron-parser";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { ForbiddenError, requireProjectAdmin, type AuthContext } from "./permissions";
+import { finalizeRunIfDone } from "./automation-engine";
 
 export type AutomationNodeType = (typeof schema.automationWorkflowNodeType)[number];
 
@@ -285,10 +286,57 @@ export async function updateWorkflow(tx: Tx, input: UpdateWorkflowInput): Promis
 
   if (input.nodes && input.edges) {
     validateGraph(input.nodes, input.edges);
-    // Edges reference nodes by id — delete edges first, then nodes (both cascade from the node FK anyway, but explicit order avoids relying on cascade timing).
+
+    // Nodes are updated in place, never deleted and re-inserted: run steps
+    // reference a node with ON DELETE CASCADE, so replacing every node on
+    // every save wiped run history, orphaned runs waiting on a delay, and
+    // reset a schedule trigger's lastFiredAt (which re-fired it at once).
+    const existing = await tx
+      .select({ id: schema.automationNode.id })
+      .from(schema.automationNode)
+      .where(eq(schema.automationNode.workflowId, input.workflowId));
+    const existingIds = new Set(existing.map((n) => n.id));
+    const incomingIds = new Set(input.nodes.map((n) => n.id));
+    const removedIds = [...existingIds].filter((nodeId) => !incomingIds.has(nodeId));
+
+    // Edges carry no history and nothing references them: replace them all.
+    // They must go before any node they point at is deleted or re-typed.
     await tx.delete(schema.automationEdge).where(eq(schema.automationEdge.workflowId, input.workflowId));
-    await tx.delete(schema.automationNode).where(eq(schema.automationNode.workflowId, input.workflowId));
-    await insertGraph(tx, input.workflowId, input.nodes, input.edges);
+
+    if (removedIds.length > 0) {
+      // Deleting a node cascades to its run steps. A run whose only active
+      // step sat on a removed node (e.g. waiting on a deleted delay) would
+      // otherwise stay "running" forever, so remember those runs first.
+      const orphaned = await tx
+        .selectDistinct({ runId: schema.automationWorkflowRunStep.runId })
+        .from(schema.automationWorkflowRunStep)
+        .where(
+          and(
+            inArray(schema.automationWorkflowRunStep.nodeId, removedIds),
+            inArray(schema.automationWorkflowRunStep.status, ["pending", "processing", "waiting"]),
+          ),
+        );
+      await tx
+        .delete(schema.automationNode)
+        .where(and(eq(schema.automationNode.workflowId, input.workflowId), inArray(schema.automationNode.id, removedIds)));
+      for (const { runId } of orphaned) await finalizeRunIfDone(tx, runId);
+    }
+
+    for (const n of input.nodes) {
+      if (!existingIds.has(n.id)) continue;
+      // lastFiredAt is deliberately not in this SET.
+      await tx
+        .update(schema.automationNode)
+        .set({ type: n.type, name: n.name ?? null, config: n.config, position: n.position })
+        .where(and(eq(schema.automationNode.id, n.id), eq(schema.automationNode.workflowId, input.workflowId)));
+    }
+
+    await insertGraph(
+      tx,
+      input.workflowId,
+      input.nodes.filter((n) => !existingIds.has(n.id)),
+      input.edges,
+    );
   }
 }
 

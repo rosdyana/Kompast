@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { schema, eq, adminDb as admin } from "@kompast/db";
+import { schema, eq, and, adminDb as admin } from "@kompast/db";
 import { createProject } from "../project";
+import { createIssue, moveIssue } from "../issue";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 import {
@@ -12,6 +13,7 @@ import {
   updateWorkflow,
   type AutomationNodeInput,
 } from "../automation-workflow";
+import { matchAndStartRuns, advanceWorkflowStep, claimDueWorkflowSchedules } from "../automation-engine";
 
 describe("automation workflow CRUD", () => {
   const orgId = "test-wf-org";
@@ -20,6 +22,8 @@ describe("automation workflow CRUD", () => {
   const ctx = { userId, organizationId: orgId };
 
   async function cleanup() {
+    await admin.delete(schema.automationWorkflowEvent).where(eq(schema.automationWorkflowEvent.organizationId, orgId));
+    await admin.delete(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.organizationId, orgId));
     await admin.delete(schema.project).where(eq(schema.project.organizationId, orgId));
     await admin.delete(schema.team).where(eq(schema.team.organizationId, orgId));
     await admin.delete(schema.member).where(eq(schema.member.organizationId, orgId));
@@ -305,5 +309,141 @@ describe("automation workflow CRUD", () => {
         }),
       ),
     ).rejects.toThrow(/Invalid cron expression/);
+  });
+
+  async function seedProjectAndIssue(key: string) {
+    const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+      createProject(tx, { organizationId: orgId, teamId, key, name: key, actorUserId: userId }),
+    );
+    const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+      createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Workflow test issue", reporterId: userId }),
+    );
+    return { projectId, issueId, statuses };
+  }
+
+  async function latestWorkflowEventFor(issueId: string, eventType: string) {
+    const rows = await admin
+      .select()
+      .from(schema.automationWorkflowEvent)
+      .where(and(eq(schema.automationWorkflowEvent.entityId, issueId), eq(schema.automationWorkflowEvent.eventType, eventType)))
+      .orderBy(schema.automationWorkflowEvent.createdAt);
+    return rows.at(-1)!;
+  }
+
+  it("updateWorkflow with the same node ids keeps run-step history", async () => {
+    const projectId = await seedProject("wfm");
+    const { nodes, edges, triggerId, actionId } = twoNodeGraph();
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, { organizationId: orgId, projectId, name: "Keeps history", createdBy: userId, nodes, edges }),
+    );
+
+    const runId = id("wfrun");
+    await admin.insert(schema.automationWorkflowRun).values({ id: runId, organizationId: orgId, workflowId, context: {}, status: "completed" });
+    await admin.insert(schema.automationWorkflowRunStep).values([
+      { id: id("wfstep"), runId, nodeId: triggerId, depth: 0, status: "succeeded" },
+      { id: id("wfstep"), runId, nodeId: actionId, depth: 1, status: "succeeded" },
+    ]);
+
+    const changed: AutomationNodeInput[] = [nodes[0]!, { ...nodes[1]!, config: { label: "changed" }, position: { x: 300, y: 100 } }];
+    await withAuthorizedTenant(ctx, (tx) => updateWorkflow(tx, { workflowId, projectId, nodes: changed, edges }));
+
+    const steps = await admin.select().from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, runId));
+    expect(steps).toHaveLength(2);
+
+    const [actionRow] = await admin.select().from(schema.automationNode).where(eq(schema.automationNode.id, actionId));
+    expect(actionRow!.config).toEqual({ label: "changed" });
+    expect(actionRow!.position).toEqual({ x: 300, y: 100 });
+
+    const workflow = await withAuthorizedTenant(ctx, (tx) => getWorkflow(tx, workflowId));
+    expect(workflow!.nodes).toHaveLength(2);
+    expect(workflow!.edges).toHaveLength(1);
+  });
+
+  it("updateWorkflow keeps a schedule trigger's lastFiredAt, so a save doesn't re-fire it", async () => {
+    const projectId = await seedProject("wfn");
+    const triggerId = id("anode");
+    const delayId = id("anode");
+    const nodes: AutomationNodeInput[] = [
+      { id: triggerId, type: "trigger_schedule", config: { cron: "0 0 1 1 *" }, position: { x: 0, y: 0 } }, // once a year — never naturally due again during this test
+      { id: delayId, type: "delay", config: { amount: 5, unit: "minutes" }, position: { x: 200, y: 0 } },
+    ];
+    const edges = [{ fromNodeId: triggerId, toNodeId: delayId }];
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, { organizationId: orgId, projectId, name: "Yearly", createdBy: userId, nodes, edges }),
+    );
+
+    await withAuthorizedTenant(ctx, (tx) => claimDueWorkflowSchedules(tx, orgId));
+    const runsAfterFirstClaim = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    expect(runsAfterFirstClaim).toHaveLength(1);
+    const [triggerAfterFirstClaim] = await admin.select().from(schema.automationNode).where(eq(schema.automationNode.id, triggerId));
+    expect(triggerAfterFirstClaim!.lastFiredAt).not.toBeNull();
+    const firedAt = triggerAfterFirstClaim!.lastFiredAt;
+
+    await withAuthorizedTenant(ctx, (tx) => updateWorkflow(tx, { workflowId, projectId, name: "Renamed", nodes, edges }));
+
+    const [triggerAfterSave] = await admin.select().from(schema.automationNode).where(eq(schema.automationNode.id, triggerId));
+    expect(triggerAfterSave!.lastFiredAt).toEqual(firedAt);
+
+    await withAuthorizedTenant(ctx, (tx) => claimDueWorkflowSchedules(tx, orgId));
+    const runsAfterSecondClaim = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    expect(runsAfterSecondClaim).toHaveLength(1);
+  });
+
+  it("removing a node finalizes a run that was waiting on it", async () => {
+    const { projectId, issueId, statuses } = await seedProjectAndIssue("wfo");
+    const triggerId = id("anode");
+    const immediateActionId = id("anode");
+    const delayId = id("anode");
+    const afterDelayActionId = id("anode");
+    const { workflowId } = await withAuthorizedTenant(ctx, (tx) =>
+      createWorkflow(tx, {
+        organizationId: orgId,
+        projectId,
+        name: "Fan-out with a waiting sibling",
+        createdBy: userId,
+        nodes: [
+          { id: triggerId, type: "trigger_event", config: { eventType: "issue.transitioned" }, position: { x: 0, y: 0 } },
+          { id: immediateActionId, type: "action_add_label", config: { label: "immediate" }, position: { x: 200, y: -50 } },
+          { id: delayId, type: "delay", config: { amount: 5, unit: "minutes" }, position: { x: 200, y: 50 } },
+          { id: afterDelayActionId, type: "action_comment", config: { text: "after the delay" }, position: { x: 400, y: 50 } },
+        ],
+        edges: [
+          { fromNodeId: triggerId, toNodeId: immediateActionId },
+          { fromNodeId: triggerId, toNodeId: delayId },
+          { fromNodeId: delayId, toNodeId: afterDelayActionId },
+        ],
+      }),
+    );
+
+    await withAuthorizedTenant(ctx, (tx) => moveIssue(tx, { issueId, toStatusId: statuses[2]!.id, actorId: userId }));
+    const event = await latestWorkflowEventFor(issueId, "issue.transitioned");
+    await withAuthorizedTenant(ctx, (tx) => matchAndStartRuns(tx, event));
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.workflowId, workflowId));
+    const [triggerStep] = await admin.select().from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, run!.id));
+    await withAuthorizedTenant(ctx, (tx) => advanceWorkflowStep(tx, triggerStep!));
+
+    const [runWaiting] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, run!.id));
+    expect(runWaiting!.status).toBe("running");
+    const stepsWaiting = await admin.select().from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, run!.id));
+    expect(stepsWaiting.find((s) => s.nodeId === delayId)!.status).toBe("waiting");
+
+    // Save the graph with the delay node and the after-delay node removed.
+    await withAuthorizedTenant(ctx, (tx) =>
+      updateWorkflow(tx, {
+        workflowId,
+        projectId,
+        nodes: [
+          { id: triggerId, type: "trigger_event", config: { eventType: "issue.transitioned" }, position: { x: 0, y: 0 } },
+          { id: immediateActionId, type: "action_add_label", config: { label: "immediate" }, position: { x: 200, y: -50 } },
+        ],
+        edges: [{ fromNodeId: triggerId, toNodeId: immediateActionId }],
+      }),
+    );
+
+    const [runAfterSave] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, run!.id));
+    expect(runAfterSave!.status).toBe("completed");
+    const stepsAfterSave = await admin.select().from(schema.automationWorkflowRunStep).where(eq(schema.automationWorkflowRunStep.runId, run!.id));
+    const remainingNodeIds = stepsAfterSave.map((s) => s.nodeId).sort();
+    expect(remainingNodeIds).toEqual([triggerId, immediateActionId].sort());
   });
 });
