@@ -85,6 +85,8 @@
   },
   "members": {
     "subtitle": "Invite new people and manage pending invitations.",
+    "rolesHelp": "What each role can do",
+    "rolesHelpClose": "Close",
     "inviteHeading": "Invite new member",
     "emailPlaceholder": "name@company.com",
     "invitingEllipsis": "Sending…",

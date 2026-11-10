@@ -85,6 +85,8 @@
   },
   "members": {
     "subtitle": "邀請新成員並管理待處理的邀請。",
+    "rolesHelp": "各角色的權限說明",
+    "rolesHelpClose": "關閉",
     "inviteHeading": "邀請新成員",
     "emailPlaceholder": "name@company.com",
     "invitingEllipsis": "傳送中…",

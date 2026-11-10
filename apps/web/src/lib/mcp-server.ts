@@ -634,6 +634,8 @@ export function buildMcpServer(ctx: ApiAuthContext) {
             // undefined (not null) when unspecified — see the same note in routes/api/v1/pages.tsx.
             const projectId = args.projectKey ? (await resolveProject(tx, ctx.organizationId, args.projectKey)).id : undefined;
             if (args.teamId) await requireTeamMember(tx, { ...ctx, teamId: args.teamId });
+            // Same rule as the UI's createPageFn: adding a sub-page needs edit access to the parent.
+            if (args.parentPageId) await resolvePage(tx, ctx, args.parentPageId, "edit");
             const page = await createPage(tx, {
               organizationId: ctx.organizationId,
               title: args.title,

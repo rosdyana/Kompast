@@ -4,7 +4,7 @@ import { and, eq, isNull, schema } from "@kompast/db";
 import { createPage, filterAccessiblePages, listPageTree, requireTeamMember, withAuthorizedTenant, withIdempotency } from "@kompast/core";
 import { requireApiAuth } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
-import { resolveProject } from "@/lib/api-resolvers";
+import { resolvePage, resolveProject } from "@/lib/api-resolvers";
 import { seedPageContentFromMarkdown } from "@/lib/seed-page-content";
 
 function serializePage(page: typeof schema.page.$inferSelect) {
@@ -71,6 +71,8 @@ export const Route = createFileRoute("/api/v1/pages")({
               // "inherit the parent's space" rather than "force Workspace".
               const projectId = body.projectKey ? (await resolveProject(tx, ctx.organizationId, body.projectKey)).id : undefined;
               if (body.teamId) await requireTeamMember(tx, { ...ctx, teamId: body.teamId });
+              // Same rule as the UI's createPageFn: adding a sub-page needs edit access to the parent.
+              if (body.parentPageId) await resolvePage(tx, ctx, body.parentPageId, "edit");
               const page = await createPage(tx, {
                 organizationId: ctx.organizationId,
                 title: body.title,

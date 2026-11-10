@@ -153,6 +153,47 @@ describe("/api/v1/pages", () => {
     }
   });
 
+  it("refuses to create a sub-page under a restricted page the caller isn't listed on, and still allows the listed owner", async () => {
+    const parent = await (await pagesHandlers.POST({ request: req("http://x/api/v1/pages", { method: "POST", token, body: { title: "Locked parent", teamId } }), params: {} })).json();
+
+    const mateId = `${userId}-mate`;
+    await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, mateId));
+    await admin.delete(schema.user).where(eq(schema.user.id, mateId));
+    await admin.insert(schema.user).values({ id: mateId, name: "Mate", email: `${mateId}@example.com` });
+    await admin.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId: mateId, role: "member" });
+    await admin.insert(schema.teamMember).values({ id: `tmem-${mateId}`, teamId, userId: mateId, membershipKey: `${teamId}:${mateId}` });
+    const auth = await getAuth();
+    const mateToken = (await auth.api.createApiKey({ body: { userId: mateId, permissions: { pages: ["read", "write"] }, metadata: { organizationId: orgId } } })).key;
+
+    try {
+      const putRes = await pagePermissionsHandlers.PUT({
+        request: req(`http://x/api/v1/pages/${parent.id}/permissions`, { method: "PUT", token, body: { subject: { type: "user", id: userId }, role: "edit" } }),
+        params: { pageId: parent.id },
+      });
+      expect(putRes.status).toBe(200);
+
+      const sneakyRes = await pagesHandlers.POST({
+        request: req("http://x/api/v1/pages", { method: "POST", token: mateToken, body: { title: "Sneaky child", parentPageId: parent.id } }),
+        params: {},
+      });
+      expect(sneakyRes.status).toBe(404);
+
+      const legitRes = await pagesHandlers.POST({
+        request: req("http://x/api/v1/pages", { method: "POST", token, body: { title: "Legit child", parentPageId: parent.id } }),
+        params: {},
+      });
+      expect(legitRes.status).toBe(201);
+
+      const children = await admin.select().from(schema.page).where(eq(schema.page.parentPageId, parent.id));
+      expect(children).toHaveLength(1);
+      expect(children[0]?.title).toBe("Legit child");
+    } finally {
+      await admin.delete(schema.apikey).where(eq(schema.apikey.referenceId, mateId));
+      await admin.delete(schema.member).where(eq(schema.member.userId, mateId));
+      await admin.delete(schema.user).where(eq(schema.user.id, mateId));
+    }
+  });
+
   it("creates a private page a teammate can't see until it's shared with them", async () => {
     const createRes = await pagesHandlers.POST({ request: req("http://x/api/v1/pages", { method: "POST", token, body: { title: "My notes", private: true } }), params: {} });
     expect(createRes.status).toBe(201);

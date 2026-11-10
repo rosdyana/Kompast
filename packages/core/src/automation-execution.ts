@@ -253,145 +253,151 @@ export async function executeNode(
   };
 
   try {
-    if (node.type === "condition_property") {
-      const config = resolvedConfig as { property: string; operator: string; value: Json };
-      const actual = await readIssuePropertyValue(tx, await requireScopedIssueId(tx, issueId, workflow), config.property);
-      const matched = matchCondition(actual, config.operator, config.value);
-      return { status: "succeeded", branchTaken: matched ? "true" : "false", output: { actual: actual as Json, matched } };
-    }
-
-    if (node.type === "condition_switch") {
-      const config = resolvedConfig as { property: string; cases: string[] };
-      const actual = await readIssuePropertyValue(tx, await requireScopedIssueId(tx, issueId, workflow), config.property);
-      const matchedCase = config.cases.find((c) => String(actual) === c);
-      return { status: "succeeded", branchTaken: matchedCase ?? "default", output: { actual: actual as Json, matchedCase: matchedCase ?? null } };
-    }
-
-    if (node.type === "find_issues") {
-      const config = resolvedConfig as { statusId?: string; assigneeId?: string; label?: string };
-      const conditions = [eq(schema.issue.projectId, workflow.projectId)];
-      if (config.statusId) conditions.push(eq(schema.issue.statusId, config.statusId));
-      if (config.assigneeId) conditions.push(eq(schema.issue.assigneeId, config.assigneeId));
-      if (config.label) conditions.push(sql`${config.label} = any(${schema.issue.labels})`);
-      const rows = await tx.select({ id: schema.issue.id }).from(schema.issue).where(and(...conditions)).limit(MAX_FIND_ISSUES_RESULTS);
-      return { status: "succeeded", output: { issueIds: rows.map((r) => r.id) } };
-    }
-
-    if (node.type === "loop_each") {
-      const config = resolvedConfig as { source: Json; itemType?: "value" | "issueId" };
-      if (!Array.isArray(config.source)) return { status: "failed", error: "loop_each's source did not resolve to an array" };
-      const items = config.source.slice(0, MAX_LOOP_ITERATIONS);
-      return { status: "succeeded", output: { items, itemType: config.itemType ?? "value", truncated: config.source.length > MAX_LOOP_ITERATIONS } };
-    }
-
-    if (node.type === "delay") {
-      const config = resolvedConfig as { amount: number; unit: "minutes" | "hours" | "days" };
-      return { status: "waiting", resumeAt: delayResumeAt(config) };
-    }
-
-    if (workflow.dryRun) {
-      // Compute-but-don't-apply: log the intended action without calling any mutation.
-      return { status: "succeeded", output: { dryRun: true, node: node.type, config: resolvedConfig } };
-    }
-
-    if (node.type === "action_set_property") {
-      const config = resolvedConfig as { property: string; value: Json };
-      await applySetProperty(tx, await requireScopedIssueId(tx, issueId, workflow), config.property, config.value, meta);
-      return { status: "succeeded", output: { property: config.property, value: config.value } };
-    }
-    if (node.type === "action_add_label") {
-      const config = resolvedConfig as { label: string };
-      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
-      const [current] = await tx.select({ labels: schema.issue.labels }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
-      const labels = [...new Set([...(current?.labels ?? []), config.label])];
-      await updateIssue(tx, targetIssueId, { labels, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
-      return { status: "succeeded" };
-    }
-    if (node.type === "action_comment") {
-      const config = resolvedConfig as { text: string };
-      await addComment(tx, { issueId: await requireScopedIssueId(tx, issueId, workflow), authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
-      return { status: "succeeded" };
-    }
-    if (node.type === "action_add_description") {
-      const config = resolvedConfig as { text: string; mode?: "append" | "replace" };
-      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
-      const [current] = await tx.select({ descriptionJson: schema.issue.descriptionJson }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
-      const descriptionJson = composeDescription(current?.descriptionJson ?? null, config.text, config.mode ?? "append");
-      await updateIssue(tx, targetIssueId, { descriptionJson, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
-      return { status: "succeeded", output: { mode: config.mode ?? "append" } };
-    }
-    if (node.type === "action_notify") {
-      const config = resolvedConfig as { userId: string; title: string; body?: string };
-      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
-      const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
-      await notify(tx, { organizationId: issue!.organizationId, userId: config.userId, eventType: "automation.rule", entityType: "issue", entityId: targetIssueId, title: config.title, body: config.body });
-      return { status: "succeeded" };
-    }
-    if (node.type === "action_link_issue") {
-      const config = resolvedConfig as { issueId: string };
-      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
-      const [linkTarget] = await tx
-        .select({ id: schema.issue.id })
-        .from(schema.issue)
-        .where(and(eq(schema.issue.id, config.issueId), eq(schema.issue.organizationId, workflow.organizationId)));
-      if (!linkTarget) return { status: "failed", error: `Issue ${config.issueId} not found in this workspace` };
-      const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
-      await linkEntities(tx, { organizationId: issue!.organizationId, fromType: "issue", fromId: targetIssueId, toType: "issue", toId: config.issueId, createdBy: meta.actorId });
-      return { status: "succeeded" };
-    }
-    if (node.type === "action_create_subtask") {
-      const config = resolvedConfig as { typeId: string; title: string };
-      const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
-      const [issue] = await tx.select().from(schema.issue).where(eq(schema.issue.id, targetIssueId));
-      const statuses = await tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, issue!.projectId));
-      const statusId = (statuses.find((s) => s.category === "todo") ?? statuses[0])!.id;
-      await createIssue(tx, {
-        organizationId: issue!.organizationId,
-        projectId: issue!.projectId,
-        typeId: config.typeId,
-        statusId,
-        title: config.title,
-        reporterId: meta.actorId,
-        parentId: targetIssueId,
-        origin: meta.origin,
-        originClient: meta.originClient,
-        automationContext: meta.automationContext,
-      });
-      return { status: "succeeded" };
-    }
-
-    if (node.type === "action_webhook") {
-      const config = resolvedConfig as { url: string; method: string; headers: Record<string, string>; bodyTemplate: Json };
-      try {
-        // guardedFetch (net-guard.ts) refuses private/loopback/link-local
-        // targets at connect time (no DNS-rebinding window) and never
-        // follows redirects. Reachable by any project admin, and the
-        // request leaves from the worker's own network position.
-        const res = await guardedFetch(config.url, {
-          method: config.method,
-          headers: { "Content-Type": "application/json", ...config.headers },
-          body: JSON.stringify(config.bodyTemplate),
-          // Bounded so a hung target can't hold this step's transaction
-          // open indefinitely — advanceWorkflowStep recurses through an
-          // entire run inside one open Postgres transaction, so a webhook
-          // that never responds would otherwise block every other
-          // tenant's workflow-step processing (the worker's step queue
-          // has concurrency 1) and pin a Postgres connection. An abort
-          // rejects with a DOMException named "AbortError", handled
-          // generically by the catch below like any other network error.
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (isRedirect(res)) {
-          return { status: "failed", error: "Webhook response was a redirect, which is not followed for security reasons" };
-        }
-        if (!res.ok) return { status: "failed", error: `Webhook returned ${res.status} ${res.statusText}` };
-        return { status: "succeeded", output: { status: res.status } };
-      } catch (err) {
-        return { status: "failed", error: err instanceof Error ? err.message : String(err) };
+    // A SQL error inside an action aborts the surrounding Postgres
+    // transaction, so the caller's "failed" write would die with
+    // "current transaction is aborted". The savepoint undoes only this
+    // node's writes and keeps the real error message.
+    return await tx.transaction(async (tx): Promise<ExecuteStepResult> => {
+      if (node.type === "condition_property") {
+        const config = resolvedConfig as { property: string; operator: string; value: Json };
+        const actual = await readIssuePropertyValue(tx, await requireScopedIssueId(tx, issueId, workflow), config.property);
+        const matched = matchCondition(actual, config.operator, config.value);
+        return { status: "succeeded", branchTaken: matched ? "true" : "false", output: { actual: actual as Json, matched } };
       }
-    }
 
-    return { status: "failed", error: `Unhandled node type: ${node.type}` };
+      if (node.type === "condition_switch") {
+        const config = resolvedConfig as { property: string; cases: string[] };
+        const actual = await readIssuePropertyValue(tx, await requireScopedIssueId(tx, issueId, workflow), config.property);
+        const matchedCase = config.cases.find((c) => String(actual) === c);
+        return { status: "succeeded", branchTaken: matchedCase ?? "default", output: { actual: actual as Json, matchedCase: matchedCase ?? null } };
+      }
+
+      if (node.type === "find_issues") {
+        const config = resolvedConfig as { statusId?: string; assigneeId?: string; label?: string };
+        const conditions = [eq(schema.issue.projectId, workflow.projectId)];
+        if (config.statusId) conditions.push(eq(schema.issue.statusId, config.statusId));
+        if (config.assigneeId) conditions.push(eq(schema.issue.assigneeId, config.assigneeId));
+        if (config.label) conditions.push(sql`${config.label} = any(${schema.issue.labels})`);
+        const rows = await tx.select({ id: schema.issue.id }).from(schema.issue).where(and(...conditions)).limit(MAX_FIND_ISSUES_RESULTS);
+        return { status: "succeeded", output: { issueIds: rows.map((r) => r.id) } };
+      }
+
+      if (node.type === "loop_each") {
+        const config = resolvedConfig as { source: Json; itemType?: "value" | "issueId" };
+        if (!Array.isArray(config.source)) return { status: "failed", error: "loop_each's source did not resolve to an array" };
+        const items = config.source.slice(0, MAX_LOOP_ITERATIONS);
+        return { status: "succeeded", output: { items, itemType: config.itemType ?? "value", truncated: config.source.length > MAX_LOOP_ITERATIONS } };
+      }
+
+      if (node.type === "delay") {
+        const config = resolvedConfig as { amount: number; unit: "minutes" | "hours" | "days" };
+        return { status: "waiting", resumeAt: delayResumeAt(config) };
+      }
+
+      if (workflow.dryRun) {
+        // Compute-but-don't-apply: log the intended action without calling any mutation.
+        return { status: "succeeded", output: { dryRun: true, node: node.type, config: resolvedConfig } };
+      }
+
+      if (node.type === "action_set_property") {
+        const config = resolvedConfig as { property: string; value: Json };
+        await applySetProperty(tx, await requireScopedIssueId(tx, issueId, workflow), config.property, config.value, meta);
+        return { status: "succeeded", output: { property: config.property, value: config.value } };
+      }
+      if (node.type === "action_add_label") {
+        const config = resolvedConfig as { label: string };
+        const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
+        const [current] = await tx.select({ labels: schema.issue.labels }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
+        const labels = [...new Set([...(current?.labels ?? []), config.label])];
+        await updateIssue(tx, targetIssueId, { labels, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
+        return { status: "succeeded" };
+      }
+      if (node.type === "action_comment") {
+        const config = resolvedConfig as { text: string };
+        await addComment(tx, { issueId: await requireScopedIssueId(tx, issueId, workflow), authorId: meta.actorId, bodyJson: [{ type: "paragraph", content: [{ type: "text", text: config.text, styles: {} }] }], origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
+        return { status: "succeeded" };
+      }
+      if (node.type === "action_add_description") {
+        const config = resolvedConfig as { text: string; mode?: "append" | "replace" };
+        const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
+        const [current] = await tx.select({ descriptionJson: schema.issue.descriptionJson }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
+        const descriptionJson = composeDescription(current?.descriptionJson ?? null, config.text, config.mode ?? "append");
+        await updateIssue(tx, targetIssueId, { descriptionJson, actorId: meta.actorId, origin: meta.origin, originClient: meta.originClient, automationContext: meta.automationContext });
+        return { status: "succeeded", output: { mode: config.mode ?? "append" } };
+      }
+      if (node.type === "action_notify") {
+        const config = resolvedConfig as { userId: string; title: string; body?: string };
+        const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
+        const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
+        await notify(tx, { organizationId: issue!.organizationId, userId: config.userId, eventType: "automation.rule", entityType: "issue", entityId: targetIssueId, title: config.title, body: config.body });
+        return { status: "succeeded" };
+      }
+      if (node.type === "action_link_issue") {
+        const config = resolvedConfig as { issueId: string };
+        const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
+        const [linkTarget] = await tx
+          .select({ id: schema.issue.id })
+          .from(schema.issue)
+          .where(and(eq(schema.issue.id, config.issueId), eq(schema.issue.organizationId, workflow.organizationId)));
+        if (!linkTarget) return { status: "failed", error: `Issue ${config.issueId} not found in this workspace` };
+        const [issue] = await tx.select({ organizationId: schema.issue.organizationId }).from(schema.issue).where(eq(schema.issue.id, targetIssueId));
+        await linkEntities(tx, { organizationId: issue!.organizationId, fromType: "issue", fromId: targetIssueId, toType: "issue", toId: config.issueId, createdBy: meta.actorId });
+        return { status: "succeeded" };
+      }
+      if (node.type === "action_create_subtask") {
+        const config = resolvedConfig as { typeId: string; title: string };
+        const targetIssueId = await requireScopedIssueId(tx, issueId, workflow);
+        const [issue] = await tx.select().from(schema.issue).where(eq(schema.issue.id, targetIssueId));
+        const statuses = await tx.select().from(schema.workflowStatus).where(eq(schema.workflowStatus.projectId, issue!.projectId));
+        const statusId = (statuses.find((s) => s.category === "todo") ?? statuses[0])!.id;
+        await createIssue(tx, {
+          organizationId: issue!.organizationId,
+          projectId: issue!.projectId,
+          typeId: config.typeId,
+          statusId,
+          title: config.title,
+          reporterId: meta.actorId,
+          parentId: targetIssueId,
+          origin: meta.origin,
+          originClient: meta.originClient,
+          automationContext: meta.automationContext,
+        });
+        return { status: "succeeded" };
+      }
+
+      if (node.type === "action_webhook") {
+        const config = resolvedConfig as { url: string; method: string; headers: Record<string, string>; bodyTemplate: Json };
+        try {
+          // guardedFetch (net-guard.ts) refuses private/loopback/link-local
+          // targets at connect time (no DNS-rebinding window) and never
+          // follows redirects. Reachable by any project admin, and the
+          // request leaves from the worker's own network position.
+          const res = await guardedFetch(config.url, {
+            method: config.method,
+            headers: { "Content-Type": "application/json", ...config.headers },
+            body: JSON.stringify(config.bodyTemplate),
+            // Bounded so a hung target can't hold this step's transaction
+            // open indefinitely — advanceWorkflowStep recurses through an
+            // entire run inside one open Postgres transaction, so a webhook
+            // that never responds would otherwise block every other
+            // tenant's workflow-step processing (the worker's step queue
+            // has concurrency 1) and pin a Postgres connection. An abort
+            // rejects with a DOMException named "AbortError", handled
+            // generically by the catch below like any other network error.
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (isRedirect(res)) {
+            return { status: "failed", error: "Webhook response was a redirect, which is not followed for security reasons" };
+          }
+          if (!res.ok) return { status: "failed", error: `Webhook returned ${res.status} ${res.statusText}` };
+          return { status: "succeeded", output: { status: res.status } };
+        } catch (err) {
+          return { status: "failed", error: err instanceof Error ? err.message : String(err) };
+        }
+      }
+
+      return { status: "failed", error: `Unhandled node type: ${node.type}` };
+    });
   } catch (err) {
     return { status: "failed", error: err instanceof Error ? err.message : String(err) };
   }

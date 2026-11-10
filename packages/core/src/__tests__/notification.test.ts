@@ -108,6 +108,31 @@ describe("notifications", () => {
     expect(outboxRows).toHaveLength(0);
   });
 
+  it("with in-app off and email on, every notify() call queues its own email", async () => {
+    await withAuthorizedTenant(ctx, (tx) => setNotificationPref(tx, { organizationId: orgId, userId, eventType: "issue.commented", inApp: false, email: true }));
+
+    const input: Parameters<typeof notify>[1] = {
+      organizationId: orgId,
+      userId,
+      eventType: "issue.commented",
+      entityType: "issue",
+      entityId: "issue_fake",
+      title: "New comment",
+      email: { to: `${userId}@example.com`, actionUrl: "https://kompast.example/issues/KPT-1", actionLabel: "View issue" },
+    };
+    const first = await withAuthorizedTenant(ctx, (tx) => notify(tx, input));
+    const second = await withAuthorizedTenant(ctx, (tx) => notify(tx, input));
+
+    expect(first.notificationId).toBeNull();
+    expect(first.emailQueued).toBe(true);
+    expect(second.notificationId).toBeNull();
+    expect(second.emailQueued).toBe(true);
+
+    // Status is deliberately not asserted: see the comment on the first test.
+    const outboxRows = await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.organizationId, orgId));
+    expect(outboxRows).toHaveLength(2);
+  });
+
   it("a digest preference other than instant suppresses the email even when email is on", async () => {
     await withAuthorizedTenant(ctx, (tx) => setNotificationPref(tx, { organizationId: orgId, userId, eventType: "issue.commented", email: true, digest: "daily" }));
 

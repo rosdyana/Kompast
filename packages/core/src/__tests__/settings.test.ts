@@ -922,6 +922,33 @@ describe("packages/core/rag", () => {
       expect(enriched[1]!.enrichment).toEqual({ kind: "page", title: "Probe doc", space: "project RAG" });
     });
 
+    it("enrichCandidates drops a restricted page for a teammate who isn't on its access list, but keeps it for the listed user", async () => {
+      const pageId = (await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, teamId, title: "Restricted doc", actorUserId: userId }))).id;
+
+      // Mate is a team member, so the team-space page is visible to them via RLS. Only the access list can hide it.
+      const mateId = `${userId}-mate`;
+      await db.delete(schema.member).where(eq(schema.member.userId, mateId));
+      await db.delete(schema.user).where(eq(schema.user.id, mateId));
+      try {
+        await db.insert(schema.user).values({ id: mateId, name: "RAG Mate", email: `${mateId}@example.com` });
+        await db.insert(schema.member).values({ id: id("mem"), organizationId: orgId, userId: mateId, role: "member" });
+        await db.insert(schema.teamMember).values({ id: `tmem-${teamId}-${mateId}`, teamId, userId: mateId, membershipKey: `${teamId}:${mateId}` });
+        // Access list: only the fixture user is listed. Direct insert (adminDb); cascades away with the page in cleanup().
+        await adminDb.insert(schema.pagePermission).values({ id: id("pperm"), pageId, subjectType: "user", subjectId: userId, role: "full" });
+
+        const mateCtx = { userId: mateId, organizationId: orgId };
+        const candidates: SearchResult[] = [{ entityType: "page", entityId: pageId, content: "secret body", distance: 0 }];
+
+        expect(await withAuthorizedTenant(mateCtx, (tx) => enrichCandidates(tx, candidates, mateCtx))).toEqual([]);
+        expect(await withAuthorizedTenant(ctx, (tx) => enrichCandidates(tx, candidates, ctx))).toHaveLength(1);
+        // Sanity: without ctx the filter is opt-in, so the mate sees it, proving RLS lets them see the space.
+        expect(await withAuthorizedTenant(mateCtx, (tx) => enrichCandidates(tx, candidates))).toHaveLength(1);
+      } finally {
+        await db.delete(schema.member).where(eq(schema.member.userId, mateId));
+        await db.delete(schema.user).where(eq(schema.user.id, mateId));
+      }
+    });
+
     it("a failed chat call persists nothing: no thread, no message, no ai_usage row", async () => {
       vi.stubGlobal(
         "fetch",

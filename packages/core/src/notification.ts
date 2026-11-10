@@ -128,7 +128,11 @@ export async function notify(tx: Tx, input: NotifyInput): Promise<{ notification
       subject: input.title,
       templateKey: "notification",
       templateProps: { title: input.title, body: input.body ?? null, actionUrl: input.email.actionUrl, actionLabel: input.email.actionLabel },
-      dedupeKey: notificationId ? `notification:${notificationId}` : `${input.eventType}:${input.entityType}:${input.entityId}:${input.userId}`,
+      // With in-app off there is no notification row to key on. Each notify()
+      // call is one distinct event, so it gets its own key; a key built only
+      // from event type + entity + user would let the outbox's unique
+      // constraint swallow every later email about the same issue.
+      dedupeKey: `notification:${notificationId ?? id("ntfmail")}`,
     });
     emailQueued = true;
   }

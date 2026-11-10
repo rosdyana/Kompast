@@ -7,6 +7,7 @@
     "PORT",
     "DATABASE_URL",
     "DATABASE_ADMIN_URL",
+    "DATABASE_SERVICE_URL",
     "REDIS_URL",
     "BETTER_AUTH_SECRET",
     "BETTER_AUTH_URL",
@@ -20,7 +21,9 @@
     "ENABLE_DEV_LOGIN",
     "DEV_ADMIN_PASSWORD",
     "DEMO_MODE",
-    "DEMO_ACCESS_CODE"
+    "DEMO_ACCESS_CODE",
+    "SETUP_TOKEN",
+    "OUTBOUND_ALLOW_PRIVATE_HOSTS"
   ],
   "tasks": {
     "build": {

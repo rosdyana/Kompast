@@ -272,6 +272,29 @@ describe("automation-execution: executeNode", () => {
     expect(subtasks[0]!.title).toBe("Auto-created subtask");
   });
 
+  it("a database error inside an action fails only that node: the surrounding transaction stays usable and keeps its earlier writes", async () => {
+    const { issueId, runId, workflowId } = await seedProjectIssueAndWorkflow("exsp");
+    const [run] = await admin.select().from(schema.automationWorkflowRun).where(eq(schema.automationWorkflowRun.id, runId));
+    const [workflow] = await admin.select().from(schema.automationWorkflow).where(eq(schema.automationWorkflow.id, workflowId));
+
+    // A non-existent typeId passes straight into createIssue's INSERT and
+    // violates issue.type_id's foreign key, so Postgres aborts the transaction
+    // unless the node runs in its own savepoint.
+    const node = fakeNode("action_create_subtask", { typeId: "itype_does_not_exist", title: "x" });
+    const { result, titleInsideTx } = await withAuthorizedTenant(ctx, async (tx) => {
+      await tx.update(schema.issue).set({ title: "written before the failing node" }).where(eq(schema.issue.id, issueId));
+      const failed = await executeNode(tx, node, run!, workflow!, 0);
+      const [row] = await tx.select({ title: schema.issue.title }).from(schema.issue).where(eq(schema.issue.id, issueId));
+      return { result: failed, titleInsideTx: row!.title };
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).not.toMatch(/current transaction is aborted/i);
+    expect(titleInsideTx).toBe("written before the failing node");
+    const [after] = await admin.select({ title: schema.issue.title }).from(schema.issue).where(eq(schema.issue.id, issueId));
+    expect(after!.title).toBe("written before the failing node");
+  });
+
   it("action_create_subtask stamps the SUBTASK's own emitted issue.created event with the acting step's depth, not 0 (Fix 7 regression case)", async () => {
     // Before Fix 7, executeNode always hardcoded automationContext to
     // { depth: 0, workflowId }, relying on a compensating UPDATE in

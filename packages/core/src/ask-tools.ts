@@ -274,7 +274,7 @@ async function searchWorkspaceTool(ctx: AuthContext, input: Record<string, unkno
   return withAuthorizedTenant(ctx, async (tx) => {
     const embeddingCreds = await getEmbeddingCredentials(tx);
     if (!embeddingCreds) throw new EmbeddingNotConfiguredError();
-    const enriched = await retrieveContext(tx, { organizationId: ctx.organizationId, embeddingCreds, question: query, limit: 8 });
+    const enriched = await retrieveContext(tx, { userId: ctx.userId, organizationId: ctx.organizationId, embeddingCreds, question: query, limit: 8 });
     return enriched.map(({ candidate, enrichment }) => ({
       type: candidate.entityType,
       header: contextHeader(enrichment),
