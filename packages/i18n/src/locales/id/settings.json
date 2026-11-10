@@ -85,6 +85,8 @@
   },
   "members": {
     "subtitle": "Undang orang baru dan kelola undangan yang masih menunggu.",
+    "rolesHelp": "Hak akses tiap peran",
+    "rolesHelpClose": "Tutup",
     "inviteHeading": "Undang anggota baru",
     "emailPlaceholder": "nama@perusahaan.com",
     "invitingEllipsis": "Mengirim…",

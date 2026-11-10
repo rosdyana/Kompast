@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useRouter } from "@tanstack/react-router";
-import { Mail, X } from "lucide-react";
+import { CircleHelp, Mail, X } from "lucide-react";
 import { Button, IconButton } from "@kompast/ui/Button";
 import { Card } from "@kompast/ui/Card";
 import { Badge } from "@kompast/ui/Badge";
@@ -10,6 +10,7 @@ import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
 import { inviteMemberFn, cancelInvitationFn, type listMembersFn } from "@/lib/server-fns/members";
 import { SettingsSection } from "./SettingsSection";
+import { RolesHelpDialog } from "./RolesHelpDialog";
 
 export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembersFn>> }) {
   const { t } = useTranslation("settings");
@@ -19,6 +20,7 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
   const [role, setRole] = useState<"member" | "admin">("member");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rolesOpen, setRolesOpen] = useState(false);
 
   const roleLabel = (r: string) => (r === "owner" ? t("members.roleOwner") : r === "admin" ? t("members.adminRoleLabel") : t("members.memberRoleLabel"));
 
@@ -49,7 +51,18 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
   }
 
   return (
-    <SettingsSection title={t("tabs.members")} description={t("members.subtitle")} aside={<Badge>{t("members.memberCount", { count: data.members.length })}</Badge>}>
+    <SettingsSection
+      title={t("tabs.members")}
+      description={t("members.subtitle")}
+      aside={
+        <>
+          <Badge>{t("members.memberCount", { count: data.members.length })}</Badge>
+          <IconButton aria-label={t("members.rolesHelp")} title={t("members.rolesHelp")} onClick={() => setRolesOpen(true)}>
+            <CircleHelp size={15} />
+          </IconButton>
+        </>
+      }
+    >
       <Card className="mb-8 p-4">
         <p className="mb-1 text-[14px] font-medium">{t("members.inviteHeading")}</p>
         <p className="mb-3 text-[13px] text-text-2">{t("members.inviteHint")}</p>
@@ -131,6 +144,7 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
           </tbody>
         </table>
       </Card>
+      <RolesHelpDialog open={rolesOpen} onClose={() => setRolesOpen(false)} />
     </SettingsSection>
   );
 }
