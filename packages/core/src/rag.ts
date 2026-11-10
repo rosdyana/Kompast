@@ -379,11 +379,11 @@ async function runAskTurns(
  */
 export async function retrieveContext(
   tx: Tx,
-  input: { organizationId: string; embeddingCreds: EmbeddingCredentials; question: string; limit?: number },
+  input: { userId: string; organizationId: string; embeddingCreds: EmbeddingCredentials; question: string; limit?: number },
 ): Promise<EnrichedCandidate[]> {
   const [queryVector] = await createEmbeddingClient(input.embeddingCreds).embed([input.question]);
   const candidates = await searchEmbeddings(tx, { organizationId: input.organizationId, queryVector: queryVector!, limit: input.limit ?? 8 });
-  return enrichCandidates(tx, candidates);
+  return enrichCandidates(tx, candidates, { userId: input.userId, organizationId: input.organizationId });
 }
 
 /**
@@ -421,7 +421,7 @@ export async function askKompast(ctx: AuthContext, input: AskKompastInput): Prom
     }
     const history = isNewThread ? [] : await listMessages(tx, threadId);
 
-    const enriched = await retrieveContext(tx, { organizationId: ctx.organizationId, embeddingCreds, question: input.question, limit: 8 });
+    const enriched = await retrieveContext(tx, { userId: ctx.userId, organizationId: ctx.organizationId, embeddingCreds, question: input.question, limit: 8 });
 
     return { aiCreds, ...buildAskMessages({ history, enriched, question: input.question }) };
   });

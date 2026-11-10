@@ -1,6 +1,7 @@
 import { eq, inArray, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import type { SearchResult } from "./rag";
+import { filterAccessiblePages } from "./page-permission";
 
 /**
  * Live facts about an issue, read at ask time (not from the indexed chunk
@@ -176,9 +177,14 @@ async function loadPageFacts(tx: Tx, pageIds: string[]): Promise<Map<string, { t
  * doesn't come back — deleted since indexing, or not visible to this caller —
  * is DROPPED from the result, so it reaches neither the model's context nor
  * the citations. A comment is enriched via its issue (issue_comment.issue_id),
- * and dropped if that issue isn't visible.
+ * and dropped if that issue isn't visible. When `ctx` is given, page candidates
+ * the caller is not on the access list for are also dropped.
  */
-export async function enrichCandidates(tx: Tx, candidates: SearchResult[]): Promise<EnrichedCandidate[]> {
+export async function enrichCandidates(
+  tx: Tx,
+  candidates: SearchResult[],
+  ctx?: { userId: string; organizationId: string },
+): Promise<EnrichedCandidate[]> {
   if (candidates.length === 0) return [];
 
   const commentIds = unique(candidates.filter((c) => c.entityType === "comment").map((c) => c.entityId));
@@ -197,7 +203,14 @@ export async function enrichCandidates(tx: Tx, candidates: SearchResult[]): Prom
   ]);
   const issues = await loadIssueFacts(tx, issueIds);
 
-  const pageIds = unique(candidates.filter((c) => c.entityType === "page").map((c) => c.entityId));
+  let pageIds = unique(candidates.filter((c) => c.entityType === "page").map((c) => c.entityId));
+  // RLS only decides whether the page's space is visible. A page with an
+  // access list (page_permission) is restricted further in application
+  // code, so drop the ones this caller isn't listed on.
+  if (ctx && pageIds.length) {
+    const accessible = await filterAccessiblePages(tx, pageIds.map((id) => ({ id })), ctx);
+    pageIds = accessible.map((p) => p.id);
+  }
   const pages = await loadPageFacts(tx, pageIds);
 
   const out: EnrichedCandidate[] = [];

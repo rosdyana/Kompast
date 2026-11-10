@@ -407,7 +407,7 @@ export const revokeShareLinkFn = createServerFn({ method: "POST" })
 
 export const listTrashFn = createServerFn({ method: "GET" }).handler(async () => {
   const ctx = await requireAuthContext();
-  return withAuthorizedTenant(ctx, (tx) => listArchivedPages(tx, ctx.organizationId));
+  return withAuthorizedTenant(ctx, async (tx) => filterAccessiblePages(tx, await listArchivedPages(tx, ctx.organizationId), ctx));
 });
 
 export const permanentlyDeletePageFn = createServerFn({ method: "POST" })
@@ -424,7 +424,7 @@ export const permanentlyDeletePageFn = createServerFn({ method: "POST" })
 export const listTemplatePagesFn = createServerFn({ method: "GET" }).handler(async () => {
   const ctx = await requireAuthContext();
   return withAuthorizedTenant(ctx, async (tx) => {
-    const templates = await listTemplatePages(tx, ctx.organizationId);
+    const templates = await filterAccessiblePages(tx, await listTemplatePages(tx, ctx.organizationId), ctx);
     // Every project seeds its own "Sprint Minutes Template" — without the
     // owning project's name, the picker shows identical-looking rows.
     const projectIds = [...new Set(templates.map((t) => t.projectId).filter((v): v is string => !!v))];
