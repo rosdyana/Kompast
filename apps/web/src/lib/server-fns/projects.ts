@@ -24,6 +24,9 @@ import {
   withAuthorizedTenant,
   type FilterCondition,
   listAssignableUsers,
+  ConflictError,
+  NotFoundError,
+  UserFacingError,
 } from "@kompast/core";
 import { seedPageContentFromMarkdown } from "../seed-page-content";
 import { requireAuthContext } from "../session";
@@ -106,7 +109,7 @@ export const createProjectFn = createServerFn({ method: "POST" })
       });
     } catch (err) {
       const code = (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
-      if (code === "23505") throw new Error(`A project with key "${data.key.toUpperCase()}" already exists on this team.`);
+      if (code === "23505") throw new ConflictError(`A project with key "${data.key.toUpperCase()}" already exists on this team.`);
       throw err;
     }
   });
@@ -143,7 +146,7 @@ export const getProjectBoardFn = createServerFn({ method: "GET" })
       if (!project) throw notFound();
 
       const [board] = await tx.select().from(schema.board).where(eq(schema.board.projectId, project.id));
-      if (!board) throw new Error(`Project ${projectKey} has no board`);
+      if (!board) throw new UserFacingError(`Project ${projectKey} has no board`);
 
       const canManageProject = await requireProjectAdmin(tx, { ...ctx, projectId: project.id })
         .then(() => true)
@@ -240,13 +243,13 @@ export const getBoardEmbedDataFn = createServerFn({ method: "GET" })
 
     return withAuthorizedTenant(ctx, async (tx) => {
       const [board] = await tx.select().from(schema.board).where(eq(schema.board.id, boardId));
-      if (!board) throw new Error(`Board ${boardId} not found`);
+      if (!board) throw new NotFoundError(`Board ${boardId} not found`);
 
       const [project] = await tx
         .select()
         .from(schema.project)
         .where(and(eq(schema.project.id, board.projectId), eq(schema.project.organizationId, ctx.organizationId)));
-      if (!project) throw new Error(`Board ${boardId} not found`);
+      if (!project) throw new NotFoundError(`Board ${boardId} not found`);
 
       const [issueTypes, boardData, tableView, priorityLevels, candidateEpics] = await Promise.all([
         tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, project.id)).orderBy(asc(schema.issueType.order)),

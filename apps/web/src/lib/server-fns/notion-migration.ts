@@ -16,6 +16,8 @@ import {
   updateNotionMigrationToken,
   withAuthorizedTenant,
   type AuthContext,
+  NotFoundError,
+  UserFacingError,
 } from "@kompast/core";
 import { createNotionClient, NotionApiError } from "@kompast/import";
 import { requireAuthContext } from "../session";
@@ -60,12 +62,12 @@ async function workspaceNameFor(token: string): Promise<string> {
     return me.bot?.workspace_name ?? me.name ?? "";
   } catch (err) {
     if (err instanceof NotionApiError && err.status === 401) {
-      throw new Error("Notion rejected this token. Copy the integration's secret again from notion.so/profile/integrations.");
+      throw new UserFacingError("Notion rejected this token. Copy the integration's secret again from notion.so/profile/integrations.");
     }
     if (err instanceof NotionApiError) {
-      throw new Error(`Notion returned an error (${err.status}). Try again in a moment.`);
+      throw new UserFacingError(`Notion returned an error (${err.status}). Try again in a moment.`);
     }
-    throw new Error("Could not reach Notion. Check the connection and try again.");
+    throw new UserFacingError("Could not reach Notion. Check the connection and try again.");
   }
 }
 
@@ -197,7 +199,7 @@ export const getNotionImportReportFn = createServerFn({ method: "GET" })
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
       const migration = await getNotionMigration(tx, data.id);
-      if (!migration || migration.createdBy !== ctx.userId) throw new Error("Notion migration not found");
+      if (!migration || migration.createdBy !== ctx.userId) throw new NotFoundError("Notion migration not found");
       if (!migration.importRunId) return null;
       const run = await getImportRun(tx, migration.importRunId);
       if (!run) return null;

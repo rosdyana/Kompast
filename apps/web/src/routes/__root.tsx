@@ -1,10 +1,9 @@
-import { HeadContent, Scripts, Outlet, createRootRoute, redirect, Link } from "@tanstack/react-router";
+import { HeadContent, Scripts, Outlet, createRootRoute, redirect, useMatch } from "@tanstack/react-router";
 import { useMemo, type ReactNode } from "react";
-import { Compass } from "lucide-react";
-import { EmptyState } from "@kompast/ui/EmptyState";
 import themeCss from "@kompast/ui/theme.css?url";
 import { ThemeProvider, type Theme } from "@kompast/ui/theme";
-import { I18nextProvider, createI18nInstance, useTranslation, type SupportedLocale } from "@kompast/i18n";
+import { I18nextProvider, createI18nInstance, DEFAULT_LOCALE, type SupportedLocale } from "@kompast/i18n";
+import { ErrorPage } from "@/components/shared/ErrorPage";
 import { getSetupStatusFn } from "@/lib/server-fns/setup";
 import { getDevLoginStatusFn } from "@/lib/server-fns/dev-login";
 import { getThemeFn } from "@/lib/server-fns/theme";
@@ -48,40 +47,36 @@ export const Route = createRootRoute({
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
     ],
   }),
+  // The <html> document lives in shellComponent, which renders even when this
+  // route's own beforeLoad/loader throws (e.g. the database is down). The
+  // error and not-found pages below render inside the shell.
+  shellComponent: RootShell,
   component: RootComponent,
-  notFoundComponent: NotFoundComponent,
+  notFoundComponent: () => <ErrorPage variant="notFound" fullScreen />,
+  errorComponent: ({ error, reset }) => <ErrorPage variant="serverError" error={error} reset={reset} fullScreen />,
 });
 
-function NotFoundComponent() {
-  const { t } = useTranslation("common");
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-bg px-6">
-      <EmptyState
-        variant="plain"
-        icon={<Compass size={18} />}
-        title={t("notFoundTitle")}
-        description={t("notFoundSubtext")}
-        action={
-          <Link to="/" className="inline-flex h-8 items-center rounded-[6px] bg-accent px-3 text-[14px] font-medium text-white hover:bg-accent-hover">
-            {t("notFoundGoHome")}
-          </Link>
-        }
-      />
-    </div>
-  );
+/**
+ * Renders the whole document. It must not depend on the root loader succeeding:
+ * when that fails, the match's loaderData is missing, so theme and locale fall
+ * back to their defaults. useLoaderData() would throw in that case, so the
+ * match is read without throwing.
+ */
+function RootShell({ children }: { children: ReactNode }) {
+  const match = useMatch({ strict: false, shouldThrow: false });
+  const data = match?.loaderData as { theme: Theme; locale: SupportedLocale } | undefined;
+  return <RootDocument theme={data?.theme ?? "light"} locale={data?.locale ?? DEFAULT_LOCALE}>{children}</RootDocument>;
 }
 
 function RootComponent() {
   const { theme, locale } = Route.useLoaderData();
   const i18n = useMemo(() => createI18nInstance(locale), [locale]);
   return (
-    <RootDocument theme={theme} locale={locale}>
-      <I18nextProvider i18n={i18n}>
-        <ThemeProvider initialTheme={theme}>
-          <Outlet />
-        </ThemeProvider>
-      </I18nextProvider>
-    </RootDocument>
+    <I18nextProvider i18n={i18n}>
+      <ThemeProvider initialTheme={theme}>
+        <Outlet />
+      </ThemeProvider>
+    </I18nextProvider>
   );
 }
 

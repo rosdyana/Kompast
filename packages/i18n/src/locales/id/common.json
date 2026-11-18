@@ -24,5 +24,13 @@
   "mentionGroupPeople": "Orang",
   "mentionGroupIssues": "Issue",
   "dismiss": "Tutup",
-  "breadcrumb": "Navigasi jalur"
+  "breadcrumb": "Navigasi jalur",
+  "serverErrorTitle": "Terjadi kesalahan di sisi kami",
+  "serverErrorSubtext": "Silakan coba lagi sebentar lagi.",
+  "offlineTitle": "Anda sedang offline",
+  "offlineSubtext": "Periksa koneksi Anda lalu coba lagi.",
+  "tryAgain": "Coba lagi",
+  "goBack": "Kembali",
+  "errorReference": "Referensi: {{ref}}",
+  "developerDetails": "Detail pengembang"
 }

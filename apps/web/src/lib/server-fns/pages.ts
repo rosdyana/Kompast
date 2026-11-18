@@ -49,6 +49,8 @@ import {
   requirePageAccess,
   requireCanCopyPage,
   requireCanManagePageAccess,
+  NotFoundError,
+  UserFacingError,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 
@@ -501,7 +503,7 @@ export const getPageVersionBlocksFn = createServerFn({ method: "POST" })
       if (!allowed) throw new ForbiddenError(`No edit access to page ${data.pageId}`);
       return getPageVersionSnapshot(tx, data.pageId, data.versionId);
     });
-    if (!snapshot) throw new Error("Version not found");
+    if (!snapshot) throw new NotFoundError("Version not found");
 
     const ydoc = new Y.Doc();
     Y.applyUpdate(ydoc, snapshot);
@@ -518,7 +520,7 @@ export const createIssueFromDocLineFn = createServerFn({ method: "POST" })
     return withAuthorizedTenant(ctx, async (tx) => {
       await requirePageAccess(tx, data.pageId, ctx, "edit");
       const page = await getPage(tx, data.pageId);
-      if (!page.projectId) throw new Error("This document isn't filed under a project, so no issue can be created from it.");
+      if (!page.projectId) throw new UserFacingError("This document isn't filed under a project, so no issue can be created from it.");
 
       const { typeId, statusId } = await resolveDefaultCreationTarget(tx, page.projectId);
       const { issueId, keySeq } = await createIssue(tx, {

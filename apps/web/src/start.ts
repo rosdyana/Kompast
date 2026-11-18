@@ -1,5 +1,6 @@
 import { createCsrfMiddleware, createMiddleware, createStart } from "@tanstack/react-start";
 import { loadEnv } from "@kompast/env";
+import { toPublicError } from "@/lib/public-error";
 
 /**
  * Global request middleware for every request Start handles (pages, server
@@ -97,6 +98,24 @@ const securityHeadersMiddleware = createMiddleware({ type: "request" }).server(a
   return { ...result, response };
 });
 
+/**
+ * Server-function errors reach the browser through TanStack's serialized
+ * error response, so whatever is thrown here is what the client sees. Known
+ * caller-facing errors and TanStack control flow (redirect/notFound) pass
+ * through; any other error (e.g. a raw Postgres message) is logged under a
+ * reference ID and replaced with a generic one. The function middleware's
+ * next() rejects on a handler error (start-client-core's callNextMiddleware
+ * rethrows result.error), so a try/catch around it sees every failure.
+ */
+const publicErrorMiddleware = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  try {
+    return await next();
+  } catch (err) {
+    throw toPublicError(err);
+  }
+});
+
 export const startInstance = createStart(() => ({
   requestMiddleware: [csrfMiddleware, securityHeadersMiddleware],
+  functionMiddleware: [publicErrorMiddleware],
 }));

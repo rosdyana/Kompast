@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import * as z from "zod";
 import { db, schema, eq, and, gt } from "@kompast/db";
-import { requireSystemAdmin, withAuthorizedTenant } from "@kompast/core";
+import { requireSystemAdmin, withAuthorizedTenant, UserFacingError } from "@kompast/core";
 import { getAuth } from "../auth";
 import { requireAuthContext } from "../session";
 import { attachInvitationDelivery, resendInvitationEmail } from "../invitation-delivery";
@@ -85,7 +85,7 @@ export const resendInvitationFn = createServerFn({ method: "POST" })
           gt(schema.invitation.expiresAt, new Date()),
         ),
       );
-    if (!invitation) throw new Error("This invitation is no longer pending");
+    if (!invitation) throw new UserFacingError("This invitation is no longer pending");
 
     await resendInvitationEmail(ctx, { id: invitation.id, email: invitation.email, role: invitation.role ?? "member" });
     return { ok: true } as const;

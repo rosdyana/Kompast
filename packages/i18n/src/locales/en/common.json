@@ -24,5 +24,13 @@
   "mentionGroupPeople": "People",
   "mentionGroupIssues": "Issues",
   "dismiss": "Dismiss",
-  "breadcrumb": "Breadcrumb"
+  "breadcrumb": "Breadcrumb",
+  "serverErrorTitle": "Something went wrong on our side",
+  "serverErrorSubtext": "Please try again in a moment.",
+  "offlineTitle": "You're offline",
+  "offlineSubtext": "Check your connection and try again.",
+  "tryAgain": "Try again",
+  "goBack": "Go back",
+  "errorReference": "Reference: {{ref}}",
+  "developerDetails": "Developer details"
 }

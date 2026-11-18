@@ -22,6 +22,8 @@ import {
   updateJiraMigrationCredentials,
   withAuthorizedTenant,
   type AuthContext,
+  NotFoundError,
+  UserFacingError,
 } from "@kompast/core";
 import {
   checkJiraConnection,
@@ -174,9 +176,9 @@ export const previewJiraMigrationFn = createServerFn({ method: "GET" })
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
       const row = await getJiraMigration(tx, migrationId);
-      if (!row) throw new Error("JIRA migration not found");
+      if (!row) throw new NotFoundError("JIRA migration not found");
       await requireProjectAccess(tx, { ...ctx, projectId: row.projectId });
-      if (!row.discovery || !row.mapping) throw new Error("Scan JIRA before previewing the migration");
+      if (!row.discovery || !row.mapping) throw new UserFacingError("Scan JIRA before previewing the migration");
       return previewJiraMigrationPlan(
         tx,
         { organizationId: ctx.organizationId, projectId: row.projectId, boardId: row.boardId },
@@ -226,7 +228,7 @@ export const getJiraReconcileFn = createServerFn({ method: "GET" })
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
       const row = await getJiraMigration(tx, data.migrationId);
-      if (!row) throw new Error("JIRA migration not found");
+      if (!row) throw new NotFoundError("JIRA migration not found");
       await requireProjectAccess(tx, { ...ctx, projectId: row.projectId });
       const run = await getLatestJiraReconcile(tx, row.id);
       if (!run) return null;

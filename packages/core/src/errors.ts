@@ -26,3 +26,16 @@ export class InvalidInputError extends Error {
     this.name = "InvalidInputError";
   }
 }
+
+/**
+ * A plain error whose message is already written for the end user (rate
+ * limits, setup refusals, "not allowed here" style rules). Unlike a raw
+ * `Error`, apps/web's public-error classifier lets its message reach the
+ * browser instead of the generic "Something went wrong" reference text.
+ */
+export class UserFacingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UserFacingError";
+  }
+}

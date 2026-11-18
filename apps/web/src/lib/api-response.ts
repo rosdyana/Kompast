@@ -1,6 +1,5 @@
-import { ZodError } from "zod";
 import { ApiError } from "./api-auth";
-import { ForbiddenError, AutomationGraphError, PageSpaceError, NotFoundError, ConflictError, InvalidInputError } from "@kompast/core";
+import { classifyError } from "./public-error";
 
 export function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -11,21 +10,11 @@ export async function handleApiRoute(fn: () => Promise<Response>): Promise<Respo
   try {
     return await fn();
   } catch (err) {
+    // ApiError carries its own headers/extra, so it is returned as-is.
     if (err instanceof ApiError) return err.toResponse();
-    if (err instanceof ForbiddenError) return new ApiError(403, "Forbidden", err.message).toResponse();
-    // A save-time graph validation failure (dangling edge, unreachable
-    // node, an unsupported schedule-trigger downstream node, a malformed
-    // cron string) is a client input error, not a server bug — surface the
-    // real reason as a 400 instead of falling through to a generic 500.
-    if (err instanceof AutomationGraphError) return new ApiError(400, "Bad Request", err.message).toResponse();
-    // Same kind of input error: conflicting spaces (e.g. private + teamId),
-    // a child in a different space from its parent, sharing a private page.
-    if (err instanceof PageSpaceError) return new ApiError(400, "Bad Request", err.message).toResponse();
-    if (err instanceof NotFoundError) return new ApiError(404, "Not Found", err.message).toResponse();
-    if (err instanceof ConflictError) return new ApiError(409, "Conflict", err.message).toResponse();
-    if (err instanceof InvalidInputError) return new ApiError(400, "Bad Request", err.message).toResponse();
-    // Request-body validation (schema.parse(await request.json())) — the caller's mistake, not a server bug.
-    if (err instanceof ZodError) return new ApiError(400, "Bad Request", err.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; ")).toResponse();
+    // Known caller-facing errors (validation, not-found, conflict, ...) map to their status; see public-error.ts.
+    const mapped = classifyError(err);
+    if (mapped) return new ApiError(mapped.status, mapped.title, mapped.message).toResponse();
     // eslint-disable-next-line no-console
     console.error("[api/v1] unhandled error:", err);
     return new ApiError(500, "Internal Server Error", "Unexpected error").toResponse();

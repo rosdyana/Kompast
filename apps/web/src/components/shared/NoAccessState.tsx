@@ -1,7 +1,4 @@
-import { Link } from "@tanstack/react-router";
-import { Lock } from "lucide-react";
-import { EmptyState } from "@kompast/ui/EmptyState";
-import { useTranslation } from "@kompast/i18n";
+import { ErrorPage } from "./ErrorPage";
 
 /**
  * Shown when a project/issue/page loader throws notFound(). Team-scoped
@@ -11,20 +8,5 @@ import { useTranslation } from "@kompast/i18n";
  * what the RLS hides.
  */
 export function NoAccessState() {
-  const { t } = useTranslation("common");
-  return (
-    <div className="flex flex-1 items-center justify-center px-6 py-16">
-      <EmptyState
-        variant="plain"
-        icon={<Lock size={18} />}
-        title={t("noAccessTitle")}
-        description={t("noAccessSubtext")}
-        action={
-          <Link to="/" className="inline-flex h-8 items-center rounded-[6px] bg-accent px-3 text-[14px] font-medium text-white hover:bg-accent-hover">
-            {t("notFoundGoHome")}
-          </Link>
-        }
-      />
-    </div>
-  );
+  return <ErrorPage variant="noAccess" />;
 }
