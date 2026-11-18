@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { useRouter, Link } from "@tanstack/react-router";
+import { useRouter, Link, useLoaderData } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ChevronRight, GripVertical, Layers, Pencil, Plus, X } from "lucide-react";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { Avatar, UnassignedAvatar } from "@kompast/ui/Avatar";
@@ -24,6 +24,7 @@ import {
   updateIssueTypeFn,
 } from "@/lib/server-fns/issue-detail";
 import { priorityOrderByKey, sortIssues, applyFilters, computeReorderTargets } from "@/lib/table-view-utils";
+import { compareAssigneeGroups } from "./project-shared";
 import { useWorkbench } from "@/components/shell/WorkbenchContext";
 import { cn } from "@/lib/cn";
 import { FilterBuilder } from "./FilterBuilder";
@@ -483,6 +484,7 @@ export function TableView({ data, sprintContext }: { data: BoardData; sprintCont
   const { t, i18n } = useTranslation("board");
   const intlLocale = INTL_LOCALE[i18n.language as SupportedLocale] ?? "en-US";
   const router = useRouter();
+  const shell = useLoaderData({ from: "/_app" });
   const { openCreateIssue } = useWorkbench();
   const [error, setError] = useState<string | null>(null);
   const [reorderBusy, setReorderBusy] = useState(false);
@@ -534,7 +536,7 @@ export function TableView({ data, sprintContext }: { data: BoardData; sprintCont
               acc[key].issues.push(issue);
               return acc;
             }, {}),
-          ).sort((a, b) => (a.key === "__unassigned" ? 1 : b.key === "__unassigned" ? -1 : a.label.localeCompare(b.label)));
+          ).sort((a, b) => compareAssigneeGroups(a, b, shell.user.id, "__unassigned"));
 
   async function updateConfig(patch: Partial<typeof config>) {
     const next = { ...config, ...patch };

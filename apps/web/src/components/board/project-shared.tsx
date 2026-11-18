@@ -29,6 +29,23 @@ export function daysUntil(end: Date | string) {
   return Math.ceil(ms / 86_400_000);
 }
 
+/** Assignee groups: the signed-in user first, then by name, Unassigned last. */
+export function compareAssigneeGroups(
+  a: { key: string; label: string },
+  b: { key: string; label: string },
+  meId: string | null,
+  unassignedKey: string,
+): number {
+  const aUnassigned = a.key === unassignedKey;
+  const bUnassigned = b.key === unassignedKey;
+  if (aUnassigned !== bUnassigned) return aUnassigned ? 1 : -1;
+  if (meId !== null && a.key !== b.key) {
+    if (a.key === meId) return -1;
+    if (b.key === meId) return 1;
+  }
+  return a.label.localeCompare(b.label);
+}
+
 /**
  * Lookups every tracking view needs beyond getProjectBoardFn: the
  * project's workflow statuses (name/color/category — the board data only

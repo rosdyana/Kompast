@@ -1,6 +1,6 @@
 import { SearchField } from "@kompast/ui/Input";
 import { forwardRef, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Link, useRouter } from "@tanstack/react-router";
+import { Link, useLoaderData, useRouter } from "@tanstack/react-router";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CheckSquare, ChevronDown, Layers, MoreHorizontal, Plus } from "lucide-react";
 import { Button, IconButton } from "@kompast/ui/Button";
@@ -22,7 +22,7 @@ import { CompleteSprintDialog } from "./BacklogView";
 import { useConfirmArm } from "@/lib/use-confirm-arm";
 import { IssueChecklist, type ChecklistSummary } from "@/components/issues/IssueChecklist";
 import { cn } from "@/lib/cn";
-import { daysUntil, formatShortDate, useIntlLocale, useProjectLookups, useSuppressClickAfterDrag, type BoardData, type BoardIssue } from "./project-shared";
+import { compareAssigneeGroups, daysUntil, formatShortDate, useIntlLocale, useProjectLookups, useSuppressClickAfterDrag, type BoardData, type BoardIssue } from "./project-shared";
 
 /** Sentinel swimlane key for issues with no assignee — never a real assigneeId (nanoids never start with "__"). */
 const UNASSIGNED_SWIMLANE = "__unassigned__";
@@ -70,10 +70,15 @@ interface AddIssueProps {
 export function KanbanBoard({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
   const router = useRouter();
+  const shell = useLoaderData({ from: "/_app" });
+  const me = { id: shell.user.id, name: shell.user.name };
   const locale = useIntlLocale();
   const [pending, setPending] = useState(false);
   const [search, setSearch] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(new Set());
+  // Your own empty lane is shown so "+ Create issue" there assigns to you, but an
+  // assignee filter that leaves you out still hides it.
+  const showMyEmptyLane = assigneeFilter.size === 0 || assigneeFilter.has(me.id);
   const [error, setError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -424,7 +429,7 @@ export function KanbanBoard({ data }: { data: BoardData }) {
 
         <div className="overflow-x-auto px-4 pb-8 sm:px-6">
           {tableViewConfig.swimlaneBy === "assignee" ? (
-            <SwimlaneBoard columns={columns} usersById={usersById} cardCommon={cardCommon} addProps={addProps} />
+            <SwimlaneBoard columns={columns} usersById={usersById} cardCommon={cardCommon} addProps={addProps} me={me} showMyEmptyLane={showMyEmptyLane} />
           ) : (
             <div className="flex min-w-fit items-stretch gap-3">
               {columns.map((col, index) => (
@@ -561,7 +566,8 @@ function ColumnCell({
 
 /**
  * Jira-style swimlanes: status columns stay as-is, one row per assignee
- * (Unassigned last). Dragging a card between lanes reassigns it to match
+ * (your lane first, then A→Z, Unassigned last; your lane shows even when empty).
+ * Dragging a card between lanes reassigns it to match
  * the lane it's dropped into; dropping into Unassigned clears the assignee.
  */
 function SwimlaneBoard({
@@ -569,11 +575,15 @@ function SwimlaneBoard({
   usersById,
   cardCommon,
   addProps,
+  me,
+  showMyEmptyLane,
 }: {
   columns: Column[];
   usersById: Map<string, BoardData["users"][number]>;
   cardCommon: CardCommon;
   addProps: AddIssueProps;
+  me: { id: string; name: string };
+  showMyEmptyLane: boolean;
 }) {
   const { t } = useTranslation("board");
   const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(new Set());
@@ -586,7 +596,12 @@ function SwimlaneBoard({
       }
     }
   }
-  const assignedLanes = [...byKey.values()].filter((l) => l.key !== UNASSIGNED_SWIMLANE).sort((a, b) => a.label.localeCompare(b.label));
+  // usersById only covers assignees already on the board, so an empty own lane
+  // falls back to the signed-in user's name from the loader.
+  if (showMyEmptyLane && !byKey.has(me.id)) byKey.set(me.id, { key: me.id, label: me.name });
+  const assignedLanes = [...byKey.values()]
+    .filter((l) => l.key !== UNASSIGNED_SWIMLANE)
+    .sort((a, b) => compareAssigneeGroups(a, b, me.id, UNASSIGNED_SWIMLANE));
   // Always shown, even empty: "+ Create issue" in the Unassigned lane is where unassigned work lands.
   const unassignedLane = byKey.get(UNASSIGNED_SWIMLANE) ?? { key: UNASSIGNED_SWIMLANE, label: t("tableView.unassignedGroupLabel") };
   const swimlanes = [...assignedLanes, unassignedLane];
@@ -635,6 +650,9 @@ function SwimlaneBoard({
                       cardCommon={cardCommon}
                       addProps={index === 0 ? addProps : undefined}
                       addTarget={lane.key}
+                      // An empty cell (your own empty lane, an empty Unassigned) would otherwise
+                      // collapse to its padding and be hard to drop a card into.
+                      className="min-h-[56px]"
                     />
                   </div>
                 ))}
