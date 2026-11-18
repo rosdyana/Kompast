@@ -1,5 +1,5 @@
 import { getEmailDeliveryByDedupeKeys, retryEmail, withAuthorizedTenant, type Tx } from "@kompast/core";
-import { db, schema, eq } from "@kompast/db";
+import { db, schema, eq, and, sql } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import { sendInvitationEmail } from "./auth";
 
@@ -55,4 +55,25 @@ export async function resendInvitationEmail(
     organization: org!,
     inviter: { userId: caller.userId, user: { name: inviter?.name ?? "" } },
   });
+}
+
+/**
+ * Pending, unexpired invitations addressed to this email (case-insensitive),
+ * across every workspace. Plain `db`, not withAuthorizedTenant: the invitation
+ * table has RLS disabled (rls.sql), and the signed-in user has no workspace
+ * yet, so there is no tenant to scope to. Callers must pass the session's own email.
+ */
+export async function listPendingInvitationsForEmail(email: string) {
+  return db
+    .select({ id: schema.invitation.id, organizationName: schema.organization.name, role: schema.invitation.role })
+    .from(schema.invitation)
+    .innerJoin(schema.organization, eq(schema.organization.id, schema.invitation.organizationId))
+    .where(
+      and(
+        sql`lower(${schema.invitation.email}) = lower(${email})`,
+        eq(schema.invitation.status, "pending"),
+        sql`${schema.invitation.expiresAt} > now()`,
+      ),
+    )
+    .orderBy(schema.invitation.createdAt);
 }
