@@ -28,6 +28,8 @@ Most teams split their work across a docs tool and an issue tracker, then spend 
 - Spaces: shared **Workspace** docs, team and project docs, and a **Private** space visible only to you.
 - Share a private page with specific people and it moves to **Shared**, sub-pages included.
 - Per-page access lists, version history, templates, trash and restore, guest share links, `@mention` backlinks and live board embeds.
+- Team docs: any team member can write one; members can trash or delete only their own, team admins any.
+- The sidebar updates live: pages, projects and teams others create, rename, move or trash show up without a refresh.
 
 ### Boards & sprints
 - Backlog with sprint containers, drag-and-drop planning, inline quick-create and start/complete with carry-over.
@@ -61,7 +63,7 @@ Most teams split their work across a docs tool and an issue tracker, then spend 
   - Scheduled catch-up syncs pick up what changed in JIRA since the import.
   - A completeness check compares both sides before you finish.
 - **JIRA importer** from the live API or an exported JSON file. It's idempotent and has a dry-run mode.
-- **Notion importer**, two ways in. **Connect to Notion** (recommended): paste an internal integration token, pick the pages shared with it, choose where each one goes (Workspace, Private, or a team you're on), and Kompast copies them in the background, with progress and a report. Or **upload the export .zip** (HTML or Markdown & CSV). Both rebuild the page tree with formatting, tables, images and links between pages.
+- **Notion importer**, two ways in. **Connect to Notion** (recommended): paste an internal integration token, pick the pages shared with it, choose where each one goes (Workspace if you're a workspace admin, Private, or a team you're an admin of), and Kompast copies them in the background, with progress and a report. Or **upload the export .zip** (HTML or Markdown & CSV). Both rebuild the page tree with formatting, tables, images and links between pages.
 
 ### And more
 - Per-user, per-event notification preferences (in-app and email).

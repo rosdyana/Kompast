@@ -7,10 +7,11 @@ import { useTranslation } from "@kompast/i18n";
 import { cn } from "@/lib/cn";
 import { listTeamsFn } from "@/lib/server-fns/teams";
 
-export type NotionImportTarget = "workspace" | "private";
+/** Where the import was started from: a docs space, or one team's space (its sidebar Docs group). */
+export type NotionImportTarget = "workspace" | "private" | { team: string };
 
 /** The dialog's choices: the two docs spaces, or a team's space (which also needs a team picked). */
-type ImportDestination = NotionImportTarget | "team";
+type ImportDestination = "workspace" | "private" | "team";
 
 interface TeamOption {
   id: string;
@@ -30,8 +31,8 @@ interface ImportReport {
  * session cookie (a server function doesn't carry a file upload well).
  * Workspace is offered only to workspace admins; the server checks that
  * again (requirePageImportTarget), this just hides a choice that would fail.
- * Team lists every team the caller may import into: the teams they belong
- * to (every team for the super admin), matching the page RLS policy.
+ * Team lists every team the caller may import into: the teams they are an
+ * admin of (every team for the super admin), matching requirePageImportTarget.
  *
  * Opens on a chooser: connect to Notion through the API wizard (`onConnect`),
  * or upload an export zip (the form below).
@@ -52,7 +53,7 @@ export function NotionImportDialog({
   const { t } = useTranslation("docs");
   const router = useRouter();
   const [mode, setMode] = useState<"choose" | "zip">("choose");
-  const [target, setTarget] = useState<ImportDestination>(initialTarget);
+  const [target, setTarget] = useState<ImportDestination>(typeof initialTarget === "string" ? initialTarget : "team");
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [teamId, setTeamId] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -63,15 +64,20 @@ export function NotionImportDialog({
   useEffect(() => {
     if (!open) return;
     setMode("choose");
-    setTarget(canImportToWorkspace ? initialTarget : "private");
-    setTeamId("");
+    if (typeof initialTarget === "object") {
+      setTarget("team");
+      setTeamId(initialTarget.team);
+    } else {
+      setTarget(canImportToWorkspace ? initialTarget : "private");
+      setTeamId("");
+    }
     setFile(null);
     setError(null);
     setReport(null);
     let cancelled = false;
     listTeamsFn().then(
       (all) => {
-        if (!cancelled) setTeams(all.filter((team) => !team.locked).map((team) => ({ id: team.id, name: team.name })));
+        if (!cancelled) setTeams(all.filter((team) => team.canAdminister).map((team) => ({ id: team.id, name: team.name })));
       },
       () => {
         if (!cancelled) setTeams([]);

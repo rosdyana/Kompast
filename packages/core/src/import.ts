@@ -125,9 +125,10 @@ export function pageImportTargetKey(target: PageImportTarget, actorUserId: strin
  * and the super admin, even though any member can create a single
  * Workspace page by hand. Private needs no check beyond membership: the
  * pages are owned by the caller (RLS refuses anyone else's Private space).
- * A team space is open to that team's members and the super admin, and
- * the team must belong to this workspace. Not to a workspace admin outside
- * the team: the page RLS policy only admits team members and the super
+ * A team space takes a bulk import only from that team's admins and the
+ * super admin (plain team members create docs one at a time), and the team
+ * must belong to this workspace. Not from a workspace admin outside the
+ * team either: the page RLS policy only admits team members and the super
  * admin, so their inserts would fail on every page.
  */
 export async function requirePageImportTarget(db: AnyDb, ctx: AuthContext, target: PageImportTarget): Promise<void> {
@@ -153,11 +154,11 @@ export async function requirePageImportTarget(db: AnyDb, ctx: AuthContext, targe
   if (row?.isSuperAdmin) return;
 
   const [membership] = await db
-    .select({ id: schema.teamMember.id })
+    .select({ role: schema.teamMember.role })
     .from(schema.teamMember)
     .where(and(eq(schema.teamMember.teamId, target.team), eq(schema.teamMember.userId, ctx.userId)));
-  if (!membership) {
-    throw new ForbiddenError("Only members of that team can import into its space. Choose another team or import into your Private space.");
+  if (membership?.role !== "admin") {
+    throw new ForbiddenError("Only that team's admins can import into its space. Choose another team or import into your Private space.");
   }
 }
 

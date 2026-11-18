@@ -34,8 +34,8 @@ type ListRow = Awaited<ReturnType<typeof listNotionMigrationsFn>>[number];
 export interface NotionMigrationWizardProps {
   open: boolean;
   onClose: () => void;
-  /** The destination the sidebar action started from. Used as the default for each checked page, when Workspace is allowed. */
-  initialTarget: "workspace" | "private";
+  /** The destination the sidebar action started from (a team's Docs group passes that team). Used as the default for each checked page, when allowed. */
+  initialTarget: NotionTargetChoice;
   canImportToWorkspace: boolean;
 }
 
@@ -60,7 +60,8 @@ export function NotionMigrationWizard({ open, onClose, initialTarget, canImportT
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const defaultTarget: NotionTargetChoice = canImportToWorkspace && initialTarget === "workspace" ? "workspace" : "private";
+  const defaultTarget: NotionTargetChoice =
+    typeof initialTarget === "object" ? initialTarget : canImportToWorkspace && initialTarget === "workspace" ? "workspace" : "private";
 
   // Each time the dialog opens, start on the connect screen.
   useEffect(() => {
@@ -74,7 +75,8 @@ export function NotionMigrationWizard({ open, onClose, initialTarget, canImportT
     let cancelled = false;
     listTeamsFn().then(
       (all) => {
-        if (!cancelled) setTeams(all.filter((team) => !team.locked).map((team) => ({ id: team.id, name: team.name })));
+        // Team-space imports are team-admin only (requirePageImportTarget).
+        if (!cancelled) setTeams(all.filter((team) => team.canAdminister).map((team) => ({ id: team.id, name: team.name })));
       },
       () => {
         if (!cancelled) setTeams([]);

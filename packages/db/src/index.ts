@@ -31,6 +31,22 @@ if (!serviceUrl) {
   throw new Error("DATABASE_SERVICE_URL is required (or, for local dev and tests, DATABASE_ADMIN_URL). See infra/.env.example.");
 }
 export const adminDb = drizzle(postgres(serviceUrl), { schema });
+
+/** NOTIFY channel of packages/db/realtime.sql: payload = the organization id whose sidebar content changed. */
+export const SHELL_CHANGED_CHANNEL = "kompast_shell_changed";
+
+/**
+ * LISTENs for realtime.sql's sidebar-change notifications. postgres.js runs
+ * LISTEN on its own dedicated connection (not one of the pool's) and
+ * re-subscribes by itself after a reconnect; `onListen` fires on every
+ * (re)subscribe, so a caller can treat it as "events may have been missed".
+ * The app role needs no grant for LISTEN, and the payload is only a
+ * workspace id — what changed is re-read through RLS by whoever reacts.
+ */
+export function listenForShellChanges(onChange: (organizationId: string) => void, onListen?: () => void) {
+  return client.listen(SHELL_CHANGED_CHANNEL, onChange, onListen);
+}
+
 export * as schema from "./schema";
 export { withTenant } from "./tenant";
 export type { Json } from "./schema/_shared";

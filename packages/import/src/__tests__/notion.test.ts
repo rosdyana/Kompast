@@ -41,9 +41,9 @@ describe("Notion importer", () => {
       { id: id("mem"), organizationId: orgId, userId: memberId, role: "member" },
       { id: id("mem"), organizationId: orgId, userId: otherId, role: "member" },
     ]);
-    // Only the member is on the team. The other member is a workspace member with no team, so RLS must hide team pages from them.
+    // Only the member is on the team, as its admin (bulk import into a team space is team-admin only). The other member is a workspace member with no team, so RLS must hide team pages from them.
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Notion Import Team" });
-    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${memberId}`, teamId, userId: memberId, membershipKey: `${teamId}:${memberId}` });
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${memberId}`, teamId, userId: memberId, membershipKey: `${teamId}:${memberId}`, role: "admin" });
   });
 
   afterAll(async () => {

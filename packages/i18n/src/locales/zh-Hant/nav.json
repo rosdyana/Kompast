@@ -116,6 +116,8 @@
   "workspaceDocs": "工作區",
   "teamDocs": "文件",
   "newTeamDoc": "新增團隊文件",
+  "teamProjects": "專案",
+  "importToTeam": "從 Notion 匯入到此團隊",
   "privateDocs": "私人",
   "newPrivatePage": "新增私人頁面",
   "sharedDocs": "已分享",

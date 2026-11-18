@@ -115,8 +115,11 @@ describe("Notion migration record (core)", () => {
     const saved = await admin.select().from(schema.notionMigration).where(eq(schema.notionMigration.id, migrationId));
     expect(saved[0]!.selection).toEqual({ roots: [{ notionId: "p1", title: "Page p1", target: "private" }] });
 
-    // Once the creator joins the team, the same team target is accepted, and the selection holds the team as its target.
+    // Joining the team as a plain member isn't enough: team-space imports are team-admin only.
     await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${creatorId}`, teamId, userId: creatorId, membershipKey: `${teamId}:${creatorId}` });
+    await expect(withAuthorizedTenant(creatorCtx, (tx) => saveNotionSelection(tx, creatorCtx, migrationId, root("p1", { team: teamId })))).rejects.toBeInstanceOf(ForbiddenError);
+    // As the team's admin, the same team target is accepted, and the selection holds the team as its target.
+    await admin.update(schema.teamMember).set({ role: "admin" }).where(eq(schema.teamMember.id, `tmem-${teamId}-${creatorId}`));
     await withAuthorizedTenant(creatorCtx, (tx) => saveNotionSelection(tx, creatorCtx, migrationId, root("p1", { team: teamId })));
     const reSaved = await admin.select().from(schema.notionMigration).where(eq(schema.notionMigration.id, migrationId));
     expect(reSaved[0]!.selection).toEqual({ roots: [{ notionId: "p1", title: "Page p1", target: { team: teamId } }] });

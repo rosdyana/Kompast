@@ -155,6 +155,8 @@ export interface TeamSummary {
   locked: boolean;
   /** Who to ask for access — shown on a locked team's row. */
   adminNames: string[];
+  /** The viewer is this team's admin or the super admin — e.g. may bulk-import into its docs space (requirePageImportTarget). */
+  canAdminister: boolean;
 }
 
 /**
@@ -222,6 +224,7 @@ export async function listTeamsForWorkspace(
       myRole,
       locked,
       adminNames: adminNamesByTeam.get(t.id) ?? [],
+      canAdminister: viewerIsSuperAdmin || myRole === "admin",
     };
   });
 }

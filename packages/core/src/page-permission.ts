@@ -73,6 +73,48 @@ export async function requirePageAccess(
   if (!(await canAccessPage(tx, pageId, ctx, minRole))) throw new NotFoundError(`Page ${pageId} not found`);
 }
 
+export type PageRemoval = "trash" | "delete";
+
+/**
+ * Whether ctx.userId may move a page to the trash ("trash", which takes its
+ * sub-pages along) or permanently delete an already-trashed one ("delete").
+ * The page's own role comes first — "edit" to trash, "full" to delete — as
+ * everywhere else. A team-space doc (page.team_id set) is stricter on top:
+ * any team member may create one, but a plain member may only remove docs
+ * they created, and when trashing, every sub-page that would go with it
+ * must be theirs too. The team's admins and the super admin may remove any.
+ * Workspace, Private/Shared and project pages are unchanged.
+ */
+export async function canRemovePage(tx: Tx, pageId: string, ctx: { userId: string; organizationId: string }, removal: PageRemoval): Promise<boolean> {
+  if (!(await canAccessPage(tx, pageId, ctx, removal === "trash" ? "edit" : "full"))) return false;
+  const [page] = await tx.select({ teamId: schema.page.teamId, createdBy: schema.page.createdBy }).from(schema.page).where(eq(schema.page.id, pageId));
+  if (!page?.teamId) return true;
+  if (await isSuperAdmin(tx, ctx)) return true;
+  const [tm] = await tx
+    .select({ role: schema.teamMember.role })
+    .from(schema.teamMember)
+    .where(and(eq(schema.teamMember.teamId, page.teamId), eq(schema.teamMember.userId, ctx.userId)));
+  if (tm?.role === "admin") return true;
+  if (page.createdBy !== ctx.userId) return false;
+  if (removal === "delete") return true; // permanentlyDeletePage re-parents children instead of deleting them
+  const descendantIds = await collectDescendantIds(tx, pageId);
+  if (descendantIds.length === 0) return true;
+  const authors = await tx.select({ createdBy: schema.page.createdBy }).from(schema.page).where(inArray(schema.page.id, descendantIds));
+  return authors.every((a) => a.createdBy === ctx.userId);
+}
+
+/** Throwing form of canRemovePage, run by every trash/delete adapter (UI server functions, MCP). */
+export async function requireCanRemovePage(tx: Tx, pageId: string, ctx: { userId: string; organizationId: string }, removal: PageRemoval): Promise<void> {
+  await requirePageAccess(tx, pageId, ctx, "view");
+  if (!(await canRemovePage(tx, pageId, ctx, removal))) {
+    throw new ForbiddenError(
+      removal === "trash"
+        ? "Only the doc's author or a team admin can move it to the trash (and every sub-page must be the author's too)."
+        : "Only the doc's author or a team admin can delete it permanently.",
+    );
+  }
+}
+
 /**
  * Copying a page (duplicate / new-from-template) doesn't carry its access
  * list over, so a copy of a restricted page would be open to its whole

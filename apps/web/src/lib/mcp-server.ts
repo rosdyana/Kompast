@@ -39,6 +39,7 @@ import {
   duplicatePage,
   listArchivedPages,
   permanentlyDeletePage,
+  requireCanRemovePage,
   listTemplatePages,
   listPageVersions,
   getPageVersionSnapshot,
@@ -1360,7 +1361,10 @@ export function buildMcpServer(ctx: ApiAuthContext) {
         withAuthorizedTenant(ctx, async (tx) => {
           await resolvePage(tx, ctx, args.pageId, "edit");
           if (args.restore) await restorePage(tx, args.pageId);
-          else await archivePage(tx, args.pageId);
+          else {
+            await requireCanRemovePage(tx, args.pageId, ctx, "trash");
+            await archivePage(tx, args.pageId);
+          }
           return { ok: true, archived: !args.restore };
         }),
       )(),
@@ -1388,6 +1392,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
         withAuthorizedTenant(ctx, async (tx) => {
           const page = await resolvePage(tx, ctx, args.pageId, "full");
           if (!page.archivedAt) throw new ApiError(400, "Bad Request", "Move the page to the trash first (archive_page)");
+          await requireCanRemovePage(tx, page.id, ctx, "delete");
           await permanentlyDeletePage(tx, page.id);
           return { ok: true };
         }),

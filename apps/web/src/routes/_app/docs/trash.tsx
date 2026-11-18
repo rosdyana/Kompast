@@ -58,6 +58,9 @@ function TrashPage() {
       toast.show({ title: t("trash.deleted") });
       setConfirm(null);
       await router.invalidate();
+    } catch (err) {
+      // e.g. a team doc someone else wrote: only its author or a team admin may delete it.
+      toast.show({ tone: "error", title: t("common:somethingWentWrong"), description: err instanceof Error ? err.message : undefined });
     } finally {
       setBusyId(null);
     }

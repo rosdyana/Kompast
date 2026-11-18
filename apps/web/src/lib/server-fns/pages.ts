@@ -39,6 +39,8 @@ import {
   withAuthorizedTenant,
   ForbiddenError,
   canManagePageAccess,
+  canRemovePage,
+  requireCanRemovePage,
   getPageAccess,
   grantPageAccess,
   removePagePermission,
@@ -115,6 +117,7 @@ export const getPageDetailFn = createServerFn({ method: "GET" })
       const page = await getPage(tx, pageId);
 
       const canEdit = await canAccessPage(tx, pageId, ctx, "edit");
+      const canTrash = canEdit && (await canRemovePage(tx, pageId, ctx, "trash"));
       const [children, comments, outgoingLinks, backlinks, shareLinks, favoriteIds] = await Promise.all([
         listPageTree(tx, ctx.organizationId, page.projectId).then((all) => all.filter((p) => p.parentPageId === page.id)),
         listPageComments(tx, pageId),
@@ -190,6 +193,7 @@ export const getPageDetailFn = createServerFn({ method: "GET" })
         backlinkPages,
         shareLinks,
         canEdit,
+        canTrash,
         isFavorited,
         collabToken,
         collabWsUrl: loadEnv().COLLAB_WS_URL,
@@ -263,7 +267,7 @@ export const archivePageFn = createServerFn({ method: "POST" })
   .handler(async ({ data: pageId }) => {
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, async (tx) => {
-      await requirePageAccess(tx, pageId, ctx, "edit");
+      await requireCanRemovePage(tx, pageId, ctx, "trash");
       await archivePage(tx, pageId);
     });
     return { ok: true } as const;
@@ -415,7 +419,7 @@ export const permanentlyDeletePageFn = createServerFn({ method: "POST" })
   .handler(async ({ data: pageId }) => {
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, async (tx) => {
-      await requirePageAccess(tx, pageId, ctx, "full");
+      await requireCanRemovePage(tx, pageId, ctx, "delete");
       await permanentlyDeletePage(tx, pageId);
     });
     return { ok: true } as const;
