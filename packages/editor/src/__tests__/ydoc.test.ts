@@ -79,3 +79,24 @@ describe("blocksToYDocState (headless, no DOM)", () => {
     expect(text(decode(b)[0])).toBe("two");
   });
 });
+
+describe("userMention inline content (docs body + doc comments)", () => {
+  it("round-trips a userMention through stored Yjs state, keeping its userId and name", () => {
+    const blocks = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Ping ", styles: {} },
+          { type: "userMention", props: { userId: "user_ana", name: "Ana" } },
+          { type: "text", text: " about this.", styles: {} },
+        ],
+      },
+    ];
+
+    const decoded = decode(blocksToYDocState(blocks));
+    expect(decoded).toHaveLength(1);
+    const mention = decoded[0].content.find((c: any) => c.type === "userMention");
+    expect(mention.props).toMatchObject({ userId: "user_ana", name: "Ana" });
+    expect(decoded[0].content.map((c: any) => c.type)).toEqual(["text", "userMention", "text"]);
+  });
+});

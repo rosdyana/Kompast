@@ -163,6 +163,8 @@
     "adminRoleLabel": "Admin",
     "tableName": "Name",
     "tableRole": "Role",
+    "tableLastLogin": "Last login",
+    "neverLoggedIn": "Never",
     "roleOwner": "Owner",
     "memberCount_one": "{{count}} member",
     "memberCount_other": "{{count}} members",

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import { addPageComment, listPageComments, withAuthorizedTenant } from "@kompast/core";
+import { addPageComment, listPageComments, toPlainText, withAuthorizedTenant } from "@kompast/core";
 import { requireApiAuth } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
 import { resolvePage } from "@/lib/api-resolvers";
@@ -20,7 +20,7 @@ export const Route = createFileRoute("/api/v1/pages/$pageId/comments")({
               data: comments.map((c) => ({
                 id: c.id,
                 authorId: c.authorId,
-                text: (c.bodyJson as { text?: string } | null)?.text ?? "",
+                text: toPlainText(c.bodyJson),
                 createdAt: c.createdAt.toISOString(),
               })),
             });

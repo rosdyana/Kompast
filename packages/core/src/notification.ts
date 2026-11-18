@@ -25,6 +25,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   { eventType: "issue.mentioned", label: "Mentioned in an issue" },
   { eventType: "issue.comment_reacted", label: "Reactions to my comments" },
   { eventType: "page.shared", label: "A private page was shared with you" },
+  { eventType: "page.mentioned", label: "Mentioned in a doc" },
 ] as const;
 
 const DEFAULT_PREF: NotificationPrefView = { inApp: true, email: true, digest: "instant" };
@@ -148,17 +149,21 @@ export interface NotifyMentionedUsersInput {
   title: string;
   body?: string;
   actionUrl: string;
+  /** What the mention points at. Defaults to "issue" (the original and only caller until doc mentions). */
+  entityType?: "issue" | "page";
 }
 
 /**
- * One `notify()` call per @mentioned user with eventType "issue.mentioned".
- * Callers (addComment, updateIssue) are responsible for filtering out the
+ * One `notify()` call per @mentioned user: eventType "issue.mentioned" for an
+ * issue, "page.mentioned" for a doc. Callers (addComment, updateIssue,
+ * addPageComment, notifyPageMentions) are responsible for filtering out the
  * author and anyone already notified for the same event through another
  * path (e.g. the assignee/reporter on a new comment) before calling this,
  * so a person never gets two notifications for one action.
  */
 export async function notifyMentionedUsers(tx: Tx, input: NotifyMentionedUsersInput) {
   if (input.mentionedUserIds.length === 0) return;
+  const entityType = input.entityType ?? "issue";
   const users = await tx.select({ id: schema.user.id, email: schema.user.email }).from(schema.user).where(inArray(schema.user.id, input.mentionedUserIds));
   const emailByUserId = new Map(users.map((u) => [u.id, u.email]));
   for (const userId of input.mentionedUserIds) {
@@ -166,12 +171,12 @@ export async function notifyMentionedUsers(tx: Tx, input: NotifyMentionedUsersIn
     await notify(tx, {
       organizationId: input.organizationId,
       userId,
-      eventType: "issue.mentioned",
-      entityType: "issue",
+      eventType: entityType === "page" ? "page.mentioned" : "issue.mentioned",
+      entityType,
       entityId: input.entityId,
       title: input.title,
       body: input.body,
-      email: email ? { to: email, actionUrl: input.actionUrl, actionLabel: "View issue" } : undefined,
+      email: email ? { to: email, actionUrl: input.actionUrl, actionLabel: entityType === "page" ? "View page" : "View issue" } : undefined,
     });
   }
 }

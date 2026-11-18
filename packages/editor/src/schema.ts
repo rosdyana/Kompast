@@ -69,10 +69,11 @@ export const issueMentionInlineConfig = {
  * Inline @mention of a person — userId/name denormalized at insert time,
  * same reasoning as mentionInlineConfig/issueMentionInlineConfig above
  * (simplest to render; doesn't live-update if the user is later renamed).
- * Used by the issue detail page's description/comment editors (LiteEditor)
- * only, not the docs editor. packages/core's extractMentionedUserIds reads
- * this exact shape to decide who to notify on a new comment/description —
- * keep the two in sync if this ever changes.
+ * Used by the issue detail page's description/comment editors (LiteEditor),
+ * the docs body editor (Editor.tsx), and doc page comments (also LiteEditor).
+ * packages/core's extractMentionedUserIds reads this exact shape to decide
+ * who to notify on a new comment/description/doc mention — keep the two in
+ * sync if this ever changes.
  */
 export const userMentionInlineConfig = {
   type: "userMention" as const,
@@ -116,9 +117,22 @@ export function createServerSchema() {
     },
   });
 
+  const userMentionServerSpec = createInlineContentSpec(userMentionInlineConfig, {
+    render: (inlineContent: any) => {
+      const dom = document.createElement("span");
+      dom.textContent = `@${inlineContent.props.name}`;
+      return { dom };
+    },
+  });
+
   return BlockNoteSchema.create({
     blockSpecs: { ...defaultBlockSpecs, kompastView: kompastViewServerSpec() },
-    inlineContentSpecs: { ...defaultInlineContentSpecs, mention: mentionServerSpec, issueMention: issueMentionServerSpec },
+    inlineContentSpecs: {
+      ...defaultInlineContentSpecs,
+      mention: mentionServerSpec,
+      issueMention: issueMentionServerSpec,
+      userMention: userMentionServerSpec,
+    },
   });
 }
 

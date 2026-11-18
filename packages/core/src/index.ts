@@ -35,6 +35,7 @@ export * from "./idempotency";
 export * from "./page-permission";
 export * from "./page-recovery";
 export * from "./page-comment";
+export * from "./page-mention";
 export * from "./page-favorite";
 export * from "./link";
 export * from "./collab-token";

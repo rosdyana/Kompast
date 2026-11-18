@@ -158,7 +158,7 @@ describe("JIRA loader fidelity (core, real Postgres)", () => {
       },
     ];
 
-    expect(toPlainText(blocks as never)).toBe("See the spec\nOwner | \nDone | yes");
+    expect(toPlainText(blocks as never)).toBe("See the spec\nOwner | @Ann\nDone | yes");
     expect(extractMentionedUserIds(blocks as never)).toEqual(["user-ann"]);
   });
 });

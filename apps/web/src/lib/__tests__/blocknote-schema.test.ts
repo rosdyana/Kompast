@@ -101,3 +101,28 @@ describe("mention inline content schema", () => {
     expect(html).toContain("Design doc");
   });
 });
+
+describe("userMention inline content on the server", () => {
+  it("round-trips through Yjs and exports as @Name in the guest HTML", async () => {
+    const editor = createServerEditor();
+    const blocks = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Please review, ", styles: {} },
+          { type: "userMention", props: { userId: "user_ana", name: "Ana" } },
+        ],
+      },
+    ];
+
+    const ydoc = editor.blocksToYDoc(blocks as any, "document-store");
+    const restored = new Y.Doc();
+    Y.applyUpdate(restored, Y.encodeStateAsUpdate(ydoc));
+    const decoded: any[] = editor.yDocToBlocks(restored, "document-store");
+    const mention = decoded[0].content.find((c: any) => c.type === "userMention");
+    expect(mention.props).toMatchObject({ userId: "user_ana", name: "Ana" });
+
+    const html = await editor.blocksToFullHTML(decoded);
+    expect(html).toContain("@Ana");
+  });
+});

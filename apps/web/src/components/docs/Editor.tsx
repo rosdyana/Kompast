@@ -16,7 +16,9 @@ import { PageIcon } from "./DocsTree";
 import { kompastViewBlockSpec } from "./KompastViewBlock";
 import { mentionInlineSpec } from "./MentionInlineContent";
 import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
-import { listPageTreeFn, linkPageMentionFn, createIssueFromDocLineFn } from "@/lib/server-fns/pages";
+import { userMentionInlineSpec } from "@/components/shared/UserMentionInlineContent";
+import { searchWorkspaceFn } from "@/lib/server-fns/search";
+import { listPageTreeFn, linkPageMentionFn, notifyPageMentionFn, createIssueFromDocLineFn } from "@/lib/server-fns/pages";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 
 type DocAiMode = "continue" | "improve" | "shorten" | "expand" | "summarize" | "translate";
@@ -81,7 +83,12 @@ function colorForUser(userId: string) {
 // mixed-shape BlockSpecs records rejects this merge even though it's exactly BlockNote's own documented pattern.
 const schema = BlockNoteSchema.create({
   blockSpecs: { ...defaultBlockSpecs, kompastView: kompastViewBlockSpec() as any },
-  inlineContentSpecs: { ...defaultInlineContentSpecs, mention: mentionInlineSpec as any, issueMention: issueMentionInlineSpec as any },
+  inlineContentSpecs: {
+    ...defaultInlineContentSpecs,
+    mention: mentionInlineSpec as any,
+    issueMention: issueMentionInlineSpec as any,
+    userMention: userMentionInlineSpec as any,
+  },
 });
 
 /** The slice of the BlockNote editor the doc page drives directly. */
@@ -160,6 +167,7 @@ function CollabEditor({
   onEditorReady,
 }: DocEditorProps & { provider: HocuspocusProvider }) {
   const { t } = useTranslation("docs");
+  const { t: tCommon } = useTranslation("common");
   const { theme } = useTheme();
   const { locale, dictionary } = useBlockNoteDictionary();
 
@@ -246,15 +254,31 @@ function CollabEditor({
         <SuggestionMenuController
           triggerCharacter="@"
           getItems={async (query) => {
+            // People first (once the query is 2+ characters, like LiteEditor), then pages.
+            const people =
+              query.trim().length >= 2
+                ? (await searchWorkspaceFn({ data: query })).people.map((p) => ({
+                    title: p.name,
+                    subtext: p.email,
+                    group: tCommon("mentionGroupPeople"),
+                    onItemClick: () => {
+                      editor.insertInlineContent([{ type: "userMention", props: { userId: p.id, name: p.name } }, " "] as any);
+                      // Fire-and-forget: a failed notification must not block typing. Core re-checks visibility.
+                      notifyPageMentionFn({ data: { pageId, userId: p.id } }).catch(() => {});
+                    },
+                  }))
+                : [];
+
             const { pages } = await listPageTreeFn();
             const lower = query.toLowerCase();
-            return pages
+            const pageItems = pages
               .filter((p) => p.id !== pageId && (p.title || t("untitled")).toLowerCase().includes(lower))
               .slice(0, 8)
               .map((p) => ({
                 title: p.title || t("untitled"),
                 subtext: undefined,
                 icon: <PageIcon icon={p.icon} size={16} />,
+                group: tCommon("mentionGroupPages"),
                 onItemClick: () => {
                   editor.insertInlineContent([
                     { type: "mention", props: { pageId: p.id, title: p.title || t("untitled"), icon: p.icon ?? "" } },
@@ -263,6 +287,7 @@ function CollabEditor({
                   linkPageMentionFn({ data: { fromPageId: pageId, toPageId: p.id } });
                 },
               }));
+            return [...people, ...pageItems];
           }}
         />
       </BlockNoteView>

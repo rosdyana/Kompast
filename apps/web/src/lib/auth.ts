@@ -289,6 +289,19 @@ export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthC
             if (memberships.length !== 1) return;
             return { data: { activeOrganizationId: memberships[0]!.organizationId } };
           },
+          // A new session is a sign-in (refresh extends an existing row), so
+          // this is where user.lastLoginAt is kept — shown on /settings →
+          // Members. Best-effort: a failure here must never fail the sign-in.
+          after: async (newSession) => {
+            try {
+              await db
+                .update(schema.user)
+                .set({ lastLoginAt: newSession.createdAt ?? new Date() })
+                .where(eq(schema.user.id, newSession.userId));
+            } catch (err) {
+              console.error("[auth] failed to record last login:", err);
+            }
+          },
         },
       },
     },

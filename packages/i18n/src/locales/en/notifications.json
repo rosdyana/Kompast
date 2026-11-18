@@ -17,13 +17,15 @@
     "issue.assigned": "Assigned to an issue",
     "issue.commented": "New comment on an issue you follow",
     "issue.mentioned": "Mentioned in an issue",
-    "issue.comment_reacted": "Reactions to my comments"
+    "issue.comment_reacted": "Reactions to my comments",
+    "page.mentioned": "Mentioned in a doc"
   },
   "savedToast": "Preference saved",
   "saveFailed": "Couldn't save the preference",
   "title": {
     "issue.assigned": "You were assigned to {{key}}",
     "issue.commented": "New comment on {{key}}",
-    "issue.mentioned": "You were mentioned in {{key}}"
+    "issue.mentioned": "You were mentioned in {{key}}",
+    "page.mentioned": "You were mentioned in {{title}}"
   }
 }

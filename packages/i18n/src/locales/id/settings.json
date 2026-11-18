@@ -163,6 +163,8 @@
     "adminRoleLabel": "Admin",
     "tableName": "Nama",
     "tableRole": "Peran",
+    "tableLastLogin": "Login terakhir",
+    "neverLoggedIn": "Belum pernah",
     "roleOwner": "Pemilik",
     "memberCount_one": "{{count}} anggota",
     "memberCount_other": "{{count}} anggota",

@@ -58,6 +58,9 @@ import { ProjectIcon } from "@/components/shell/ProjectIcon";
 import { usePageChrome, type Crumb } from "@/components/shell/WorkbenchContext";
 import { cn } from "@/lib/cn";
 import { NoAccessState } from "@/components/shared/NoAccessState";
+import { LiteEditor } from "@/components/shared/LiteEditor";
+import { RichTextView } from "@/components/shared/RichTextView";
+import type { Block } from "@blocknote/core";
 
 export const Route = createFileRoute("/_app/docs/$pageId")({
   loader: ({ params }) => getPageDetailFn({ data: params.pageId }),
@@ -985,20 +988,42 @@ function LinkedIssuesSection({ data }: { data: PageData }) {
   );
 }
 
+/**
+ * True if any block carries inline content: a non-empty text run, or any
+ * non-text inline node (a @mention or issue chip counts even with no words).
+ * Recurses into nested children, so an indented block still counts.
+ */
+function hasBlockContent(blocks: Block[]): boolean {
+  return blocks.some((block) => {
+    const b = block as { content?: unknown; children?: unknown };
+    const ownContent = Array.isArray(b.content)
+      ? b.content.some((c: unknown) => {
+          const node = c as { type?: string; text?: unknown } | null;
+          return node?.type !== "text" || String(node.text ?? "").trim().length > 0;
+        })
+      : !!b.content;
+    return ownContent || (Array.isArray(b.children) && hasBlockContent(b.children as Block[]));
+  });
+}
+
 function CommentsSection({ data, intlLocale }: { data: PageData; intlLocale: string }) {
   const { t } = useTranslation("docs");
   const router = useRouter();
   const shell = useLoaderData({ from: "/_app" });
-  const [comment, setComment] = useState("");
+  const [draft, setDraft] = useState<Block[]>([]);
+  // Remounts the editor (clearing it) after a successful send. A failed send keeps the draft.
+  const [editorKey, setEditorKey] = useState(0);
   const [sending, setSending] = useState(false);
+  const hasContent = hasBlockContent(draft);
   const usersById = new Map(data.users.map((u) => [u.id, u]));
 
   async function submit() {
-    if (!comment.trim() || sending) return;
+    if (!hasContent || sending) return;
     setSending(true);
     try {
-      await addPageCommentFn({ data: { pageId: data.page.id, blockId: "page", text: comment.trim() } });
-      setComment("");
+      await addPageCommentFn({ data: { pageId: data.page.id, blockId: "page", bodyJson: draft } });
+      setDraft([]);
+      setEditorKey((k) => k + 1);
       await router.invalidate();
     } finally {
       setSending(false);
@@ -1023,7 +1048,9 @@ function CommentsSection({ data, intlLocale }: { data: PageData; intlLocale: str
                     {relativeTime(created, intlLocale)}
                   </span>
                 </p>
-                <p className="mt-0.5 whitespace-pre-wrap text-[14.5px] leading-relaxed text-text">{body?.text ?? ""}</p>
+                <ClientOnly fallback={<p className="mt-0.5 whitespace-pre-wrap text-[14.5px] leading-relaxed text-text">{body?.text ?? ""}</p>}>
+                  <RichTextView content={c.bodyJson} className="mt-0.5 text-[14.5px] leading-relaxed text-text" />
+                </ClientOnly>
               </div>
             </div>
           );
@@ -1031,21 +1058,25 @@ function CommentsSection({ data, intlLocale }: { data: PageData; intlLocale: str
         <div className="flex gap-3">
           <Avatar name={shell.user.name} size={26} />
           <div className="min-w-0 flex-1">
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              onKeyDown={(e) => {
+            {/* Capture phase so Cmd/Ctrl+Enter submits before the editor inserts a newline. */}
+            <div
+              onKeyDownCapture={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
                   submit();
                 }
               }}
-              placeholder={t("pageDetail.commentPlaceholder")}
-              aria-label={t("pageDetail.commentPlaceholder")}
-              rows={comment ? 3 : 1}
-              className="kp-input min-h-9 resize-none"
-            />
-            {comment.trim() && (
+            >
+              <ClientOnly fallback={<div className="min-h-[44px] rounded-[6px] border border-border-2 bg-surface" />}>
+                <LiteEditor
+                  key={editorKey}
+                  onChange={setDraft}
+                  placeholder={t("pageDetail.commentPlaceholder")}
+                  className="min-h-[44px] rounded-[6px] border border-border-2 bg-surface px-3 py-2"
+                />
+              </ClientOnly>
+            </div>
+            {hasContent && (
               <div className="mt-2 flex items-center justify-end gap-3">
                 <span className="text-[12px] text-text-3">{t("pageDetail.commentHint")}</span>
                 <Button variant="primary" size="sm" onClick={submit} disabled={sending}>
