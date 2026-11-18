@@ -4,7 +4,7 @@ import { id } from "@kompast/core/ids";
 import { recordEmailFailure, withAuthorizedTenant } from "@kompast/core";
 import { sendInvitationEmail } from "../auth";
 import { attachInvitationDelivery, resendInvitationEmail } from "../invitation-delivery";
-import { listPendingInvitationsForEmail } from "../server-fns/invitations";
+import { listPendingInvitationsForEmail } from "../invitation-delivery";
 import { workspaceEntryFor } from "../server-fns/workspace";
 
 describe("sendInvitationEmail", () => {
