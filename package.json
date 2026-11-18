@@ -30,6 +30,11 @@
     "@types/node": "^26.6.6"
   },
   "pnpm": {
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ]
+    },
     "overrides": {
       "drizzle-orm": "0.45.2",
       "y-protocols": "1.0.7",
