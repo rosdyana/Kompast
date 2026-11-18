@@ -1,13 +1,22 @@
 import { createFileRoute, useLoaderData, useNavigate, useRouter } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
-import { Bell, Bot, Building2, Database, FileLock2, KeyRound, Mail, Settings as SettingsIcon, Users, UsersRound } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Bell, Bot, Building2, CheckCircle2, Clock, Database, FileLock2, KeyRound, Mail, Settings as SettingsIcon, Users, UsersRound, XCircle } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { Badge } from "@kompast/ui/Badge";
 import { Card } from "@kompast/ui/Card";
 import { FormField, NativeSelect, TextField } from "@kompast/ui/Input";
 import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
-import { getIntegrationSettingsFn, updateAiSettingsFn, updateMailSettingsFn, updateMicrosoftAuthFn, updateEmbeddingSettingsFn, reindexAllFn } from "@/lib/server-fns/settings";
+import {
+  getIntegrationSettingsFn,
+  updateAiSettingsFn,
+  updateMailSettingsFn,
+  updateMicrosoftAuthFn,
+  updateEmbeddingSettingsFn,
+  reindexAllFn,
+  sendTestEmailFn,
+  getTestEmailStatusFn,
+} from "@/lib/server-fns/settings";
 import { listMembersFn } from "@/lib/server-fns/members";
 import { listTeamsFn } from "@/lib/server-fns/teams";
 import { renameWorkspaceFn } from "@/lib/server-fns/workspace";
@@ -164,7 +173,7 @@ function SettingsPage() {
         {active === "departedPages" && data.adminData?.integrations.isSuperAdmin && <DepartedPagesTab />}
         {active === "ai" && globalSettings && <AiSection initial={globalSettings.ai} />}
         {active === "embedding" && globalSettings && <EmbeddingSection initial={globalSettings.embedding} />}
-        {active === "mail" && globalSettings && <MailSection initial={globalSettings.mail} />}
+        {active === "mail" && globalSettings && <MailSection initial={globalSettings.mail} userEmail={data.adminData?.integrations.userEmail ?? ""} />}
         {active === "entra" && globalSettings && <EntraSection initial={globalSettings.entra} />}
       </main>
     </div>
@@ -194,6 +203,35 @@ function useSave(section: string) {
     }
   }
   return { saving, error, run };
+}
+
+function TestEmailResultLine({ result }: { result: TestEmailResult }) {
+  const { t } = useTranslation("settings");
+  if (result.kind === "sent") {
+    return (
+      <p className="flex items-start gap-2 text-[13px] text-green">
+        <CheckCircle2 size={15} className="mt-px flex-none" />
+        <span>{t("integrations.mail.test.sent")}</span>
+      </p>
+    );
+  }
+  if (result.kind === "failed") {
+    return (
+      <p className="flex items-start gap-2 text-[13px] text-danger">
+        <XCircle size={15} className="mt-px flex-none" />
+        <span className="break-words">{t("integrations.mail.test.failed", { error: result.error ?? t("integrations.mail.test.unknownError") })}</span>
+      </p>
+    );
+  }
+  if (result.kind === "queued") {
+    return (
+      <p className="flex items-start gap-2 text-[13px] text-amber">
+        <Clock size={15} className="mt-px flex-none" />
+        <span>{t("integrations.mail.test.stillQueued")}</span>
+      </p>
+    );
+  }
+  return <p className="text-[13px] text-danger">{t("integrations.mail.test.error", { message: result.message })}</p>;
 }
 
 function StatusBadge({ ok }: { ok: boolean }) {
@@ -485,13 +523,63 @@ function AiSection({ initial }: { initial: Integrations["ai"] }) {
   );
 }
 
-function MailSection({ initial }: { initial: Integrations["mail"] }) {
+/** How often, and for how long, the test email's delivery state is polled after sending. */
+const TEST_EMAIL_POLL_MS = 2000;
+const TEST_EMAIL_TIMEOUT_MS = 45_000;
+
+type TestEmailResult = { kind: "sent" } | { kind: "failed"; error: string | null } | { kind: "queued" } | { kind: "error"; message: string };
+
+function MailSection({ initial, userEmail }: { initial: Integrations["mail"]; userEmail: string }) {
   const { t } = useTranslation("settings");
   const [driver, setDriver] = useState(initial.driver ?? "resend");
   const [from, setFrom] = useState(initial.from ?? "");
   const [apiKey, setApiKey] = useState("");
   const [smtpUrl, setSmtpUrl] = useState("");
   const { saving, error, run } = useSave(t("tabs.mail"));
+  const [testTo, setTestTo] = useState(userEmail);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestEmailResult | null>(null);
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  /** The test uses the SAVED settings, so it is only offered when the form has no unsaved edits. */
+  const unsaved = driver !== (initial.driver ?? "resend") || from !== (initial.from ?? "") || apiKey !== "" || smtpUrl !== "";
+
+  async function sendTest() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { outboxId } = await sendTestEmailFn({ data: { to: testTo.trim() || undefined } });
+      const deadline = Date.now() + TEST_EMAIL_TIMEOUT_MS;
+      while (aliveRef.current) {
+        const delivery = await getTestEmailStatusFn({ data: outboxId });
+        if (!aliveRef.current) return;
+        if (delivery?.state === "sent") {
+          setTestResult({ kind: "sent" });
+          return;
+        }
+        // Report the first failed attempt right away, not after the worker's retries are exhausted.
+        if (delivery?.state === "failing" || delivery?.state === "failed") {
+          setTestResult({ kind: "failed", error: delivery.error });
+          return;
+        }
+        if (Date.now() >= deadline) {
+          setTestResult({ kind: "queued" });
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, TEST_EMAIL_POLL_MS));
+      }
+    } catch (err) {
+      if (aliveRef.current) setTestResult({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      if (aliveRef.current) setTesting(false);
+    }
+  }
 
   const save = () =>
     run(async () => {
@@ -529,6 +617,27 @@ function MailSection({ initial }: { initial: Integrations["mail"] }) {
           )}
         </div>
         <SaveRow saving={saving} error={error} onSave={save} disabled={!from.trim()} label={t("integrations.mail.save")} savingLabel={t("integrations.mail.savingEllipsis")} />
+      </Card>
+      <Card className="mt-4">
+        <div className="flex flex-col gap-3 p-5">
+          <p className="text-[14px] font-medium">{t("integrations.mail.test.heading")}</p>
+          <p className="type-small text-text-3">{t("integrations.mail.test.hint")}</p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <TextField
+              type="email"
+              value={testTo}
+              onChange={(e) => setTestTo(e.target.value)}
+              placeholder={t("integrations.mail.test.recipientPlaceholder")}
+              aria-label={t("integrations.mail.test.recipientPlaceholder")}
+              className="sm:flex-1"
+            />
+            <Button variant="outline" onClick={sendTest} disabled={testing || unsaved || !testTo.trim()}>
+              {testing ? t("integrations.mail.test.sendingEllipsis") : t("integrations.mail.test.send")}
+            </Button>
+          </div>
+          {unsaved && <p className="text-[13px] text-text-3">{t("integrations.mail.test.unsavedHint")}</p>}
+          {testResult && <TestEmailResultLine result={testResult} />}
+        </div>
       </Card>
     </SettingsSection>
   );

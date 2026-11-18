@@ -52,7 +52,7 @@
   "inviteRoleLabel": "Team role",
   "invite": "Send invite",
   "invitingEllipsis": "Sending…",
-  "inviteSent": "Invitation sent",
+  "inviteSent": "Invitation created — email queued",
   "inviteAlreadyPending": "An invitation is already pending for that address",
   "inviteFailed": "Couldn't send the invitation",
   "inviteCanceled": "Invitation canceled",

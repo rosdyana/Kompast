@@ -80,7 +80,20 @@
       "savingEllipsis": "儲存中…",
       "save": "儲存",
       "saved": "已儲存。",
-      "description": "寄送通知與邀請電子郵件。"
+      "description": "寄送通知與邀請電子郵件。",
+      "test": {
+        "heading": "寄送測試郵件",
+        "hint": "會透過郵件工作程序使用上方已儲存的設定寄出，因此會以寄送邀請的相同方式檢查您的憑證與服務商。",
+        "recipientPlaceholder": "收件人電子郵件",
+        "send": "寄送測試郵件",
+        "sendingEllipsis": "寄送中…",
+        "unsavedHint": "寄送測試郵件前請先儲存變更。測試會使用已儲存的設定。",
+        "sent": "已送達郵件服務商。請檢查收件匣與垃圾郵件資料夾。",
+        "failed": "失敗：{{error}}",
+        "unknownError": "未知錯誤",
+        "stillQueued": "45 秒後仍在佇列中，沒有錯誤訊息。郵件工作程序是否正在執行？",
+        "error": "無法寄送測試郵件：{{message}}"
+      }
     }
   },
   "members": {
@@ -103,7 +116,7 @@
     "memberCount_one": "{{count}} 位成員",
     "memberCount_other": "{{count}} 位成員",
     "invitedAs": "以{{role}}身分邀請",
-    "inviteSent": "已寄送邀請至 {{email}}",
+    "inviteSent": "已建立 {{email}} 的邀請，郵件已加入佇列",
     "inviteHint": "對方會收到含有加入此工作區連結的電子郵件。",
     "cancelFailed": "無法取消邀請"
   },
@@ -165,5 +178,19 @@
     "moveToWorkspace": "移至工作區",
     "recoveredToMe": "已移至你的頁面",
     "recoveredToWorkspace": "已移至工作區"
+  },
+  "invitations": {
+    "deliveryNoEmail": "沒有郵件紀錄",
+    "deliverySent": "郵件已寄出",
+    "deliveryFailed": "郵件失敗",
+    "deliveryFailing": "郵件失敗，重試中",
+    "deliveryQueued": "郵件排隊中",
+    "copyLink": "複製邀請連結",
+    "linkCopied": "已複製邀請連結",
+    "linkCopyFailed": "無法複製連結",
+    "resend": "重新寄送",
+    "resendingEllipsis": "重新寄送中…",
+    "resent": "邀請郵件已重新加入佇列",
+    "resendFailed": "無法重新寄送邀請"
   }
 }

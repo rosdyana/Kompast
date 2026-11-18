@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { applyAcceptedTeamInvitation } from "@kompast/core";
-import { withTenant, adminDb } from "@kompast/db";
+import { withTenant, adminDb, db, schema, and, eq, sql } from "@kompast/db";
 import { getAuth } from "../auth";
 
 /**
@@ -53,3 +53,40 @@ export const rejectInvitationFn = createServerFn({ method: "POST" })
     await auth.api.rejectInvitation({ body: { invitationId }, headers: request.headers });
     return { ok: true } as const;
   });
+
+/**
+ * Pending, unexpired invitations addressed to this email (case-insensitive),
+ * across every workspace. Plain `db`, not withAuthorizedTenant: the invitation
+ * table has RLS disabled (rls.sql), and the signed-in user has no workspace
+ * yet, so there is no tenant to scope to. Callers must pass the session's own email.
+ */
+export async function listPendingInvitationsForEmail(email: string) {
+  return db
+    .select({ id: schema.invitation.id, organizationName: schema.organization.name, role: schema.invitation.role })
+    .from(schema.invitation)
+    .innerJoin(schema.organization, eq(schema.organization.id, schema.invitation.organizationId))
+    .where(
+      and(
+        sql`lower(${schema.invitation.email}) = lower(${email})`,
+        eq(schema.invitation.status, "pending"),
+        sql`${schema.invitation.expiresAt} > now()`,
+      ),
+    )
+    .orderBy(schema.invitation.createdAt);
+}
+
+/**
+ * Backs /no-workspace: a signed-in user with no workspace lists the invitations
+ * waiting for their email. Not gated by requireAuthContext (they have no
+ * workspace by definition); the session is the only identity used, and it
+ * only ever returns invitations for that session's own email.
+ */
+export const listMyPendingInvitationsFn = createServerFn({ method: "GET" }).handler(async () => {
+  const auth = await getAuth();
+  const request = getRequest();
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) return null;
+
+  const invitations = await listPendingInvitationsForEmail(session.user.email);
+  return { email: session.user.email, invitations };
+});

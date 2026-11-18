@@ -1,6 +1,17 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { schema, eq, and, inArray, sql, adminDb as admin } from "@kompast/db";
-import { enqueueEmail, claimPendingEmails, markEmailSent, markEmailFailed, sendSprintSummaryEmail, recordEmailFailure, MAX_EMAIL_ATTEMPTS } from "../email";
+import {
+  enqueueEmail,
+  claimPendingEmails,
+  markEmailSent,
+  markEmailFailed,
+  sendSprintSummaryEmail,
+  recordEmailFailure,
+  getEmailDelivery,
+  getEmailDeliveryByDedupeKeys,
+  retryEmail,
+  MAX_EMAIL_ATTEMPTS,
+} from "../email";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -228,5 +239,68 @@ describe("email outbox", () => {
     const [terminal] = await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.id, outboxId));
     expect(terminal?.status).toBe("failed");
     expect(terminal?.attempts).toBe(MAX_EMAIL_ATTEMPTS);
+  });
+
+  async function enqueueForDelivery(dedupeKey: string) {
+    const { outboxId } = await withAuthorizedTenant(ctx, (tx) =>
+      enqueueEmail(tx, { organizationId: orgId, to: "a@example.com", subject: "Delivery", templateKey: "test", templateProps: {}, dedupeKey }),
+    );
+    return outboxId;
+  }
+
+  async function deliveryOf(outboxId: string) {
+    return withAuthorizedTenant(ctx, (tx) => getEmailDelivery(tx, outboxId));
+  }
+
+  it("getEmailDelivery reports queued before any attempt, failing after one failed attempt (with the error), and failed after MAX_EMAIL_ATTEMPTS", async () => {
+    const outboxId = await enqueueForDelivery("dk-deliv-states");
+    expect(await deliveryOf(outboxId)).toEqual({ state: "queued", error: null, attempts: 0 });
+
+    await recordEmailFailure(admin, outboxId, "vendor rejected sender");
+    expect(await deliveryOf(outboxId)).toEqual({ state: "failing", error: "vendor rejected sender", attempts: 1 });
+
+    for (let i = 1; i < MAX_EMAIL_ATTEMPTS; i++) await recordEmailFailure(admin, outboxId, "vendor rejected sender");
+    expect(await deliveryOf(outboxId)).toEqual({ state: "failed", error: "vendor rejected sender", attempts: MAX_EMAIL_ATTEMPTS });
+  });
+
+  it("getEmailDelivery reports sent after markEmailSent, and null for an unknown outbox id", async () => {
+    const outboxId = await enqueueForDelivery("dk-deliv-sent");
+    await recordEmailFailure(admin, outboxId, "transient");
+    await markEmailSent(admin, outboxId, "provider-msg-deliv");
+
+    expect(await deliveryOf(outboxId)).toEqual({ state: "sent", error: null, attempts: 1 });
+    expect(await deliveryOf(id("outbox"))).toBeNull();
+  });
+
+  it("getEmailDeliveryByDedupeKeys returns a map keyed by dedupeKey and omits keys with no row", async () => {
+    await enqueueForDelivery("dk-batch-a");
+    await enqueueForDelivery("dk-batch-b");
+    await recordEmailFailure(admin, (await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.dedupeKey, "dk-batch-b")))[0]!.id, "smtp down");
+
+    const map = await withAuthorizedTenant(ctx, (tx) => getEmailDeliveryByDedupeKeys(tx, orgId, ["dk-batch-a", "dk-batch-b", "dk-batch-missing"]));
+    expect(map.get("dk-batch-a")).toEqual({ state: "queued", error: null, attempts: 0 });
+    expect(map.get("dk-batch-b")).toEqual({ state: "failing", error: "smtp down", attempts: 1 });
+    expect(map.has("dk-batch-missing")).toBe(false);
+
+    const empty = await withAuthorizedTenant(ctx, (tx) => getEmailDeliveryByDedupeKeys(tx, orgId, []));
+    expect(empty.size).toBe(0);
+  });
+
+  it("retryEmail resets a failing row back to queued (attempts 0, no error, no claim) and reports whether the row existed", async () => {
+    const outboxId = await enqueueForDelivery("dk-retry-reset");
+    await recordEmailFailure(admin, outboxId, "bad credentials");
+    await recordEmailFailure(admin, outboxId, "bad credentials");
+    expect(await deliveryOf(outboxId)).toMatchObject({ state: "failing", attempts: 2 });
+
+    const existed = await withAuthorizedTenant(ctx, (tx) => retryEmail(tx, orgId, "dk-retry-reset"));
+    expect(existed).toBe(true);
+
+    expect(await deliveryOf(outboxId)).toEqual({ state: "queued", error: null, attempts: 0 });
+    // Not asserting status/claimed_at: the row is claimable again at once, so a worker may have moved it to "sending".
+    const [row] = await admin.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.id, outboxId));
+    expect(row).toMatchObject({ attempts: 0, error: null });
+
+    const missing = await withAuthorizedTenant(ctx, (tx) => retryEmail(tx, orgId, "dk-retry-does-not-exist"));
+    expect(missing).toBe(false);
   });
 });

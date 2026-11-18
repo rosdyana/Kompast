@@ -8,9 +8,10 @@ import { Avatar } from "@kompast/ui/Avatar";
 import { NativeSelect, TextField } from "@kompast/ui/Input";
 import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
-import { inviteMemberFn, cancelInvitationFn, type listMembersFn } from "@/lib/server-fns/members";
+import { inviteMemberFn, cancelInvitationFn, resendInvitationFn, type listMembersFn } from "@/lib/server-fns/members";
 import { SettingsSection } from "./SettingsSection";
 import { RolesHelpDialog } from "./RolesHelpDialog";
+import { InvitationDeliveryBadge, InvitationRowActions } from "./InvitationDeliveryControls";
 
 export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembersFn>> }) {
   const { t } = useTranslation("settings");
@@ -106,6 +107,8 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
                   <p className="truncate text-[14px]">{inv.email}</p>
                   <p className="text-[12.5px] text-text-3">{t("members.invitedAs", { role: roleLabel(inv.role ?? "member") })}</p>
                 </div>
+                <InvitationDeliveryBadge delivery={inv.delivery} />
+                <InvitationRowActions inviteUrl={inv.inviteUrl} onResend={() => resendInvitationFn({ data: inv.id })} />
                 <IconButton aria-label={t("members.cancel")} title={t("members.cancel")} onClick={() => cancel(inv.id)} className="hover:text-danger">
                   <X size={15} />
                 </IconButton>

@@ -101,6 +101,84 @@ export async function recordEmailFailure(db: AnyDb, outboxId: string, error: str
   return rows[0]?.status ?? "failed";
 }
 
+/**
+ * What a user should be told about one outbox row, derived from its stored
+ * status + error (not from attempts alone — markEmailFailed sets "failed"
+ * directly):
+ * - sent: delivered to the vendor.
+ * - failing: a delivery attempt failed, `error` is set, and the row will be retried.
+ * - failed: retries exhausted (or marked failed); `error` is the last failure.
+ * - queued: not attempted yet (or a worker currently holds it with no prior error).
+ */
+export type EmailDeliveryState = "sent" | "failing" | "failed" | "queued";
+
+export interface EmailDelivery {
+  state: EmailDeliveryState;
+  error: string | null;
+  attempts: number;
+}
+
+function deriveEmailDelivery(row: { status: string; error: string | null; attempts: number }): EmailDelivery {
+  const attempts = row.attempts;
+  if (row.status === "sent") return { state: "sent", error: null, attempts };
+  // bounced/complained are never produced by this app today; treat them as terminal failures if they ever appear.
+  if (row.status === "failed" || row.status === "bounced" || row.status === "complained") return { state: "failed", error: row.error, attempts };
+  // pending | sending
+  if (row.error) return { state: "failing", error: row.error, attempts };
+  return { state: "queued", error: null, attempts };
+}
+
+/** Delivery state of one outbox row, or null if no such row exists. Tenant-scoped: call inside withAuthorizedTenant. */
+export async function getEmailDelivery(tx: Tx, outboxId: string): Promise<EmailDelivery | null> {
+  const [row] = await tx
+    .select({ status: schema.emailOutbox.status, error: schema.emailOutbox.error, attempts: schema.emailOutbox.attempts })
+    .from(schema.emailOutbox)
+    .where(eq(schema.emailOutbox.id, outboxId));
+  return row ? deriveEmailDelivery(row) : null;
+}
+
+/**
+ * Batch lookup by dedupeKey (e.g. `invitation:<id>`), keyed by dedupeKey.
+ * Keys with no outbox row are simply absent from the map. Tenant-scoped: call inside withAuthorizedTenant.
+ */
+export async function getEmailDeliveryByDedupeKeys(tx: Tx, organizationId: string, dedupeKeys: string[]): Promise<Map<string, EmailDelivery>> {
+  const result = new Map<string, EmailDelivery>();
+  if (dedupeKeys.length === 0) return result;
+  const rows = await tx
+    .select({
+      dedupeKey: schema.emailOutbox.dedupeKey,
+      status: schema.emailOutbox.status,
+      error: schema.emailOutbox.error,
+      attempts: schema.emailOutbox.attempts,
+    })
+    .from(schema.emailOutbox)
+    .where(and(eq(schema.emailOutbox.organizationId, organizationId), inArray(schema.emailOutbox.dedupeKey, dedupeKeys)));
+  for (const row of rows) result.set(row.dedupeKey, deriveEmailDelivery(row));
+  return result;
+}
+
+/**
+ * Puts an existing outbox row (by dedupeKey) back into the queue: pending,
+ * attempts 0, no error, no claim, so the next worker poll sends it again.
+ * Returns false when no such row exists. Tenant-scoped: call inside withAuthorizedTenant.
+ */
+export async function retryEmail(tx: Tx, organizationId: string, dedupeKey: string): Promise<boolean> {
+  // A worker holding the row mid-send must not be reset under it (that would double-send);
+  // report it as existing so the caller doesn't enqueue a fresh copy either.
+  const [current] = await tx
+    .select({ status: schema.emailOutbox.status })
+    .from(schema.emailOutbox)
+    .where(and(eq(schema.emailOutbox.organizationId, organizationId), eq(schema.emailOutbox.dedupeKey, dedupeKey)));
+  if (!current) return false;
+  if (current.status === "sending") return true;
+  const rows = await tx
+    .update(schema.emailOutbox)
+    .set({ status: "pending", attempts: 0, error: null, claimedAt: null })
+    .where(and(eq(schema.emailOutbox.organizationId, organizationId), eq(schema.emailOutbox.dedupeKey, dedupeKey)))
+    .returning({ id: schema.emailOutbox.id });
+  return rows.length > 0;
+}
+
 export interface SendSprintSummaryEmailInput {
   organizationId: string;
   sprintId: string;

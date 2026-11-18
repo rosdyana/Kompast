@@ -18,6 +18,7 @@ export const Route = createFileRoute("/_app")({
   loader: async () => {
     const shell = await getWorkspaceShellFn();
     if (!shell) throw redirect({ to: "/login" });
+    if ("noWorkspace" in shell) throw redirect({ to: "/no-workspace" });
     const pageTree = await listPageTreeFn();
     return { ...shell, pages: pageTree.pages, favoriteIds: pageTree.favoriteIds };
   },

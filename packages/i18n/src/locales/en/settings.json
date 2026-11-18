@@ -80,7 +80,20 @@
       "savingEllipsis": "Saving…",
       "save": "Save",
       "saved": "Saved.",
-      "description": "Delivers notification and invitation emails."
+      "description": "Delivers notification and invitation emails.",
+      "test": {
+        "heading": "Send a test email",
+        "hint": "Sends through the mail worker with the saved settings above, so it checks your credentials and vendor the same way an invitation is sent.",
+        "recipientPlaceholder": "Recipient email",
+        "send": "Send test email",
+        "sendingEllipsis": "Sending…",
+        "unsavedHint": "Save your changes before sending a test email. The test uses the saved settings.",
+        "sent": "Delivered to the mail vendor. Check the inbox and the spam folder.",
+        "failed": "Failed: {{error}}",
+        "unknownError": "unknown error",
+        "stillQueued": "Still queued after 45 seconds with no error. Is the mail worker running?",
+        "error": "Could not send the test email: {{message}}"
+      }
     }
   },
   "members": {
@@ -103,7 +116,7 @@
     "memberCount_one": "{{count}} member",
     "memberCount_other": "{{count}} members",
     "invitedAs": "Invited as {{role}}",
-    "inviteSent": "Invitation sent to {{email}}",
+    "inviteSent": "Invitation created for {{email}} — email queued",
     "inviteHint": "They'll get an email with a link to join this workspace.",
     "cancelFailed": "Couldn't cancel the invitation"
   },
@@ -167,5 +180,19 @@
     "moveToWorkspace": "Move to Workspace",
     "recoveredToMe": "Moved to your pages",
     "recoveredToWorkspace": "Moved to Workspace"
+  },
+  "invitations": {
+    "deliveryNoEmail": "No email record",
+    "deliverySent": "Email sent",
+    "deliveryFailed": "Email failed",
+    "deliveryFailing": "Email failing, retrying",
+    "deliveryQueued": "Email queued",
+    "copyLink": "Copy invite link",
+    "linkCopied": "Invite link copied",
+    "linkCopyFailed": "Could not copy the link",
+    "resend": "Resend",
+    "resendingEllipsis": "Resending…",
+    "resent": "Invitation email queued again",
+    "resendFailed": "Could not resend the invitation"
   }
 }

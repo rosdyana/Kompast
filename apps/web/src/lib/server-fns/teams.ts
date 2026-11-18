@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import * as z from "zod";
-import { db, eq, schema } from "@kompast/db";
+import { and, db, eq, gt, schema } from "@kompast/db";
 import {
   addTeamMember,
   cancelTeamInvitation,
@@ -22,6 +22,7 @@ import {
 } from "@kompast/core";
 import { getAuth, sendInvitationEmail } from "../auth";
 import { requireAuthContext } from "../session";
+import { attachInvitationDelivery, resendInvitationEmail } from "../invitation-delivery";
 
 /**
  * team creation stays super-admin-only (createTeamFn). Team MEMBERSHIP
@@ -71,7 +72,7 @@ export const getTeamManagementFn = createServerFn({ method: "GET" })
     return withAuthorizedTenant(ctx, async (tx) => ({
       members: await listTeamMembers(tx, data.teamId),
       candidates: await listOrgMembersNotInTeam(tx, ctx, data.teamId),
-      invitations: await listTeamInvitations(tx, data.teamId),
+      invitations: await attachInvitationDelivery(tx, ctx.organizationId, await listTeamInvitations(tx, data.teamId)),
     }));
   });
 
@@ -173,6 +174,34 @@ export const cancelTeamInvitationFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     await requireTeamAdmin(db, { ...ctx, teamId: data.teamId });
     await cancelTeamInvitation(db, data);
+    return { ok: true } as const;
+  });
+
+/**
+ * Re-sends a pending invitation into this team. Same gate as inviteToTeamFn
+ * (requireTeamAdmin for this team), and the invitation must belong to this team.
+ */
+export const resendTeamInvitationFn = createServerFn({ method: "POST" })
+  .validator(cancelTeamInvitationSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireTeamAdmin(db, { ...ctx, teamId: data.teamId });
+
+    const [invitation] = await db
+      .select({ id: schema.invitation.id, email: schema.invitation.email, teamRole: schema.invitation.teamRole })
+      .from(schema.invitation)
+      .where(
+        and(
+          eq(schema.invitation.id, data.invitationId),
+          eq(schema.invitation.organizationId, ctx.organizationId),
+          eq(schema.invitation.teamId, data.teamId),
+          eq(schema.invitation.status, "pending"),
+          gt(schema.invitation.expiresAt, new Date()),
+        ),
+      );
+    if (!invitation) throw new Error("This invitation is no longer pending");
+
+    await resendInvitationEmail(ctx, { id: invitation.id, email: invitation.email, role: invitation.teamRole ?? "member" });
     return { ok: true } as const;
   });
 
