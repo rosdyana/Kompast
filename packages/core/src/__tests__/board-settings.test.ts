@@ -135,6 +135,32 @@ describe("board column settings", () => {
     expect(updated?.newIssuePosition).toBe("bottom");
   });
 
+  it("swimlaneMaxCards defaults to 5 and updateBoardSettings saves an in-range value", async () => {
+    const { boardId } = await seedProject("BSK");
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSK"));
+    const [fresh] = await admin.select().from(schema.board).where(eq(schema.board.id, boardId));
+    expect(fresh?.swimlaneMaxCards).toBe(5);
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      updateBoardSettings(tx, { projectId: project!.id, boardId, swimlaneMaxCards: 12 }),
+    );
+    const [updated] = await admin.select().from(schema.board).where(eq(schema.board.id, boardId));
+    expect(updated?.swimlaneMaxCards).toBe(12);
+    expect(updated?.newIssuePosition).toBe("top"); // untouched
+  });
+
+  it("updateBoardSettings rejects a swimlaneMaxCards outside 1–50 or not a whole number", async () => {
+    const { boardId } = await seedProject("BSL");
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSL"));
+    for (const bad of [0, 51, 2.5, -1]) {
+      await expect(
+        withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+          updateBoardSettings(tx, { projectId: project!.id, boardId, swimlaneMaxCards: bad }),
+        ),
+      ).rejects.toThrow(/swimlaneMaxCards/);
+    }
+  });
+
   it("updateBoardSettings rejects a board that belongs to a DIFFERENT project", async () => {
     const { boardId: boardA } = await seedProject("BSI");
     await seedProject("BSJ");

@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNull, ne, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { getChecklistSummaries } from "./checklist";
+import { InvalidInputError } from "./errors";
 
 /**
  * Board data shaped for the kanban UI: columns in display order, each with
@@ -242,7 +243,11 @@ export interface UpdateBoardSettingsInput {
   projectId: string;
   boardId: string;
   newIssuePosition?: "top" | "bottom";
+  /** Cards a swimlane shows before it scrolls on its own; 1–50. */
+  swimlaneMaxCards?: number;
 }
+
+export const SWIMLANE_MAX_CARDS_RANGE = { min: 1, max: 50 } as const;
 
 export async function updateBoardSettings(tx: Tx, input: UpdateBoardSettingsInput): Promise<void> {
   const [board] = await tx
@@ -252,8 +257,15 @@ export async function updateBoardSettings(tx: Tx, input: UpdateBoardSettingsInpu
     .limit(1);
   if (!board) throw new Error(`Board ${input.boardId} not found in project ${input.projectId}`);
 
-  const set: Partial<{ newIssuePosition: "top" | "bottom" }> = {};
+  const set: Partial<{ newIssuePosition: "top" | "bottom"; swimlaneMaxCards: number }> = {};
   if (input.newIssuePosition !== undefined) set.newIssuePosition = input.newIssuePosition;
+  if (input.swimlaneMaxCards !== undefined) {
+    const n = input.swimlaneMaxCards;
+    if (!Number.isInteger(n) || n < SWIMLANE_MAX_CARDS_RANGE.min || n > SWIMLANE_MAX_CARDS_RANGE.max) {
+      throw new InvalidInputError(`swimlaneMaxCards must be a whole number from ${SWIMLANE_MAX_CARDS_RANGE.min} to ${SWIMLANE_MAX_CARDS_RANGE.max}`);
+    }
+    set.swimlaneMaxCards = n;
+  }
   if (Object.keys(set).length === 0) return;
   await tx.update(schema.board).set(set).where(eq(schema.board.id, input.boardId));
 }

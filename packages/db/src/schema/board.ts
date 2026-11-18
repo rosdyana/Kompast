@@ -21,6 +21,8 @@ export const board = pgTable("board", {
   newIssuePosition: text("new_issue_position", { enum: ["top", "bottom"] })
     .notNull()
     .default("top"),
+  /** Grouped (swimlane) board: a lane whose fullest cell has more cards than this scrolls on its own, showing this many. */
+  swimlaneMaxCards: integer("swimlane_max_cards").notNull().default(5),
 });
 
 /**

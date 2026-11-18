@@ -604,7 +604,8 @@
     "noActiveTitle": "沒有進行中的衝刺",
     "goToBacklog": "前往待辦清單",
     "clearFilters": "清除篩選",
-    "dropHere": "放置於此"
+    "dropHere": "放置於此",
+    "moreBelow": "還有 {{count}} 張"
   },
   "settingsTab": {
     "columnsHeading": "看板欄位",
@@ -616,6 +617,8 @@
     "newIssuePositionLabel": "新卡片位置",
     "newIssuePositionTop": "欄位頂端",
     "newIssuePositionBottom": "欄位底端",
+    "swimlaneMaxCardsLabel": "泳道捲動前顯示的卡片數",
+    "swimlaneMaxCardsHint": "依負責人分組時，任一欄位卡片超過此數的泳道會獨立捲動（1–50）。",
     "columnsCountSummary": "{{count}} 個欄位 · 待辦欄位固定在第一個位置",
     "moveLeftTitle": "向左移動",
     "moveRightTitle": "向右移動",

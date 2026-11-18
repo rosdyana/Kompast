@@ -18,7 +18,7 @@ The workspace is **Lumen Labs 光譜科技**. Every team-visibility rule has som
 | Oliver Hsu | Workspace admin, in no team | Settings and shared Workspace docs only, which shows that workspace admin ≠ see everything | English |
 
 The data:
-- **Projects:** Atlas Platform (21 issues), Mobile App, the Marketing launch project (17 issues, with its workflow in Chinese), a Finance project nobody else can see, and a legacy project with no team.
+- **Projects:** Atlas Platform (50 issues), Mobile App, the Marketing launch project (17 issues, with its workflow in Chinese), a Finance project nobody else can see, and a legacy project with no team.
 - **Sprints:** each team board has a closed sprint, an active sprint a week in (so burndown and velocity have data), and a planned next sprint.
 - **Docs:** bilingual Workspace docs, team-space docs per team, and project docs. One Workspace page, *Q4 headcount plan*, is restricted through Share → People & teams with access.
 - **Private & Shared docs:** Daniel has a private *My review notes* and shares *Daniel / Priya 1:1* with Priya, so it shows under **Shared** for both of them only. Joyce has a private Chinese draft. **Ethan Ko** (a former engineer, not a persona) has left the workspace, leaving private notes and a *Handover: billing service* page shared with Daniel. Grace can recover them from Settings → Departed members' pages.

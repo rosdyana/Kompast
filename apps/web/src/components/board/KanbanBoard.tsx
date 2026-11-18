@@ -1,5 +1,5 @@
 import { SearchField } from "@kompast/ui/Input";
-import { forwardRef, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useLoaderData, useRouter } from "@tanstack/react-router";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { Check, CheckSquare, ChevronDown, Layers, MoreHorizontal, Plus } from "lucide-react";
@@ -22,6 +22,7 @@ import { CompleteSprintDialog } from "./BacklogView";
 import { useConfirmArm } from "@/lib/use-confirm-arm";
 import { IssueChecklist, type ChecklistSummary } from "@/components/issues/IssueChecklist";
 import { cn } from "@/lib/cn";
+import { FadeScroller } from "./FadeScroller";
 import { compareAssigneeGroups, daysUntil, formatShortDate, useIntlLocale, useProjectLookups, useSuppressClickAfterDrag, type BoardData, type BoardIssue } from "./project-shared";
 
 /** Sentinel swimlane key for issues with no assignee — never a real assigneeId (nanoids never start with "__"). */
@@ -506,23 +507,37 @@ export function KanbanBoard({ data }: { data: BoardData }) {
           {t("boardView.keyboardHint")}
         </p>
 
-        <div className="min-h-0 flex-1 overflow-auto px-4 pb-4 sm:px-6">
+        {/* `relative` makes this scroller the containing block for absolutely positioned
+            card bits (PriorityIcon's sr-only label). Without it they resolve to .kp-board,
+            escape this overflow clip, and stretch the page with a big empty gap below. */}
+        <div className="relative min-h-0 flex-1 overflow-auto px-4 pb-4 sm:px-6">
           {tableViewConfig.swimlaneBy === "assignee" ? (
-            <SwimlaneBoard columns={columns} usersById={usersById} cardCommon={cardCommon} addProps={addProps} me={me} showMyEmptyLane={showMyEmptyLane} />
+            <SwimlaneBoard
+              columns={columns}
+              usersById={usersById}
+              cardCommon={cardCommon}
+              addProps={addProps}
+              me={me}
+              showMyEmptyLane={showMyEmptyLane}
+              maxCardsPerLane={data.board.swimlaneMaxCards}
+            />
           ) : (
             <div className="flex h-full min-w-fit items-stretch gap-3">
               {columns.map((col, index) => (
                 <div key={col.id} className="flex h-full min-h-0 w-[280px] flex-none flex-col rounded-[10px] bg-surface-2">
                   <ColumnHeader column={col} />
-                  <ColumnCell
-                    droppableId={col.id}
-                    issues={col.issues}
-                    columnId={col.id}
-                    cardCommon={cardCommon}
-                    addProps={index === 0 ? addProps : undefined}
-                    addTarget={FLAT_BOARD_TARGET}
-                    className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 [scrollbar-width:thin]"
-                  />
+                  <FadeScroller className="flex-1" scrollClassName="px-2 pb-2">
+                    <ColumnCell
+                      droppableId={col.id}
+                      issues={col.issues}
+                      columnId={col.id}
+                      cardCommon={cardCommon}
+                      addProps={index === 0 ? addProps : undefined}
+                      addTarget={FLAT_BOARD_TARGET}
+                      // Grows to fill the column so the whole column stays a drop target.
+                      className="flex-1"
+                    />
+                  </FadeScroller>
                 </div>
               ))}
             </div>
@@ -697,6 +712,7 @@ function SwimlaneBoard({
   addProps,
   me,
   showMyEmptyLane,
+  maxCardsPerLane,
 }: {
   columns: Column[];
   usersById: Map<string, BoardData["users"][number]>;
@@ -704,6 +720,7 @@ function SwimlaneBoard({
   addProps: AddIssueProps;
   me: { id: string; name: string };
   showMyEmptyLane: boolean;
+  maxCardsPerLane: number;
 }) {
   const { t } = useTranslation("board");
   const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(new Set());
@@ -728,7 +745,8 @@ function SwimlaneBoard({
 
   return (
     <div className="flex min-w-fit flex-col gap-2">
-      <div className="flex gap-3">
+      {/* Pinned while lanes scroll beneath; bg-bg keeps cards from showing through the gaps. */}
+      <div className="sticky top-0 z-[2] flex gap-3 bg-bg">
         {columns.map((col) => (
           <div key={col.id} className="w-[280px] flex-none rounded-[10px] bg-surface-2">
             <ColumnHeader column={col} />
@@ -759,28 +777,84 @@ function SwimlaneBoard({
               <span className="type-small text-text-3">{t("backlog.issueCount", { count })}</span>
             </button>
             {!isCollapsed && (
-              <div className="flex gap-3">
+              <LaneCells
+                maxCards={maxCardsPerLane}
+                fullestCell={Math.max(0, ...columns.map((col) => col.issues.filter((i) => assigneeSwimlaneKey(i) === lane.key).length))}
+                label={lane.label}
+              >
                 {columns.map((col, index) => (
-                  <div key={col.id} className="w-[280px] flex-none rounded-[10px] bg-surface-2 p-2">
-                    <ColumnCell
-                      droppableId={`${col.id}::${lane.key}`}
-                      issues={col.issues.filter((i) => assigneeSwimlaneKey(i) === lane.key)}
-                      columnId={col.id}
-                      swimlaneKey={lane.key}
-                      cardCommon={cardCommon}
-                      addProps={index === 0 ? addProps : undefined}
-                      addTarget={lane.key}
-                      // An empty cell (your own empty lane, an empty Unassigned) would otherwise
-                      // collapse to its padding and be hard to drop a card into.
-                      className="min-h-[56px]"
-                    />
+                  <div key={col.id} data-lane-cell className="flex w-[280px] flex-none flex-col rounded-[10px] bg-surface-2">
+                    <FadeScroller className="flex-1" scrollClassName="p-2">
+                      <ColumnCell
+                        droppableId={`${col.id}::${lane.key}`}
+                        issues={col.issues.filter((i) => assigneeSwimlaneKey(i) === lane.key)}
+                        columnId={col.id}
+                        swimlaneKey={lane.key}
+                        cardCommon={cardCommon}
+                        addProps={index === 0 ? addProps : undefined}
+                        addTarget={lane.key}
+                        // An empty cell (your own empty lane, an empty Unassigned) would otherwise
+                        // collapse to its padding and be hard to drop a card into; flex-1 fills the lane height.
+                        className="min-h-[56px] flex-1"
+                      />
+                    </FadeScroller>
                   </div>
                 ))}
-              </div>
+              </LaneCells>
             )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * One swimlane's row of cells. Once its fullest cell holds more than `maxCards`
+ * cards, the lane gets a fixed height of exactly `maxCards` cards (measured,
+ * since card heights vary) and each cell scrolls on its own — the same
+ * per-column scrolling as the ungrouped board, scoped to one assignee — so a
+ * heavily loaded assignee doesn't push every other lane far down the page.
+ */
+function LaneCells({ maxCards, fullestCell, label, children }: { maxCards: number; fullestCell: number; label: string; children: ReactNode }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [maxHeight, setMaxHeight] = useState<number | null>(null);
+  const capped = fullestCell > maxCards;
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row || !capped) {
+      setMaxHeight(null);
+      return;
+    }
+    const scrollers = () => row.querySelectorAll<HTMLElement>(":scope > [data-lane-cell] [data-fade-scroller]");
+    const measure = () => {
+      let height = 0;
+      for (const scroller of scrollers()) {
+        // The Nth card's bottom edge, in the cell scroller's content coordinates, is where the cap goes.
+        const nth = scroller.querySelectorAll("[data-board-card]")[maxCards - 1];
+        if (nth) height = Math.max(height, nth.getBoundingClientRect().bottom - scroller.getBoundingClientRect().top + scroller.scrollTop);
+      }
+      // + the scroller's bottom padding (p-2), so the last visible card isn't flush against the edge.
+      if (height > 0) setMaxHeight(Math.ceil(height + 8));
+    };
+    measure();
+    // Card heights change with edits, fonts loading and title wrapping; re-measure when a cell's content resizes.
+    const observer = new ResizeObserver(measure);
+    for (const scroller of scrollers()) for (const content of scroller.children) observer.observe(content);
+    return () => observer.disconnect();
+  });
+
+  return (
+    <div
+      ref={rowRef}
+      role={capped ? "region" : undefined}
+      aria-label={capped ? label : undefined}
+      // Capped: the row holds the lane height; each cell stretches to it and its FadeScroller scrolls on its own.
+      className="flex gap-3"
+      style={capped && maxHeight !== null ? { maxHeight } : undefined}
+    >
+      {children}
     </div>
   );
 }
@@ -1123,6 +1197,7 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
       params={{ teamId: common.teamId, projectKey: common.projectKey, issueKeySeq: String(issue.keySeq) }}
       search={{ from: "board" }}
       ref={setRefs}
+      data-board-card
       {...listeners}
       {...attributes}
       role="link"

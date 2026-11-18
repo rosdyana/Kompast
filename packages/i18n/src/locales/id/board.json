@@ -605,7 +605,8 @@
     "noActiveTitle": "Tidak ada sprint aktif",
     "goToBacklog": "Ke backlog",
     "clearFilters": "Hapus filter",
-    "dropHere": "Letakkan di sini"
+    "dropHere": "Letakkan di sini",
+    "moreBelow": "{{count}} lagi"
   },
   "settingsTab": {
     "columnsHeading": "Kolom kanban",
@@ -617,6 +618,8 @@
     "newIssuePositionLabel": "Posisi kartu baru",
     "newIssuePositionTop": "Atas kolom",
     "newIssuePositionBottom": "Bawah kolom",
+    "swimlaneMaxCardsLabel": "Kartu per lajur sebelum bergulir",
+    "swimlaneMaxCardsHint": "Dengan Kelompokkan: Penanggung jawab, lajur yang punya lebih banyak kartu dari angka ini di kolom mana pun akan bergulir sendiri (1–50).",
     "columnsCountSummary": "{{count}} kolom · Backlog terkunci di posisi pertama",
     "moveLeftTitle": "Geser ke kiri",
     "moveRightTitle": "Geser ke kanan",
