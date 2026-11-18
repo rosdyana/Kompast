@@ -23,7 +23,7 @@ export const listMembersFn = createServerFn({ method: "GET" }).handler(async () 
 
   const [members, invitations] = await Promise.all([
     db
-      .select({ id: schema.member.id, userId: schema.member.userId, role: schema.member.role, name: schema.user.name, email: schema.user.email })
+      .select({ id: schema.member.id, userId: schema.member.userId, role: schema.member.role, name: schema.user.name, email: schema.user.email, lastLoginAt: schema.user.lastLoginAt })
       .from(schema.member)
       .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
       .where(eq(schema.member.organizationId, ctx.organizationId)),

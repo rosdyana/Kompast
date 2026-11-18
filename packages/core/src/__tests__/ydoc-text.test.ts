@@ -121,3 +121,32 @@ describe("pageStateToPlainText", () => {
     expect(pageStateToPlainText(stored)).toBe("Stored heading");
   });
 });
+
+describe("pageStateToPlainText — inline @mentions", () => {
+  it("emits @name for a userMention inline atom between text runs (the structure blocksToYDocState produces)", () => {
+    const state = buildState((frag) => {
+      const group = appendBlock(frag, "blockGroup");
+      const container = appendBlock(group, "blockContainer");
+      const paragraph = appendBlock(container, "paragraph");
+      appendText(paragraph, "Ping ");
+      const mention = appendBlock(paragraph, "userMention");
+      mention.setAttribute("userId", "user_ana");
+      mention.setAttribute("name", "Ana");
+      appendText(paragraph, " about this.");
+    });
+
+    expect(pageStateToPlainText(state)).toBe("Ping @Ana about this.");
+  });
+
+  it("emits nothing for a userMention with no name attribute", () => {
+    const state = buildState((frag) => {
+      const group = appendBlock(frag, "blockGroup");
+      const container = appendBlock(group, "blockContainer");
+      const paragraph = appendBlock(container, "paragraph");
+      appendText(paragraph, "Hi ");
+      appendBlock(paragraph, "userMention");
+    });
+
+    expect(pageStateToPlainText(state)).toBe("Hi");
+  });
+});

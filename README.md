@@ -28,6 +28,7 @@ Most teams split their work across a docs tool and an issue tracker, then spend 
 - Spaces: shared **Workspace** docs, team and project docs, and a **Private** space visible only to you.
 - Share a private page with specific people and it moves to **Shared**, sub-pages included.
 - Per-page access lists, version history, templates, trash and restore, guest share links, `@mention` backlinks and live board embeds.
+- `@mention` people in a doc body or a doc comment: they get a notification if they can see the page. Comments render the same rich text as issue comments.
 - Team docs: any team member can write one; members can trash or delete only their own, team admins any.
 - The sidebar updates live: pages, projects and teams others create, rename, move or trash show up without a refresh.
 

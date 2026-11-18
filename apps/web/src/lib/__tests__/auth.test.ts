@@ -137,6 +137,15 @@ describe("Better Auth plugin REST surface is closed over HTTP", () => {
   beforeEach(cleanupGuardUser);
   afterAll(cleanupGuardUser);
 
+  it("records the sign-in time on user.lastLoginAt", async () => {
+    const before = Date.now();
+    const { userId } = await signedInGuardUser();
+    const [user] = await admin.select({ lastLoginAt: schema.user.lastLoginAt }).from(schema.user).where(eq(schema.user.id, userId));
+    expect(user?.lastLoginAt).toBeInstanceOf(Date);
+    // Small slack: Postgres and Node clocks round differently.
+    expect(user!.lastLoginAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+  });
+
   it("isHttpBlockedAuthPath covers the organization and api-key plugins only", () => {
     expect(isHttpBlockedAuthPath("/organization/create")).toBe(true);
     expect(isHttpBlockedAuthPath("/organization/add-team-member")).toBe(true);

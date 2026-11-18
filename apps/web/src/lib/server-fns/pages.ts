@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { notFound } from "@tanstack/react-router";
 import * as z from "zod";
 import { loadEnv } from "@kompast/env";
-import { eq, inArray, schema } from "@kompast/db";
+import { eq, inArray, schema, type Json } from "@kompast/db";
 import * as Y from "yjs";
 import { createServerEditor } from "../server-editor";
 import {
@@ -21,6 +21,7 @@ import {
   canAccessPage,
   filterAccessiblePages,
   addPageComment,
+  notifyPageBodyMention,
   listPageComments,
   resolvePageComment,
   toggleFavoritePage,
@@ -308,7 +309,16 @@ export const toggleFavoritePageFn = createServerFn({ method: "POST" })
     });
   });
 
-const addPageCommentSchema = z.object({ pageId: z.string(), blockId: z.string(), text: z.string().min(1) });
+const addPageCommentSchema = z
+  .object({
+    pageId: z.string(),
+    blockId: z.string(),
+    /** Legacy plain-text body. Kept so an existing caller still works; the doc comment box sends bodyJson instead. */
+    text: z.string().min(1).optional(),
+    /** A BlockNote Block[] from LiteEditor — may carry userMention nodes. */
+    bodyJson: z.array(z.any()).min(1).optional(),
+  })
+  .refine((d) => d.text || d.bodyJson, { message: "A comment needs text or a body" });
 
 export const addPageCommentFn = createServerFn({ method: "POST" })
   .validator(addPageCommentSchema)
@@ -316,8 +326,32 @@ export const addPageCommentFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
       await requirePageAccess(tx, data.pageId, ctx, "comment");
-      return addPageComment(tx, { pageId: data.pageId, blockId: data.blockId, authorId: ctx.userId, bodyJson: { text: data.text } });
+      return addPageComment(tx, {
+        pageId: data.pageId,
+        blockId: data.blockId,
+        authorId: ctx.userId,
+        // The refine above guarantees one of the two is present.
+        bodyJson: data.bodyJson ? (data.bodyJson as Json) : { text: data.text ?? "" },
+      });
     });
+  });
+
+const notifyPageMentionSchema = z.object({ pageId: z.string(), userId: z.string() });
+
+/**
+ * Called once, when a person is picked from the @ menu in the doc body — see
+ * Editor.tsx. Needs edit access, same as inserting the mention itself. Core
+ * drops the caller and anyone who can't see the page.
+ */
+export const notifyPageMentionFn = createServerFn({ method: "POST" })
+  .validator(notifyPageMentionSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, async (tx) => {
+      await requirePageAccess(tx, data.pageId, ctx, "edit");
+      await notifyPageBodyMention(tx, { organizationId: ctx.organizationId, pageId: data.pageId, actorId: ctx.userId, userId: data.userId });
+    });
+    return { ok: true } as const;
   });
 
 export const resolvePageCommentFn = createServerFn({ method: "POST" })

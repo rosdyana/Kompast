@@ -135,3 +135,47 @@ describe("extractMentionedUserIds", () => {
     expect(extractMentionedUserIds(blocks as unknown as never)).toEqual([]);
   });
 });
+
+describe("toPlainText — person and issue mentions", () => {
+  it("renders a userMention as @name, inline between text runs", () => {
+    const blocks = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Ping " },
+          { type: "userMention", props: { userId: "user-1", name: "Ana" } },
+          { type: "text", text: " about this" },
+        ],
+      },
+    ];
+    expect(toPlainText(blocks as unknown as never)).toBe("Ping @Ana about this");
+  });
+
+  it("renders an issueMention as KEY-n", () => {
+    const blocks = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "See " },
+          { type: "issueMention", props: { issueId: "iss-1", projectKey: "KPT", keySeq: "42", title: "x", teamId: "" } },
+        ],
+      },
+    ];
+    expect(toPlainText(blocks as unknown as never)).toBe("See KPT-42");
+  });
+
+  it("renders nothing for a userMention or issueMention with missing props instead of throwing or printing undefined", () => {
+    const blocks = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "userMention", props: {} },
+          { type: "userMention" },
+          { type: "issueMention", props: { projectKey: "KPT" } },
+          { type: "text", text: "ok" },
+        ],
+      },
+    ];
+    expect(toPlainText(blocks as unknown as never)).toBe("ok");
+  });
+});

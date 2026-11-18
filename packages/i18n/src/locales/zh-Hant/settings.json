@@ -163,6 +163,8 @@
     "adminRoleLabel": "管理員",
     "tableName": "名稱",
     "tableRole": "角色",
+    "tableLastLogin": "上次登入",
+    "neverLoggedIn": "從未登入",
     "roleOwner": "擁有者",
     "memberCount_one": "{{count}} 位成員",
     "memberCount_other": "{{count}} 位成員",

@@ -330,6 +330,13 @@
       "when": 1794992986342,
       "tag": "0046_glorious_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795011394126,
+      "tag": "0047_complete_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

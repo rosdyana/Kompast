@@ -33,6 +33,13 @@ function textOf(node: Y.XmlElement | Y.XmlText | Y.XmlFragment): string {
       .join("");
   }
   if (node instanceof Y.XmlElement && SKIPPED.has(node.nodeName)) return "";
+  // An inline @mention of a person is a childless XmlElement sitting between the
+  // surrounding XmlText runs (verified against blocksToYDocState output), so it
+  // has no text children to recurse into — emit its name here instead.
+  if (node instanceof Y.XmlElement && node.nodeName === "userMention") {
+    const name = node.getAttribute("name");
+    return typeof name === "string" && name ? `@${name}` : "";
+  }
   return node
     .toArray()
     .map((child) => {

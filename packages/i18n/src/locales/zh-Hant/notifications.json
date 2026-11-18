@@ -17,13 +17,16 @@
     "issue.assigned": "被指派到議題",
     "issue.commented": "您關注的議題有新留言",
     "issue.mentioned": "在議題中被提及",
-    "issue.comment_reacted": "我的留言收到的回應"
+    "issue.comment_reacted": "我的留言收到的回應",
+    "page.shared": "私人頁面已與您共享",
+    "page.mentioned": "在文件中被提及"
   },
   "savedToast": "已儲存偏好設定",
   "saveFailed": "無法儲存偏好設定",
   "title": {
     "issue.assigned": "你被指派到 {{key}}",
     "issue.commented": "{{key}} 有新留言",
-    "issue.mentioned": "你在 {{key}} 中被提及"
+    "issue.mentioned": "你在 {{key}} 中被提及",
+    "page.mentioned": "你在 {{title}} 中被提及"
   }
 }

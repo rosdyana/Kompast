@@ -17,13 +17,16 @@
     "issue.assigned": "Ditugaskan ke sebuah issue",
     "issue.commented": "Komentar baru di issue yang Anda ikuti",
     "issue.mentioned": "Disebut di sebuah issue",
-    "issue.comment_reacted": "Reaksi pada komentar saya"
+    "issue.comment_reacted": "Reaksi pada komentar saya",
+    "page.shared": "Halaman privat dibagikan kepada Anda",
+    "page.mentioned": "Disebut di sebuah dokumen"
   },
   "savedToast": "Preferensi disimpan",
   "saveFailed": "Gagal menyimpan preferensi",
   "title": {
     "issue.assigned": "Anda ditugaskan ke {{key}}",
     "issue.commented": "Komentar baru di {{key}}",
-    "issue.mentioned": "Anda disebut di {{key}}"
+    "issue.mentioned": "Anda disebut di {{key}}",
+    "page.mentioned": "Anda disebut di {{title}}"
   }
 }

@@ -23,6 +23,15 @@ export const user = pgTable("user", {
   image: text("image"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  /**
+   * Kompast-only, not Better Auth's: set on every sign-in by
+   * apps/web/src/lib/auth.ts's databaseHooks.session.create.after (a new
+   * session is a sign-in; refreshing one doesn't create a row). Kept on the
+   * user rather than derived from max(session.created_at), because sign-out
+   * and expiry delete session rows. Null = never signed in since this column
+   * was added (the migration backfills from whatever sessions still exist).
+   */
+  lastLoginAt: timestamp("last_login_at"),
 });
 
 export const session = pgTable("session", {

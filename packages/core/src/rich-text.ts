@@ -28,15 +28,28 @@ export function toPlainText(json: Json | null | undefined): string {
   return "";
 }
 
-/** Text of an inline run. A link's text is its own content (links were dropped before, which lost every imported link's words). */
+/**
+ * Text of an inline run. A link's text is its own content (links were dropped before, which lost every imported link's words).
+ * A person @mention reads as `@Name` and an issue chip as `KEY-n`, so comment/RAG text keeps them; a malformed chip with
+ * missing props yields nothing rather than "undefined-undefined".
+ */
 function inlinePlainText(content: unknown): string {
   if (!Array.isArray(content)) return "";
   return content
     .map((c) => {
       if (!c || typeof c !== "object") return "";
-      const node = c as { type?: string; text?: unknown; content?: unknown };
+      const node = c as { type?: string; text?: unknown; content?: unknown; props?: { name?: unknown; projectKey?: unknown; keySeq?: unknown } };
       if (node.type === "text") return String(node.text ?? "");
       if (node.type === "link") return inlinePlainText(node.content);
+      if (node.type === "userMention") {
+        const name = node.props?.name;
+        return typeof name === "string" && name ? `@${name}` : "";
+      }
+      if (node.type === "issueMention") {
+        const projectKey = node.props?.projectKey;
+        const keySeq = node.props?.keySeq;
+        return typeof projectKey === "string" && projectKey && typeof keySeq === "string" && keySeq ? `${projectKey}-${keySeq}` : "";
+      }
       return "";
     })
     .join("");
