@@ -206,8 +206,8 @@ describe("Notion API migration runner (real Postgres, fake Notion)", () => {
       { id: id("mem"), organizationId: orgId, userId: mayaId, role: "member" },
     ]);
     await admin.insert(schema.team).values({ id: teamId, organizationId: orgId, name: "Notion API Team" });
-    // The creator is on the team; the outsider isn't.
-    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${creatorId}`, teamId, userId: creatorId, membershipKey: `${teamId}:${creatorId}` });
+    // The creator is on the team, as its admin (team-space imports are team-admin only); the outsider isn't.
+    await admin.insert(schema.teamMember).values({ id: `tmem-${teamId}-${creatorId}`, teamId, userId: creatorId, membershipKey: `${teamId}:${creatorId}`, role: "admin" });
   });
 
   afterAll(cleanup);

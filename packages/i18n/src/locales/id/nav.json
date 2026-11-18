@@ -116,6 +116,8 @@
   "workspaceDocs": "Workspace",
   "teamDocs": "Dokumen",
   "newTeamDoc": "Dokumen tim baru",
+  "teamProjects": "Proyek",
+  "importToTeam": "Impor dari Notion ke tim ini",
   "privateDocs": "Pribadi",
   "newPrivatePage": "Halaman pribadi baru",
   "sharedDocs": "Dibagikan",

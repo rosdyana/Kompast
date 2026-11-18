@@ -54,7 +54,10 @@ describe("packages/core/import", () => {
     expect(pageImportTargetKey({ team: teamId }, userId)).toBe(`team:${teamId}`);
   });
 
-  it("a team target needs a team in this workspace, and membership of it (the team member here)", async () => {
+  it("a team target needs a team in this workspace, and the team admin role in it", async () => {
+    // A plain team member creates team docs by hand but can't bulk-import into the space.
+    await expect(requirePageImportTarget(admin as never, ctx, { team: teamId })).rejects.toBeInstanceOf(ForbiddenError);
+    await admin.update(schema.teamMember).set({ role: "admin" }).where(eq(schema.teamMember.teamId, teamId));
     await expect(requirePageImportTarget(admin as never, ctx, { team: teamId })).resolves.toBeUndefined();
     await expect(requirePageImportTarget(admin as never, ctx, { team: "test-import-no-such-team" })).rejects.toBeInstanceOf(ForbiddenError);
   });

@@ -80,6 +80,16 @@ function SectionHeader({ label, children }: { label: string; children?: ReactNod
   );
 }
 
+/** A quieter, smaller SectionHeader for the Projects/Docs groups inside a team. */
+function SubgroupHeader({ label, children }: { label: string; children?: ReactNode }) {
+  return (
+    <div className="group/section flex h-6 items-center gap-1 pl-2 pr-1 pt-1">
+      <span className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-[0.04em] text-text-3">{label}</span>
+      <div className="flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/section:opacity-100">{children}</div>
+    </div>
+  );
+}
+
 function HoverAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <button
@@ -257,9 +267,12 @@ function TeamGroup({
 }) {
   const { t } = useTranslation("nav");
   const router = useRouter();
-  const { createPage } = useWorkbench();
+  const { createPage, openNotionImport } = useWorkbench();
   const [open, setOpen] = useState(true);
   const isUnassigned = team.id === "__unassigned";
+  // Bulk Notion import into a team space is team-admin only (core
+  // requirePageImportTarget) — the same people canManageTeam already covers.
+  const canImport = canManageTeam;
 
   return (
     <div>
@@ -274,36 +287,51 @@ function TeamGroup({
           <span className="truncate">{team.name}</span>
         </button>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/team:opacity-100">
-          {pages && (
-            <HoverAction label={t("newTeamDoc")} onClick={() => createPage({ teamId: team.id })}>
-              <FileText size={13} strokeWidth={1.75} />
-            </HoverAction>
-          )}
           {canManageTeam && (
             <HoverAction label={t("manageTeam")} onClick={() => router.navigate({ to: "/teams/$teamId", params: { teamId: team.id } })}>
               <Settings size={13} strokeWidth={1.75} />
             </HoverAction>
           )}
-          {canCreateProject && (
-            <HoverAction
-              label={t("newProject")}
-              onClick={() => router.navigate({ to: "/projects/new", search: { teamId: isUnassigned ? undefined : team.id } })}
-            >
-              <Plus size={14} strokeWidth={2} />
-            </HoverAction>
-          )}
         </div>
       </div>
       {open && (
-        <div className="flex flex-col gap-px">
-          {projects.length === 0 && <p className="py-1 pl-7 text-[13px] text-text-3">{t("noProjectsInTeam")}</p>}
+        <div className="flex flex-col gap-px pl-3">
+          {/* Projects and team docs as two labelled groups, so docs don't read as children of the last project. */}
+          <SubgroupHeader label={t("teamProjects")}>
+            {canCreateProject && (
+              <HoverAction
+                label={t("newProject")}
+                onClick={() => router.navigate({ to: "/projects/new", search: { teamId: isUnassigned ? undefined : team.id } })}
+              >
+                <Plus size={14} strokeWidth={2} />
+              </HoverAction>
+            )}
+          </SubgroupHeader>
+          {projects.length === 0 && <p className="py-1 pl-2 text-[13px] text-text-3">{t("noProjectsInTeam")}</p>}
           {projects.map((p) => (
             <ProjectNode key={p.id} project={p} teamParam={isUnassigned ? "none" : team.id} assignTeams={assignTeams} />
           ))}
-          {pages && pages.length > 0 && (
-            <div className="pl-3">
-              <DocsTree pages={pages} onAddChild={(parentPageId) => createPage({ parentPageId })} />
-            </div>
+          {pages && (
+            <>
+              <SubgroupHeader label={t("teamDocs")}>
+                {canImport && (
+                  <HoverAction label={t("importToTeam")} onClick={() => openNotionImport({ team: team.id })}>
+                    <FileDown size={13} strokeWidth={1.75} />
+                  </HoverAction>
+                )}
+                <HoverAction label={t("newTeamDoc")} onClick={() => createPage({ teamId: team.id })}>
+                  <Plus size={14} strokeWidth={2} />
+                </HoverAction>
+              </SubgroupHeader>
+              {pages.length > 0 ? (
+                <DocsTree pages={pages} onAddChild={(parentPageId) => createPage({ parentPageId })} />
+              ) : (
+                <button type="button" onClick={() => createPage({ teamId: team.id })} className={cn(row, "text-text-3")}>
+                  <FileText size={14} strokeWidth={1.75} className="w-[18px] flex-none" />
+                  <span className="truncate">{t("newTeamDoc")}</span>
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -319,6 +347,11 @@ function WorkspaceMenu({ shell }: { shell: SidebarShellData }) {
   const [langOpen, setLangOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const langRef = useRef<HTMLButtonElement>(null);
+  // The language submenu is its own portaled Popover, so a pointerdown in it
+  // is "outside" the workspace menu — without this ref in ignoreRefs the
+  // workspace menu closes on pointerdown, unmounting the submenu before the
+  // click lands and the locale change never fires.
+  const langMenuRef = useRef<HTMLDivElement>(null);
   const { setCollapsed } = useSidebarCollapsed();
   const workspaceName = shell.organization?.name ?? t("workspaceFallback");
 
@@ -359,7 +392,7 @@ function WorkspaceMenu({ shell }: { shell: SidebarShellData }) {
         <ChevronsLeft size={17} strokeWidth={1.75} />
       </button>
 
-      <Popover open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} width={280} role="menu" ignoreRefs={[langRef]}>
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} width={280} role="menu" ignoreRefs={[langRef, langMenuRef]}>
         <div className="flex items-center gap-2.5 border-b border-border px-3 py-3">
           <CompassMark size={32} />
           <div className="min-w-0">
@@ -399,13 +432,15 @@ function WorkspaceMenu({ shell }: { shell: SidebarShellData }) {
         </MenuList>
       </Popover>
       <Popover open={open && langOpen} onClose={() => setLangOpen(false)} anchorRef={langRef} placement="right-start" width={200} role="menu">
-        <MenuList>
-          {SUPPORTED_LOCALES.map((locale) => (
-            <MenuItem key={locale} onClick={() => selectLocale(locale)} selected={locale === i18n.language}>
-              {LOCALE_LABELS[locale]}
-            </MenuItem>
-          ))}
-        </MenuList>
+        <div ref={langMenuRef}>
+          <MenuList>
+            {SUPPORTED_LOCALES.map((locale) => (
+              <MenuItem key={locale} onClick={() => selectLocale(locale)} selected={locale === i18n.language}>
+                {LOCALE_LABELS[locale]}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </div>
       </Popover>
     </div>
   );

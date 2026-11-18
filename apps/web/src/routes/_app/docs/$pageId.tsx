@@ -254,6 +254,7 @@ function DocPageBody({ data }: { data: PageData }) {
             onToggleTemplate={toggleTemplate}
             onHistory={() => setHistoryOpen(true)}
             onToggleFullWidth={toggleFullWidth}
+            canTrash={data.canTrash}
             onTrash={moveToTrash}
             currentSpace={{ projectId: data.page.projectId, teamId: data.page.teamId, private: !!data.page.privateOwnerId && data.page.sharedWith.length === 0 }}
             onMove={moveToSpace}
@@ -701,6 +702,8 @@ function PageAccessSection({ pageId }: { pageId: string }) {
 
 function MoreMenu(props: {
   canEdit: boolean;
+  /** Team-space docs: only the author or a team admin (core canRemovePage). */
+  canTrash: boolean;
   isTemplate: boolean;
   fullWidth: boolean;
   onDuplicate: () => void;
@@ -804,7 +807,7 @@ function MoreMenu(props: {
           >
             {t("pageDetail.fullWidth")}
           </MenuItem>
-          {props.canEdit && (
+          {props.canTrash && (
             <>
               <MenuSeparator />
               <MenuItem icon={<Trash2 size={15} />} danger onClick={run(props.onTrash)}>

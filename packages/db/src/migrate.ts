@@ -47,6 +47,11 @@ async function main() {
   await adminClient.unsafe(rlsSql);
   console.log("RLS policies applied.");
 
+  // 4. Change-notification triggers behind the live sidebar (/api/events).
+  const realtimeSql = readFileSync(join(__dirname, "..", "realtime.sql"), "utf-8");
+  await adminClient.unsafe(realtimeSql);
+  console.log("Realtime triggers applied.");
+
   await adminClient.end();
 }
 

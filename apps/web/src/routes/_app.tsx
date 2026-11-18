@@ -5,6 +5,7 @@ import { ToastProvider, useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
 import { getWorkspaceShellFn } from "@/lib/server-fns/workspace";
 import { listPageTreeFn, createPageFn } from "@/lib/server-fns/pages";
+import { useLiveShell } from "@/lib/use-live-shell";
 import { AppSidebar, type SidebarShellData } from "@/components/shell/AppSidebar";
 import { Topbar } from "@/components/shell/Topbar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
@@ -45,6 +46,7 @@ function AppShell() {
 function Workbench() {
   const shell = Route.useLoaderData() as SidebarShellData;
   const router = useRouter();
+  useLiveShell();
   const toast = useToast();
   const { t } = useTranslation(["nav", "common"]);
   const { toggle } = useSidebarCollapsed();

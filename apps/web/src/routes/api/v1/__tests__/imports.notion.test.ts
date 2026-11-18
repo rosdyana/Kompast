@@ -124,12 +124,15 @@ describe("/api/v1/imports/notion", () => {
     expect(pages.every((p) => p.privateOwnerId === null && p.teamId === null && p.projectId === null)).toBe(true);
   });
 
-  it("imports into a team's space: a team member can, a member outside the team gets 403", async () => {
+  it("imports into a team's space: the team's admin can; a plain team member and a member outside the team get 403", async () => {
     const outside = await upload(tokens[otherId]!, { target: "team", teamId });
     expect(outside.status).toBe(403);
+    const plainMember = await upload(tokens[memberId]!, { target: "team", teamId });
+    expect(plainMember.status).toBe(403);
     expect(await admin.select().from(schema.importRun).where(eq(schema.importRun.organizationId, orgId))).toHaveLength(0);
     expect(await admin.select().from(schema.page).where(eq(schema.page.organizationId, orgId))).toHaveLength(0);
 
+    await admin.update(schema.teamMember).set({ role: "admin" }).where(eq(schema.teamMember.teamId, teamId));
     const res = await upload(tokens[memberId]!, { target: "team", teamId });
     expect(res.status).toBe(201);
     const { importRunId, report } = await res.json();
