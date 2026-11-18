@@ -3,7 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["src/index.ts"],
   format: ["cjs"],
-  target: "node22",
+  target: "node26",
   outDir: "dist",
   clean: true,
   // See apps/collab/tsup.config.ts for the full story: workspace packages

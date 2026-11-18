@@ -101,7 +101,7 @@ See [`docs/DEMO.md`](docs/DEMO.md) for the personas, a suggested walkthrough and
 
 ### Local development
 
-**Requirements:** Node.js 22+, pnpm 10+, PostgreSQL 17 with pgvector, and Redis 7.
+**Requirements:** Node.js 26 (LTS), pnpm 10+, PostgreSQL 17 with pgvector, and Redis 7.
 
 ```bash
 pnpm install
