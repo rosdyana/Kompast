@@ -17,11 +17,13 @@ import {
   setTeamMemberRoleFn,
   inviteToTeamFn,
   cancelTeamInvitationFn,
+  resendTeamInvitationFn,
   renameTeamFn,
   getTeamDeletionImpactFn,
   deleteTeamFn,
 } from "@/lib/server-fns/teams";
 import { ConfirmDialog } from "@/components/settings/ConfirmDialog";
+import { InvitationDeliveryBadge, InvitationRowActions } from "@/components/settings/InvitationDeliveryControls";
 import { usePageChrome } from "@/components/shell/WorkbenchContext";
 
 export const Route = createFileRoute("/_app/teams/$teamId")({
@@ -251,6 +253,8 @@ function InviteByEmail({ teamId, invitations }: { teamId: string; invitations: A
               <Mail size={15} className="flex-none text-text-3" />
               <span className="min-w-0 flex-1 truncate text-[14px]">{inv.email}</span>
               <span className="text-[12.5px] text-text-3">{inv.teamRole === "admin" ? t("adminRoleLabel") : t("memberRoleLabel")}</span>
+              <InvitationDeliveryBadge delivery={inv.delivery} />
+              <InvitationRowActions inviteUrl={inv.inviteUrl} onResend={() => resendTeamInvitationFn({ data: { teamId, invitationId: inv.id } })} />
               <IconButton aria-label={t("cancelInvite")} title={t("cancelInvite")} onClick={() => cancel(inv.id)} className="hover:text-danger">
                 <X size={15} />
               </IconButton>

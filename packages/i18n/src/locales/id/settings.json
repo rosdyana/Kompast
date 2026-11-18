@@ -80,7 +80,20 @@
       "savingEllipsis": "Menyimpan…",
       "save": "Simpan",
       "saved": "Tersimpan.",
-      "description": "Mengirim email notifikasi dan undangan."
+      "description": "Mengirim email notifikasi dan undangan.",
+      "test": {
+        "heading": "Kirim email uji",
+        "hint": "Dikirim lewat worker email dengan pengaturan tersimpan di atas, sehingga kredensial dan vendor diperiksa sama seperti saat undangan dikirim.",
+        "recipientPlaceholder": "Email penerima",
+        "send": "Kirim email uji",
+        "sendingEllipsis": "Mengirim…",
+        "unsavedHint": "Simpan perubahan Anda sebelum mengirim email uji. Pengujian memakai pengaturan yang tersimpan.",
+        "sent": "Terkirim ke penyedia email. Periksa kotak masuk dan folder spam.",
+        "failed": "Gagal: {{error}}",
+        "unknownError": "kesalahan tidak diketahui",
+        "stillQueued": "Masih diantrekan setelah 45 detik tanpa error. Apakah worker email sedang berjalan?",
+        "error": "Tidak dapat mengirim email uji: {{message}}"
+      }
     }
   },
   "members": {
@@ -103,7 +116,7 @@
     "memberCount_one": "{{count}} anggota",
     "memberCount_other": "{{count}} anggota",
     "invitedAs": "Diundang sebagai {{role}}",
-    "inviteSent": "Undangan dikirim ke {{email}}",
+    "inviteSent": "Undangan dibuat untuk {{email}} — email diantrekan",
     "inviteHint": "Mereka akan menerima email berisi tautan untuk bergabung ke workspace ini.",
     "cancelFailed": "Gagal membatalkan undangan"
   },
@@ -165,5 +178,19 @@
     "moveToWorkspace": "Pindah ke Workspace",
     "recoveredToMe": "Dipindahkan ke halaman Anda",
     "recoveredToWorkspace": "Dipindahkan ke Workspace"
+  },
+  "invitations": {
+    "deliveryNoEmail": "Tidak ada catatan email",
+    "deliverySent": "Email terkirim",
+    "deliveryFailed": "Email gagal",
+    "deliveryFailing": "Email gagal, mencoba lagi",
+    "deliveryQueued": "Email diantrekan",
+    "copyLink": "Salin tautan undangan",
+    "linkCopied": "Tautan undangan disalin",
+    "linkCopyFailed": "Tautan tidak dapat disalin",
+    "resend": "Kirim ulang",
+    "resendingEllipsis": "Mengirim ulang…",
+    "resent": "Email undangan diantrekan ulang",
+    "resendFailed": "Undangan tidak dapat dikirim ulang"
   }
 }

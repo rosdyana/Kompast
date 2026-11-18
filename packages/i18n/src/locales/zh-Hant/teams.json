@@ -50,7 +50,7 @@
   "inviteRoleLabel": "團隊角色",
   "invite": "傳送邀請",
   "invitingEllipsis": "傳送中…",
-  "inviteSent": "已傳送邀請",
+  "inviteSent": "已建立邀請，郵件已加入佇列",
   "inviteAlreadyPending": "此地址已有待處理的邀請",
   "inviteFailed": "無法傳送邀請",
   "inviteCanceled": "已取消邀請",

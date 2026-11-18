@@ -4,11 +4,31 @@ import { and, count, db, eq, schema } from "@kompast/db";
 import { listTeamsForWorkspace, renameWorkspace, requireSystemAdmin, withAuthorizedTenant } from "@kompast/core";
 import { getCurrentSession, requireAuthContext } from "../session";
 
-export const getWorkspaceShellFn = createServerFn({ method: "GET" }).handler(async () => {
-  const session = await getCurrentSession();
-  if (!session || !session.organizationId) return null;
+/**
+ * Where a request lands for the workspace shell: no session → "anonymous"
+ * (the loader sends them to /login); a session with no active workspace →
+ * "noWorkspace" (signed in but has no membership yet, sent to /no-workspace,
+ * not back to /login, which would look like sign-in is broken); otherwise
+ * "workspace". Pure, so the gate is testable without the server-fn transport.
+ */
+export function workspaceEntryFor<T extends { organizationId: string | null }>(
+  session: T | null,
+):
+  | { kind: "anonymous" }
+  | { kind: "noWorkspace" }
+  | { kind: "workspace"; session: T & { organizationId: string } } {
+  if (!session) return { kind: "anonymous" };
+  if (!session.organizationId) return { kind: "noWorkspace" };
+  return { kind: "workspace", session: session as T & { organizationId: string } };
+}
 
-  const ctx = { userId: session.user.id, organizationId: session.organizationId };
+export const getWorkspaceShellFn = createServerFn({ method: "GET" }).handler(async () => {
+  const entry = workspaceEntryFor(await getCurrentSession());
+  if (entry.kind === "anonymous") return null;
+  if (entry.kind === "noWorkspace") return { noWorkspace: true as const };
+  const active = entry.session;
+
+  const ctx = { userId: active.user.id, organizationId: active.organizationId };
   const [organization, memberCountRow, projects, membership, teams] = await withAuthorizedTenant(ctx, async (tx) => [
     (await tx.select().from(schema.organization).where(eq(schema.organization.id, ctx.organizationId)))[0],
     (await tx.select({ n: count() }).from(schema.member).where(eq(schema.member.organizationId, ctx.organizationId)))[0],
@@ -28,7 +48,7 @@ export const getWorkspaceShellFn = createServerFn({ method: "GET" }).handler(asy
   const role = membership?.role ?? "member";
 
   return {
-    user: { id: session.user.id, name: session.user.name },
+    user: { id: active.user.id, name: active.user.name },
     organization: organization ?? null,
     memberCount: memberCountRow?.n ?? 0,
     projects,

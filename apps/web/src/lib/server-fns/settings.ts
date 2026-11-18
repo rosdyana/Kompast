@@ -14,6 +14,9 @@ import {
   requireSystemAdmin,
   requireDeploymentAdmin,
   isDeploymentAdmin,
+  enqueueEmail,
+  getEmailDelivery,
+  withAuthorizedTenant,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 import { invalidateAuthCache } from "../auth";
@@ -40,7 +43,8 @@ export const getIntegrationSettingsFn = createServerFn({ method: "GET" }).handle
         ([ai, mail, entra, embedding]) => ({ ai, mail, entra, embedding }),
       )
     : null;
-  return { global, isSuperAdmin: member?.isSuperAdmin ?? false };
+  const [me] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, ctx.userId));
+  return { global, isSuperAdmin: member?.isSuperAdmin ?? false, userEmail: me?.email ?? "" };
 });
 
 const updateMicrosoftAuthSchema = z.object({
@@ -132,4 +136,50 @@ export const updateMailSettingsFn = createServerFn({ method: "POST" })
     await requireDeploymentAdmin(db, ctx);
     await updateMailSettings(db, { ...data, updatedBy: ctx.userId });
     return { ok: true } as const;
+  });
+
+const sendTestEmailSchema = z.object({ to: z.email().optional() });
+
+/**
+ * Queues a test email through the real outbox rather than calling the vendor
+ * directly, so the test covers saved credentials, the running worker and the
+ * vendor's acceptance, the same path as every invitation. Poll
+ * getTestEmailStatusFn with the returned outboxId for the result.
+ */
+export const sendTestEmailFn = createServerFn({ method: "POST" })
+  .validator(sendTestEmailSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireDeploymentAdmin(db, ctx);
+
+    let to = data.to;
+    if (!to) {
+      const [me] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, ctx.userId));
+      to = me?.email;
+    }
+    if (!to) throw new Error("No recipient address for the test email");
+
+    const { outboxId } = await withAuthorizedTenant(ctx, (tx) =>
+      enqueueEmail(tx, {
+        organizationId: ctx.organizationId,
+        to,
+        subject: "Kompast test email",
+        templateKey: "notification",
+        templateProps: {
+          title: "Kompast test email",
+          body: "If you can read this, Kompast mail delivery works.",
+        },
+        dedupeKey: `test:${crypto.randomUUID()}`,
+      }),
+    );
+    return { outboxId };
+  });
+
+/** Delivery state of a test email queued by sendTestEmailFn (null if the row no longer exists). */
+export const getTestEmailStatusFn = createServerFn({ method: "GET" })
+  .validator((outboxId: string) => outboxId)
+  .handler(async ({ data: outboxId }) => {
+    const ctx = await requireAuthContext();
+    await requireDeploymentAdmin(db, ctx);
+    return withAuthorizedTenant(ctx, (tx) => getEmailDelivery(tx, outboxId));
   });
