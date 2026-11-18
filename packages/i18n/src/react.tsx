@@ -42,7 +42,7 @@ export function useTranslation(ns?: string | string[]) {
   // those into infinite update loops.
   const nsKey = Array.isArray(ns) ? ns.join("|") : (ns ?? "");
   const t = useCallback(
-    (key: string, options?: Record<string, unknown>): string => (i18n.t as LooseT)(key, { ns: nsKey.includes("|") ? nsKey.split("|") : nsKey || undefined, ...options }),
+    (key: string, options?: Record<string, unknown>): string => (i18n.t as unknown as LooseT)(key, { ns: nsKey.includes("|") ? nsKey.split("|") : nsKey || undefined, ...options }),
     [i18n, nsKey],
   );
 

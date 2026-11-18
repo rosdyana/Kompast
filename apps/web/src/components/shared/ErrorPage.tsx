@@ -47,7 +47,7 @@ export function ErrorPage({
   const fallback = useMemo(() => (provided ? null : createI18nInstance(DEFAULT_LOCALE)), [provided]);
   const i18n = (provided ?? fallback) as I18nInstance;
   const t = (key: string, options?: Record<string, unknown>) =>
-    String((i18n.t as (k: string, o?: Record<string, unknown>) => string)(key, { ns: "common", ...options }));
+    String((i18n.t as unknown as (k: string, o?: Record<string, unknown>) => string)(key, { ns: "common", ...options }));
 
   const router = useRouter({ warn: false });
   const [offlineNow, setOfflineNow] = useState(false);
