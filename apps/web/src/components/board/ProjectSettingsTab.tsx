@@ -205,6 +205,23 @@ function ColumnsSettings({ data }: { data: BoardData }) {
     }
   }
 
+  async function setSwimlaneMaxCards(input: HTMLInputElement) {
+    const n = Number(input.value);
+    if (n === data.board.swimlaneMaxCards) return;
+    if (!Number.isInteger(n) || n < 1 || n > 50) {
+      // Out of range or blank: snap back to the saved value rather than saving something odd.
+      input.value = String(data.board.swimlaneMaxCards);
+      return;
+    }
+    setError(null);
+    try {
+      await updateBoardSettingsFn({ data: { projectId: data.project.id, boardId: data.board.id, swimlaneMaxCards: n } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
   async function move(columnId: string, direction: "left" | "right") {
     const ids = columns.map((c) => c.id);
     const i = ids.indexOf(columnId);
@@ -333,8 +350,25 @@ function ColumnsSettings({ data }: { data: BoardData }) {
               <option value="bottom">{t("settingsTab.newIssuePositionBottom")}</option>
             </select>
           }
-          className="border-b-0"
         />
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[13.5px] font-medium text-text">{t("settingsTab.swimlaneMaxCardsLabel")}</p>
+            <p className="type-small text-text-3">{t("settingsTab.swimlaneMaxCardsHint")}</p>
+          </div>
+          <input
+            key={`swimlane-max-${data.board.swimlaneMaxCards}`}
+            defaultValue={data.board.swimlaneMaxCards}
+            type="number"
+            min={1}
+            max={50}
+            inputMode="numeric"
+            aria-label={t("settingsTab.swimlaneMaxCardsLabel")}
+            onBlur={(e) => setSwimlaneMaxCards(e.target)}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className="kp-field h-8 w-[72px] flex-none text-center tabular-nums"
+          />
+        </div>
       </Card>
     </div>
   );

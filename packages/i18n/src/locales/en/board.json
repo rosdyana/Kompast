@@ -613,7 +613,8 @@
     "noActiveTitle": "No active sprint",
     "goToBacklog": "Go to backlog",
     "clearFilters": "Clear filters",
-    "dropHere": "Drop here"
+    "dropHere": "Drop here",
+    "moreBelow": "{{count}} more"
   },
   "settingsTab": {
     "columnsHeading": "Kanban columns",
@@ -625,6 +626,8 @@
     "newIssuePositionLabel": "New card position",
     "newIssuePositionTop": "Top of column",
     "newIssuePositionBottom": "Bottom of column",
+    "swimlaneMaxCardsLabel": "Cards per lane before it scrolls",
+    "swimlaneMaxCardsHint": "With Group by: Assignee, a lane with more cards than this in any column scrolls on its own (1–50).",
     "columnsCountSummary": "{{count}} columns · Backlog is locked to the first position",
     "moveLeftTitle": "Move left",
     "moveRightTitle": "Move right",

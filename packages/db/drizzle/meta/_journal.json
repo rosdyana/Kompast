@@ -337,6 +337,13 @@
       "when": 1795011394126,
       "tag": "0047_complete_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1795040466221,
+      "tag": "0048_clear_psylocke",
+      "breakpoints": true
     }
   ]
 }

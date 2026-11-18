@@ -1,0 +1,1 @@
+ALTER TABLE "board" ADD COLUMN "swimlane_max_cards" integer DEFAULT 5 NOT NULL;
