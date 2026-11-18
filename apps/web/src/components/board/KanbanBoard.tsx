@@ -2,7 +2,7 @@ import { SearchField } from "@kompast/ui/Input";
 import { forwardRef, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Link, useLoaderData, useRouter } from "@tanstack/react-router";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { CheckSquare, ChevronDown, Layers, MoreHorizontal, Plus } from "lucide-react";
+import { Check, CheckSquare, ChevronDown, Layers, MoreHorizontal, Plus } from "lucide-react";
 import { Button, IconButton } from "@kompast/ui/Button";
 import { Avatar, UnassignedAvatar } from "@kompast/ui/Avatar";
 import { IssueTypeIcon } from "@kompast/ui/IssueTypeIcon";
@@ -15,7 +15,7 @@ import { EmptyState, Spinner } from "@kompast/ui/EmptyState";
 import { useTranslation } from "@kompast/i18n";
 import { normalizeTableViewConfig } from "@kompast/core/table-view-config";
 import { updateTableViewFn } from "@/lib/server-fns/projects";
-import { moveIssueFn, createIssueFn } from "@/lib/server-fns/issues";
+import { moveIssueFn, moveIssuesFn, createIssueFn } from "@/lib/server-fns/issues";
 import { updateIssueTitleFn, archiveIssueFn } from "@/lib/server-fns/issue-detail";
 import { completeSprintFn, listSprintsFn } from "@/lib/server-fns/sprints";
 import { CompleteSprintDialog } from "./BacklogView";
@@ -55,6 +55,9 @@ interface CardCommon {
   onMoveToAdjacentColumn: (issueId: string, fromColumnId: string, direction: "prev" | "next", swimlaneKey?: string) => void;
   onMoveToColumn: (issueId: string, columnId: string) => void;
   registerCardRef: (issueId: string, el: HTMLAnchorElement | null) => void;
+  selectedIds: Set<string>;
+  onToggleSelected: (issueId: string) => void;
+  selectionActive: boolean;
 }
 
 interface AddIssueProps {
@@ -191,6 +194,73 @@ export function KanbanBoard({ data }: { data: BoardData }) {
   const hasUnassigned = allSprintIssues.some((i) => !i.assigneeId);
   const filtersActive = needle !== "" || assigneeFilter.size > 0;
 
+  // Multi-select: shift/cmd/ctrl-click a card (or tick its checkbox) to build a selection,
+  // then drag any selected card or use the action bar to move the whole selection at once.
+  // Hooks stay above the early return below.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
+  const moveMenuRef = useRef<HTMLButtonElement>(null);
+  const hasSelection = selectedIds.size > 0;
+
+  // Drop selections for cards no longer on the board (filtered out, moved, archived).
+  // setState only runs when something is actually removed, so this cannot loop.
+  useEffect(() => {
+    const visible = new Set(columns.flatMap((c) => c.issues.map((i) => i.id)));
+    const stale = [...selectedIds].filter((id) => !visible.has(id));
+    if (stale.length > 0) setSelectedIds((prev) => new Set([...prev].filter((id) => visible.has(id))));
+  }, [columns, selectedIds]);
+
+  useEffect(() => {
+    if (!hasSelection) return;
+    function onKeyDown(e: globalThis.KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      setSelectedIds(new Set());
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [hasSelection]);
+
+  function toggleSelected(issueId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(issueId)) next.delete(issueId);
+      else next.add(issueId);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  /** Selected ids in board order: column order, then card order within each column. */
+  function selectedInBoardOrder(): string[] {
+    return columns.flatMap((c) => c.issues.map((i) => i.id)).filter((id) => selectedIds.has(id));
+  }
+
+  async function runBulkMove(ids: string[], columnId: string) {
+    const target = columns.find((c) => c.id === columnId);
+    if (!target?.statusIds[0] || ids.length === 0) return;
+    const remaining = target.issues.filter((i) => !ids.includes(i.id));
+    const position = data.board.newIssuePosition === "bottom" ? "bottom" : "top";
+    const edgeIssueId = position === "bottom" ? remaining.at(-1)?.id : remaining.at(0)?.id;
+    setPending(true);
+    setError(null);
+    setAnnouncement(null);
+    try {
+      await moveIssuesFn({ data: { issueIds: ids, toStatusId: target.statusIds[0], position, edgeIssueId } });
+      clearSelection();
+      await router.invalidate();
+      setAnnouncement(t("boardView.movedCount", { count: ids.length, column: target.name }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function runMove(input: Parameters<typeof moveIssueFn>[0]["data"], focus = false, announce?: string) {
     setPending(true);
     setError(null);
@@ -251,6 +321,12 @@ export function KanbanBoard({ data }: { data: BoardData }) {
       else afterIssueId = cellIssues.at(0)?.id;
     }
     if (!toStatusId) return;
+    // Dragging one card of a multi-selection moves the whole selection into the target column.
+    if (selectedIds.has(activeId) && selectedIds.size > 1) {
+      const targetColumn = columns.find((c) => c.statusIds[0] === toStatusId);
+      if (targetColumn) await runBulkMove(selectedInBoardOrder(), targetColumn.id);
+      return;
+    }
     const assigneeId: string | null | undefined =
       targetSwimlaneKey === undefined ? undefined : targetSwimlaneKey === UNASSIGNED_SWIMLANE ? null : targetSwimlaneKey;
     await runMove({ issueId: activeId, toStatusId, beforeIssueId, afterIssueId, assigneeId });
@@ -306,6 +382,9 @@ export function KanbanBoard({ data }: { data: BoardData }) {
     onMoveToAdjacentColumn: moveToAdjacentColumn,
     onMoveToColumn: moveToColumn,
     registerCardRef,
+    selectedIds,
+    onToggleSelected: toggleSelected,
+    selectionActive: hasSelection,
   };
   const addProps: AddIssueProps = {
     addingIssueTarget,
@@ -333,7 +412,7 @@ export function KanbanBoard({ data }: { data: BoardData }) {
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDragId(null)}>
-      <div className="kp-board flex min-h-0 flex-col">
+      <div className="kp-board relative flex h-full min-h-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
           <div className="mr-2 flex min-w-0 items-baseline gap-2">
             <span className="truncate text-[15px] font-semibold">{sprint.name}</span>
@@ -427,13 +506,13 @@ export function KanbanBoard({ data }: { data: BoardData }) {
           {t("boardView.keyboardHint")}
         </p>
 
-        <div className="overflow-x-auto px-4 pb-8 sm:px-6">
+        <div className="min-h-0 flex-1 overflow-auto px-4 pb-4 sm:px-6">
           {tableViewConfig.swimlaneBy === "assignee" ? (
             <SwimlaneBoard columns={columns} usersById={usersById} cardCommon={cardCommon} addProps={addProps} me={me} showMyEmptyLane={showMyEmptyLane} />
           ) : (
-            <div className="flex min-w-fit items-stretch gap-3">
+            <div className="flex h-full min-w-fit items-stretch gap-3">
               {columns.map((col, index) => (
-                <div key={col.id} className="flex w-[280px] flex-none flex-col rounded-[10px] bg-surface-2">
+                <div key={col.id} className="flex h-full min-h-0 w-[280px] flex-none flex-col rounded-[10px] bg-surface-2">
                   <ColumnHeader column={col} />
                   <ColumnCell
                     droppableId={col.id}
@@ -442,13 +521,44 @@ export function KanbanBoard({ data }: { data: BoardData }) {
                     cardCommon={cardCommon}
                     addProps={index === 0 ? addProps : undefined}
                     addTarget={FLAT_BOARD_TARGET}
-                    className="min-h-[calc(100vh-280px)] px-2 pb-2"
+                    className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 [scrollbar-width:thin]"
                   />
                 </div>
               ))}
             </div>
           )}
         </div>
+        {selectedIds.size > 0 && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+            <div
+              role="toolbar"
+              aria-label={t("boardView.bulkActions")}
+              className="pointer-events-auto flex items-center gap-2 rounded-[10px] bg-surface px-3 py-2 shadow-lift"
+            >
+              <span className="type-small font-semibold text-text">{t("boardView.selectedCount", { count: selectedIds.size })}</span>
+              <Button ref={moveMenuRef} variant="outline" size="sm" onClick={() => setMoveMenuOpen((v) => !v)} disabled={pending}>
+                {t("boardView.moveSelectedTo")}
+                <ChevronDown size={14} />
+              </Button>
+              <SelectMenu
+                open={moveMenuOpen}
+                onClose={() => setMoveMenuOpen(false)}
+                anchorRef={moveMenuRef}
+                placement="top-start"
+                width={200}
+                options={columns.map((c) => ({ value: c.id, label: c.name }))}
+                value={null}
+                onSelect={(columnId) => {
+                  setMoveMenuOpen(false);
+                  runBulkMove(selectedInBoardOrder(), columnId);
+                }}
+              />
+              <Button variant="ghost" size="sm" onClick={clearSelection}>
+                {t("boardView.clearSelection")}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
       <CompleteSprintDialog
         sprint={completeOpen ? sprint : null}
@@ -460,8 +570,13 @@ export function KanbanBoard({ data }: { data: BoardData }) {
       />
       <DragOverlay dropAnimation={null}>
         {activeIssue ? (
-          <div className="w-[264px] rotate-[1.5deg] cursor-grabbing">
+          <div className="relative w-[264px] rotate-[1.5deg] cursor-grabbing">
             <CardBody issue={activeIssue} {...cardCommon} lifted />
+            {selectedIds.has(activeIssue.id) && selectedIds.size > 1 && (
+              <span className="absolute -right-2 -top-2 rounded-full bg-accent px-1.5 text-[11px] font-semibold text-white">
+                +{selectedIds.size - 1}
+              </span>
+            )}
           </div>
         ) : null}
       </DragOverlay>
@@ -513,6 +628,11 @@ function ColumnCell({
   const { t } = useTranslation("board");
   const { setNodeRef, isOver } = useDroppable({ id: droppableId });
   const adding = addProps?.addingIssueTarget === addTarget;
+  const addFormRef = useRef<HTMLDivElement>(null);
+  // The cell scrolls on its own, so an add form opened near the bottom can sit off-screen.
+  useEffect(() => {
+    if (adding) addFormRef.current?.scrollIntoView({ block: "nearest" });
+  }, [adding]);
 
   return (
     <div
@@ -524,7 +644,7 @@ function ColumnCell({
       ))}
       {addProps &&
         (adding ? (
-          <div className="flex flex-col gap-1.5 rounded-[8px] bg-surface p-2 shadow-card">
+          <div ref={addFormRef} className="flex flex-col gap-1.5 rounded-[8px] bg-surface p-2 shadow-card">
             <textarea
               autoFocus
               rows={2}
@@ -715,6 +835,7 @@ function CardBody({
   title,
   menu,
   checklist,
+  selectControl,
 }: Pick<CardCommon, "projectKey" | "issueTypesById" | "usersById" | "priorityLevelsByKey" | "epicsById" | "visibleProperties"> & {
   issue: BoardIssue;
   lifted?: boolean;
@@ -722,6 +843,8 @@ function CardBody({
   menu?: React.ReactNode;
   /** Interactive checklist badge (real card); the drag overlay falls back to a static one. */
   checklist?: React.ReactNode;
+  /** Selection checkbox (real card only; the drag overlay shows none). */
+  selectControl?: React.ReactNode;
 }) {
   const locale = useIntlLocale();
   const type = issueTypesById.get(issue.typeId);
@@ -738,6 +861,7 @@ function CardBody({
   return (
     <div className={cn("group/card rounded-[8px] bg-surface p-3 shadow-card transition-shadow", lifted ? "shadow-lift" : "hover:shadow-lift")}>
       <div className="flex items-start gap-2">
+        {selectControl}
         <div className="min-w-0 flex-1">{title ?? <p className="line-clamp-2 text-[14px] leading-snug text-text">{issue.title}</p>}</div>
         {menu}
       </div>
@@ -786,6 +910,7 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
   const { t } = useTranslation("board");
   const router = useRouter();
   const { listeners, attributes, setNodeRef, isDragging } = useDraggable({ id: issue.id });
+  const selected = common.selectedIds.has(issue.id);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(issue.title);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -970,6 +1095,28 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
     />
   ) : undefined;
 
+  const selectControl = (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={selected}
+      aria-label={t("boardView.selectCard")}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        common.onToggleSelected(issue.id);
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      className={cn(
+        "mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-[4px] border transition-opacity",
+        selected ? "border-accent bg-accent text-white" : "border-border2 bg-surface",
+        selected || common.selectionActive ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover/card:opacity-100",
+      )}
+    >
+      {selected && <Check size={12} strokeWidth={3} />}
+    </button>
+  );
+
   return (
     <Link
       to="/issues/$teamId/$projectKey/$issueKeySeq"
@@ -979,12 +1126,23 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
       {...listeners}
       {...attributes}
       role="link"
+      onClick={(e) => {
+        if (e.shiftKey || e.metaKey || e.ctrlKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          common.onToggleSelected(issue.id);
+        }
+      }}
       onKeyDown={handleKeyDown}
       aria-describedby="kanban-keyboard-hint"
       aria-keyshortcuts="ArrowLeft ArrowRight"
-      className={cn("block rounded-[8px] outline-none focus-visible:ring-2 focus-visible:ring-accent", isDragging && "opacity-30")}
+      className={cn(
+        "block rounded-[8px] outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        isDragging && "opacity-30",
+        selected && "ring-2 ring-accent",
+      )}
     >
-      <CardBody issue={issue} {...common} title={title} menu={menu} checklist={checklistBadge} />
+      <CardBody issue={issue} {...common} title={title} menu={menu} checklist={checklistBadge} selectControl={selectControl} />
     </Link>
   );
 }

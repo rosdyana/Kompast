@@ -3,6 +3,8 @@ import * as z from "zod";
 import { and, asc, eq, inArray, ne, schema, type Json } from "@kompast/db";
 import {
   moveIssue as moveIssueCore,
+  moveIssues as moveIssuesCore,
+  MAX_BULK_MOVE,
   createIssue as createIssueCore,
   updateIssue,
   addIssueToSprint,
@@ -40,6 +42,29 @@ export const moveIssueFn = createServerFn({ method: "POST" })
       }),
     );
     return { ok: true } as const;
+  });
+
+const moveIssuesSchema = z.object({
+  issueIds: z.array(z.string()).min(1).max(MAX_BULK_MOVE),
+  toStatusId: z.string(),
+  position: z.enum(["top", "bottom"]),
+  edgeIssueId: z.string().optional(),
+});
+
+export const moveIssuesFn = createServerFn({ method: "POST" })
+  .validator(moveIssuesSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    return withAuthorizedTenant(ctx, (tx) =>
+      moveIssuesCore(tx, {
+        issueIds: data.issueIds,
+        toStatusId: data.toStatusId,
+        position: data.position,
+        edgeIssueId: data.edgeIssueId,
+        actorId: ctx.userId,
+        origin: "user",
+      }),
+    );
   });
 
 const createIssueSchema = z.object({

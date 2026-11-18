@@ -1,10 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { and, db, schema, withTenant, eq } from "@kompast/db";
+import { and, db, inArray, schema, withTenant, eq } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject, createWorkflowStatus, createIssueType, setSprintMinutesTemplate, resolveDefaultCreationTarget } from "../project";
-import { createIssue, moveIssue, archiveIssue } from "../issue";
+import { createIssue, moveIssue, moveIssues, archiveIssue } from "../issue";
 import { getBoard } from "../board";
 import { requireMembership, requireProjectAccess, withAuthorizedTenant, ForbiddenError } from "../permissions";
 import { id } from "../ids";
@@ -426,5 +426,127 @@ describe("project + board service layer", () => {
 
     const [type] = await admin.select().from(schema.issueType).where(eq(schema.issueType.id, typeId));
     expect(type).toMatchObject({ name: "Improvement", hierarchyLevel: 1, isSubtask: false });
+  });
+
+  describe("moveIssues", () => {
+    async function seedBulkProject(key: string) {
+      const { projectId, boardId, issueTypes, statuses } = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId, key, name: `Bulk ${key}`, actorUserId: userId }),
+      );
+      return {
+        projectId,
+        boardId,
+        taskTypeId: issueTypes.find((t) => t.name === "Task")!.id,
+        todoId: statuses.find((s) => s.name === "To Do")!.id,
+        inProgressId: statuses.find((s) => s.name === "In Progress")!.id,
+      };
+    }
+
+    function createIn(projectId: string, typeId: string, statusId: string, title: string) {
+      return withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        createIssue(tx, { organizationId: orgId, projectId, typeId, statusId, title, reporterId: userId }),
+      );
+    }
+
+    async function todoColumnIds(boardId: string) {
+      const board = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => getBoard(tx, boardId));
+      return board.columns.find((c) => c.name === "To Do")!.issues.map((i) => i.id);
+    }
+
+    it("moves several cards to the bottom of a column in selection order, after the existing card", async () => {
+      const s = await seedBulkProject("blk1");
+      const edge = await createIn(s.projectId, s.taskTypeId, s.todoId, "Edge");
+      const a = await createIn(s.projectId, s.taskTypeId, s.inProgressId, "A");
+      const b = await createIn(s.projectId, s.taskTypeId, s.inProgressId, "B");
+      const c = await createIn(s.projectId, s.taskTypeId, s.inProgressId, "C");
+
+      const result = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        moveIssues(tx, {
+          issueIds: [a.issueId, b.issueId, c.issueId],
+          toStatusId: s.todoId,
+          position: "bottom",
+          edgeIssueId: edge.issueId,
+          actorId: userId,
+        }),
+      );
+      expect(result).toEqual({ moved: 3 });
+      expect(await todoColumnIds(s.boardId)).toEqual([edge.issueId, a.issueId, b.issueId, c.issueId]);
+
+      const moved = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        tx.select().from(schema.issue).where(inArray(schema.issue.id, [a.issueId, b.issueId, c.issueId])),
+      );
+      expect(moved.every((r) => r.statusId === s.todoId)).toBe(true);
+
+      const statusHistory = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        tx
+          .select()
+          .from(schema.issueHistory)
+          .where(inArray(schema.issueHistory.issueId, [a.issueId, b.issueId, c.issueId]))
+          .then((rows) => rows.filter((h) => h.field === "status")),
+      );
+      expect(statusHistory).toHaveLength(3);
+    });
+
+    it("moves several cards to the top of a column in selection order, before the existing card", async () => {
+      const s = await seedBulkProject("blk2");
+      const edge = await createIn(s.projectId, s.taskTypeId, s.todoId, "Edge");
+      const a = await createIn(s.projectId, s.taskTypeId, s.inProgressId, "A");
+      const b = await createIn(s.projectId, s.taskTypeId, s.inProgressId, "B");
+      const c = await createIn(s.projectId, s.taskTypeId, s.inProgressId, "C");
+
+      await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        moveIssues(tx, {
+          issueIds: [a.issueId, b.issueId, c.issueId],
+          toStatusId: s.todoId,
+          position: "top",
+          edgeIssueId: edge.issueId,
+          actorId: userId,
+        }),
+      );
+      expect(await todoColumnIds(s.boardId)).toEqual([a.issueId, b.issueId, c.issueId, edge.issueId]);
+    });
+
+    it("rejects a batch that includes a card from another project and changes nothing", async () => {
+      const target = await seedBulkProject("blk3");
+      const other = await seedBulkProject("blk4");
+      const mine = await createIn(target.projectId, target.taskTypeId, target.inProgressId, "Mine");
+      const foreign = await createIn(other.projectId, other.taskTypeId, other.inProgressId, "Foreign");
+
+      await expect(
+        withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+          moveIssues(tx, { issueIds: [mine.issueId, foreign.issueId], toStatusId: target.todoId, position: "bottom", actorId: userId }),
+        ),
+      ).rejects.toThrow(/target board's project/);
+
+      const [mineRow] = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        tx.select().from(schema.issue).where(eq(schema.issue.id, mine.issueId)),
+      );
+      const [foreignRow] = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        tx.select().from(schema.issue).where(eq(schema.issue.id, foreign.issueId)),
+      );
+      expect(mineRow?.statusId).toBe(target.inProgressId);
+      expect(foreignRow?.statusId).toBe(other.inProgressId);
+    });
+
+    it("dedupes repeated ids so each card moves once", async () => {
+      const s = await seedBulkProject("blk5");
+      const a = await createIn(s.projectId, s.taskTypeId, s.inProgressId, "A");
+      const b = await createIn(s.projectId, s.taskTypeId, s.inProgressId, "B");
+
+      const result = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        moveIssues(tx, { issueIds: [a.issueId, a.issueId, b.issueId], toStatusId: s.todoId, position: "bottom", actorId: userId }),
+      );
+      expect(result).toEqual({ moved: 2 });
+      expect(await todoColumnIds(s.boardId)).toEqual([a.issueId, b.issueId]);
+
+      const statusHistory = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        tx
+          .select()
+          .from(schema.issueHistory)
+          .where(inArray(schema.issueHistory.issueId, [a.issueId, b.issueId]))
+          .then((rows) => rows.filter((h) => h.field === "status")),
+      );
+      expect(statusHistory).toHaveLength(2);
+    });
   });
 });

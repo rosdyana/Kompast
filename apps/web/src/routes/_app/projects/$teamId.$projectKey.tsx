@@ -5,6 +5,7 @@ import { Button } from "@kompast/ui/Button";
 import { Tabs } from "@kompast/ui/Tabs";
 import { EmptyState, SkeletonRows } from "@kompast/ui/EmptyState";
 import { useTranslation } from "@kompast/i18n";
+import { cn } from "@/lib/cn";
 import { getProjectBoardFn } from "@/lib/server-fns/projects";
 import { listProjectPagesFn } from "@/lib/server-fns/pages";
 import { DocsTree } from "@/components/docs/DocsTree";
@@ -94,7 +95,7 @@ function ProjectPage() {
   const needsSprint = (view === "board" || view === "backlog") && !data.hasAnySprint;
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className={cn("flex flex-col", view === "board" ? "h-full" : "min-h-full")}>
       <div className="px-4 pt-5 sm:px-6">
         <div className="flex flex-wrap items-center gap-3">
           <ProjectIcon projectKey={data.project.key} size={32} className="rounded-[7px]" />
@@ -108,7 +109,7 @@ function ProjectPage() {
         <Tabs items={viewTabs} active={view} onChange={setView} className="-mx-1 mt-3 border-b border-border" />
       </div>
 
-      <div className="min-h-0 flex-1">
+      <div className={cn("min-h-0 flex-1", view === "board" && "flex flex-col")}>
         {needsSprint && (
           <SprintSetupWizard
             boardId={data.board.id}

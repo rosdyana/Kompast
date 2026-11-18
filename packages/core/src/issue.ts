@@ -1,8 +1,9 @@
-import { and, eq, max, sql, schema, type Json } from "@kompast/db";
+import { and, eq, inArray, max, sql, schema, type Json } from "@kompast/db";
 import { loadEnv } from "@kompast/env";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { rankBetween } from "./rank";
+import { NotFoundError, UserFacingError } from "./errors";
 import { notify, notifyMentionedUsers } from "./notification";
 import { extractMentionedUserIds } from "./rich-text";
 import { emitAutomationEvent, type AutomationContext } from "./automation-events";
@@ -565,6 +566,66 @@ export async function moveIssue(tx: Tx, input: MoveIssueInput) {
       });
     }
   }
+}
+
+export interface MoveIssuesInput {
+  issueIds: string[];
+  toStatusId: string;
+  /** Where the moved cards land in the target column. */
+  position: "top" | "bottom";
+  /** Bottom: the column's current last card (predecessor). Top: its current first card (successor). Omit when the column is empty. */
+  edgeIssueId?: string;
+  actorId: string;
+  origin?: MoveIssueInput["origin"];
+  originClient?: string;
+}
+
+export const MAX_BULK_MOVE = 200;
+
+/**
+ * Bulk "Move to column": moves several cards into one status, placed as a
+ * contiguous run at the column's top or bottom, in the order given. Each card
+ * goes through moveIssue, so history and automation events are written per card.
+ */
+export async function moveIssues(tx: Tx, input: MoveIssuesInput): Promise<{ moved: number }> {
+  const ids = [...new Set(input.issueIds)];
+  if (ids.length === 0) return { moved: 0 };
+  if (ids.length > MAX_BULK_MOVE) throw new UserFacingError(`You can move at most ${MAX_BULK_MOVE} cards at once`);
+
+  const [status] = await tx
+    .select({ projectId: schema.workflowStatus.projectId })
+    .from(schema.workflowStatus)
+    .where(eq(schema.workflowStatus.id, input.toStatusId))
+    .limit(1);
+  if (!status) throw new NotFoundError(`Status ${input.toStatusId} not found`);
+
+  // RLS hides issues the caller cannot see, so a short count means at least one id is invisible or missing.
+  const rows = await tx
+    .select({ id: schema.issue.id, projectId: schema.issue.projectId })
+    .from(schema.issue)
+    .where(inArray(schema.issue.id, ids));
+  if (rows.length < ids.length) throw new NotFoundError("One or more cards were not found");
+  if (rows.some((r) => r.projectId !== status.projectId)) {
+    throw new UserFacingError("All cards must belong to the target board's project");
+  }
+
+  const edgeIssueId = input.edgeIssueId && ids.includes(input.edgeIssueId) ? undefined : input.edgeIssueId;
+  const base = { toStatusId: input.toStatusId, actorId: input.actorId, origin: input.origin, originClient: input.originClient };
+
+  if (input.position === "bottom") {
+    let prev = edgeIssueId;
+    for (const issueId of ids) {
+      await moveIssue(tx, { ...base, issueId, beforeIssueId: prev });
+      prev = issueId;
+    }
+  } else {
+    let next = edgeIssueId;
+    for (const issueId of [...ids].reverse()) {
+      await moveIssue(tx, { ...base, issueId, afterIssueId: next });
+      next = issueId;
+    }
+  }
+  return { moved: ids.length };
 }
 
 export interface ArchiveIssueMeta {
