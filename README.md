@@ -168,11 +168,11 @@ Day-to-day, through the `kompast` command:
 
 ```bash
 kompast status | logs [svc] | restart [svc]
-kompast upgrade          # re-run the installer; backs up first
+kompast upgrade          # re-run the installer; backs up first, removes images older than the previous release
 kompast reconfigure      # change domain, storage, proxy or backups
 kompast version          # IMAGE_TAG and running image digests
 kompast backup | backups | restore <file>
-kompast cleanup          # prune dangling images, show disk use
+kompast cleanup          # remove old release images (keeps current + previous), show disk use
 ```
 
 ### Manual install
@@ -220,11 +220,11 @@ Day-to-day, through the `kompast` command:
 
 ```bash
 kompast status | logs [svc] | restart [svc]
-kompast upgrade          # re-run the installer; backs up first
+kompast upgrade          # re-run the installer; backs up first, removes images older than the previous release
 kompast reconfigure      # change domain, storage, proxy or backups
 kompast version          # IMAGE_TAG and running image digests
 kompast backup | backups | restore <file>
-kompast cleanup          # prune dangling images, show disk use
+kompast cleanup          # remove old release images (keeps current + previous), show disk use
 ```
 
 ### Manual install
