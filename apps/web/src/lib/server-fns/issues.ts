@@ -10,6 +10,8 @@ import {
   listPriorityLevels,
   withAuthorizedTenant,
   listAssignableUsers,
+  NotFoundError,
+  UserFacingError,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 
@@ -70,7 +72,7 @@ export const createIssueFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     return withAuthorizedTenant(ctx, async (tx) => {
       const statusId = data.statusId ?? (await backlogStatusIdForProject(tx, data.projectId));
-      if (!statusId) throw new Error("This project's board has no Backlog column to create issues in.");
+      if (!statusId) throw new UserFacingError("This project's board has no Backlog column to create issues in.");
       const created = await createIssueCore(tx, {
         organizationId: ctx.organizationId,
         projectId: data.projectId,
@@ -121,7 +123,7 @@ export const getCreateIssueContextFn = createServerFn({ method: "GET" })
         .select({ id: schema.project.id, key: schema.project.key, name: schema.project.name, teamId: schema.project.teamId })
         .from(schema.project)
         .where(and(eq(schema.project.id, projectId), eq(schema.project.organizationId, ctx.organizationId)));
-      if (!project) throw new Error("Project not found");
+      if (!project) throw new NotFoundError("Project not found");
 
       const [issueTypes, priorityLevels, members, epics, boards] = await Promise.all([
         tx

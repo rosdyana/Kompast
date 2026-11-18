@@ -21,6 +21,7 @@ import {
   requireProjectAdmin,
   ForbiddenError,
   listAssignableUsers,
+  NotFoundError,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 import { resolveIssue } from "../api-resolvers";
@@ -196,7 +197,7 @@ export const archiveIssueFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, async (tx) => {
       const [issue] = await tx.select({ projectId: schema.issue.projectId }).from(schema.issue).where(eq(schema.issue.id, data.issueId));
-      if (!issue) throw new Error(`Issue ${data.issueId} not found`);
+      if (!issue) throw new NotFoundError(`Issue ${data.issueId} not found`);
       await requireProjectAdmin(tx, { ...ctx, projectId: issue.projectId });
       await archiveIssue(tx, data.issueId, { actorId: ctx.userId, origin: "user" });
     });
@@ -209,7 +210,7 @@ export const restoreIssueFn = createServerFn({ method: "POST" })
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, async (tx) => {
       const [issue] = await tx.select({ projectId: schema.issue.projectId }).from(schema.issue).where(eq(schema.issue.id, data.issueId));
-      if (!issue) throw new Error(`Issue ${data.issueId} not found`);
+      if (!issue) throw new NotFoundError(`Issue ${data.issueId} not found`);
       await requireProjectAdmin(tx, { ...ctx, projectId: issue.projectId });
       await restoreIssue(tx, data.issueId, { actorId: ctx.userId, origin: "user" });
     });

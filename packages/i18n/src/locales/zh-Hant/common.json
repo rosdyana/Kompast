@@ -24,5 +24,13 @@
   "mentionGroupPeople": "成員",
   "mentionGroupIssues": "議題",
   "dismiss": "關閉",
-  "breadcrumb": "導覽路徑"
+  "breadcrumb": "導覽路徑",
+  "serverErrorTitle": "伺服器發生錯誤",
+  "serverErrorSubtext": "請稍後再試一次。",
+  "offlineTitle": "您目前處於離線狀態",
+  "offlineSubtext": "請檢查網路連線後再試一次。",
+  "tryAgain": "重試",
+  "goBack": "返回上一頁",
+  "errorReference": "參考編號：{{ref}}",
+  "developerDetails": "開發者詳細資訊"
 }

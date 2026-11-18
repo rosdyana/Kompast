@@ -14,6 +14,7 @@ import { ShortcutsDialog } from "@/components/shell/ShortcutsDialog";
 import { NotionImportDialog, type NotionImportTarget } from "@/components/docs/NotionImportDialog";
 import { NotionMigrationWizard } from "@/components/docs/notion-migration/NotionMigrationWizard";
 import { WorkbenchContext, type CreateIssueDefaults, type PageChrome } from "@/components/shell/WorkbenchContext";
+import { ErrorPage } from "@/components/shared/ErrorPage";
 
 export const Route = createFileRoute("/_app")({
   loader: async () => {
@@ -24,6 +25,11 @@ export const Route = createFileRoute("/_app")({
     return { ...shell, pages: pageTree.pages, favoriteIds: pageTree.favoriteIds };
   },
   component: AppShell,
+  // Only reached when this route's own loader fails (no shell data to render
+  // the sidebar with), so it gets the full-screen page. Errors in child routes
+  // are handled by defaultErrorComponent in router.tsx, which renders inside
+  // this route's Outlet and keeps the sidebar visible.
+  errorComponent: ({ error, reset }) => <ErrorPage variant="serverError" error={error} reset={reset} fullScreen />,
 });
 
 function isTypingTarget(target: EventTarget | null) {

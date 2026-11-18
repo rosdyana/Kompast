@@ -22,6 +22,15 @@ export function I18nextProvider({ i18n, children }: { i18n: I18nInstance; childr
   return <I18nReactContext.Provider value={i18n}>{children}</I18nReactContext.Provider>;
 }
 
+/**
+ * Returns the provided instance, or null when there is no provider above
+ * (root-level failures, where the error page renders before/outside the
+ * providers). Callers choose their own fallback; useTranslation still throws.
+ */
+export function useOptionalI18n(): I18nInstance | null {
+  return useContext(I18nReactContext);
+}
+
 type LooseT = (key: string, options?: Record<string, unknown>) => string;
 
 export function useTranslation(ns?: string | string[]) {

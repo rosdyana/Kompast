@@ -19,6 +19,7 @@ import {
   setTeamMemberRole,
   transferSuperAdmin,
   withAuthorizedTenant,
+  UserFacingError,
 } from "@kompast/core";
 import { getAuth, sendInvitationEmail } from "../auth";
 import { requireAuthContext } from "../session";
@@ -199,7 +200,7 @@ export const resendTeamInvitationFn = createServerFn({ method: "POST" })
           gt(schema.invitation.expiresAt, new Date()),
         ),
       );
-    if (!invitation) throw new Error("This invitation is no longer pending");
+    if (!invitation) throw new UserFacingError("This invitation is no longer pending");
 
     await resendInvitationEmail(ctx, { id: invitation.id, email: invitation.email, role: invitation.teamRole ?? "member" });
     return { ok: true } as const;

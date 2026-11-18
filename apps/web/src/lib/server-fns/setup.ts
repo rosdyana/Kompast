@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import * as z from "zod";
 import { db } from "@kompast/db";
-import { getSetupStatus, completeSetup, hasAnyUser } from "@kompast/core";
+import { getSetupStatus, completeSetup, hasAnyUser, UserFacingError } from "@kompast/core";
 import { loadEnv } from "@kompast/env";
 import { invalidateAuthCache, getDevAdminConfig } from "../auth";
 import { getDemoConfig } from "../demo";
@@ -50,16 +50,16 @@ export const completeSetupFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     // Unauthenticated until setup completes, so cap attempts per IP.
     const gate = await rateLimit(`setup:${clientIp(getRequest())}`, 10, 900);
-    if (!gate.ok) throw new Error(`Too many setup attempts. Try again in ${Math.ceil(gate.retryAfter / 60)} minutes.`);
+    if (!gate.ok) throw new UserFacingError(`Too many setup attempts. Try again in ${Math.ceil(gate.retryAfter / 60)} minutes.`);
     const status = await getSetupStatus(db);
     if (status.isConfigured) {
-      throw new Error("Setup has already run. Use workspace settings to change Microsoft Entra ID configuration.");
+      throw new UserFacingError("Setup has already run. Use workspace settings to change Microsoft Entra ID configuration.");
     }
     const env = loadEnv();
-    if (env.SETUP_TOKEN && !setupTokenMatches(env.SETUP_TOKEN, data.setupToken)) throw new Error("The setup token is missing or wrong.");
-    if (getDemoConfig(env).enabled) throw new Error("Setup is disabled in demo mode.");
+    if (env.SETUP_TOKEN && !setupTokenMatches(env.SETUP_TOKEN, data.setupToken)) throw new UserFacingError("The setup token is missing or wrong.");
+    if (getDemoConfig(env).enabled) throw new UserFacingError("Setup is disabled in demo mode.");
     if ((await hasAnyUser(db)) && !getDevAdminConfig(env).enabled) {
-      throw new Error("This deployment already has users. Ask its admin to configure Microsoft Entra ID in workspace settings.");
+      throw new UserFacingError("This deployment already has users. Ask its admin to configure Microsoft Entra ID in workspace settings.");
     }
     await completeSetup(db, { tenantId: data.tenantId, clientId: data.clientId, clientSecret: data.clientSecret });
     invalidateAuthCache();

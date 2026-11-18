@@ -17,6 +17,7 @@ import {
   enqueueEmail,
   getEmailDelivery,
   withAuthorizedTenant,
+  UserFacingError,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
 import { invalidateAuthCache } from "../auth";
@@ -157,7 +158,7 @@ export const sendTestEmailFn = createServerFn({ method: "POST" })
       const [me] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, ctx.userId));
       to = me?.email;
     }
-    if (!to) throw new Error("No recipient address for the test email");
+    if (!to) throw new UserFacingError("No recipient address for the test email");
 
     const { outboxId } = await withAuthorizedTenant(ctx, (tx) =>
       enqueueEmail(tx, {

@@ -3,7 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { createHash } from "node:crypto";
 import * as z from "zod";
 import * as Y from "yjs";
-import { resolveShareLink, getSharedPageContent, shareLinkRequiresPassword } from "@kompast/core";
+import { resolveShareLink, getSharedPageContent, shareLinkRequiresPassword, UserFacingError } from "@kompast/core";
 import { redactEmbedsForGuests } from "../blocknote-schema";
 import { createServerEditor } from "../server-editor";
 import { clientIp, rateLimit } from "../rate-limit";
@@ -37,7 +37,7 @@ export const getSharedPageContentFn = createServerFn({ method: "POST" })
       // the raw token isn't stored in Redis) and the IP, so one visitor can't brute-force one link.
       const linkKey = createHash("sha256").update(data.token).digest("hex").slice(0, 16);
       const gate = await rateLimit(`sharepw:${linkKey}:${clientIp(getRequest())}`, 10, 900);
-      if (!gate.ok) throw new Error(`Too many password attempts. Try again in ${Math.ceil(gate.retryAfter / 60)} minutes.`);
+      if (!gate.ok) throw new UserFacingError(`Too many password attempts. Try again in ${Math.ceil(gate.retryAfter / 60)} minutes.`);
     }
     const content = await getSharedPageContent(data.token, data.password);
     if (!content) return { ok: false as const };
