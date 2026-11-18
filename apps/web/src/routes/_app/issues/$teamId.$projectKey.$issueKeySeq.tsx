@@ -28,6 +28,7 @@ import { IssueChecklist } from "@/components/issues/IssueChecklist";
 import {
   getIssueDetailFn,
   addCommentFn,
+  setCommentReactionFn,
   toggleWatchFn,
   updateIssueDescriptionFn,
   updateIssueAssigneeFn,
@@ -396,10 +397,19 @@ function IssueView({ data, from }: { data: IssueData; from: FromTab }) {
                 comments={data.comments}
                 usersById={usersById}
                 intlLocale={intlLocale}
+                currentUserId={data.currentUserId}
                 currentUserName={currentUserName}
                 onSubmit={async ({ bodyJson, parentCommentId }) => {
                   await addCommentFn({ data: { issueId: data.issue.id, bodyJson, parentCommentId } });
                   await router.invalidate();
+                }}
+                onToggleReaction={async ({ commentId, emoji, on }) => {
+                  // Failures reach the chip, which rolls back and shows a toast. Refresh either way to resync.
+                  try {
+                    await setCommentReactionFn({ data: { commentId, emoji, on } });
+                  } finally {
+                    await router.invalidate();
+                  }
                 }}
               />
             ) : (

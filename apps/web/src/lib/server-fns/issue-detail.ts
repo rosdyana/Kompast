@@ -4,7 +4,10 @@ import * as z from "zod";
 import { and, asc, desc, eq, inArray, isNull, or, schema, type Json } from "@kompast/db";
 import {
   addComment,
+  addCommentReaction,
   archiveIssue,
+  removeCommentReaction,
+  listCommentReactions,
   restoreIssue,
   listComments,
   listAttachments,
@@ -76,11 +79,31 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         listChecklistItems(tx, issue.id),
       ]);
 
+      // Reactors' names feed the chip tooltips, so their ids join the user lookup below.
+      const reactionsByComment = await listCommentReactions(
+        tx,
+        comments.map((c) => c.id),
+      );
+      const commentsWithReactions = comments.map((c) => ({
+        ...c,
+        reactions: (reactionsByComment.get(c.id) ?? []).map((r) => ({
+          emoji: r.emoji,
+          count: r.count,
+          userIds: r.userIds,
+          reactedByMe: r.userIds.includes(ctx.userId),
+        })),
+      }));
+      const reactorIds = [...reactionsByComment.values()].flatMap((summaries) => summaries.flatMap((r) => r.userIds));
+
       const userIds = [
         ...new Set(
-          [issue.assigneeId, issue.reporterId, ...comments.map((c) => c.authorId), ...history.map((h) => h.actorId)].filter(
-            (v): v is string => !!v,
-          ),
+          [
+            issue.assigneeId,
+            issue.reporterId,
+            ...comments.map((c) => c.authorId),
+            ...history.map((h) => h.actorId),
+            ...reactorIds,
+          ].filter((v): v is string => !!v),
         ),
       ];
       const users = userIds.length > 0 ? await tx.select().from(schema.user).where(inArray(schema.user.id, userIds)) : [];
@@ -166,7 +189,7 @@ export const getIssueDetailFn = createServerFn({ method: "GET" })
         issue,
         type,
         status,
-        comments,
+        comments: commentsWithReactions,
         users,
         currentUserId: ctx.userId,
         isWatching,
@@ -241,6 +264,27 @@ export const addCommentFn = createServerFn({ method: "POST" })
         parentCommentId: data.parentCommentId,
       }),
     );
+  });
+
+const setCommentReactionSchema = z.object({
+  commentId: z.string(),
+  emoji: z.string(),
+  on: z.boolean(),
+});
+
+/** Anyone who can comment on the issue can react to a comment: same visibility gate as addCommentFn. */
+export const setCommentReactionFn = createServerFn({ method: "POST" })
+  .validator(setCommentReactionSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, async (tx) => {
+      if (data.on) {
+        await addCommentReaction(tx, { organizationId: ctx.organizationId, commentId: data.commentId, userId: ctx.userId, emoji: data.emoji, origin: "user" });
+      } else {
+        await removeCommentReaction(tx, { commentId: data.commentId, userId: ctx.userId, emoji: data.emoji });
+      }
+    });
+    return { ok: true } as const;
   });
 
 const updateDescriptionSchema = z.object({ issueId: z.string(), descriptionJson: z.array(z.record(z.string(), z.unknown())).nullable() });

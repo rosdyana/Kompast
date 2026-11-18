@@ -125,5 +125,11 @@
     "deleteItem": "刪除項目",
     "saveFailed": "無法更新檢查清單",
     "cardBadge": "檢查清單：已完成 {{done}} / {{total}}"
-  }
+  },
+  "addReaction": "新增回應",
+  "reactedBy": "由 {{names}} 回應",
+  "reactedByCount_one": "{{count}} 人回應",
+  "reactedByCount_other": "{{count}} 人回應",
+  "reactionFailed": "無法儲存你的回應",
+  "commentTipHint": "輸入 : 插入表情符號，@ 提及成員"
 }

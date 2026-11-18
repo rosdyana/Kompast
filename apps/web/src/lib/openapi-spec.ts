@@ -53,6 +53,16 @@ const page = {
   },
 };
 
+const commentReaction = {
+  type: "object",
+  properties: {
+    emoji: { type: "string", example: "👍" },
+    count: { type: "integer" },
+    userIds: { type: "array", items: { type: "string" } },
+    reactedByMe: { type: "boolean" },
+  },
+};
+
 const comment = {
   type: "object",
   properties: {
@@ -60,6 +70,7 @@ const comment = {
     authorId: { type: "string" },
     text: { type: "string" },
     createdAt: { type: "string", format: "date-time" },
+    reactions: { type: "array", items: commentReaction },
   },
 };
 
@@ -200,6 +211,24 @@ export function buildOpenApiSpec(serverUrl: string) {
           summary: "Add a comment to an issue",
           requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["text"], properties: { text: { type: "string" } } } } } },
           responses: { "201": { description: "Created" }, "401": problemJson, "404": problemJson },
+        },
+      },
+      "/api/v1/issues/{issueKey}/comments/{commentId}/reactions": {
+        parameters: [
+          { name: "issueKey", in: "path", required: true, schema: { type: "string" } },
+          { name: "commentId", in: "path", required: true, schema: { type: "string" } },
+        ],
+        post: {
+          summary: "Add your emoji reaction to a comment",
+          description: "Idempotent. Returns 201 when the reaction is new, 200 when you already had it. The author is notified in-app (not by email) when someone else reacts.",
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["emoji"], properties: { emoji: { type: "string", example: "🚀", description: "A single emoji." } } } } } },
+          responses: { "200": { description: "Already reacted" }, "201": { description: "Created" }, "400": problemJson, "401": problemJson, "404": problemJson },
+        },
+        delete: {
+          summary: "Remove your emoji reaction from a comment",
+          description: "Removes only your own reaction. Returns 204 whether or not it was there.",
+          parameters: [{ name: "emoji", in: "query", required: true, schema: { type: "string" } }],
+          responses: { "204": { description: "Removed" }, "400": problemJson, "401": problemJson, "404": problemJson },
         },
       },
       "/api/v1/pages": {

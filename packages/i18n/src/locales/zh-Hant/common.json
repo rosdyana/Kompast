@@ -32,5 +32,9 @@
   "tryAgain": "重試",
   "goBack": "返回上一頁",
   "errorReference": "參考編號：{{ref}}",
-  "developerDetails": "開發者詳細資訊"
+  "developerDetails": "開發者詳細資訊",
+  "emojiSearch": "搜尋表情符號",
+  "emojiNoResults": "找不到表情符號",
+  "emojiQuick": "快速回應",
+  "insertEmoji": "插入表情符號"
 }

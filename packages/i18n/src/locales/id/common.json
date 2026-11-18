@@ -32,5 +32,9 @@
   "tryAgain": "Coba lagi",
   "goBack": "Kembali",
   "errorReference": "Referensi: {{ref}}",
-  "developerDetails": "Detail pengembang"
+  "developerDetails": "Detail pengembang",
+  "emojiSearch": "Cari emoji",
+  "emojiNoResults": "Emoji tidak ditemukan",
+  "emojiQuick": "Reaksi cepat",
+  "insertEmoji": "Sisipkan emoji"
 }

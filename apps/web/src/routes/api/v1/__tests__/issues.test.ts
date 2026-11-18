@@ -8,6 +8,7 @@ import { Route as IssuesRoute } from "../issues";
 import { Route as IssueItemRoute } from "../issues.$issueKey";
 import { Route as TransitionRoute } from "../issues.$issueKey.transition";
 import { Route as CommentsRoute } from "../issues.$issueKey.comments";
+import { Route as CommentReactionsRoute } from "../issues.$issueKey.comments.$commentId.reactions";
 
 // The `handlers` type is a union with a function-factory form TS can't
 // rule out statically; the runtime value here is always the plain object
@@ -23,6 +24,7 @@ const issuesHandlers = IssuesRoute.options.server!.handlers as Handlers;
 const issueItemHandlers = IssueItemRoute.options.server!.handlers as Handlers;
 const transitionHandlers = TransitionRoute.options.server!.handlers as Handlers;
 const commentsHandlers = CommentsRoute.options.server!.handlers as Handlers;
+const reactionsHandlers = CommentReactionsRoute.options.server!.handlers as Handlers & { DELETE: Handler };
 
 function req(url: string, options: { method?: string; token?: string; body?: unknown; idempotencyKey?: string } = {}) {
   const headers = new Headers();
@@ -221,6 +223,58 @@ describe("/api/v1/issues", () => {
     const comments = await listCommentsRes.json();
     expect(comments.data).toHaveLength(1);
     expect(comments.data[0].text).toBe("via REST");
+  });
+
+  it("adds, lists and removes emoji reactions on a comment, and rejects a comment from another issue", async () => {
+    const make = async (title: string) =>
+      (
+        await (
+          await issuesHandlers.POST({ request: req("http://x/api/v1/issues", { method: "POST", token, body: { projectKey, title } }), params: {} })
+        ).json()
+      ).key as string;
+    const issueKey = await make("Reactions issue");
+    const otherKey = await make("Other issue");
+
+    const commentRes = await commentsHandlers.POST({
+      request: req(`http://x/api/v1/issues/${issueKey}/comments`, { method: "POST", token, body: { text: "react to me" } }),
+      params: { issueKey },
+    });
+    const commentId = (await (await commentsHandlers.GET({ request: req(`http://x/api/v1/issues/${issueKey}/comments`, { token }), params: { issueKey } })).json()).data[0].id as string;
+    expect(commentRes.status).toBe(201);
+
+    const reactUrl = `http://x/api/v1/issues/${issueKey}/comments/${commentId}/reactions`;
+    const post = (emoji: string) =>
+      reactionsHandlers.POST({ request: req(reactUrl, { method: "POST", token, body: { emoji } }), params: { issueKey, commentId } });
+
+    const first = await post("👍");
+    expect(first.status).toBe(201);
+    expect(await first.json()).toEqual({ commentId, emoji: "👍", added: true });
+    const again = await post("👍");
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ commentId, emoji: "👍", added: false });
+
+    const listed = await (await commentsHandlers.GET({ request: req(`http://x/api/v1/issues/${issueKey}/comments`, { token }), params: { issueKey } })).json();
+    expect(listed.data[0].reactions).toEqual([expect.objectContaining({ emoji: "👍", count: 1, reactedByMe: true })]);
+
+    const removed = await reactionsHandlers.DELETE({
+      request: req(`${reactUrl}?emoji=${encodeURIComponent("👍")}`, { method: "DELETE", token }),
+      params: { issueKey, commentId },
+    });
+    expect(removed.status).toBe(204);
+    const afterRemove = await (await commentsHandlers.GET({ request: req(`http://x/api/v1/issues/${issueKey}/comments`, { token }), params: { issueKey } })).json();
+    expect(afterRemove.data[0].reactions).toEqual([]);
+
+    const bad = await post("abc");
+    expect(bad.status).toBe(400);
+    const noEmoji = await reactionsHandlers.DELETE({ request: req(`${reactUrl}`, { method: "DELETE", token }), params: { issueKey, commentId } });
+    expect(noEmoji.status).toBe(400);
+
+    // The comment exists, but it belongs to issueKey, not otherKey.
+    const wrongIssue = await reactionsHandlers.POST({
+      request: req(`http://x/api/v1/issues/${otherKey}/comments/${commentId}/reactions`, { method: "POST", token, body: { emoji: "👍" } }),
+      params: { issueKey: otherKey, commentId },
+    });
+    expect(wrongIssue.status).toBe(404);
   });
 
   it("accepts an arbitrary priority string beyond the old fixed enum, on create and patch", async () => {

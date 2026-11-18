@@ -16,7 +16,8 @@
   "event": {
     "issue.assigned": "Ditugaskan ke sebuah issue",
     "issue.commented": "Komentar baru di issue yang Anda ikuti",
-    "issue.mentioned": "Disebut di sebuah issue"
+    "issue.mentioned": "Disebut di sebuah issue",
+    "issue.comment_reacted": "Reaksi pada komentar saya"
   },
   "savedToast": "Preferensi disimpan",
   "saveFailed": "Gagal menyimpan preferensi",

@@ -1,10 +1,13 @@
 import "@blocknote/core/style.css";
 import "@blocknote/shadcn/style.css";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, type Block, type PartialBlock } from "@blocknote/core";
 import { useCreateBlockNote, SuggestionMenuController } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
+import { Smile } from "lucide-react";
+import { Popover } from "@kompast/ui/Popover";
 import { useTheme } from "@kompast/ui/theme";
+import { EmojiPicker } from "@/components/shared/EmojiPicker";
 import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
 import { userMentionInlineSpec } from "@/components/shared/UserMentionInlineContent";
 import { searchWorkspaceFn } from "@/lib/server-fns/search";
@@ -26,6 +29,8 @@ export interface LiteEditorProps {
   className?: string;
   /** Shown as ghost text while the document is a single empty paragraph. */
   placeholder?: string;
+  /** Shows the emoji button in the bottom-right corner. Pass false where it doesn't fit. Default true. */
+  emojiButton?: boolean;
 }
 
 /**
@@ -41,9 +46,11 @@ export interface LiteEditorProps {
  * locale dictionary (see useBlockNoteDictionary) so slash-menu labels etc. stay at their defaults, only
  * `placeholders.default`/`emptyDocument` are overridden.
  */
-export function LiteEditor({ initialContent, onChange, autoFocus, className, placeholder }: LiteEditorProps) {
+export function LiteEditor({ initialContent, onChange, autoFocus, className, placeholder, emojiButton = true }: LiteEditorProps) {
   const { theme } = useTheme();
   const { t } = useTranslation("common");
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const { locale, dictionary: base } = useBlockNoteDictionary();
   const dictionary = useMemo(
     () => (placeholder ? { ...base, placeholders: { ...base.placeholders, default: placeholder, emptyDocument: placeholder } } : base),
@@ -88,8 +95,14 @@ export function LiteEditor({ initialContent, onChange, autoFocus, className, pla
     // to the real editor. Wrapping it here instead keeps that chrome on
     // one element; BlockNoteView itself only ever gets the bare
     // "kp-lite-editor" marker class both copies already share harmlessly.
-    <div className={className}>
-      <BlockNoteView editor={editor} editable theme={theme} autoFocus={autoFocus} className="kp-lite-editor [&_.bn-editor]:bg-transparent!">
+    <div className={`relative ${className ?? ""}`}>
+      <BlockNoteView
+        editor={editor}
+        editable
+        theme={theme}
+        autoFocus={autoFocus}
+        className={`kp-lite-editor [&_.bn-editor]:bg-transparent!${emojiButton ? " [&_.bn-editor]:pr-7!" : ""}`}
+      >
         <SuggestionMenuController
           triggerCharacter="@"
           getItems={async (query) => {
@@ -115,6 +128,38 @@ export function LiteEditor({ initialContent, onChange, autoFocus, className, pla
           }}
         />
       </BlockNoteView>
+      {emojiButton && (
+        <>
+          <button
+            ref={emojiButtonRef}
+            type="button"
+            onClick={() => setEmojiOpen((open) => !open)}
+            aria-label={t("insertEmoji")}
+            title={t("insertEmoji")}
+            className="absolute right-1.5 bottom-1.5 inline-flex h-6 w-6 items-center justify-center rounded-[6px] text-text-3 hover:bg-surface-3 hover:text-text"
+          >
+            <Smile size={15} />
+          </button>
+          <Popover
+            open={emojiOpen}
+            onClose={() => setEmojiOpen(false)}
+            anchorRef={emojiButtonRef}
+            placement="bottom-end"
+            width={320}
+            ariaLabel={t("insertEmoji")}
+          >
+            <EmojiPicker
+              onClose={() => setEmojiOpen(false)}
+              onSelect={(emoji) => {
+                setEmojiOpen(false);
+                // ProseMirror keeps the last selection, so this lands at the cursor.
+                editor.focus();
+                editor.insertInlineContent([emoji] as any);
+              }}
+            />
+          </Popover>
+        </>
+      )}
     </div>
   );
 }

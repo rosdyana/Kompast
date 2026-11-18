@@ -32,5 +32,9 @@
   "tryAgain": "Try again",
   "goBack": "Go back",
   "errorReference": "Reference: {{ref}}",
-  "developerDetails": "Developer details"
+  "developerDetails": "Developer details",
+  "emojiSearch": "Search emoji",
+  "emojiNoResults": "No emoji found",
+  "emojiQuick": "Quick reactions",
+  "insertEmoji": "Insert emoji"
 }

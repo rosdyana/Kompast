@@ -11,6 +11,9 @@ import {
   restoreIssue,
   addComment,
   listComments,
+  listCommentReactions,
+  addCommentReaction,
+  removeCommentReaction,
   toPlainText,
   linkIssues,
   listIssueLinks,
@@ -565,6 +568,37 @@ export function buildMcpServer(ctx: ApiAuthContext) {
   );
 
   server.registerTool(
+    "react_to_comment",
+    {
+      description:
+        "Add an emoji reaction to an issue comment (or remove your own with remove: true). The emoji must be a single emoji, like 👍 or 🚀. Adding one you already have is a no-op.",
+      inputSchema: { issueKey: z.string().min(1), commentId: z.string().min(1), emoji: z.string().min(1), remove: z.boolean().optional() },
+    },
+    (args) =>
+      tool(ctx, "issues:write", () =>
+        withAuthorizedTenant(ctx, async (tx) => {
+          const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
+          const [comment] = await tx
+            .select({ id: schema.issueComment.id })
+            .from(schema.issueComment)
+            .where(and(eq(schema.issueComment.id, args.commentId), eq(schema.issueComment.issueId, issue.id)));
+          if (!comment) throw new ApiError(404, "Not Found", `Comment ${args.commentId} not found on this issue`);
+          if (args.remove) {
+            return removeCommentReaction(tx, { commentId: comment.id, userId: ctx.userId, emoji: args.emoji });
+          }
+          return addCommentReaction(tx, {
+            organizationId: ctx.organizationId,
+            commentId: comment.id,
+            userId: ctx.userId,
+            emoji: args.emoji,
+            origin: ctx.origin,
+            originClient: "mcp",
+          });
+        }),
+      )(),
+  );
+
+  server.registerTool(
     "link_issue",
     {
       description: "Link an issue to a doc page.",
@@ -846,12 +880,13 @@ export function buildMcpServer(ctx: ApiAuthContext) {
 
   server.registerTool(
     "list_issue_comments",
-    { description: "List an issue's comments, oldest first, as plain text.", inputSchema: { issueKey: z.string().min(1) } },
+    { description: "List an issue's comments, oldest first, as plain text, with emoji reactions (count, userIds, reactedByMe).", inputSchema: { issueKey: z.string().min(1) } },
     (args) =>
       tool(ctx, "issues:read", () =>
         withAuthorizedTenant(ctx, async (tx) => {
           const { issue } = await resolveIssue(tx, ctx.organizationId, args.issueKey);
           const comments = await listComments(tx, issue.id);
+          const reactions = await listCommentReactions(tx, comments.map((c) => c.id));
           return comments.map((c) => ({
             id: c.id,
             authorId: c.authorId,
@@ -859,6 +894,7 @@ export function buildMcpServer(ctx: ApiAuthContext) {
             text: toPlainText(c.bodyJson),
             origin: c.origin,
             createdAt: c.createdAt,
+            reactions: (reactions.get(c.id) ?? []).map((r) => ({ ...r, reactedByMe: r.userIds.includes(ctx.userId) })),
           }));
         }),
       )(),

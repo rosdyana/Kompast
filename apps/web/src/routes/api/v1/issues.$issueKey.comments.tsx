@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import { addComment, listComments, toPlainText, withAuthorizedTenant } from "@kompast/core";
+import { addComment, listComments, listCommentReactions, toPlainText, withAuthorizedTenant } from "@kompast/core";
 import { requireApiAuth } from "@/lib/api-auth";
 import { jsonResponse, handleApiRoute } from "@/lib/api-response";
 import { resolveIssue } from "@/lib/api-resolvers";
@@ -16,12 +16,14 @@ export const Route = createFileRoute("/api/v1/issues/$issueKey/comments")({
           return withAuthorizedTenant(ctx, async (tx) => {
             const { issue } = await resolveIssue(tx, ctx.organizationId, params.issueKey);
             const comments = await listComments(tx, issue.id);
+            const reactions = await listCommentReactions(tx, comments.map((c) => c.id));
             return jsonResponse({
               data: comments.map((c) => ({
                 id: c.id,
                 authorId: c.authorId,
                 text: toPlainText(c.bodyJson),
                 createdAt: c.createdAt,
+                reactions: (reactions.get(c.id) ?? []).map((r) => ({ ...r, reactedByMe: r.userIds.includes(ctx.userId) })),
               })),
             });
           });
