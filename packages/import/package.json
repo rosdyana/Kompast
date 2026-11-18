@@ -22,7 +22,7 @@
   "devDependencies": {
     "@kompast/editor": "workspace:*",
     "@types/node": "^26.6.6",
-    "postgres": "^4.1.0",
+    "postgres": "^4.1.1",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   }
