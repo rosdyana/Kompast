@@ -9,7 +9,7 @@ export function createAzureOpenAiDriver(apiKey: string, endpoint: string, deploy
   return createOpenAiChatDriver({ url, headers: { "api-key": apiKey } });
 }
 
-export function createAzureOpenAiEmbeddingsDriver(apiKey: string, endpoint: string, deployment: string): EmbeddingDriver {
+export function createAzureOpenAiEmbeddingsDriver(apiKey: string, endpoint: string, deployment: string, dimensions?: number): EmbeddingDriver {
   const url = `${endpoint.replace(/\/$/, "")}/openai/deployments/${deployment}/embeddings?api-version=${API_VERSION}`;
-  return createOpenAiEmbeddingsDriver({ url, headers: { "api-key": apiKey } });
+  return createOpenAiEmbeddingsDriver({ url, headers: { "api-key": apiKey }, dimensions });
 }

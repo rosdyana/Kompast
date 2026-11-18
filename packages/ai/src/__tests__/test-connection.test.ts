@@ -120,7 +120,7 @@ describe("testEmbeddingConnection", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "model returned 768-dimensional vectors; Kompast stores 1536 — use a 1536-dimension model such as text-embedding-3-small",
+      message: "model returned 768-dimensional vectors; Kompast stores 1536 — use a 1536-dimension model such as text-embedding-3-small, or a text-embedding-3 model (e.g. text-embedding-3-large) whose model/deployment name contains \"text-embedding-3\" so Kompast can request 1536 dimensions",
     });
   });
 

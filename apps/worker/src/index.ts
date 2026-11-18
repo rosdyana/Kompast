@@ -101,6 +101,20 @@ async function processOutboxBatch() {
  * keep the index complete; retrieval (askKompast, run as the asking user)
  * is where team scoping is enforced.
  */
+/**
+ * drizzle wraps driver errors as "Failed query: <sql> params: <every param>" and keeps the
+ * actual Postgres reason on `.cause` — for an embedding insert the params include whole
+ * vectors, so the stored message was a wall of floats with the reason cut off. Prefer the cause.
+ */
+function describeError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = err.cause;
+  if (cause instanceof Error && err.message.startsWith("Failed query:")) {
+    return `Database error: ${cause.message}`;
+  }
+  return err.message;
+}
+
 async function processReindexBatch() {
   const claimed = await claimPendingReindexTasks(adminDb, 10);
   for (const task of claimed) {
@@ -109,7 +123,7 @@ async function processReindexBatch() {
       await markReindexTaskProcessed(adminDb, task.id);
     } catch (err) {
       console.error(`[worker] reindex task ${task.id} failed:`, err);
-      await recordReindexFailure(adminDb, task.id, err instanceof Error ? err.message : String(err));
+      await recordReindexFailure(adminDb, task.id, describeError(err));
     }
   }
 }
