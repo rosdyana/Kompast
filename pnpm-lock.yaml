@@ -363,8 +363,8 @@ importers:
   packages/i18n:
     dependencies:
       i18next:
-        specifier: ^26.7.2
-        version: 26.7.2(typescript@7.0.2)
+        specifier: ^27.1.2
+        version: 27.1.2(typescript@7.0.2)
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -3404,8 +3404,9 @@ packages:
   httpxy@0.5.5:
     resolution: {integrity: sha512-uDjmnPyp1q4Sgzf3w+J/Fc6UqcCEj0x4Wjp7OqK5dGhNeDgpyrAmnS6ey8QWrX3SWDon2DMKf9sBa5X9+CVyMA==}
 
-  i18next@26.7.2:
-    resolution: {integrity: sha512-RsOY3BeaCDdkk52NeJSFAXELQ2rQXBO/tOub6L8ue2ICPfR/FRDWDOfEDg4xMPd1SqO5goVYQ6i72qWEUB/PPw==}
+  i18next@27.1.2:
+    resolution: {integrity: sha512-851D6dY9vuhn9hF0p5KpY7FPeYnm3P73tqyX2nxfsjeEYVg7Du0Fflw0rJtv7nFnZcDQS0+Hqn0UP6+SPx8mew==}
+    engines: {node: '>=22'}
     peerDependencies:
       typescript: ^5 || ^6 || ^7
     peerDependenciesMeta:
@@ -7381,7 +7382,7 @@ snapshots:
 
   httpxy@0.5.5: {}
 
-  i18next@26.7.2(typescript@7.0.2):
+  i18next@27.1.2(typescript@7.0.2):
     optionalDependencies:
       typescript: 7.0.2
 

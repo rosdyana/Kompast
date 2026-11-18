@@ -10,7 +10,7 @@
     "react": "^19.0.0"
   },
   "dependencies": {
-    "i18next": "^26.7.2"
+    "i18next": "^27.1.2"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
