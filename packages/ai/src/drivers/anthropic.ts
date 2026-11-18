@@ -1,6 +1,7 @@
 import type { AiDriver, AiMessage, AiToolCall } from "../types";
 import { parseSse } from "../sse";
 import { parseToolInput } from "../tool-input";
+import { AiProviderError } from "../errors";
 
 export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5";
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -50,7 +51,7 @@ function toAnthropicTurns(messages: AiMessage[]): AnthropicTurn[] {
 export interface AnthropicDriverOptions {
   /** Full Messages endpoint URL. */
   url: string;
-  /** Auth headers — `x-api-key` for api.anthropic.com, `api-key` for Azure AI Foundry. */
+  /** Auth headers — `x-api-key` for both api.anthropic.com and Azure AI Foundry's /anthropic route. */
   headers: Record<string, string>;
   model: string | null;
   /** Prefix for thrown error messages, so a Foundry failure doesn't read as an api.anthropic.com one. */
@@ -64,14 +65,18 @@ export function createAnthropicDriver(apiKey: string, model: string | null): AiD
 /**
  * Claude on Azure AI Foundry speaks the same Messages API (same request
  * body, same SSE events) at `https://<resource>.services.ai.azure.com/anthropic/v1/messages`,
- * so it reuses this driver wholesale — only the URL and auth header differ.
+ * so it reuses this driver wholesale — only the URL differs.
  * `model` is the Foundry deployment name (which defaults to the model ID
  * when the deployment is created). Accepts the endpoint with or without
  * the `/anthropic`, `/anthropic/v1`, or `/anthropic/v1/messages` suffix,
  * since the Foundry portal shows it in more than one form.
  */
 export function createAzureFoundryAnthropicDriver(apiKey: string, endpoint: string, model: string | null): AiDriver {
-  return createAnthropicMessagesDriver({ url: foundryMessagesUrl(endpoint), headers: { "api-key": apiKey }, model, label: "Azure Foundry (Anthropic)" });
+  // x-api-key, not Azure's usual api-key: verified against a real Foundry
+  // resource, the /anthropic route answered 401 ("invalid subscription key or
+  // wrong API endpoint") to api-key and 200 to x-api-key with the same key —
+  // while the same resource's Azure OpenAI routes (embeddings) do take api-key.
+  return createAnthropicMessagesDriver({ url: foundryMessagesUrl(endpoint), headers: { "x-api-key": apiKey }, model, label: "Azure Foundry (Anthropic)" });
 }
 
 export function foundryMessagesUrl(endpoint: string): string {
@@ -113,7 +118,7 @@ function createAnthropicMessagesDriver({ url, headers, model, label }: Anthropic
 
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => "");
-        throw new Error(`${label} API error (${res.status}): ${detail}`);
+        throw new AiProviderError(`${label} API error (${res.status}): ${detail}`, { status: res.status, provider: label, detail });
       }
 
       let text = "";

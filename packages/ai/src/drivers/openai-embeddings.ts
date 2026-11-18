@@ -1,4 +1,5 @@
 import type { EmbeddingDriver } from "../types";
+import { AiProviderError } from "../errors";
 
 /**
  * Shared OpenAI-Embeddings-shaped implementation — Azure OpenAI and
@@ -17,7 +18,7 @@ export function createOpenAiEmbeddingsDriver(opts: { url: string; headers: Recor
 
       if (!res.ok) {
         const detail = await res.text().catch(() => "");
-        throw new Error(`Embedding provider error (${res.status}): ${detail}`);
+        throw new AiProviderError(`Embedding provider error (${res.status}): ${detail}`, { status: res.status, provider: "Embedding provider", detail, kind: "embedding" });
       }
 
       const body = (await res.json()) as { data: { embedding: number[]; index: number }[] };

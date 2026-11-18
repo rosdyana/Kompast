@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as z from "zod";
-import { runDocTextAction, generateIssueDescription, generateSprintSummary, withAuthorizedTenant } from "@kompast/core";
+import { runDocTextAction, generateIssueDescription, generateSprintSummary, isDeploymentAdmin, withAuthorizedTenant } from "@kompast/core";
+import { db } from "@kompast/db";
 import { ApiError, requireSessionAuth } from "@/lib/api-auth";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { aiStreamErrorMessage } from "@/lib/ai-stream-error";
@@ -55,6 +56,9 @@ export const Route = createFileRoute("/api/ai/stream")({
         }
         const body = parsed.data;
 
+        // Once per request, and never allowed to break the response: a failed lookup just means "not an admin".
+        const isAdmin = await isDeploymentAdmin(db, ctx.userId).catch(() => false);
+
         const encoder = new TextEncoder();
         const stream = new ReadableStream<Uint8Array>({
           async start(controller) {
@@ -72,7 +76,7 @@ export const Route = createFileRoute("/api/ai/stream")({
               });
               send({ done: true });
             } catch (err) {
-              send({ error: aiStreamErrorMessage(err, "The AI provider request failed") });
+              send({ error: aiStreamErrorMessage(err, "The AI provider request failed", { isDeploymentAdmin: isAdmin }) });
             } finally {
               controller.close();
             }

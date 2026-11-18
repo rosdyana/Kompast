@@ -4,6 +4,10 @@ import { adminDb, and, db, eq, schema } from "@kompast/db";
 import {
   getAiSettings,
   updateAiSettings,
+  testAiProvider,
+  testEmbeddingProvider,
+  getEmbeddingStatus,
+  retryFailedReindexTasks,
   getMailSettings,
   updateMailSettings,
   getMicrosoftAuthSettingsView,
@@ -121,6 +125,74 @@ export const reindexAllFn = createServerFn({ method: "POST" }).handler(async () 
   await requireSystemAdmin(db, ctx);
   const counts = await enqueueFullReindex(adminDb, ctx.organizationId);
   return { ok: true, ...counts } as const;
+});
+
+/**
+ * Test connection for the AI config, sent with the form's current values so it
+ * works before Save. Every field is optional here; the handler only builds
+ * overrides when a provider is sent. Provider failures come back as { ok: false }
+ * rather than a thrown error, because the global error middleware hides
+ * unknown errors. The admin owns this config, so the provider's status and
+ * body are shown. The API key is masked in core.
+ */
+const testAiSchema = updateAiSchema.partial();
+
+export const testAiProviderFn = createServerFn({ method: "POST" })
+  .validator(testAiSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireDeploymentAdmin(db, ctx);
+    const overrides = data.provider
+      ? {
+          provider: data.provider,
+          apiKey: data.apiKey,
+          model: data.model,
+          azureEndpoint: data.azureEndpoint,
+          azureDeployment: data.azureDeployment,
+          openAiCompatibleBaseUrl: data.openAiCompatibleBaseUrl,
+        }
+      : undefined;
+    return testAiProvider(db, overrides);
+  });
+
+const testEmbeddingSchema = updateEmbeddingSchema.partial();
+
+/** Same as testAiProviderFn, for the embedding config. Also checks the vector dimension (see testEmbeddingConnection). */
+export const testEmbeddingProviderFn = createServerFn({ method: "POST" })
+  .validator(testEmbeddingSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireDeploymentAdmin(db, ctx);
+    const overrides = data.provider
+      ? {
+          provider: data.provider,
+          apiKey: data.apiKey,
+          model: data.model,
+          azureEndpoint: data.azureEndpoint,
+          azureDeployment: data.azureDeployment,
+          openAiCompatibleBaseUrl: data.openAiCompatibleBaseUrl,
+        }
+      : undefined;
+    return testEmbeddingProvider(db, overrides);
+  });
+
+/**
+ * Indexing progress for Settings → Embedding. Gated like reindexAllFn (workspace
+ * owner/admin), and read on adminDb for the same reason: the counts cover the
+ * whole workspace, not only what this user's RLS shows.
+ */
+export const getEmbeddingStatusFn = createServerFn({ method: "GET" }).handler(async () => {
+  const ctx = await requireAuthContext();
+  await requireSystemAdmin(db, ctx);
+  return getEmbeddingStatus(adminDb, ctx.organizationId);
+});
+
+/** Puts this workspace's failed reindex tasks back in the queue (see retryFailedReindexTasks). */
+export const retryFailedReindexFn = createServerFn({ method: "POST" }).handler(async () => {
+  const ctx = await requireAuthContext();
+  await requireSystemAdmin(db, ctx);
+  const reset = await retryFailedReindexTasks(adminDb, ctx.organizationId);
+  return { ok: true, reset } as const;
 });
 
 const updateMailSchema = z.object({

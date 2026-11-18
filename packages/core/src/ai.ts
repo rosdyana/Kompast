@@ -1,10 +1,11 @@
 import { schema, inArray } from "@kompast/db";
-import { createAiClient, resolveModelName } from "@kompast/ai";
-import type { AiMessage } from "@kompast/ai";
-import type { Tx } from "./types";
+import { createAiClient, resolveModelName, testAiConnection, type AiCredentials, type AiMessage, type AiTestResult } from "@kompast/ai";
+import type { AnyDb, Tx } from "./types";
 import { id } from "./ids";
-import { getAiCredentials } from "./settings";
+import { aiCredentialsFromRow, assertKeyNotRetargeted, getAiCredentials, getSystemSettingsRow, redactSecret, type UpdateAiSettingsInput } from "./settings";
 import { getSprint, getSprintReport, listSprintIssues } from "./sprint";
+/** Re-exported so apps/web can recognise a provider failure without depending on @kompast/ai directly. */
+export { AiProviderError } from "@kompast/ai";
 
 export class AiNotConfiguredError extends Error {
   constructor() {
@@ -79,6 +80,53 @@ export async function runAiCompletion(tx: Tx, input: RunAiCompletionInput) {
   });
 
   return result;
+}
+
+/** The Test connection form: the same fields Save takes, minus the ones a test doesn't use. */
+export type AiTestOverrides = Omit<UpdateAiSettingsInput, "featuresEnabled" | "updatedBy">;
+
+/**
+ * Test connection for the deployment AI config. Runs one tiny completion through
+ * the same driver the features use. Never throws; any failure comes back as
+ * { ok: false } with the provider's status and body, with the API key masked.
+ *
+ * With no overrides it tests the stored config, which is required to be present.
+ * With overrides it takes the form as Save would store it (blank fields mean null,
+ * a blank key keeps the stored one), so the test can run before Save. The same
+ * retarget guard as updateAiSettings applies, so a stored key is never sent to a
+ * new endpoint from here.
+ */
+export async function testAiProvider(db: AnyDb, overrides?: AiTestOverrides): Promise<AiTestResult> {
+  let creds: AiCredentials;
+  try {
+    const row = await getSystemSettingsRow(db);
+    const stored = row?.aiProvider ? aiCredentialsFromRow(row) : null;
+
+    if (!overrides) {
+      if (!stored?.apiKey) return { ok: false, message: new AiNotConfiguredError().message };
+      creds = stored;
+    } else {
+      assertKeyNotRetargeted(
+        Boolean(row?.aiApiKeyEncrypted),
+        overrides.apiKey,
+        { provider: row?.aiProvider, azureEndpoint: row?.aiAzureEndpoint, openAiCompatibleBaseUrl: row?.aiOpenAiCompatibleBaseUrl },
+        { provider: overrides.provider, azureEndpoint: overrides.azureEndpoint, openAiCompatibleBaseUrl: overrides.openAiCompatibleBaseUrl },
+      );
+      creds = {
+        provider: overrides.provider,
+        apiKey: overrides.apiKey || stored?.apiKey || null,
+        model: overrides.model || null,
+        azureEndpoint: overrides.azureEndpoint || null,
+        azureDeployment: overrides.azureDeployment || null,
+        openAiCompatibleBaseUrl: overrides.openAiCompatibleBaseUrl || null,
+      };
+    }
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+
+  const result = await testAiConnection(creds);
+  return result.ok ? result : { ...result, message: redactSecret(result.message, creds.apiKey) };
 }
 
 export type DocTextAction = "continue" | "improve" | "shorten" | "expand" | "summarize" | "translate";

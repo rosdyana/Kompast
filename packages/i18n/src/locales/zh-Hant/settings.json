@@ -34,7 +34,43 @@
       "reindex": "重新索引全部內容",
       "reindexing": "加入佇列中…",
       "reindexQueued": "已加入重新索引佇列：{{issues}} 個議題、{{comments}} 則留言、{{pages}} 個頁面。",
-      "reindexFailed": "無法加入重新索引佇列：{{message}}"
+      "reindexFailed": "無法加入重新索引佇列：{{message}}",
+      "status": {
+        "heading": "索引狀態",
+        "description": "Ask Kompast 能搜尋到此工作區中多少議題、留言與文件。",
+        "refresh": "重新整理",
+        "refreshing": "重新整理中…",
+        "loadFailed": "無法載入索引狀態：{{message}}",
+        "notConfigured": "尚未設定嵌入服務。請啟用 Ask Kompast，並在上方儲存供應商，即可查看索引進度。",
+        "indexed": "已索引",
+        "queue": "佇列",
+        "pending": "等待中",
+        "oldestPending": "最久的已等待 {{age}}",
+        "processing": "處理中",
+        "failed": "失敗",
+        "failures": "最近失敗",
+        "noFailures": "沒有失敗的工作。",
+        "colType": "類型",
+        "colItem": "項目",
+        "colAttempts": "嘗試次數",
+        "colError": "錯誤",
+        "retryFailed": "重試失敗項目",
+        "retryDone": "已將 {{count}} 個失敗工作重新加入佇列。",
+        "retryFailedError": "無法重新加入佇列：{{message}}",
+        "types": {
+          "issue": "議題",
+          "comment": "留言",
+          "page": "文件"
+        },
+        "docs": "文件",
+        "issues": "議題",
+        "comments": "留言",
+        "age": {
+          "seconds": "{{count}} 秒",
+          "minutes": "{{count}} 分鐘",
+          "hours": "{{count}} 小時"
+        }
+      }
     },
     "entra": {
       "heading": "Microsoft Entra ID",
@@ -94,6 +130,21 @@
         "stillQueued": "45 秒後仍在佇列中，沒有錯誤訊息。郵件工作程序是否正在執行？",
         "error": "無法寄送測試郵件：{{message}}"
       }
+    },
+    "test": {
+      "button": "測試連線",
+      "testing": "測試中…",
+      "okAi": "已連線 —— {{model}} 在 {{latencyMs}} 毫秒內回應",
+      "okEmbedding": "已連線 —— {{model}} 回傳 {{dimensions}} 維向量，耗時 {{latencyMs}} 毫秒",
+      "failed": "連線失敗",
+      "status": "HTTP {{status}}",
+      "hintAuth": "401/403：API 金鑰遭拒，或無權在此端點使用。請檢查金鑰，並確認它屬於同一個供應商與資源。",
+      "hintNotFound": "404：找不到端點或部署。請檢查基礎 URL，並確認模型或部署名稱完全相符。",
+      "hintBadRequest": "400：供應商拒絕了這個請求。上方訊息通常會指出錯誤的欄位。",
+      "hintRateLimit": "429：已達配額或速率限制。請檢查供應商的用量上限，或稍後再試。",
+      "hintNetwork": "沒有收到 HTTP 回應：無法連到端點，或設定尚未完整。請檢查 URL 與上方欄位。",
+      "requestFailed": "無法執行測試：{{message}}",
+      "responseLabel": "供應商回應"
     }
   },
   "members": {

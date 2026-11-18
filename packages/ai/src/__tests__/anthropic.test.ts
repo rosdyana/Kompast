@@ -184,7 +184,7 @@ describe("createAzureFoundryAnthropicDriver", () => {
     vi.unstubAllGlobals();
   });
 
-  it("posts the same Messages body to the Foundry endpoint with an api-key header", async () => {
+  it("posts the same Messages body to the Foundry endpoint with an x-api-key header (Foundry's /anthropic route rejects api-key)", async () => {
     const frames = [
       { type: "message_start", message: { usage: { input_tokens: 3, output_tokens: 0 } } },
       { type: "content_block_delta", delta: { type: "text_delta", text: "ok" } },
@@ -199,8 +199,8 @@ describe("createAzureFoundryAnthropicDriver", () => {
     expect(result.text).toBe("ok");
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://acme.services.ai.azure.com/anthropic/v1/messages");
-    expect(init.headers["api-key"]).toBe("foundry-key");
-    expect(init.headers["x-api-key"]).toBeUndefined();
+    expect(init.headers["x-api-key"]).toBe("foundry-key");
+    expect(init.headers["api-key"]).toBeUndefined();
     expect(init.headers["anthropic-version"]).toBe("2023-06-01");
     expect(JSON.parse(init.body).model).toBe("my-claude-deploy");
   });
