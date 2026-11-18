@@ -651,7 +651,8 @@ type FetchedAttachment =
  */
 async function fetchAndStore(client: JiraClient, siteUrl: string, row: PendingImportedAttachment): Promise<FetchedAttachment> {
   if (!row.jiraAttachmentId) return { row, ok: false, error: "No JIRA attachment id is recorded for this file", permanent: true };
-  const url = `${siteUrl.replace(/\/+$/, "")}/rest/api/3/attachment/content/${row.jiraAttachmentId}`;
+  // redirect=false makes JIRA stream the bytes itself; by default it 303s to its media host, which guardedFetch never follows.
+  const url = `${siteUrl.replace(/\/+$/, "")}/rest/api/3/attachment/content/${row.jiraAttachmentId}?redirect=false`;
   try {
     const res = await client.getRaw(url);
     const data = await readCapped(res, row.sizeBytes + ATTACHMENT_SIZE_SLACK_BYTES);
@@ -661,6 +662,9 @@ async function fetchAndStore(client: JiraClient, siteUrl: string, row: PendingIm
   } catch (err) {
     if (err instanceof JiraApiError && err.status === 404) {
       return { row, ok: false, error: "JIRA returned 404 for this attachment: it was probably deleted in JIRA", permanent: true };
+    }
+    if (err instanceof JiraApiError && err.status >= 300 && err.status < 400) {
+      return { row, ok: false, error: `JIRA redirected the download (${err.status}); redirects are not followed`, permanent: true };
     }
     return { row, ok: false, error: errorMessage(err), permanent: false };
   }
@@ -703,6 +707,7 @@ async function runAttachments(deps: JiraMigrationRunnerDeps, migration: JiraMigr
           cursor.attachmentBytesStored += result.sizeBytes;
           cursor.inlineBlocksRewritten += rewritten;
         } else {
+          console.warn(`[jira-migration] attachment ${row.attachmentId} (${jiraId ?? "no jira id"}) for ${migration.id} failed: ${result.error}`);
           const status = await deps.withTenantAs(ctx, async (tx) => {
             const marked = await markImportedAttachmentFailed(tx, { attachmentId: row.attachmentId, error: result.error, permanent: result.permanent });
             if (marked.status === "failed" && jiraId) {

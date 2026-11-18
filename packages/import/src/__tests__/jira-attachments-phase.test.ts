@@ -249,6 +249,17 @@ describe("JIRA migration: attachments phase (real Postgres, mocked JIRA, local s
     expect(left.find((r) => r.fileName === "flaky.bin")).toMatchObject({ issueKey: "JATT-1", error: expect.stringContaining("500") });
   });
 
+  it("a download JIRA answers with a redirect fails for good, with a readable error, in one tick", async () => {
+    await loadToAttachments();
+    jira.state.alwaysRedirect.add("10005");
+
+    await runJiraMigrationTick(deps(), await current());
+
+    const byName = await attachmentsByName();
+    expect(byName.get("report.pdf")).toMatchObject({ status: "failed", attempts: 1, error: expect.stringContaining("redirected") });
+    expect(jira.state.downloads.get("10005")).toBe(1);
+  });
+
   it("a re-run doesn't download stored files again, re-queues the failed ones, and creates no duplicate rows", async () => {
     await loadToAttachments();
     await runJiraMigrationTick(deps(), await current());
@@ -358,6 +369,8 @@ function fakeJira() {
     downloads: new Map<string, number>(),
     delayFirstDownloadMs: 0,
     flakyOk: false,
+    /** Attachment ids that answer 303 even when the request asks for redirect=false. */
+    alwaysRedirect: new Set<string>(),
   };
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const url = new URL(String(input));
@@ -380,6 +393,10 @@ function fakeJira() {
         const ms = state.delayFirstDownloadMs;
         state.delayFirstDownloadMs = 0;
         await new Promise((resolve) => setTimeout(resolve, ms));
+      }
+      // JIRA's default is a 303 to its media host; only redirect=false streams the bytes here.
+      if (state.alwaysRedirect.has(attachmentId) || url.searchParams.get("redirect") !== "false") {
+        return new Response(null, { status: 303, headers: { location: "https://api.media.atlassian.com/file/x" } });
       }
       if (attachmentId === "10006") return new Response("Attachment does not exist", { status: 404 });
       if (attachmentId === "10007" && !state.flakyOk) return new Response("boom", { status: 500 });
