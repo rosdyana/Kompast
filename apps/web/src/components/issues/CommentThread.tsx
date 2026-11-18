@@ -1,12 +1,23 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ClientOnly } from "@tanstack/react-router";
 import type { Block } from "@blocknote/core";
+import { SmilePlus } from "lucide-react";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
+import { Popover } from "@kompast/ui/Popover";
+import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
+import { EmojiPicker } from "@/components/shared/EmojiPicker";
 import { LiteEditor } from "@/components/shared/LiteEditor";
 import { RichTextView } from "@/components/shared/RichTextView";
 import { fullDateTime, relativeTime } from "./time";
+
+export interface ThreadReaction {
+  emoji: string;
+  count: number;
+  userIds: string[];
+  reactedByMe: boolean;
+}
 
 export interface ThreadComment {
   id: string;
@@ -15,16 +26,44 @@ export interface ThreadComment {
   parentCommentId: string | null;
   depth: number;
   createdAt: string | Date;
+  reactions: ThreadReaction[];
 }
+
+export interface ToggleReactionInput {
+  commentId: string;
+  emoji: string;
+  on: boolean;
+}
+
+type UsersById = Map<string, { id: string; name: string }>;
 
 interface CommentThreadProps {
   comments: ThreadComment[];
-  usersById: Map<string, { id: string; name: string }>;
+  usersById: UsersById;
   intlLocale: string;
+  currentUserId?: string;
   currentUserName?: string;
   onSubmit: (input: { bodyJson: Block[]; parentCommentId?: string }) => Promise<void>;
+  /** Persists one reaction on or off. Rejects on failure; the chip then rolls back. */
+  onToggleReaction?: (input: ToggleReactionInput) => Promise<void>;
   /** "newest" puts the composer on top and newest comments first (Jira default). */
   order?: "newest" | "oldest";
+}
+
+/** The reaction list with `emoji` turned on or off for `userId`, leaving the input untouched. */
+function applyReactionToggle(reactions: ThreadReaction[], emoji: string, on: boolean, userId: string): ThreadReaction[] {
+  const existing = reactions.find((r) => r.emoji === emoji);
+  if (on) {
+    if (!existing) return [...reactions, { emoji, count: 1, userIds: [userId], reactedByMe: true }];
+    if (existing.reactedByMe) return reactions;
+    return reactions.map((r) => (r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, userId], reactedByMe: true } : r));
+  }
+  if (!existing || !existing.reactedByMe) return reactions;
+  const remaining = existing.count - 1;
+  if (remaining <= 0) return reactions.filter((r) => r.emoji !== emoji);
+  return reactions.map((r) =>
+    r.emoji === emoji ? { ...r, count: remaining, userIds: r.userIds.filter((id) => id !== userId), reactedByMe: false } : r,
+  );
 }
 
 /**
@@ -145,11 +184,105 @@ export function CommentComposer({
               <Button variant="ghost" size="sm" onClick={cancel} disabled={submitting}>
                 {t("cancel")}
               </Button>
-              <span className="ml-auto hidden text-[12px] text-text-3 sm:inline">{t("commentTip")}</span>
+              <span className="ml-auto hidden text-[12px] text-text-3 sm:inline">
+                {t("commentTip")} · {t("commentTipHint")}
+              </span>
             </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The emoji chips under a comment, plus the add-reaction picker. Updates the
+ * chips at once, then saves. If the save fails the chips roll back and a toast
+ * says so. The loader's data replaces the local copy once it refreshes.
+ */
+function ReactionBar({
+  commentId,
+  serverReactions,
+  usersById,
+  currentUserId,
+  onToggle,
+}: {
+  commentId: string;
+  serverReactions: ThreadReaction[];
+  usersById: UsersById;
+  currentUserId?: string;
+  onToggle?: (input: ToggleReactionInput) => Promise<void>;
+}) {
+  const { t } = useTranslation("issue");
+  const toast = useToast();
+  const [reactions, setReactions] = useState(serverReactions);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const addRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setReactions(serverReactions);
+  }, [serverReactions]);
+
+  async function toggle(emoji: string, on: boolean) {
+    if (!onToggle || !currentUserId) return;
+    const previous = reactions;
+    const next = applyReactionToggle(reactions, emoji, on, currentUserId);
+    if (next === reactions) return;
+    setReactions(next);
+    try {
+      await onToggle({ commentId, emoji, on });
+    } catch {
+      setReactions(previous);
+      toast.show({ title: t("reactionFailed"), tone: "error" });
+    }
+  }
+
+  function tooltipFor(reaction: ThreadReaction): string {
+    const names = reaction.userIds.map((id) => usersById.get(id)?.name);
+    if (names.every((name): name is string => !!name)) return t("reactedBy", { names: names.join(", ") });
+    return t("reactedByCount", { count: reaction.count });
+  }
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {reactions.map((r) => (
+        <button
+          key={r.emoji}
+          type="button"
+          onClick={() => toggle(r.emoji, !r.reactedByMe)}
+          title={tooltipFor(r)}
+          aria-label={`${r.emoji} ${r.count}`}
+          aria-pressed={r.reactedByMe}
+          className={
+            r.reactedByMe
+              ? "inline-flex h-6 items-center gap-1 rounded-full border border-accent bg-accent-soft px-2 text-[12.5px] text-text"
+              : "inline-flex h-6 items-center gap-1 rounded-full border border-border-2 bg-surface px-2 text-[12.5px] text-text-2 hover:bg-surface-3"
+          }
+        >
+          <span className="text-[14px] leading-none">{r.emoji}</span>
+          <span className="tabular-nums">{r.count}</span>
+        </button>
+      ))}
+      <button
+        ref={addRef}
+        type="button"
+        onClick={() => setPickerOpen((open) => !open)}
+        aria-label={t("addReaction")}
+        title={t("addReaction")}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-surface text-text-3 hover:bg-surface-3 hover:text-text"
+      >
+        <SmilePlus size={14} />
+      </button>
+      <Popover open={pickerOpen} onClose={() => setPickerOpen(false)} anchorRef={addRef} width={320} ariaLabel={t("addReaction")}>
+        <EmojiPicker
+          onClose={() => setPickerOpen(false)}
+          onSelect={(emoji) => {
+            setPickerOpen(false);
+            // Picking an emoji you already reacted with leaves it as it is.
+            toggle(emoji, true);
+          }}
+        />
+      </Popover>
     </div>
   );
 }
@@ -159,15 +292,19 @@ function CommentNode({
   childrenByParent,
   usersById,
   intlLocale,
+  currentUserId,
   currentUserName,
   onReply,
+  onToggleReaction,
 }: {
   comment: ThreadComment;
   childrenByParent: Map<string, ThreadComment[]>;
-  usersById: Map<string, { id: string; name: string }>;
+  usersById: UsersById;
   intlLocale: string;
+  currentUserId?: string;
   currentUserName?: string;
   onReply: (parentCommentId: string, bodyJson: Block[]) => Promise<void>;
+  onToggleReaction?: (input: ToggleReactionInput) => Promise<void>;
 }) {
   const { t } = useTranslation("issue");
   const [replying, setReplying] = useState(false);
@@ -189,6 +326,13 @@ function CommentNode({
         <ClientOnly fallback={<p className="mt-1 text-[14px] text-text-2">{blocksToPlainText(comment.bodyJson)}</p>}>
           <RichTextView content={comment.bodyJson} className="mt-0.5" />
         </ClientOnly>
+        <ReactionBar
+          commentId={comment.id}
+          serverReactions={comment.reactions}
+          usersById={usersById}
+          currentUserId={currentUserId}
+          onToggle={onToggleReaction}
+        />
         {canReply && !replying && (
           <button
             type="button"
@@ -223,8 +367,10 @@ function CommentNode({
                 childrenByParent={childrenByParent}
                 usersById={usersById}
                 intlLocale={intlLocale}
+                currentUserId={currentUserId}
                 currentUserName={currentUserName}
                 onReply={onReply}
+                onToggleReaction={onToggleReaction}
               />
             ))}
           </div>
@@ -234,7 +380,16 @@ function CommentNode({
   );
 }
 
-export function CommentThread({ comments, usersById, intlLocale, currentUserName, onSubmit, order = "newest" }: CommentThreadProps) {
+export function CommentThread({
+  comments,
+  usersById,
+  intlLocale,
+  currentUserId,
+  currentUserName,
+  onSubmit,
+  onToggleReaction,
+  order = "newest",
+}: CommentThreadProps) {
   const { t } = useTranslation("issue");
   const childrenByParent = new Map<string, ThreadComment[]>();
   const topLevel: ThreadComment[] = [];
@@ -266,8 +421,10 @@ export function CommentThread({ comments, usersById, intlLocale, currentUserName
           childrenByParent={childrenByParent}
           usersById={usersById}
           intlLocale={intlLocale}
+          currentUserId={currentUserId}
           currentUserName={currentUserName}
           onReply={handleReply}
+          onToggleReaction={onToggleReaction}
         />
       ))}
       {order === "oldest" && composer}

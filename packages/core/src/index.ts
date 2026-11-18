@@ -19,6 +19,7 @@ export * from "./automation-expressions";
 export { executeNode, type ExecuteStepResult, AUTOMATION_READABLE_PROPERTY_KEYS, AUTOMATION_SETTABLE_PROPERTY_KEYS, MAX_AUTOMATION_DEPTH, MAX_LOOP_ITERATIONS, MAX_FIND_ISSUES_RESULTS } from "./automation-execution";
 export * from "./automation-engine";
 export * from "./comment";
+export * from "./comment-reaction";
 export * from "./rich-text";
 export * from "./ydoc-text";
 export * from "./watcher";

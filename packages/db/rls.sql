@@ -20,6 +20,8 @@ alter table issue enable row level security;
 alter table issue force row level security;
 alter table issue_comment enable row level security;
 alter table issue_comment force row level security;
+alter table issue_comment_reaction enable row level security;
+alter table issue_comment_reaction force row level security;
 alter table issue_attachment enable row level security;
 alter table issue_attachment force row level security;
 alter table worklog enable row level security;
@@ -239,6 +241,31 @@ create policy tenant_isolation_issue_comment on issue_comment
       where i.id = issue_comment.issue_id
         and i.organization_id = current_setting('app.current_workspace', true)
     )
+  );
+
+-- Reactions inherit visibility from their comment (and so from the issue's
+-- team). Per-user rows, so the write policies also pin user_id to the caller:
+-- a user can only add or remove their own reactions. There is deliberately
+-- no UPDATE policy, so a reaction row is never edited in place.
+drop policy if exists tenant_isolation_issue_comment_reaction_select on issue_comment_reaction;
+create policy tenant_isolation_issue_comment_reaction_select on issue_comment_reaction
+  for select
+  using (comment_id in (select id from issue_comment));
+
+drop policy if exists tenant_isolation_issue_comment_reaction_insert on issue_comment_reaction;
+create policy tenant_isolation_issue_comment_reaction_insert on issue_comment_reaction
+  for insert
+  with check (
+    comment_id in (select id from issue_comment)
+    and user_id = current_setting('app.current_user', true)
+  );
+
+drop policy if exists tenant_isolation_issue_comment_reaction_delete on issue_comment_reaction;
+create policy tenant_isolation_issue_comment_reaction_delete on issue_comment_reaction
+  for delete
+  using (
+    comment_id in (select id from issue_comment)
+    and user_id = current_setting('app.current_user', true)
   );
 
 drop policy if exists tenant_isolation_worklog on worklog;

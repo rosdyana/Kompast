@@ -126,6 +126,29 @@ describe("/api/mcp", () => {
     expect(historyRow?.origin).toBe("mcp");
   });
 
+  it("react_to_comment adds, lists and removes an emoji reaction, and attributes it to origin=mcp", async () => {
+    const created = await callOk(token, "create_issue", { projectKey, title: "MCP reactions" });
+    const comment = await callOk(token, "comment_issue", { issueKey: created.key, text: "react to this" });
+
+    const added = await callOk(token, "react_to_comment", { issueKey: created.key, commentId: comment.id, emoji: "🚀" });
+    expect(added).toEqual({ added: true });
+    expect(await callOk(token, "react_to_comment", { issueKey: created.key, commentId: comment.id, emoji: "🚀" })).toEqual({ added: false });
+
+    const listed = await callOk(token, "list_issue_comments", { issueKey: created.key });
+    expect(listed[0].reactions).toEqual([expect.objectContaining({ emoji: "🚀", count: 1, reactedByMe: true })]);
+
+    const [row] = await admin.select().from(schema.issueCommentReaction).where(eq(schema.issueCommentReaction.commentId, comment.id));
+    expect(row?.origin).toBe("mcp");
+    expect(row?.originClient).toBe("mcp");
+
+    expect(await callOk(token, "react_to_comment", { issueKey: created.key, commentId: comment.id, emoji: "🚀", remove: true })).toEqual({ removed: true });
+    expect((await callOk(token, "list_issue_comments", { issueKey: created.key }))[0].reactions).toEqual([]);
+
+    // Not an emoji: a tool-level error, not a reaction.
+    const bad = await callTool(token, "react_to_comment", { issueKey: created.key, commentId: comment.id, emoji: "hello" });
+    expect(bad.body.result.isError).toBe(true);
+  });
+
   it("accepts an arbitrary priority string beyond the old fixed enum", async () => {
     const create = await callTool(token, "create_issue", { projectKey, title: "MCP custom priority", priority: "blocker" });
     const created = JSON.parse(create.body.result.content[0].text);
@@ -199,6 +222,7 @@ describe("/api/mcp", () => {
         "transition_issue",
         "assign_issue",
         "comment_issue",
+        "react_to_comment",
         "link_issue",
         "create_page",
         "update_page",

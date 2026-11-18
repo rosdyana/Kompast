@@ -125,5 +125,11 @@
     "deleteItem": "Hapus item",
     "saveFailed": "Gagal memperbarui checklist",
     "cardBadge": "Checklist: {{done}} dari {{total}} selesai"
-  }
+  },
+  "addReaction": "Tambahkan reaksi",
+  "reactedBy": "Direaksi oleh {{names}}",
+  "reactedByCount_one": "{{count}} orang bereaksi",
+  "reactedByCount_other": "{{count}} orang bereaksi",
+  "reactionFailed": "Reaksi tidak dapat disimpan",
+  "commentTipHint": "Ketik : untuk emoji, @ untuk menyebut"
 }

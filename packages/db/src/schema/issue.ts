@@ -113,6 +113,33 @@ export const issueComment = pgTable("issue_comment", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+/**
+ * One row per (comment, user, emoji). Visibility is inherited from the
+ * comment (and so from the issue's team) through rls.sql; there's no UPDATE
+ * policy, so a reaction is only ever added or removed by its own user.
+ */
+export const issueCommentReaction = pgTable(
+  "issue_comment_reaction",
+  {
+    id: text("id").primaryKey(),
+    commentId: text("comment_id")
+      .notNull()
+      .references(() => issueComment.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    /** 'user' | 'automation' | 'mcp' | 'api' | 'import' — same attribution as issue_comment. */
+    origin: text("origin").notNull().default("user"),
+    originClient: text("origin_client"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("issue_comment_reaction_uq").on(t.commentId, t.userId, t.emoji),
+    index("issue_comment_reaction_comment_idx").on(t.commentId),
+  ],
+);
+
 export const issueAttachment = pgTable("issue_attachment", {
   id: text("id").primaryKey(),
   issueId: text("issue_id")
