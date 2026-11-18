@@ -1,9 +1,17 @@
-import { and, asc, eq, inArray, sql, cosineDistance, schema, type Json, type SQL } from "@kompast/db";
-import { createAiClient, createEmbeddingClient, resolveModelName, type AiCredentials, type AiMessage, type AiToolDefinition, type EmbeddingCredentials } from "@kompast/ai";
+import { and, asc, count, countDistinct, desc, eq, inArray, sql, cosineDistance, schema, type Json, type SQL } from "@kompast/db";
+import { createAiClient, createEmbeddingClient, resolveModelName, testEmbeddingConnection, type AiCredentials, type AiMessage, type AiToolDefinition, type EmbeddingCredentials, type EmbeddingTestResult } from "@kompast/ai";
 import type { Tx, AnyDb } from "./types";
 import { id } from "./ids";
 import { withAuthorizedTenant, type AuthContext } from "./permissions";
-import { getAiCredentials, getEmbeddingCredentials } from "./settings";
+import {
+  assertKeyNotRetargeted,
+  embeddingCredentialsFromRow,
+  getAiCredentials,
+  getEmbeddingCredentials,
+  getSystemSettingsRow,
+  redactSecret,
+  type UpdateEmbeddingSettingsInput,
+} from "./settings";
 import { AiNotConfiguredError, recordAiUsage } from "./ai";
 import { enrichCandidates, type EnrichedCandidate, type RagEnrichment } from "./rag-enrich";
 import { askTools, runAskTool } from "./ask-tools";
@@ -199,6 +207,157 @@ export async function enqueueFullReindex(db: AnyDb, organizationId: string): Pro
   );
   const pages = await insertFor("page", sql`select p.id from page p where p.organization_id = ${organizationId}`);
   return { issues, comments, pages };
+}
+
+/** The Test connection form for embeddings: the same fields Save takes, minus the ones a test doesn't use. */
+export type EmbeddingTestOverrides = Omit<UpdateEmbeddingSettingsInput, "featuresEnabled" | "updatedBy">;
+
+/**
+ * Test connection for the deployment embedding config. Embeds one short string
+ * and checks the vector length against the column size (see testEmbeddingConnection).
+ * Overrides and the key rules match testAiProvider in ai.ts: blank fields mean
+ * null, a blank key keeps the stored one, and a stored key is never sent to a
+ * new endpoint. Never throws; the API key is masked in any message.
+ */
+export async function testEmbeddingProvider(db: AnyDb, overrides?: EmbeddingTestOverrides): Promise<EmbeddingTestResult> {
+  let creds: EmbeddingCredentials;
+  try {
+    const row = await getSystemSettingsRow(db);
+    const stored = row?.embeddingProvider ? embeddingCredentialsFromRow(row) : null;
+
+    if (!overrides) {
+      if (!stored?.apiKey) return { ok: false, message: new EmbeddingNotConfiguredError().message };
+      creds = stored;
+    } else {
+      assertKeyNotRetargeted(
+        Boolean(row?.embeddingApiKeyEncrypted),
+        overrides.apiKey,
+        { provider: row?.embeddingProvider, azureEndpoint: row?.embeddingAzureEndpoint, openAiCompatibleBaseUrl: row?.embeddingOpenAiCompatibleBaseUrl },
+        { provider: overrides.provider, azureEndpoint: overrides.azureEndpoint, openAiCompatibleBaseUrl: overrides.openAiCompatibleBaseUrl },
+      );
+      creds = {
+        provider: overrides.provider,
+        apiKey: overrides.apiKey || stored?.apiKey || null,
+        model: overrides.model || null,
+        azureEndpoint: overrides.azureEndpoint || null,
+        azureDeployment: overrides.azureDeployment || null,
+        openAiCompatibleBaseUrl: overrides.openAiCompatibleBaseUrl || null,
+      };
+    }
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+
+  const result = await testEmbeddingConnection(creds, schema.EMBEDDING_DIMENSIONS);
+  return result.ok ? result : { ...result, message: redactSecret(result.message, creds.apiKey) };
+}
+
+/** Longest failure message the status panel receives. Provider bodies can be long; the table truncates further. */
+const STATUS_ERROR_MAX_CHARS = 500;
+
+export interface EmbeddingStatus {
+  /** Embeddings are switched on and have a key. When false, the panel shows its empty state. */
+  configured: boolean;
+  /** Distinct indexed entities per type, against every such entity in the workspace. */
+  indexed: Record<RagEntityType, { indexed: number; total: number }>;
+  queue: {
+    pending: number;
+    processing: number;
+    failed: number;
+    /** Age of the oldest pending task in seconds (null when nothing is pending). */
+    oldestPendingAgeSeconds: number | null;
+  };
+  /** The 10 most recent failed tasks, newest first. */
+  recentFailures: { id: string; entityType: RagEntityType; entityId: string; attempts: number; error: string | null; claimedAt: Date | null }[];
+}
+
+/**
+ * Indexing progress for the Settings → Embedding panel. Runs on the admin
+ * connection for the same reason as enqueueFullReindex: the counts are
+ * workspace-wide, and a workspace admin's own RLS may not show every team's
+ * content. Every query is filtered on organization_id, so one workspace's
+ * queue never shows up in another's status.
+ */
+export async function getEmbeddingStatus(db: AnyDb, organizationId: string): Promise<EmbeddingStatus> {
+  const settings = await getSystemSettingsRow(db);
+  const configured = Boolean(settings?.embeddingProvider && settings.embeddingApiKeyEncrypted && settings.embeddingFeaturesEnabled);
+
+  const [indexedRows, issueTotal, commentTotal, pageTotal, statusRows, oldestRows, failureRows] = await Promise.all([
+    db
+      .select({ entityType: schema.embedding.entityType, n: countDistinct(schema.embedding.entityId) })
+      .from(schema.embedding)
+      .where(eq(schema.embedding.organizationId, organizationId))
+      .groupBy(schema.embedding.entityType),
+    db.select({ n: count() }).from(schema.issue).where(eq(schema.issue.organizationId, organizationId)),
+    db
+      .select({ n: count() })
+      .from(schema.issueComment)
+      .innerJoin(schema.issue, eq(schema.issue.id, schema.issueComment.issueId))
+      .where(eq(schema.issue.organizationId, organizationId)),
+    db.select({ n: count() }).from(schema.page).where(eq(schema.page.organizationId, organizationId)),
+    db
+      .select({ status: schema.embeddingIndexQueue.status, n: count() })
+      .from(schema.embeddingIndexQueue)
+      .where(eq(schema.embeddingIndexQueue.organizationId, organizationId))
+      .groupBy(schema.embeddingIndexQueue.status),
+    // Age is computed in SQL so there's no timestamp parsing in JS. min() over zero rows is null, so the age is null too.
+    db
+      .select({ ageSeconds: sql<string | null>`extract(epoch from (now() - min(${schema.embeddingIndexQueue.createdAt})))` })
+      .from(schema.embeddingIndexQueue)
+      .where(and(eq(schema.embeddingIndexQueue.organizationId, organizationId), eq(schema.embeddingIndexQueue.status, "pending"))),
+    db
+      .select({
+        id: schema.embeddingIndexQueue.id,
+        entityType: schema.embeddingIndexQueue.entityType,
+        entityId: schema.embeddingIndexQueue.entityId,
+        attempts: schema.embeddingIndexQueue.attempts,
+        error: schema.embeddingIndexQueue.error,
+        claimedAt: schema.embeddingIndexQueue.claimedAt,
+      })
+      .from(schema.embeddingIndexQueue)
+      .where(and(eq(schema.embeddingIndexQueue.organizationId, organizationId), eq(schema.embeddingIndexQueue.status, "failed")))
+      .orderBy(desc(sql`coalesce(${schema.embeddingIndexQueue.claimedAt}, ${schema.embeddingIndexQueue.createdAt})`), desc(schema.embeddingIndexQueue.id))
+      .limit(10),
+  ]);
+
+  const indexedCount = (entityType: RagEntityType) => indexedRows.find((r) => r.entityType === entityType)?.n ?? 0;
+  const statusCount = (status: string) => statusRows.find((r) => r.status === status)?.n ?? 0;
+  const oldest = oldestRows[0]?.ageSeconds;
+
+  return {
+    configured,
+    indexed: {
+      issue: { indexed: indexedCount("issue"), total: issueTotal[0]?.n ?? 0 },
+      comment: { indexed: indexedCount("comment"), total: commentTotal[0]?.n ?? 0 },
+      page: { indexed: indexedCount("page"), total: pageTotal[0]?.n ?? 0 },
+    },
+    queue: {
+      pending: statusCount("pending"),
+      processing: statusCount("processing"),
+      failed: statusCount("failed"),
+      oldestPendingAgeSeconds: oldest == null ? null : Math.max(0, Math.round(Number(oldest))),
+    },
+    recentFailures: failureRows.map((r) => ({
+      ...r,
+      entityType: r.entityType as RagEntityType,
+      error: r.error == null ? null : r.error.slice(0, STATUS_ERROR_MAX_CHARS),
+    })),
+  };
+}
+
+/**
+ * Puts this workspace's failed reindex tasks back in the queue: status pending,
+ * attempts 0, error cleared. Only "failed" rows of this organization are touched,
+ * so pending, processing and processed work, and other workspaces, are unaffected.
+ * Returns how many tasks were reset.
+ */
+export async function retryFailedReindexTasks(db: AnyDb, organizationId: string): Promise<number> {
+  const rows = await db
+    .update(schema.embeddingIndexQueue)
+    .set({ status: "pending", attempts: 0, error: null })
+    .where(and(eq(schema.embeddingIndexQueue.organizationId, organizationId), eq(schema.embeddingIndexQueue.status, "failed")))
+    .returning({ id: schema.embeddingIndexQueue.id });
+  return rows.length;
 }
 
 export interface SearchResult {

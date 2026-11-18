@@ -1,5 +1,5 @@
 import { createFileRoute, useLoaderData, useNavigate, useRouter } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Bell, Bot, Building2, CheckCircle2, Clock, Database, FileLock2, KeyRound, Mail, Settings as SettingsIcon, Users, UsersRound, XCircle } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { Badge } from "@kompast/ui/Badge";
@@ -16,6 +16,10 @@ import {
   reindexAllFn,
   sendTestEmailFn,
   getTestEmailStatusFn,
+  testAiProviderFn,
+  testEmbeddingProviderFn,
+  getEmbeddingStatusFn,
+  retryFailedReindexFn,
 } from "@/lib/server-fns/settings";
 import { listMembersFn } from "@/lib/server-fns/members";
 import { listTeamsFn } from "@/lib/server-fns/teams";
@@ -247,13 +251,122 @@ function SecretLabel({ label, saved, note }: { label: string; saved: boolean; no
   );
 }
 
-function SaveRow({ saving, error, onSave, disabled, label, savingLabel }: { saving: boolean; error: string | null; onSave: () => void; disabled?: boolean; label: string; savingLabel: string }) {
+function SaveRow({
+  saving,
+  error,
+  onSave,
+  disabled,
+  label,
+  savingLabel,
+  testButton,
+}: {
+  saving: boolean;
+  error: string | null;
+  onSave: () => void;
+  disabled?: boolean;
+  label: string;
+  savingLabel: string;
+  /** Optional "Test connection" button, shown next to Save. */
+  testButton?: ReactNode;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-3">
       <Button variant="primary" onClick={onSave} disabled={saving || disabled}>
         {saving ? savingLabel : label}
       </Button>
+      {testButton}
       {error && <span className="text-[13px] text-danger">{error}</span>}
+    </div>
+  );
+}
+
+/**
+ * A provider test result, as the server functions return it. `thrown` marks a
+ * test that never reached the provider (a server-side refusal or a network
+ * failure of the app itself), so it gets no status hint.
+ */
+type ConnectionTest =
+  | { ok: true; model: string; latencyMs: number; dimensions?: number }
+  | { ok: false; status?: number; message: string; thrown?: boolean };
+
+/** Runs a provider test and keeps its result. Errors from the server function are shown as a failed test, not left to the global error page. */
+function useConnectionTest(run: () => Promise<ConnectionTest>) {
+  const { t } = useTranslation("settings");
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<ConnectionTest | null>(null);
+  const start = async () => {
+    setTesting(true);
+    setResult(null);
+    try {
+      setResult(await run());
+    } catch (err) {
+      setResult({ ok: false, thrown: true, message: t("integrations.test.requestFailed", { message: err instanceof Error ? err.message : String(err) }) });
+    } finally {
+      setTesting(false);
+    }
+  };
+  return { testing, result, start };
+}
+
+/** Shown beside Save. Disabled while the form is saving, and while its own test is running. */
+function TestConnectionButton({ testing, disabled, onClick }: { testing: boolean; disabled: boolean; onClick: () => void }) {
+  const { t } = useTranslation("settings");
+  return (
+    <Button variant="secondary" onClick={onClick} disabled={testing || disabled}>
+      {testing ? t("integrations.test.testing") : t("integrations.test.button")}
+    </Button>
+  );
+}
+
+/** The result block under a form: a green success line, or the provider's status, a hint for it, and its exact message in a monospace box. */
+function ConnectionTestResultView({ result, embedding }: { result: ConnectionTest; embedding: boolean }) {
+  const { t } = useTranslation("settings");
+  if (result.ok) {
+    return (
+      <p className="flex items-start gap-2 text-[13px] text-green">
+        <CheckCircle2 size={15} className="mt-px flex-none" />
+        <span className="break-words">
+          {embedding
+            ? t("integrations.test.okEmbedding", { model: result.model, dimensions: result.dimensions, latencyMs: result.latencyMs })
+            : t("integrations.test.okAi", { model: result.model, latencyMs: result.latencyMs })}
+        </span>
+      </p>
+    );
+  }
+
+  const status = result.thrown ? undefined : result.status;
+  // Hints only for statuses that have a clear next step. A test that never got an HTTP status (network, or a refused configuration) gets the network hint.
+  const hint =
+    result.thrown
+      ? null
+      : status === undefined
+        ? t("integrations.test.hintNetwork")
+        : status === 401 || status === 403
+          ? t("integrations.test.hintAuth")
+          : status === 404
+            ? t("integrations.test.hintNotFound")
+            : status === 400
+              ? t("integrations.test.hintBadRequest")
+              : status === 429
+                ? t("integrations.test.hintRateLimit")
+                : null;
+
+  return (
+    <div className="flex flex-col gap-2 text-[13px]">
+      <p className="flex items-start gap-2 font-medium text-danger">
+        <XCircle size={15} className="mt-px flex-none" />
+        <span>{status !== undefined ? `${t("integrations.test.failed")} · ${t("integrations.test.status", { status })}` : t("integrations.test.failed")}</span>
+      </p>
+      {hint && <p className="text-text-2">{hint}</p>}
+      {!result.thrown && (
+        <div className="flex flex-col gap-1">
+          <p className="text-[12px] text-text-3">{t("integrations.test.responseLabel")}</p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-surface-3 px-3 py-2 font-mono text-[12px] leading-relaxed text-text-2">
+            {result.message}
+          </pre>
+        </div>
+      )}
+      {result.thrown && <p className="break-words text-text-2">{result.message}</p>}
     </div>
   );
 }
@@ -297,6 +410,8 @@ function EmbeddingSection({ initial }: { initial: Integrations["embedding"] }) {
   const [baseUrl, setBaseUrl] = useState(initial.openAiCompatibleBaseUrl ?? "");
   const [enabled, setEnabled] = useState(initial.featuresEnabled);
   const { saving, error, run } = useSave(t("tabs.embedding"));
+  // Bumped after a reindex is queued, so the status panel refetches and starts polling the new work.
+  const [statusVersion, setStatusVersion] = useState(0);
 
   const save = () =>
     run(async () => {
@@ -313,6 +428,20 @@ function EmbeddingSection({ initial }: { initial: Integrations["embedding"] }) {
       });
       setApiKey("");
     });
+
+  // Tests the values currently in the form, the same fields Save sends, so it works before Save.
+  const connection = useConnectionTest(() =>
+    testEmbeddingProviderFn({
+      data: {
+        provider,
+        apiKey: apiKey || undefined,
+        model: model || undefined,
+        azureEndpoint: azureEndpoint || undefined,
+        azureDeployment: azureDeployment || undefined,
+        openAiCompatibleBaseUrl: baseUrl || undefined,
+      },
+    }),
+  );
 
   return (
     <SettingsSection title={t("integrations.embedding.heading")} description={t("integrations.embedding.description")} aside={<StatusBadge ok={initial.hasApiKey && initial.featuresEnabled} />}>
@@ -348,15 +477,28 @@ function EmbeddingSection({ initial }: { initial: Integrations["embedding"] }) {
             </>
           )}
         </div>
-        <SaveRow saving={saving} error={error} onSave={save} label={t("integrations.embedding.save")} savingLabel={t("integrations.embedding.savingEllipsis")} />
+        <SaveRow
+          saving={saving}
+          error={error}
+          onSave={save}
+          label={t("integrations.embedding.save")}
+          savingLabel={t("integrations.embedding.savingEllipsis")}
+          testButton={<TestConnectionButton testing={connection.testing} disabled={saving} onClick={connection.start} />}
+        />
+        {connection.result && (
+          <div className="border-t border-border px-5 py-3">
+            <ConnectionTestResultView result={connection.result} embedding />
+          </div>
+        )}
       </Card>
-      <ReindexCard />
+      <EmbeddingStatusCard refreshKey={statusVersion} />
+      <ReindexCard onQueued={() => setStatusVersion((v) => v + 1)} />
     </SettingsSection>
   );
 }
 
 /** Queues every issue, comment and page for re-embedding. Separate from the form above: it saves nothing and needs no unsaved-changes check. */
-function ReindexCard() {
+function ReindexCard({ onQueued }: { onQueued: () => void }) {
   const { t } = useTranslation("settings");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ issues: number; comments: number; pages: number } | null>(null);
@@ -369,6 +511,7 @@ function ReindexCard() {
     try {
       const { issues, comments, pages } = await reindexAllFn();
       setResult({ issues, comments, pages });
+      onQueued();
     } catch (err) {
       setError(t("integrations.embedding.reindexFailed", { message: err instanceof Error ? err.message : String(err) }));
     } finally {
@@ -391,6 +534,224 @@ function ReindexCard() {
           </span>
         )}
         {error && <span className="text-[13px] text-danger">{error}</span>}
+      </div>
+    </Card>
+  );
+}
+
+type EmbeddingStatusView = Awaited<ReturnType<typeof getEmbeddingStatusFn>>;
+
+/** While anything is pending or processing, the status is refetched this often. */
+const EMBEDDING_STATUS_POLL_MS = 5000;
+/** Longest failure message shown in the table. The full text is in the cell's title. */
+const FAILURE_PREVIEW_CHARS = 160;
+
+function shortId(value: string): string {
+  return value.length > 14 ? `${value.slice(0, 12)}…` : value;
+}
+
+function previewText(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+/**
+ * Indexing progress for the embedding index: indexed counts per type, queue
+ * counts, recent failures with a retry button. Polls while work is pending or
+ * processing, and otherwise waits for a manual refresh. `refreshKey` changes
+ * when a reindex is queued, so the card loads the new work right away.
+ */
+function EmbeddingStatusCard({ refreshKey }: { refreshKey: number }) {
+  const { t } = useTranslation("settings");
+  const [status, setStatus] = useState<EmbeddingStatusView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  // One fetch at a time: an interval tick that lands during a slow fetch is
+  // folded into a single follow-up fetch, not stacked — and not dropped, so a
+  // refresh asked for after "Retry failed" always shows post-retry numbers.
+  const inFlight = useRef(false);
+  const refreshAgain = useRef(false);
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    if (inFlight.current) {
+      refreshAgain.current = true;
+      return;
+    }
+    inFlight.current = true;
+    setLoading(true);
+    try {
+      do {
+        refreshAgain.current = false;
+        try {
+          const next = await getEmbeddingStatusFn();
+          if (!aliveRef.current) return;
+          setStatus(next);
+          setError(null);
+        } catch (err) {
+          if (aliveRef.current) setError(t("integrations.embedding.status.loadFailed", { message: err instanceof Error ? err.message : String(err) }));
+        }
+      } while (refreshAgain.current && aliveRef.current);
+    } finally {
+      inFlight.current = false;
+      if (aliveRef.current) setLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh, refreshKey]);
+
+  const pendingOrProcessing = status ? status.queue.pending + status.queue.processing : 0;
+  const polling = pendingOrProcessing > 0;
+  useEffect(() => {
+    if (!polling) return;
+    const timer = setInterval(() => void refresh(), EMBEDDING_STATUS_POLL_MS);
+    return () => clearInterval(timer);
+  }, [polling, refresh]);
+
+  const retryFailed = async () => {
+    setRetrying(true);
+    setRetryMessage(null);
+    try {
+      const { reset } = await retryFailedReindexFn();
+      setRetryMessage(t("integrations.embedding.status.retryDone", { count: reset }));
+      await refresh();
+    } catch (err) {
+      if (aliveRef.current) setRetryMessage(t("integrations.embedding.status.retryFailedError", { message: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      if (aliveRef.current) setRetrying(false);
+    }
+  };
+
+  const ageLabel = (seconds: number) =>
+    seconds < 60
+      ? t("integrations.embedding.status.age.seconds", { count: seconds })
+      : seconds < 3600
+        ? t("integrations.embedding.status.age.minutes", { count: Math.floor(seconds / 60) })
+        : t("integrations.embedding.status.age.hours", { count: Math.floor(seconds / 3600) });
+
+  const indexedRows: { key: "issue" | "comment" | "page"; label: string }[] = [
+    { key: "issue", label: t("integrations.embedding.status.issues") },
+    { key: "comment", label: t("integrations.embedding.status.comments") },
+    { key: "page", label: t("integrations.embedding.status.docs") },
+  ];
+  const typeLabel = (entityType: string) =>
+    entityType === "issue"
+      ? t("integrations.embedding.status.types.issue")
+      : entityType === "comment"
+        ? t("integrations.embedding.status.types.comment")
+        : t("integrations.embedding.status.types.page");
+
+  return (
+    <Card className="mt-4">
+      <div className="flex flex-col gap-4 p-5">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[14px] font-medium">{t("integrations.embedding.status.heading")}</p>
+            <p className="mt-0.5 text-[13px] text-text-3">{t("integrations.embedding.status.description")}</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => void refresh()} disabled={loading}>
+            {loading ? t("integrations.embedding.status.refreshing") : t("integrations.embedding.status.refresh")}
+          </Button>
+        </div>
+
+        {error && <p className="text-[13px] text-danger">{error}</p>}
+        {!status && !error && <p className="text-[13px] text-text-3">{t("integrations.embedding.status.refreshing")}</p>}
+        {status && !status.configured && <p className="text-[13px] text-text-2">{t("integrations.embedding.status.notConfigured")}</p>}
+
+        {status?.configured && (
+          <>
+            <div className="flex flex-col gap-3">
+              <p className="type-small font-medium text-text-2">{t("integrations.embedding.status.indexed")}</p>
+              {indexedRows.map(({ key, label }) => {
+                const { indexed, total } = status.indexed[key];
+                const pct = total === 0 ? 100 : Math.min(100, Math.round((indexed / total) * 100));
+                return (
+                  <div key={key} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span className="text-text-2">{label}</span>
+                      <span className="tabular-nums text-text-2">
+                        {indexed} / {total}
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
+                      <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <p className="type-small font-medium text-text-2">{t("integrations.embedding.status.queue")}</p>
+              <div className="grid grid-cols-3 gap-3 text-[13px]">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-text-3">{t("integrations.embedding.status.pending")}</span>
+                  <span className="tabular-nums text-text">{status.queue.pending}</span>
+                  {status.queue.oldestPendingAgeSeconds !== null && (
+                    <span className="text-[12px] text-text-3">{t("integrations.embedding.status.oldestPending", { age: ageLabel(status.queue.oldestPendingAgeSeconds) })}</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-text-3">{t("integrations.embedding.status.processing")}</span>
+                  <span className="tabular-nums text-text">{status.queue.processing}</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-text-3">{t("integrations.embedding.status.failed")}</span>
+                  <span className={cn("tabular-nums", status.queue.failed > 0 ? "text-danger" : "text-text")}>{status.queue.failed}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="type-small font-medium text-text-2">{t("integrations.embedding.status.failures")}</p>
+                <Button variant="secondary" size="sm" onClick={retryFailed} disabled={retrying || status.queue.failed === 0}>
+                  {t("integrations.embedding.status.retryFailed")}
+                </Button>
+              </div>
+              {retryMessage && <p className="text-[13px] text-text-2">{retryMessage}</p>}
+              {status.recentFailures.length === 0 ? (
+                <p className="text-[13px] text-text-3">{t("integrations.embedding.status.noFailures")}</p>
+              ) : (
+                <div className="overflow-x-auto rounded-[8px] border border-border">
+                  <table className="w-full text-left text-[13px]">
+                    <thead className="bg-surface-2 text-[12px] text-text-3">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">{t("integrations.embedding.status.colType")}</th>
+                        <th className="px-3 py-2 font-medium">{t("integrations.embedding.status.colItem")}</th>
+                        <th className="px-3 py-2 font-medium">{t("integrations.embedding.status.colAttempts")}</th>
+                        <th className="px-3 py-2 font-medium">{t("integrations.embedding.status.colError")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {status.recentFailures.map((f) => (
+                        <tr key={f.id}>
+                          <td className="px-3 py-2 align-top text-text-2">{typeLabel(f.entityType)}</td>
+                          <td className="px-3 py-2 align-top font-mono text-[12px] text-text-3" title={f.entityId}>
+                            {shortId(f.entityId)}
+                          </td>
+                          <td className="px-3 py-2 align-top tabular-nums text-text-2">{f.attempts}</td>
+                          <td className="px-3 py-2 align-top font-mono text-[12px] text-danger" title={f.error ?? undefined}>
+                            {f.error ? previewText(f.error, FAILURE_PREVIEW_CHARS) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </Card>
   );
@@ -468,6 +829,20 @@ function AiSection({ initial }: { initial: Integrations["ai"] }) {
       setApiKey("");
     });
 
+  // Tests the values currently in the form, the same fields Save sends, so it works before Save.
+  const connection = useConnectionTest(() =>
+    testAiProviderFn({
+      data: {
+        provider,
+        apiKey: apiKey || undefined,
+        model: model || undefined,
+        azureEndpoint: azureEndpoint || undefined,
+        azureDeployment: azureDeployment || undefined,
+        openAiCompatibleBaseUrl: baseUrl || undefined,
+      },
+    }),
+  );
+
   return (
     <SettingsSection title={t("integrations.ai.heading")} description={t("integrations.ai.description")} aside={<StatusBadge ok={initial.hasApiKey && initial.featuresEnabled} />}>
       <Card>
@@ -517,7 +892,19 @@ function AiSection({ initial }: { initial: Integrations["ai"] }) {
             </FormField>
           )}
         </div>
-        <SaveRow saving={saving} error={error} onSave={save} label={t("integrations.ai.save")} savingLabel={t("integrations.ai.savingEllipsis")} />
+        <SaveRow
+          saving={saving}
+          error={error}
+          onSave={save}
+          label={t("integrations.ai.save")}
+          savingLabel={t("integrations.ai.savingEllipsis")}
+          testButton={<TestConnectionButton testing={connection.testing} disabled={saving} onClick={connection.start} />}
+        />
+        {connection.result && (
+          <div className="border-t border-border px-5 py-3">
+            <ConnectionTestResultView result={connection.result} embedding={false} />
+          </div>
+        )}
       </Card>
     </SettingsSection>
   );

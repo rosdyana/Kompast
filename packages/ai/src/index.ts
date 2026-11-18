@@ -2,6 +2,8 @@ import { createAnthropicDriver, createAzureFoundryAnthropicDriver, DEFAULT_ANTHR
 import { createAzureOpenAiDriver, createAzureOpenAiEmbeddingsDriver } from "./drivers/azure-openai";
 import { createOpenAiCompatibleDriver, createOpenAiCompatibleEmbeddingsDriver } from "./drivers/openai-compatible";
 import type { AiCredentials, AiDriver, CompletionRequest, CompletionResult, EmbeddingCredentials, EmbeddingDriver } from "./types";
+import { AiProviderError } from "./errors";
+export { AiProviderError };
 
 export type {
   AiCredentials,
@@ -83,4 +85,66 @@ export interface EmbeddingClient {
 export function createEmbeddingClient(creds: EmbeddingCredentials): EmbeddingClient {
   const driver = createEmbeddingDriver(creds);
   return { embed: driver.embed.bind(driver) };
+}
+
+export type AiTestResult = { ok: true; model: string; latencyMs: number } | { ok: false; status?: number; message: string };
+
+export type EmbeddingTestResult = { ok: true; model: string; latencyMs: number; dimensions: number } | { ok: false; status?: number; message: string };
+
+/**
+ * Turns anything thrown during a test into a result the settings UI can show.
+ * A provider HTTP error keeps its status and the provider's own body (the
+ * whole point of the test). Anything else (missing fields caught by the driver
+ * factory, DNS failure, refused connection) has no status; for network errors
+ * the underlying cause is appended, since fetch only says "fetch failed".
+ */
+function failureFrom(err: unknown): { ok: false; status?: number; message: string } {
+  if (err instanceof AiProviderError) {
+    return { ok: false, status: err.status, message: err.body || err.message };
+  }
+  if (err instanceof Error) {
+    const cause = err.cause instanceof Error ? err.cause.message : undefined;
+    return { ok: false, message: cause && cause !== err.message ? `${err.message} (${cause})` : err.message };
+  }
+  return { ok: false, message: String(err) };
+}
+
+/**
+ * One tiny completion ("ping", maxTokens 1) through the same driver the real
+ * feature calls use, so a passing test means the real path works too. Never
+ * throws: every failure comes back as { ok: false }.
+ */
+export async function testAiConnection(creds: AiCredentials): Promise<AiTestResult> {
+  const started = performance.now();
+  try {
+    const client = createAiClient(creds);
+    await client.streamCompletion({ messages: [{ role: "user", content: "ping" }], maxTokens: 1 }, () => {});
+    return { ok: true, model: resolveModelName(creds), latencyMs: Math.round(performance.now() - started) };
+  } catch (err) {
+    return failureFrom(err);
+  }
+}
+
+/**
+ * Embeds one short string and checks the vector length against the size the
+ * column was created with. A model with another dimension passes every HTTP
+ * check and then fails on every insert later, so it is reported here instead.
+ */
+export async function testEmbeddingConnection(creds: EmbeddingCredentials, expectedDimensions: number): Promise<EmbeddingTestResult> {
+  const started = performance.now();
+  try {
+    const client = createEmbeddingClient(creds);
+    const [vector] = await client.embed(["ping"]);
+    const dimensions = vector?.length ?? 0;
+    const model = (creds.provider === "azure-openai" ? creds.azureDeployment : creds.model) ?? "unknown-model";
+    if (dimensions !== expectedDimensions) {
+      return {
+        ok: false,
+        message: `model returned ${dimensions}-dimensional vectors; Kompast stores ${expectedDimensions} — use a ${expectedDimensions}-dimension model such as text-embedding-3-small`,
+      };
+    }
+    return { ok: true, model, latencyMs: Math.round(performance.now() - started), dimensions };
+  } catch (err) {
+    return failureFrom(err);
+  }
 }

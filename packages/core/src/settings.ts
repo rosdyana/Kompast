@@ -3,12 +3,20 @@ import type { AnyDb } from "./types";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { ForbiddenError } from "./permissions";
 import { InvalidInputError } from "./errors";
+import type { AiCredentials, EmbeddingCredentials } from "@kompast/ai";
+
+type SystemSettingsRow = typeof schema.systemSettings.$inferSelect;
 
 const MICROSOFT_TENANT_GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function getRow(db: AnyDb) {
   const [row] = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.id, SYSTEM_SETTINGS_ID));
   return row ?? null;
+}
+
+/** The raw singleton row, for the Test connection helpers in ai.ts and rag.ts — they need the stored fields before the featuresEnabled gate applies. */
+export async function getSystemSettingsRow(db: AnyDb): Promise<SystemSettingsRow | null> {
+  return getRow(db);
 }
 
 export async function getSetupStatus(db: AnyDb) {
@@ -123,6 +131,15 @@ export async function isDeploymentAdmin(db: AnyDb, userId: string): Promise<bool
   return row?.isSuperAdmin === true;
 }
 
+/**
+ * Masks the API key wherever a provider echoes it back (an error body, a
+ * message). A blank key is skipped: split("") would put the mask between every
+ * character.
+ */
+export function redactSecret(text: string, secret: string | null | undefined): string {
+  return secret ? text.split(secret).join("••••") : text;
+}
+
 /** Throwing form of isDeploymentAdmin — the gate for every system_settings write (and its masked read). */
 export async function requireDeploymentAdmin(db: AnyDb, ctx: { userId: string }) {
   if (!(await isDeploymentAdmin(db, ctx.userId))) {
@@ -136,7 +153,7 @@ export async function requireDeploymentAdmin(db: AnyDb, ctx: { userId: string })
  * key. Otherwise "leave the key blank to keep it" lets whoever can edit the
  * URL redirect the existing secret (plus every prompt) to a server they run.
  */
-function assertKeyNotRetargeted(
+export function assertKeyNotRetargeted(
   hasStoredKey: boolean,
   newKey: string | undefined,
   before: Record<string, string | null | undefined>,
@@ -242,12 +259,21 @@ export async function updateAiSettings(db: AnyDb, input: UpdateAiSettingsInput) 
  * or featuresEnabled is false — callers should treat either as "AI is
  * off", not attempt a call and handle the resulting provider error.
  */
-export async function getAiCredentials(db: AnyDb) {
+export async function getAiCredentials(db: AnyDb): Promise<AiCredentials | null> {
   const row = await getRow(db);
   if (!row?.aiProvider || !row.aiApiKeyEncrypted || !row.aiFeaturesEnabled) return null;
+  return aiCredentialsFromRow(row);
+}
+
+/**
+ * Decrypted AI credentials from a stored row, with NO featuresEnabled gate.
+ * Shared by getAiCredentials (real calls) and testAiProvider (Test connection
+ * must work before the toggle is switched on), so the decrypt/mapping lives once.
+ */
+export function aiCredentialsFromRow(row: SystemSettingsRow): AiCredentials {
   return {
-    provider: row.aiProvider as "anthropic" | "azure-openai" | "azure-foundry-anthropic" | "openai-compatible",
-    apiKey: decryptSecret(row.aiApiKeyEncrypted),
+    provider: row.aiProvider as AiCredentials["provider"],
+    apiKey: row.aiApiKeyEncrypted ? decryptSecret(row.aiApiKeyEncrypted) : null,
     model: row.aiModel ?? null,
     azureEndpoint: row.aiAzureEndpoint ?? null,
     azureDeployment: row.aiAzureDeployment ?? null,
@@ -329,12 +355,17 @@ export async function updateEmbeddingSettings(db: AnyDb, input: UpdateEmbeddingS
 }
 
 /** Decrypted embedding credentials — see getAiCredentials()'s identical reasoning. Null if not configured or disabled. */
-export async function getEmbeddingCredentials(db: AnyDb) {
+export async function getEmbeddingCredentials(db: AnyDb): Promise<EmbeddingCredentials | null> {
   const row = await getRow(db);
   if (!row?.embeddingProvider || !row.embeddingApiKeyEncrypted || !row.embeddingFeaturesEnabled) return null;
+  return embeddingCredentialsFromRow(row);
+}
+
+/** Embedding twin of aiCredentialsFromRow — no featuresEnabled gate, shared with testEmbeddingProvider. */
+export function embeddingCredentialsFromRow(row: SystemSettingsRow): EmbeddingCredentials {
   return {
-    provider: row.embeddingProvider as "azure-openai" | "openai-compatible",
-    apiKey: decryptSecret(row.embeddingApiKeyEncrypted),
+    provider: row.embeddingProvider as EmbeddingCredentials["provider"],
+    apiKey: row.embeddingApiKeyEncrypted ? decryptSecret(row.embeddingApiKeyEncrypted) : null,
     model: row.embeddingModel ?? null,
     azureEndpoint: row.embeddingAzureEndpoint ?? null,
     azureDeployment: row.embeddingAzureDeployment ?? null,

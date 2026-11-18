@@ -34,7 +34,43 @@
       "reindex": "Indeks ulang semua",
       "reindexing": "Memasukkan ke antrean…",
       "reindexQueued": "Masuk antrean untuk indeks ulang: {{issues}} isu, {{comments}} komentar, {{pages}} halaman.",
-      "reindexFailed": "Gagal memasukkan indeks ulang ke antrean: {{message}}"
+      "reindexFailed": "Gagal memasukkan indeks ulang ke antrean: {{message}}",
+      "status": {
+        "heading": "Status pengindeksan",
+        "description": "Seberapa banyak isu, komentar, dan dokumen di ruang kerja ini yang bisa dicari oleh Ask Kompast.",
+        "refresh": "Segarkan",
+        "refreshing": "Menyegarkan…",
+        "loadFailed": "Status pengindeksan tidak dapat dimuat: {{message}}",
+        "notConfigured": "Embedding belum disiapkan. Aktifkan Ask Kompast dan simpan penyedia di atas untuk melihat progres pengindeksan.",
+        "indexed": "Terindeks",
+        "queue": "Antrean",
+        "pending": "Menunggu",
+        "oldestPending": "tertua {{age}} lalu",
+        "processing": "Sedang diproses",
+        "failed": "Gagal",
+        "failures": "Kegagalan terbaru",
+        "noFailures": "Tidak ada tugas yang gagal.",
+        "colType": "Jenis",
+        "colItem": "Item",
+        "colAttempts": "Percobaan",
+        "colError": "Galat",
+        "retryFailed": "Coba ulang yang gagal",
+        "retryDone": "{{count}} tugas gagal dimasukkan kembali ke antrean.",
+        "retryFailedError": "Tidak dapat memasukkan ulang ke antrean: {{message}}",
+        "types": {
+          "issue": "Isu",
+          "comment": "Komentar",
+          "page": "Dokumen"
+        },
+        "docs": "Dokumen",
+        "issues": "Isu",
+        "comments": "Komentar",
+        "age": {
+          "seconds": "{{count}} dtk",
+          "minutes": "{{count}} mnt",
+          "hours": "{{count}} j"
+        }
+      }
     },
     "entra": {
       "heading": "Microsoft Entra ID",
@@ -94,6 +130,21 @@
         "stillQueued": "Masih diantrekan setelah 45 detik tanpa error. Apakah worker email sedang berjalan?",
         "error": "Tidak dapat mengirim email uji: {{message}}"
       }
+    },
+    "test": {
+      "button": "Uji koneksi",
+      "testing": "Menguji…",
+      "okAi": "Terhubung — {{model}} merespons dalam {{latencyMs}} ms",
+      "okEmbedding": "Terhubung — {{model}} mengembalikan vektor berdimensi {{dimensions}} dalam {{latencyMs}} ms",
+      "failed": "Koneksi gagal",
+      "status": "HTTP {{status}}",
+      "hintAuth": "401/403: kunci API ditolak, atau tidak diizinkan di endpoint ini. Periksa kuncinya, dan pastikan kunci itu milik penyedia dan resource yang sama.",
+      "hintNotFound": "404: endpoint atau deployment tidak ditemukan. Periksa base URL, dan pastikan nama model atau deployment sama persis.",
+      "hintBadRequest": "400: penyedia menolak permintaan. Pesan di atas biasanya menyebut kolom yang salah.",
+      "hintRateLimit": "429: kuota atau batas laju tercapai. Periksa batas penggunaan penyedia, atau coba lagi sebentar lagi.",
+      "hintNetwork": "Tidak ada respons HTTP: endpoint tidak dapat dihubungi, atau pengaturannya belum lengkap. Periksa URL dan kolom di atas.",
+      "requestFailed": "Pengujian tidak dapat dijalankan: {{message}}",
+      "responseLabel": "Respons penyedia"
     }
   },
   "members": {

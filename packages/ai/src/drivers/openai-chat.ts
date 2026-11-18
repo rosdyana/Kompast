@@ -1,6 +1,7 @@
 import type { AiDriver, AiMessage, AiToolCall, CompletionRequest } from "../types";
 import { parseSse } from "../sse";
 import { parseToolInput } from "../tool-input";
+import { AiProviderError } from "../errors";
 
 /**
  * Statuses that, on a request carrying `tools`, most plausibly mean "this
@@ -84,7 +85,7 @@ export function createOpenAiChatDriver(opts: { url: string; headers: Record<stri
 
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => "");
-        throw new Error(`AI provider error (${res.status}): ${detail}`);
+        throw new AiProviderError(`AI provider error (${res.status}): ${detail}`, { status: res.status, provider: "AI provider", detail });
       }
 
       let text = "";

@@ -34,7 +34,43 @@
       "reindex": "Re-index everything",
       "reindexing": "Queuing…",
       "reindexQueued": "Queued for re-indexing: {{issues}} issues, {{comments}} comments, {{pages}} pages.",
-      "reindexFailed": "Couldn't queue re-indexing: {{message}}"
+      "reindexFailed": "Couldn't queue re-indexing: {{message}}",
+      "status": {
+        "heading": "Indexing status",
+        "description": "How much of this workspace's issues, comments and docs Ask Kompast can search.",
+        "refresh": "Refresh",
+        "refreshing": "Refreshing…",
+        "loadFailed": "Couldn't load indexing status: {{message}}",
+        "notConfigured": "Embeddings aren't set up yet. Enable Ask Kompast and save a provider above to see indexing progress.",
+        "indexed": "Indexed",
+        "queue": "Queue",
+        "pending": "Pending",
+        "oldestPending": "oldest {{age}} ago",
+        "processing": "In progress",
+        "failed": "Failed",
+        "failures": "Recent failures",
+        "noFailures": "No failed tasks.",
+        "colType": "Type",
+        "colItem": "Item",
+        "colAttempts": "Attempts",
+        "colError": "Error",
+        "retryFailed": "Retry failed",
+        "retryDone": "Requeued {{count}} failed tasks.",
+        "retryFailedError": "Couldn't requeue: {{message}}",
+        "types": {
+          "issue": "Issue",
+          "comment": "Comment",
+          "page": "Doc"
+        },
+        "docs": "Docs",
+        "issues": "Issues",
+        "comments": "Comments",
+        "age": {
+          "seconds": "{{count}} s",
+          "minutes": "{{count}} min",
+          "hours": "{{count}} h"
+        }
+      }
     },
     "entra": {
       "heading": "Microsoft Entra ID",
@@ -94,6 +130,21 @@
         "stillQueued": "Still queued after 45 seconds with no error. Is the mail worker running?",
         "error": "Could not send the test email: {{message}}"
       }
+    },
+    "test": {
+      "button": "Test connection",
+      "testing": "Testing…",
+      "okAi": "Connected — {{model}} responded in {{latencyMs}} ms",
+      "okEmbedding": "Connected — {{model}} returned {{dimensions}}-dimensional vectors in {{latencyMs}} ms",
+      "failed": "Connection failed",
+      "status": "HTTP {{status}}",
+      "hintAuth": "401/403: the API key was rejected, or isn't allowed on this endpoint. Check the key, and that it belongs to the same provider and resource.",
+      "hintNotFound": "404: the endpoint or deployment wasn't found. Check the base URL, and that the model or deployment name matches exactly.",
+      "hintBadRequest": "400: the provider rejected the request. The message above usually names the field that's wrong.",
+      "hintRateLimit": "429: quota or rate limit reached. Check the provider's usage limits, or try again shortly.",
+      "hintNetwork": "No HTTP response: the endpoint couldn't be reached, or the settings are incomplete. Check the URL and the fields above.",
+      "requestFailed": "The test couldn't run: {{message}}",
+      "responseLabel": "Provider response"
     }
   },
   "members": {
