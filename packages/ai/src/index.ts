@@ -65,25 +65,40 @@ export function resolveModelName(creds: AiCredentials): string {
   return creds.model ?? "unknown-model";
 }
 
-function createEmbeddingDriver(creds: EmbeddingCredentials): EmbeddingDriver {
+/**
+ * OpenAI's text-embedding-3 family (also on Azure) is trained so its vectors can be shortened
+ * via the `dimensions` request field with little quality loss, so text-embedding-3-large (3072)
+ * fits a 1536 column. Only sent to names matching that family: other models (ada-002, most
+ * self-hosted ones) reject the field. On Azure the match is against the deployment name.
+ */
+export function supportsDimensionsParam(modelOrDeployment: string): boolean {
+  return /text-embedding-3/i.test(modelOrDeployment);
+}
+
+function createEmbeddingDriver(creds: EmbeddingCredentials, dimensions?: number): EmbeddingDriver {
   if (creds.provider === "azure-openai") {
     if (!creds.apiKey) throw new Error("Azure OpenAI requires an API key");
     if (!creds.azureEndpoint || !creds.azureDeployment) throw new Error("Azure OpenAI requires an endpoint and a deployment name");
-    return createAzureOpenAiEmbeddingsDriver(creds.apiKey, creds.azureEndpoint, creds.azureDeployment);
+    const dims = dimensions && supportsDimensionsParam(creds.azureDeployment) ? dimensions : undefined;
+    return createAzureOpenAiEmbeddingsDriver(creds.apiKey, creds.azureEndpoint, creds.azureDeployment, dims);
   }
   if (!creds.apiKey) throw new Error("OpenAI-compatible requires an API key");
   if (!creds.openAiCompatibleBaseUrl) throw new Error("OpenAI-compatible requires a base URL");
   if (!creds.model) throw new Error("OpenAI-compatible requires a model name (no safe default across arbitrary endpoints)");
-  return createOpenAiCompatibleEmbeddingsDriver(creds.apiKey, creds.openAiCompatibleBaseUrl, creds.model);
+  const dims = dimensions && supportsDimensionsParam(creds.model) ? dimensions : undefined;
+  return createOpenAiCompatibleEmbeddingsDriver(creds.apiKey, creds.openAiCompatibleBaseUrl, creds.model, dims);
 }
 
 export interface EmbeddingClient {
   embed(texts: string[]): Promise<number[][]>;
 }
 
-/** Same "build fresh per call from /settings-driven config" shape as createAiClient — see its own doc comment. */
-export function createEmbeddingClient(creds: EmbeddingCredentials): EmbeddingClient {
-  const driver = createEmbeddingDriver(creds);
+/**
+ * Same "build fresh per call from /settings-driven config" shape as createAiClient — see its own doc comment.
+ * `dimensions` is the size the caller stores; it is requested from models that support shortening (supportsDimensionsParam).
+ */
+export function createEmbeddingClient(creds: EmbeddingCredentials, opts: { dimensions?: number } = {}): EmbeddingClient {
+  const driver = createEmbeddingDriver(creds, opts.dimensions);
   return { embed: driver.embed.bind(driver) };
 }
 
@@ -133,14 +148,14 @@ export async function testAiConnection(creds: AiCredentials): Promise<AiTestResu
 export async function testEmbeddingConnection(creds: EmbeddingCredentials, expectedDimensions: number): Promise<EmbeddingTestResult> {
   const started = performance.now();
   try {
-    const client = createEmbeddingClient(creds);
+    const client = createEmbeddingClient(creds, { dimensions: expectedDimensions });
     const [vector] = await client.embed(["ping"]);
     const dimensions = vector?.length ?? 0;
     const model = (creds.provider === "azure-openai" ? creds.azureDeployment : creds.model) ?? "unknown-model";
     if (dimensions !== expectedDimensions) {
       return {
         ok: false,
-        message: `model returned ${dimensions}-dimensional vectors; Kompast stores ${expectedDimensions} — use a ${expectedDimensions}-dimension model such as text-embedding-3-small`,
+        message: `model returned ${dimensions}-dimensional vectors; Kompast stores ${expectedDimensions} — use a ${expectedDimensions}-dimension model such as text-embedding-3-small, or a text-embedding-3 model (e.g. text-embedding-3-large) whose model/deployment name contains "text-embedding-3" so Kompast can request ${expectedDimensions} dimensions`,
       };
     }
     return { ok: true, model, latencyMs: Math.round(performance.now() - started), dimensions };

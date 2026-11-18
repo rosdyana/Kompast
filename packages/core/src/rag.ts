@@ -68,8 +68,18 @@ export async function indexEntity(tx: Tx, input: { organizationId: string; entit
   const creds = await getEmbeddingCredentials(tx);
   if (!creds) return;
 
-  const client = createEmbeddingClient(creds);
+  const client = createEmbeddingClient(creds, { dimensions: schema.EMBEDDING_DIMENSIONS });
   const vectors = await client.embed(chunks);
+  // Checked here rather than left to Postgres: a wrong-size vector otherwise surfaces only as drizzle's opaque "Failed query: insert into embedding …" with the real reason buried in err.cause.
+  if (vectors.length !== chunks.length) {
+    throw new Error(`Embedding provider returned ${vectors.length} vectors for ${chunks.length} chunks`);
+  }
+  const badDims = vectors.find((v) => v.length !== schema.EMBEDDING_DIMENSIONS);
+  if (badDims) {
+    throw new Error(
+      `Embedding model returned ${badDims.length}-dimensional vectors; Kompast stores ${schema.EMBEDDING_DIMENSIONS} — configure a ${schema.EMBEDDING_DIMENSIONS}-dimension model (e.g. text-embedding-3-small), or a text-embedding-3 model/deployment whose name contains "text-embedding-3", in /settings → Embedding, then re-index`,
+    );
+  }
 
   await tx.insert(schema.embedding).values(
     chunks.map((content, i) => ({
@@ -571,7 +581,7 @@ export async function retrieveContext(
   tx: Tx,
   input: { userId: string; organizationId: string; embeddingCreds: EmbeddingCredentials; question: string; limit?: number },
 ): Promise<EnrichedCandidate[]> {
-  const [queryVector] = await createEmbeddingClient(input.embeddingCreds).embed([input.question]);
+  const [queryVector] = await createEmbeddingClient(input.embeddingCreds, { dimensions: schema.EMBEDDING_DIMENSIONS }).embed([input.question]);
   const candidates = await searchEmbeddings(tx, { organizationId: input.organizationId, queryVector: queryVector!, limit: input.limit ?? 8 });
   return enrichCandidates(tx, candidates, { userId: input.userId, organizationId: input.organizationId });
 }

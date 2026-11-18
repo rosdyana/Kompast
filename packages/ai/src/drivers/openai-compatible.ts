@@ -7,7 +7,7 @@ export function createOpenAiCompatibleDriver(apiKey: string, baseUrl: string, mo
   return createOpenAiChatDriver({ url, headers: { authorization: `Bearer ${apiKey}` }, model });
 }
 
-export function createOpenAiCompatibleEmbeddingsDriver(apiKey: string, baseUrl: string, model: string): EmbeddingDriver {
+export function createOpenAiCompatibleEmbeddingsDriver(apiKey: string, baseUrl: string, model: string, dimensions?: number): EmbeddingDriver {
   const url = `${baseUrl.replace(/\/$/, "")}/embeddings`;
-  return createOpenAiEmbeddingsDriver({ url, headers: { authorization: `Bearer ${apiKey}` }, model });
+  return createOpenAiEmbeddingsDriver({ url, headers: { authorization: `Bearer ${apiKey}` }, model, dimensions });
 }

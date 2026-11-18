@@ -77,3 +77,23 @@ describe("createOpenAiCompatibleEmbeddingsDriver", () => {
     expect(JSON.parse(init.body).model).toBe("local-embed-model");
   });
 });
+
+describe("dimensions request field", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends dimensions when the driver is given one", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(embeddingsResponse([[0.1]]));
+    vi.stubGlobal("fetch", fetchMock);
+    await createOpenAiCompatibleEmbeddingsDriver("k", "https://api.openai.com/v1", "text-embedding-3-large", 1536).embed(["x"]);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ model: "text-embedding-3-large", dimensions: 1536, input: ["x"] });
+  });
+
+  it("omits dimensions when not given", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(embeddingsResponse([[0.1]]));
+    vi.stubGlobal("fetch", fetchMock);
+    await createAzureOpenAiEmbeddingsDriver("k", "https://r.openai.azure.com", "dep").embed(["x"]);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body).dimensions).toBeUndefined();
+  });
+});

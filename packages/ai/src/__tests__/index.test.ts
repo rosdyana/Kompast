@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAiClient, createEmbeddingClient, resolveModelName } from "../index";
 import type { AiCredentials, EmbeddingCredentials } from "../types";
 
@@ -85,5 +85,30 @@ describe("createEmbeddingClient", () => {
 
   it("succeeds building an openai-compatible embedding client given full config", () => {
     expect(() => createEmbeddingClient({ ...embeddingBase, provider: "openai-compatible", apiKey: "k", openAiCompatibleBaseUrl: "https://x", model: "m" })).not.toThrow();
+  });
+});
+
+describe("createEmbeddingClient dimensions", () => {
+  const creds = { provider: "openai-compatible" as const, apiKey: "k", openAiCompatibleBaseUrl: "https://x", azureEndpoint: null, azureDeployment: null, model: "m" };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function sentBody(model: string, provider: "openai-compatible" | "azure-openai" = "openai-compatible") {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ embedding: [0], index: 0 }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const c = provider === "azure-openai" ? { ...creds, provider, azureEndpoint: "https://r.openai.azure.com", azureDeployment: model } : { ...creds, model };
+    await createEmbeddingClient(c, { dimensions: 1536 }).embed(["x"]);
+    return JSON.parse(fetchMock.mock.calls[0]![1].body);
+  }
+
+  it("requests the stored dimension from text-embedding-3 models", async () => {
+    expect((await sentBody("text-embedding-3-large")).dimensions).toBe(1536);
+    expect((await sentBody("text-embedding-3-large", "azure-openai")).dimensions).toBe(1536);
+  });
+
+  it("does not send dimensions to models that reject it", async () => {
+    expect((await sentBody("text-embedding-ada-002")).dimensions).toBeUndefined();
+    expect((await sentBody("nomic-embed-text")).dimensions).toBeUndefined();
   });
 });

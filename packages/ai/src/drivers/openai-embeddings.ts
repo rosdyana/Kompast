@@ -7,13 +7,13 @@ import { AiProviderError } from "../errors";
  * `{input: string[], model?}`, returning `{data: [{embedding, index}]}`.
  * Not streamed (unlike chat completions) — one request, one response.
  */
-export function createOpenAiEmbeddingsDriver(opts: { url: string; headers: Record<string, string>; model?: string }): EmbeddingDriver {
+export function createOpenAiEmbeddingsDriver(opts: { url: string; headers: Record<string, string>; model?: string; dimensions?: number }): EmbeddingDriver {
   return {
     async embed(texts) {
       const res = await fetch(opts.url, {
         method: "POST",
         headers: { "content-type": "application/json", ...opts.headers },
-        body: JSON.stringify({ ...(opts.model ? { model: opts.model } : {}), input: texts }),
+        body: JSON.stringify({ ...(opts.model ? { model: opts.model } : {}), ...(opts.dimensions ? { dimensions: opts.dimensions } : {}), input: texts }),
       });
 
       if (!res.ok) {
