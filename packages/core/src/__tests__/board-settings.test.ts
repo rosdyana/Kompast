@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
-import { deleteBoardColumn, getBoard, reorderBoardColumns, updateBoardColumn, updateBoardSettings } from "../board";
+import { deleteBoardColumn, getBoard, parseStandupSettings, reorderBoardColumns, updateBoardColumn, updateBoardSettings } from "../board";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -205,5 +205,61 @@ describe("board column settings", () => {
         reorderBoardColumns(tx, { projectId: project!.id, boardId, orderedColumnIds: ids.slice(0, -1) }),
       ),
     ).rejects.toThrow();
+  });
+
+  it("saves standup Did and Today column lists, keeps the other when one is set, and clears on an empty array", async () => {
+    const { boardId } = await seedProject("BSM");
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSM"));
+    const columns = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.boardId, boardId));
+    const done = columns.find((c) => c.name === "Done")!;
+    const inProgress = columns.find((c) => c.name === "In Progress")!;
+    const readBoard = async () => {
+      const [row] = await admin.select().from(schema.board).where(eq(schema.board.id, boardId));
+      return parseStandupSettings(row?.standupSettings);
+    };
+
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      updateBoardSettings(tx, { projectId: project!.id, boardId, standupDidColumnIds: [done.id], standupTodayColumnIds: [inProgress.id] }),
+    );
+    expect(await readBoard()).toEqual({ didColumnIds: [done.id], todayColumnIds: [inProgress.id] });
+
+    // Setting only the Did list leaves Today untouched.
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      updateBoardSettings(tx, { projectId: project!.id, boardId, standupDidColumnIds: [inProgress.id] }),
+    );
+    expect(await readBoard()).toEqual({ didColumnIds: [inProgress.id], todayColumnIds: [inProgress.id] });
+
+    // An empty array clears that list only.
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      updateBoardSettings(tx, { projectId: project!.id, boardId, standupTodayColumnIds: [] }),
+    );
+    expect(await readBoard()).toEqual({ didColumnIds: [inProgress.id], todayColumnIds: [] });
+    await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+      updateBoardSettings(tx, { projectId: project!.id, boardId, standupDidColumnIds: [] }),
+    );
+    expect(await readBoard()).toEqual({ didColumnIds: [], todayColumnIds: [] });
+  });
+
+  it("rejects standup column ids that belong to another board or do not exist", async () => {
+    const { boardId } = await seedProject("BSO");
+    const { boardId: otherBoardId } = await seedProject("BSP");
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSO"));
+    const [otherColumn] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.boardId, otherBoardId)).limit(1);
+
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        updateBoardSettings(tx, { projectId: project!.id, boardId, standupDidColumnIds: [otherColumn!.id] }),
+      ),
+    ).rejects.toThrow(/not on this board/);
+
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        updateBoardSettings(tx, { projectId: project!.id, boardId, standupTodayColumnIds: ["no-such-column"] }),
+      ),
+    ).rejects.toThrow(/no-such-column/);
+
+    // A rejected write leaves the stored settings untouched.
+    const [row] = await admin.select().from(schema.board).where(eq(schema.board.id, boardId));
+    expect(parseStandupSettings(row?.standupSettings)).toEqual({ didColumnIds: [], todayColumnIds: [] });
   });
 });

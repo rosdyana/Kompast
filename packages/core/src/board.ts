@@ -239,25 +239,60 @@ export async function deleteBoardColumn(tx: Tx, input: DeleteBoardColumnInput): 
   await tx.delete(schema.boardColumn).where(eq(schema.boardColumn.id, input.columnId));
 }
 
+/**
+ * Standup column filters, stored on board.standup_settings. Empty list = the
+ * default rule for that section. Ids of deleted columns may linger in storage;
+ * readers (getStandupDigest, the standup dialog) ignore ids that no longer exist.
+ */
+export interface StandupSettings {
+  didColumnIds: string[];
+  todayColumnIds: string[];
+}
+
+/** Tolerant reader for the raw jsonb: anything that isn't an array of strings reads as []. */
+export function parseStandupSettings(json: unknown): StandupSettings {
+  const obj = json && typeof json === "object" && !Array.isArray(json) ? (json as Record<string, unknown>) : {};
+  const strings = (v: unknown): string[] => (Array.isArray(v) && v.every((x) => typeof x === "string") ? v : []);
+  return { didColumnIds: strings(obj.didColumnIds), todayColumnIds: strings(obj.todayColumnIds) };
+}
+
 export interface UpdateBoardSettingsInput {
   projectId: string;
   boardId: string;
   newIssuePosition?: "top" | "bottom";
   /** Cards a swimlane shows before it scrolls on its own; 1–50. */
   swimlaneMaxCards?: number;
+  /** Standup "Did" filter: column ids whose status moves count. [] clears it. */
+  standupDidColumnIds?: string[];
+  /** Standup "Today" filter: column ids whose assigned issues are listed. [] clears it. */
+  standupTodayColumnIds?: string[];
 }
 
 export const SWIMLANE_MAX_CARDS_RANGE = { min: 1, max: 50 } as const;
 
+/** Deduped column ids; every one must be a column on this board. */
+async function validateStandupColumnIds(tx: Tx, boardId: string, requested: string[]): Promise<string[]> {
+  const ids = [...new Set(requested)];
+  if (ids.length === 0) return [];
+  const rows = await tx
+    .select({ id: schema.boardColumn.id })
+    .from(schema.boardColumn)
+    .where(and(eq(schema.boardColumn.boardId, boardId), inArray(schema.boardColumn.id, ids)));
+  const found = new Set(rows.map((r) => r.id));
+  const bad = ids.filter((id) => !found.has(id));
+  if (bad.length > 0) throw new InvalidInputError(`Standup column ids not on this board: ${bad.join(", ")}`);
+  return ids;
+}
+
 export async function updateBoardSettings(tx: Tx, input: UpdateBoardSettingsInput): Promise<void> {
   const [board] = await tx
-    .select({ id: schema.board.id })
+    .select({ id: schema.board.id, standupSettings: schema.board.standupSettings })
     .from(schema.board)
     .where(and(eq(schema.board.id, input.boardId), eq(schema.board.projectId, input.projectId)))
     .limit(1);
   if (!board) throw new Error(`Board ${input.boardId} not found in project ${input.projectId}`);
 
-  const set: Partial<{ newIssuePosition: "top" | "bottom"; swimlaneMaxCards: number }> = {};
+  const set: Partial<{ newIssuePosition: "top" | "bottom"; swimlaneMaxCards: number; standupSettings: { didColumnIds: string[]; todayColumnIds: string[] } }> = {};
   if (input.newIssuePosition !== undefined) set.newIssuePosition = input.newIssuePosition;
   if (input.swimlaneMaxCards !== undefined) {
     const n = input.swimlaneMaxCards;
@@ -265,6 +300,18 @@ export async function updateBoardSettings(tx: Tx, input: UpdateBoardSettingsInpu
       throw new InvalidInputError(`swimlaneMaxCards must be a whole number from ${SWIMLANE_MAX_CARDS_RANGE.min} to ${SWIMLANE_MAX_CARDS_RANGE.max}`);
     }
     set.swimlaneMaxCards = n;
+  }
+  if (input.standupDidColumnIds !== undefined || input.standupTodayColumnIds !== undefined) {
+    // Merge: only the list(s) provided are overwritten; the other keeps its stored value.
+    const current = parseStandupSettings(board.standupSettings);
+    const next: StandupSettings = { ...current };
+    if (input.standupDidColumnIds !== undefined) {
+      next.didColumnIds = await validateStandupColumnIds(tx, input.boardId, input.standupDidColumnIds);
+    }
+    if (input.standupTodayColumnIds !== undefined) {
+      next.todayColumnIds = await validateStandupColumnIds(tx, input.boardId, input.standupTodayColumnIds);
+    }
+    set.standupSettings = { didColumnIds: next.didColumnIds, todayColumnIds: next.todayColumnIds };
   }
   if (Object.keys(set).length === 0) return;
   await tx.update(schema.board).set(set).where(eq(schema.board.id, input.boardId));

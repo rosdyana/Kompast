@@ -1,6 +1,7 @@
-import { and, asc, gte, inArray, notInArray, schema } from "@kompast/db";
+import { and, asc, eq, gte, inArray, notInArray, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { listSprintIssues } from "./sprint";
+import { parseStandupSettings } from "./board";
 
 type StatusCategory = "todo" | "in_progress" | "done";
 
@@ -26,19 +27,62 @@ function sortRank(item: StandupActivityItem): number {
 }
 
 /**
+ * Resolves the board's configured "Did" columns (board.standup_settings) to
+ * the workflow statuses they cover and their names. Stale ids (columns since
+ * deleted) are dropped here; an empty result means "no filter" (default rule).
+ */
+async function resolveDidColumns(
+  tx: Tx,
+  sprintId: string,
+): Promise<{ statusIds: Set<string>; columnNames: string[] }> {
+  const [sprint] = await tx.select({ boardId: schema.sprint.boardId }).from(schema.sprint).where(eq(schema.sprint.id, sprintId)).limit(1);
+  if (!sprint) return { statusIds: new Set(), columnNames: [] };
+  const [board] = await tx
+    .select({ standupSettings: schema.board.standupSettings })
+    .from(schema.board)
+    .where(eq(schema.board.id, sprint.boardId))
+    .limit(1);
+  const { didColumnIds } = parseStandupSettings(board?.standupSettings);
+  if (didColumnIds.length === 0) return { statusIds: new Set(), columnNames: [] };
+
+  const columns = await tx
+    .select({ id: schema.boardColumn.id, name: schema.boardColumn.name })
+    .from(schema.boardColumn)
+    .where(and(eq(schema.boardColumn.boardId, sprint.boardId), inArray(schema.boardColumn.id, didColumnIds)))
+    .orderBy(asc(schema.boardColumn.order));
+  if (columns.length === 0) return { statusIds: new Set(), columnNames: [] };
+
+  const columnStatuses = await tx
+    .select({ workflowStatusId: schema.boardColumnStatus.workflowStatusId })
+    .from(schema.boardColumnStatus)
+    .where(inArray(schema.boardColumnStatus.boardColumnId, columns.map((c) => c.id)));
+  const statusIds = new Set(columnStatuses.map((cs) => cs.workflowStatusId));
+  // A configured column with no statuses can't filter anything, so it isn't reported as a filter either.
+  return { statusIds, columnNames: statusIds.size > 0 ? columns.map((c) => c.name) : [] };
+}
+
+/**
  * What each person did on this sprint's issues since `since`, grouped by
  * the user who did it. Status moves collapse to one item per (user, issue)
  * with the first from-status and the last to-status; other field edits
  * collapse to one `edited` item listing the field names; comments are
  * counted per author. Runs through the caller's tx, so RLS decides which
  * issues are visible at all.
+ *
+ * If the board has "Did" columns configured (board.standup_settings), only
+ * status moves whose final to-status maps to one of those columns are kept
+ * (edits, comments and creations are dropped); `didColumnNames` lists the
+ * existing columns so the UI can say where the list came from. With no
+ * usable columns configured, the full digest is returned and `didColumnNames`
+ * is empty.
  */
 export async function getStandupDigest(
   tx: Tx,
   input: { sprintId: string; since: Date },
-): Promise<{ byUser: Record<string, StandupActivityItem[]> }> {
+): Promise<{ byUser: Record<string, StandupActivityItem[]>; didColumnNames: string[] }> {
+  const didFilter = await resolveDidColumns(tx, input.sprintId);
   const issues = await listSprintIssues(tx, input.sprintId);
-  if (issues.length === 0) return { byUser: {} };
+  if (issues.length === 0) return { byUser: {}, didColumnNames: didFilter.columnNames };
   const issueIds = issues.map((i) => i.id);
   const projectIds = [...new Set(issues.map((i) => i.projectId))];
 
@@ -115,7 +159,9 @@ export async function getStandupDigest(
   }
 
   const byUser: Record<string, StandupActivityItem[]> = {};
+  const filterByDid = didFilter.statusIds.size > 0;
   for (const acc of accs.values()) {
+    if (filterByDid && (acc.kind !== "status" || !didFilter.statusIds.has(acc.lastToStatusId ?? ""))) continue;
     const item: StandupActivityItem = { issueId: acc.issueId, kind: acc.kind, lastAt: acc.lastAt };
     if (acc.kind === "status") {
       item.fromStatus = resolveStatus(acc.firstFromStatusId ?? null);
@@ -131,7 +177,7 @@ export async function getStandupDigest(
   for (const items of Object.values(byUser)) {
     items.sort((a, b) => sortRank(a) - sortRank(b) || b.lastAt.getTime() - a.lastAt.getTime());
   }
-  return { byUser };
+  return { byUser, didColumnNames: filterByDid ? didFilter.columnNames : [] };
 }
 
 // ---------------------------------------------------------------------------

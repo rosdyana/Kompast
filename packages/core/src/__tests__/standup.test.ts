@@ -8,6 +8,7 @@ import { createIssue, moveIssue, updateIssue, recordHistoricalFieldChange } from
 import { addComment } from "../comment";
 import { createSprint, addIssueToSprint, startSprint } from "../sprint";
 import { getStandupDigest, type StandupActivityItem } from "../standup";
+import { updateBoardSettings } from "../board";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -66,7 +67,7 @@ describe("standup digest", () => {
       if (!found) throw new Error(`No default status named ${name}`);
       return found.id;
     };
-    return { projectId, typeId: issueTypes[0]!.id, sprintId, statusId };
+    return { projectId, boardId, typeId: issueTypes[0]!.id, sprintId, statusId };
   }
 
   async function makeIssue(
@@ -193,6 +194,57 @@ describe("standup digest", () => {
   it("returns an empty digest for a sprint with no issues", async () => {
     const fx = await setupProject();
     const result = await digest(fx.sprintId, new Date(Date.now() - DAY_MS));
-    expect(result).toEqual({ byUser: {} });
+    expect(result).toEqual({ byUser: {}, didColumnNames: [] });
+  });
+
+  async function columnNamed(boardId: string, name: string) {
+    const cols = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.boardId, boardId));
+    const found = cols.find((c) => c.name === name);
+    if (!found) throw new Error(`No column named ${name}`);
+    return found;
+  }
+
+  it("with Did columns set, keeps only status moves into those columns and drops comments and edits", async () => {
+    const fx = await setupProject();
+    const doneColumn = await columnNamed(fx.boardId, "Done");
+    await withAuthorizedTenant(ctxA, (tx) =>
+      updateBoardSettings(tx, { projectId: fx.projectId, boardId: fx.boardId, standupDidColumnIds: [doneColumn.id] }),
+    );
+
+    // Each issue carries exactly one kind of activity, so the filter's effect is unambiguous.
+    const finished = await makeIssue(fx, { title: "Finished" });
+    const started = await makeIssue(fx, { title: "Started" });
+    const chatty = await makeIssue(fx, { title: "Chatty" });
+    await withAuthorizedTenant(ctxA, (tx) => moveIssue(tx, { issueId: finished, toStatusId: fx.statusId("Done"), actorId: userA }));
+    await withAuthorizedTenant(ctxA, (tx) => moveIssue(tx, { issueId: started, toStatusId: fx.statusId("In Progress"), actorId: userA }));
+    await withAuthorizedTenant(ctxA, (tx) => addComment(tx, { issueId: chatty, authorId: userA, bodyJson: { text: "thoughts" } }));
+    await withAuthorizedTenant(ctxA, (tx) => updateIssue(tx, chatty, { title: "Chatty (renamed)", actorId: userA }));
+
+    const { byUser, didColumnNames } = await digest(fx.sprintId, new Date(Date.now() - DAY_MS));
+    expect(didColumnNames).toEqual(["Done"]);
+    const aliceItems = byUser[userA] ?? [];
+    expect(aliceItems.map((i) => i.issueId)).toEqual([finished]);
+    expect(aliceItems[0]!.kind).toBe("status");
+    expect(aliceItems[0]!.toStatus).toMatchObject({ name: "Done", category: "done" });
+  });
+
+  it("with only a stale Did column id stored, returns the full digest unchanged and no column names", async () => {
+    const fx = await setupProject();
+    const finished = await makeIssue(fx, { title: "Finished" });
+    const started = await makeIssue(fx, { title: "Started" });
+    await withAuthorizedTenant(ctxA, (tx) => moveIssue(tx, { issueId: finished, toStatusId: fx.statusId("Done"), actorId: userA }));
+    await withAuthorizedTenant(ctxA, (tx) => moveIssue(tx, { issueId: started, toStatusId: fx.statusId("In Progress"), actorId: userA }));
+    await withAuthorizedTenant(ctxA, (tx) => addComment(tx, { issueId: started, authorId: userA, bodyJson: { text: "note" } }));
+    const since = new Date(Date.now() - DAY_MS);
+
+    const before = await digest(fx.sprintId, since);
+
+    // Simulates a column deleted after it was chosen: the stored id points at nothing.
+    await admin.update(schema.board).set({ standupSettings: { didColumnIds: ["deleted-column-id"] } }).where(eq(schema.board.id, fx.boardId));
+
+    const after = await digest(fx.sprintId, since);
+    expect(after.byUser).toEqual(before.byUser);
+    expect(after.didColumnNames).toEqual([]);
+    expect(after.byUser[userA]!.map((i) => i.kind).sort()).toEqual(["commented", "created", "created", "status", "status"]);
   });
 });

@@ -34,6 +34,7 @@ import {
   reorderPriorityLevelsFn,
 } from "@/lib/server-fns/priority";
 import { ColorSwatchPicker, COLUMN_TONES } from "@/components/board/ColorSwatchPicker";
+import { parseStandupSettings } from "@/components/board/standup-settings";
 
 type BoardData = Awaited<ReturnType<typeof getProjectBoardFn>>;
 type PropertyDefinition = Awaited<ReturnType<typeof listIssuePropertyDefinitionsFn>>[number];
@@ -256,6 +257,30 @@ function ColumnsSettings({ data }: { data: BoardData }) {
     remove(columnId);
   }
 
+  // Stored ids of deleted columns are dropped here, so every save writes only ids that still exist.
+  const standup = parseStandupSettings(data.board.standupSettings);
+  const existingColumnIds = new Set(columns.map((c) => c.id));
+  const checkedDidIds = standup.didColumnIds.filter((id) => existingColumnIds.has(id));
+  const checkedTodayIds = standup.todayColumnIds.filter((id) => existingColumnIds.has(id));
+
+  async function saveStandupColumns(patch: { standupDidColumnIds: string[] } | { standupTodayColumnIds: string[] }) {
+    setError(null);
+    try {
+      await updateBoardSettingsFn({ data: { projectId: data.project.id, boardId: data.board.id, ...patch } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
+  /** Board order is kept regardless of click order. */
+  function nextChecked(current: string[], columnId: string, on: boolean): string[] {
+    const set = new Set(current);
+    if (on) set.add(columnId);
+    else set.delete(columnId);
+    return columns.map((c) => c.id).filter((id) => set.has(id));
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <SectionIntro title={t("settingsTab.columnsHeading")}>
@@ -370,6 +395,56 @@ function ColumnsSettings({ data }: { data: BoardData }) {
           />
         </div>
       </Card>
+
+      <Card>
+        <CardHeader title={t("settingsTab.standupTitle")} description={t("settingsTab.standupDesc")} />
+        <StandupColumnPicker
+          label={t("settingsTab.standupDidLabel")}
+          hint={t("settingsTab.standupDidHint")}
+          columns={columns}
+          checkedIds={checkedDidIds}
+          onToggle={(columnId, on) => saveStandupColumns({ standupDidColumnIds: nextChecked(checkedDidIds, columnId, on) })}
+        />
+        <StandupColumnPicker
+          label={t("settingsTab.standupTodayLabel")}
+          hint={t("settingsTab.standupTodayHint")}
+          columns={columns}
+          checkedIds={checkedTodayIds}
+          onToggle={(columnId, on) => saveStandupColumns({ standupTodayColumnIds: nextChecked(checkedTodayIds, columnId, on) })}
+        />
+      </Card>
+    </div>
+  );
+}
+
+function StandupColumnPicker({
+  label,
+  hint,
+  columns,
+  checkedIds,
+  onToggle,
+}: {
+  label: string;
+  hint: string;
+  columns: { id: string; name: string; color: string }[];
+  checkedIds: string[];
+  onToggle: (columnId: string, on: boolean) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 border-t border-border px-4 py-3">
+      <div>
+        <p className="text-[13.5px] font-medium text-text">{label}</p>
+        <p className="type-small text-text-3">{hint}</p>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {columns.map((col) => (
+          <label key={col.id} className="flex items-center gap-2 rounded-[4px] px-1 py-0.5 text-[13.5px] text-text-2 hover:bg-surface-2">
+            <input type="checkbox" checked={checkedIds.includes(col.id)} onChange={(e) => onToggle(col.id, e.target.checked)} />
+            <StatusDot color={col.color} size={10} />
+            {col.name}
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

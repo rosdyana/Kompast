@@ -95,6 +95,8 @@ const updateBoardSettingsSchema = z.object({
   newIssuePosition: z.enum(["top", "bottom"]).optional(),
   // Same 1–50 range core's updateBoardSettings enforces (SWIMLANE_MAX_CARDS_RANGE); literals keep core out of the client bundle.
   swimlaneMaxCards: z.number().int().min(1).max(50).optional(),
+  standupDidColumnIds: z.array(z.string().min(1)).max(50).optional(),
+  standupTodayColumnIds: z.array(z.string().min(1)).max(50).optional(),
 });
 
 export const updateBoardSettingsFn = createServerFn({ method: "POST" })
