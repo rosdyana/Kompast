@@ -620,6 +620,7 @@ export function AppSidebar({ shell }: { shell: SidebarShellData }) {
         <div className="flex h-9 items-center gap-2 px-2">
           <Avatar name={shell.user.name} size={22} />
           <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">{shell.user.name}</span>
+          <span className="flex-none text-[11.5px] tabular-nums text-text-3">v{__APP_VERSION__}</span>
         </div>
       </div>
     </>

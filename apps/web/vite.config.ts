@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { defineConfig, type Plugin } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { nitro } from "nitro/vite";
@@ -29,7 +30,14 @@ function pageAssetsDevRoute(): Plugin {
   };
 }
 
+// The root package.json version is the release version (scripts/release.mjs bumps it).
+// Baked in at build time; the Docker build copies the whole repo, so it's present there too.
+const rootPkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(rootPkg.version),
+  },
   server: {
     port: 3000,
   },
