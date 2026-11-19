@@ -23,7 +23,8 @@
     "aiExpand": "AI: Perpanjang",
     "aiSummarize": "AI: Ringkas",
     "aiTranslateToEnglish": "AI: Terjemahkan ke Inggris",
-    "aiTranslateToIndonesian": "AI: Terjemahkan ke Indonesia"
+    "aiTranslateToIndonesian": "AI: Terjemahkan ke Indonesia",
+    "aiTranslateToTraditionalChinese": "AI: Terjemahkan ke Mandarin Tradisional"
   },
   "versionHistory": {
     "historyButton": "Riwayat",

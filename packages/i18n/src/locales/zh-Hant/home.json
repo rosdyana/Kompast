@@ -35,5 +35,8 @@
   "untitled": "未命名",
   "edited": "{{time}}編輯",
   "home": "首頁",
-  "greetingNeutral": "歡迎回來，{{name}}"
+  "greetingNeutral": "歡迎回來，{{name}}",
+  "pageRange": "第 {{from}}–{{to}} 項，共 {{total}} 項",
+  "previousPage": "上一頁",
+  "nextPage": "下一頁"
 }

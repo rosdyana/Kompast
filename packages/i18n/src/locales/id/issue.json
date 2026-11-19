@@ -131,5 +131,14 @@
   "reactedByCount_one": "{{count}} orang bereaksi",
   "reactedByCount_other": "{{count}} orang bereaksi",
   "reactionFailed": "Reaksi tidak dapat disimpan",
-  "commentTipHint": "Ketik : untuk emoji, @ untuk menyebut"
+  "commentTipHint": "Ketik : untuk emoji, @ untuk menyebut",
+  "translate": "Terjemahkan",
+  "translating": "Menerjemahkan…",
+  "translatedTo": "Diterjemahkan ke {{language}}",
+  "showOriginal": "Tampilkan yang asli",
+  "translateDraftTo": "Terjemahkan draf ke…",
+  "translateFailed": "Terjemahan gagal: {{message}}",
+  "languageEnglish": "Inggris",
+  "languageIndonesian": "Indonesia",
+  "languageTraditionalChinese": "Mandarin Tradisional"
 }

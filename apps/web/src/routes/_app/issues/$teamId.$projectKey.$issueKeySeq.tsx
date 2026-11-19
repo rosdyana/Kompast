@@ -25,6 +25,7 @@ import { Tabs } from "@kompast/ui/Tabs";
 import { useToast } from "@kompast/ui/Toast";
 import { useTranslation } from "@kompast/i18n";
 import { IssueChecklist } from "@/components/issues/IssueChecklist";
+import { TranslationBar, TranslationView, useContentTranslation, type ContentTranslation } from "@/components/shared/TranslatableContent";
 import {
   getIssueDetailFn,
   addCommentFn,
@@ -49,7 +50,7 @@ import { requestAttachmentUploadFn, deleteAttachmentFn } from "@/lib/server-fns/
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 import { cn } from "@/lib/cn";
 import { LiteEditor } from "@/components/shared/LiteEditor";
-import { RichTextView, normalizeToBlocks } from "@/components/shared/RichTextView";
+import { normalizeToBlocks } from "@/components/shared/RichTextView";
 import { CommentThread } from "@/components/issues/CommentThread";
 import { HistoryTimeline } from "@/components/issues/HistoryTimeline";
 import { Attachments } from "@/components/issues/Attachments";
@@ -101,6 +102,7 @@ function IssueView({ data, from }: { data: IssueData; from: FromTab }) {
   const router = useRouter();
   const toast = useToast();
   const { openCreateIssue } = useWorkbench();
+  const translation = useContentTranslation({ content: data.issue.descriptionJson, title: data.issue.title });
 
   const teamId = data.project.teamId ?? "none";
   const issueKey = `${data.project.key}-${data.issue.keySeq}`;
@@ -299,6 +301,7 @@ function IssueView({ data, from }: { data: IssueData; from: FromTab }) {
         <div className="order-1 min-w-0 max-w-[780px]">
           <IssueTitle
             title={data.issue.title}
+            translatedTitle={translation.translatedTitle}
             onSave={(title) => save(() => updateIssueTitleFn({ data: { issueId: data.issue.id, title } }))}
           />
 
@@ -340,6 +343,7 @@ function IssueView({ data, from }: { data: IssueData; from: FromTab }) {
               issueId={data.issue.id}
               issueTitle={data.issue.title}
               descriptionJson={data.issue.descriptionJson}
+              translation={translation}
               onSaved={() => router.invalidate()}
             />
           </Section>
@@ -724,7 +728,7 @@ function Section({ title, aside, children }: { title: ReactNode; aside?: ReactNo
 }
 
 /** Notion-like title: reads as a heading, becomes an input on click. */
-function IssueTitle({ title, onSave }: { title: string; onSave: (title: string) => void }) {
+function IssueTitle({ title, translatedTitle, onSave }: { title: string; translatedTitle?: string | null; onSave: (title: string) => void }) {
   const { t } = useTranslation("issue");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
@@ -760,16 +764,19 @@ function IssueTitle({ title, onSave }: { title: string; onSave: (title: string) 
     );
   }
   return (
-    <h1
-      onClick={() => {
-        setDraft(title);
-        setEditing(true);
-      }}
-      title={t("clickToEdit")}
-      className="-mx-2 cursor-text rounded-[6px] px-2 py-1 text-[24px] font-semibold leading-tight tracking-[-0.015em] text-text hover:bg-surface-3"
-    >
-      {title}
-    </h1>
+    <>
+      <h1
+        onClick={() => {
+          setDraft(title);
+          setEditing(true);
+        }}
+        title={t("clickToEdit")}
+        className="-mx-2 cursor-text rounded-[6px] px-2 py-1 text-[24px] font-semibold leading-tight tracking-[-0.015em] text-text hover:bg-surface-3"
+      >
+        {title}
+      </h1>
+      {translatedTitle && <p className="-mt-1 mb-1 px-2 text-[15px] leading-snug text-text-3">{translatedTitle}</p>}
+    </>
   );
 }
 
@@ -818,11 +825,13 @@ function DescriptionEditor({
   issueId,
   issueTitle,
   descriptionJson,
+  translation,
   onSaved,
 }: {
   issueId: string;
   issueTitle: string;
   descriptionJson: unknown;
+  translation: ContentTranslation;
   onSaved: () => Promise<void>;
 }) {
   const { t } = useTranslation("issue");
@@ -916,14 +925,20 @@ function DescriptionEditor({
   }
 
   if (!hasDescription) {
+    // No description, but the title can still be translated.
     return (
-      <button
-        type="button"
-        onClick={startEditing}
-        className="-mx-2 flex min-h-10 w-[calc(100%+16px)] items-center rounded-[6px] px-2 text-left text-[14px] text-text-3 hover:bg-surface-3"
-      >
-        {t("addDescription")}
-      </button>
+      <div className="flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={startEditing}
+          className="-mx-2 flex min-h-10 w-[calc(100%+16px)] items-center rounded-[6px] px-2 text-left text-[14px] text-text-3 hover:bg-surface-3"
+        >
+          {t("addDescription")}
+        </button>
+        <ClientOnly fallback={null}>
+          <TranslationBar tr={translation} />
+        </ClientOnly>
+      </div>
     );
   }
 
@@ -941,7 +956,8 @@ function DescriptionEditor({
       className="-mx-2 cursor-text rounded-[6px] px-2 py-1 hover:bg-surface-2"
     >
       <ClientOnly fallback={<div className="min-h-[24px]" />}>
-        <RichTextView content={descriptionJson} className="text-text" />
+        <TranslationView tr={translation} content={descriptionJson} className="text-text" />
+        <TranslationBar tr={translation} className="mt-1" />
       </ClientOnly>
     </div>
   );

@@ -50,7 +50,9 @@ export const getHomeSummaryFn = createServerFn({ method: "GET" }).handler(async 
         ),
       )
       .orderBy(sql`${schema.issue.dueDate} asc nulls last`, desc(schema.issue.updatedAt))
-      .limit(25);
+      // The home widget pages through this client-side (10 per page); the cap
+      // is only a safety bound, not the old "first 25" truncation.
+      .limit(500);
 
     const projectIds = projects.map((p) => p.id);
 

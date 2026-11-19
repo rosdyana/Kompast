@@ -131,5 +131,14 @@
   "reactedByCount_one": "{{count}} 人回應",
   "reactedByCount_other": "{{count}} 人回應",
   "reactionFailed": "無法儲存你的回應",
-  "commentTipHint": "輸入 : 插入表情符號，@ 提及成員"
+  "commentTipHint": "輸入 : 插入表情符號，@ 提及成員",
+  "translate": "翻譯",
+  "translating": "翻譯中…",
+  "translatedTo": "已翻譯為{{language}}",
+  "showOriginal": "顯示原文",
+  "translateDraftTo": "將草稿翻譯為…",
+  "translateFailed": "翻譯失敗：{{message}}",
+  "languageEnglish": "英文",
+  "languageIndonesian": "印尼文",
+  "languageTraditionalChinese": "繁體中文"
 }

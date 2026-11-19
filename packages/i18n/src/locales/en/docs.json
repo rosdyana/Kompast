@@ -23,7 +23,8 @@
     "aiExpand": "AI: Expand",
     "aiSummarize": "AI: Summarize",
     "aiTranslateToEnglish": "AI: Translate to English",
-    "aiTranslateToIndonesian": "AI: Translate to Indonesian"
+    "aiTranslateToIndonesian": "AI: Translate to Indonesian",
+    "aiTranslateToTraditionalChinese": "AI: Translate to Traditional Chinese"
   },
   "versionHistory": {
     "historyButton": "History",
