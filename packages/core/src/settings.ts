@@ -1,8 +1,11 @@
-import { and, asc, eq, schema, SYSTEM_SETTINGS_ID } from "@kompast/db";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { and, asc, eq, schema, SYSTEM_SETTINGS_ID, withTenant } from "@kompast/db";
+import type { db as appDb } from "@kompast/db";
 import type { AnyDb } from "./types";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { ForbiddenError } from "./permissions";
 import { InvalidInputError } from "./errors";
+import { id } from "./ids";
 import type { AiCredentials, EmbeddingCredentials } from "@kompast/ai";
 
 type SystemSettingsRow = typeof schema.systemSettings.$inferSelect;
@@ -23,7 +26,135 @@ export async function getSetupStatus(db: AnyDb) {
   const row = await getRow(db);
   return {
     isConfigured: Boolean(row?.microsoftTenantId && row.microsoftClientId && row.microsoftClientSecretEncrypted),
+    /** An unexpired `kompast sso-reset` code is waiting to be used on /setup. */
+    recoveryPending: Boolean(row?.ssoRecoveryCodeHash && row.ssoRecoveryExpiresAt && row.ssoRecoveryExpiresAt > new Date()),
   };
+}
+
+export type EntraVerifyResult =
+  | { ok: true; warning?: string }
+  | { ok: false; field: "tenantId" | "clientId" | "clientSecret" | null; message: string };
+
+const ENTRA_CHECK_TIMEOUT_MS = 5000;
+
+function describeFetchError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Checks a Tenant ID, Client ID and secret against Microsoft before they are saved (/setup and /settings), so a
+ * typo is caught at the form instead of locking everyone out of sign-in later. Two calls, both with a 5s timeout:
+ * the tenant's OIDC discovery document (unknown tenants get a 400), then a client-credentials token request, which
+ * is the only place Microsoft says whether the app is registered in that tenant and whether the secret is good.
+ * Only the errors that mean "this value is wrong" block the save. Any other token error is returned as a warning,
+ * because some tenants restrict the client-credentials grant. Microsoft's own error_description is shown in the
+ * message, with the secret masked.
+ */
+export async function verifyMicrosoftEntraConfig(
+  input: { tenantId: string; clientId: string; clientSecret: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<EntraVerifyResult> {
+  if (!MICROSOFT_TENANT_GUID_RE.test(input.tenantId)) {
+    return { ok: false, field: "tenantId", message: "Microsoft Tenant ID must be a concrete tenant GUID." };
+  }
+  const authority = `https://login.microsoftonline.com/${input.tenantId}`;
+  const unreachable = (err: unknown): EntraVerifyResult => ({
+    ok: false,
+    field: null,
+    message: `Couldn't reach Microsoft to check the tenant: ${describeFetchError(err)}`,
+  });
+
+  let discovery: Response;
+  try {
+    discovery = await fetchImpl(`${authority}/v2.0/.well-known/openid-configuration`, { signal: AbortSignal.timeout(ENTRA_CHECK_TIMEOUT_MS) });
+  } catch (err) {
+    return unreachable(err);
+  }
+  if (!discovery.ok) return { ok: false, field: "tenantId", message: "Microsoft doesn't recognize this tenant ID." };
+
+  const form = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: input.clientId,
+    client_secret: input.clientSecret,
+    scope: "https://graph.microsoft.com/.default",
+  });
+  let token: Response;
+  try {
+    token = await fetchImpl(`${authority}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form,
+      signal: AbortSignal.timeout(ENTRA_CHECK_TIMEOUT_MS),
+    });
+  } catch (err) {
+    return unreachable(err);
+  }
+  if (token.ok) return { ok: true };
+
+  const body = (await token.json().catch(() => null)) as { error_description?: unknown } | null;
+  const description = typeof body?.error_description === "string" ? body.error_description : "";
+  if (description.includes("AADSTS700016")) {
+    return { ok: false, field: "clientId", message: "This application (client) ID isn't registered in that tenant." };
+  }
+  if (description.includes("AADSTS7000215")) return { ok: false, field: "clientSecret", message: "The client secret is wrong." };
+  if (description.includes("AADSTS7000222")) return { ok: false, field: "clientSecret", message: "The client secret has expired." };
+
+  const firstLine = redactSecret(description.split(/\r?\n/)[0] ?? "", input.clientSecret).trim() || `HTTP ${token.status}`;
+  return { ok: true, warning: `Tenant found, but Microsoft refused a test token: ${firstLine}` };
+}
+
+/** SHA-256 hex of a recovery code. infra/install.sh's `kompast sso-reset` computes the same value with `sha256sum`, so the two must stay identical. */
+export function hashRecoveryCode(code: string): string {
+  return createHash("sha256").update(code.trim()).digest("hex");
+}
+
+/**
+ * Uses a `kompast sso-reset` code to open /setup once, and saves the Entra settings the admin submitted. The current
+ * sign-in config stays live until this runs. The code is compared in constant time, and it is single-use and expires
+ * after 30 minutes. The hash is cleared in the same transaction as the Entra write. Returns false for a wrong, expired,
+ * consumed or never-issued code, and then nothing is written. A success is audited in the founding workspace,
+ * because audit_log.organization_id is NOT NULL.
+ */
+export async function completeSsoRecovery(
+  db: typeof appDb,
+  input: { code: string; tenantId: string; clientId: string; clientSecret: string },
+): Promise<boolean> {
+  const [founding] = await db
+    .select({ id: schema.organization.id })
+    .from(schema.organization)
+    .orderBy(asc(schema.organization.createdAt), asc(schema.organization.id))
+    .limit(1);
+  // No workspace yet means nobody has signed in (e.g. a typo at first setup): recover without an audit row, since
+  // audit_log needs a workspace to belong to.
+  const run = <T>(fn: (tx: Parameters<Parameters<typeof appDb.transaction>[0]>[0]) => Promise<T>) =>
+    founding ? withTenant(db, { organizationId: founding.id, userId: null }, fn) : db.transaction(fn);
+
+  return run(async (tx) => {
+    const [row] = await tx.select().from(schema.systemSettings).where(eq(schema.systemSettings.id, SYSTEM_SETTINGS_ID)).for("update");
+    const stored = row?.ssoRecoveryCodeHash;
+    if (!stored || !row?.ssoRecoveryExpiresAt || row.ssoRecoveryExpiresAt <= new Date()) return false;
+    const expected = Buffer.from(stored, "hex");
+    const given = Buffer.from(hashRecoveryCode(input.code), "hex");
+    if (expected.length !== given.length || !timingSafeEqual(expected, given)) return false;
+
+    await completeSetup(tx, { tenantId: input.tenantId, clientId: input.clientId, clientSecret: input.clientSecret });
+    await tx
+      .update(schema.systemSettings)
+      .set({ ssoRecoveryCodeHash: null, ssoRecoveryExpiresAt: null })
+      .where(eq(schema.systemSettings.id, SYSTEM_SETTINGS_ID));
+    if (!founding) return true;
+    await tx.insert(schema.auditLog).values({
+      id: id("audit"),
+      organizationId: founding.id,
+      actorId: null,
+      origin: "user",
+      action: "sso.recovered",
+      entityType: "system_settings",
+      entityId: SYSTEM_SETTINGS_ID,
+      metadata: JSON.stringify({ tenantId: input.tenantId, clientId: input.clientId }),
+    });
+    return true;
+  });
 }
 
 /**

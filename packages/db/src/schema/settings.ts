@@ -21,6 +21,12 @@ export const systemSettings = pgTable("system_settings", {
   microsoftTenantId: text("microsoft_tenant_id"),
   microsoftClientId: text("microsoft_client_id"),
   microsoftClientSecretEncrypted: text("microsoft_client_secret_encrypted"),
+  /**
+   * One-time recovery code for `kompast sso-reset` (see packages/core's completeSsoRecovery). Only the SHA-256 hex
+   * of the code is stored, never the code. Both columns are cleared on use, and the code expires after 30 minutes.
+   */
+  ssoRecoveryCodeHash: text("sso_recovery_code_hash"),
+  ssoRecoveryExpiresAt: timestamp("sso_recovery_expires_at", { withTimezone: true }),
 
   aiProvider: text("ai_provider", { enum: ["anthropic", "azure-openai", "azure-foundry-anthropic", "openai-compatible"] }),
   aiApiKeyEncrypted: text("ai_api_key_encrypted"),

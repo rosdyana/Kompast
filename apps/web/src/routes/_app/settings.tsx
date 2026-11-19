@@ -12,6 +12,7 @@ import {
   updateAiSettingsFn,
   updateMailSettingsFn,
   updateMicrosoftAuthFn,
+  testMicrosoftAuthFn,
   updateEmbeddingSettingsFn,
   reindexAllFn,
   sendTestEmailFn,
@@ -757,12 +758,17 @@ function EmbeddingStatusCard({ refreshKey }: { refreshKey: number }) {
   );
 }
 
+/** The Entra test's own result, shown under the form. Kept apart from ConnectionTest, whose ok shape carries AI model fields. */
+type EntraTestResult = { ok: true; warning?: string } | { ok: false; message: string };
+
 function EntraSection({ initial }: { initial: Integrations["entra"] }) {
   const { t } = useTranslation("settings");
   const [tenantId, setTenantId] = useState(initial.tenantId ?? "");
   const [clientId, setClientId] = useState(initial.clientId ?? "");
   const [clientSecret, setClientSecret] = useState("");
   const { saving, error, run } = useSave(t("tabs.entra"));
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<EntraTestResult | null>(null);
 
   const save = () =>
     run(async () => {
@@ -770,8 +776,24 @@ function EntraSection({ initial }: { initial: Integrations["entra"] }) {
       setClientSecret("");
     });
 
+  // Checks the values currently in the form against Microsoft, the same fields Save sends, and saves nothing.
+  const test = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(await testMicrosoftAuthFn({ data: { tenantId: tenantId.trim(), clientId: clientId.trim(), clientSecret: clientSecret || undefined } }));
+    } catch (err) {
+      setTestResult({ ok: false, message: t("integrations.test.requestFailed", { message: err instanceof Error ? err.message : String(err) }) });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
     <SettingsSection title={t("integrations.entra.heading")} description={t("integrations.entra.description")} aside={<StatusBadge ok={!!initial.tenantId && initial.hasClientSecret} />}>
+      {initial.signInStatus === "unavailable" && (
+        <p className="mb-4 rounded-[8px] border border-danger/30 bg-danger/10 px-4 py-3 text-[13.5px] leading-relaxed text-danger">{t("integrations.entra.signInBroken")}</p>
+      )}
       <p className="mb-4 rounded-[8px] border border-amber/30 bg-amber-soft px-4 py-3 text-[13.5px] leading-relaxed text-text">
         {t("integrations.entra.warningPart1").replace(/^⚠️\s*/, "")}
         <strong>{t("integrations.entra.warningBold")}</strong>
@@ -796,9 +818,37 @@ function EntraSection({ initial }: { initial: Integrations["entra"] }) {
           disabled={!tenantId.trim() || !clientId.trim()}
           label={t("integrations.entra.save")}
           savingLabel={t("integrations.entra.savingEllipsis")}
+          testButton={<TestConnectionButton testing={testing} disabled={!tenantId.trim() || !clientId.trim()} onClick={test} />}
         />
+        {testResult && <EntraTestResultLine result={testResult} />}
       </Card>
     </SettingsSection>
+  );
+}
+
+function EntraTestResultLine({ result }: { result: EntraTestResult }) {
+  const { t } = useTranslation("settings");
+  if (!result.ok) {
+    return (
+      <p className="flex items-start gap-2 border-t border-border px-5 py-3 text-[13px] text-danger">
+        <XCircle size={15} className="mt-px flex-none" />
+        <span className="break-words">{result.message}</span>
+      </p>
+    );
+  }
+  if (result.warning) {
+    // Microsoft refused the test token for a reason that doesn't block saving (see verifyMicrosoftEntraConfig). Shown as-is, in English.
+    return (
+      <p className="flex items-start gap-2 border-t border-border px-5 py-3 text-[13px] text-amber">
+        <span className="break-words">{result.warning}</span>
+      </p>
+    );
+  }
+  return (
+    <p className="flex items-start gap-2 border-t border-border px-5 py-3 text-[13px] text-green">
+      <CheckCircle2 size={15} className="mt-px flex-none" />
+      <span className="break-words">{t("integrations.entra.testOk")}</span>
+    </p>
   );
 }
 

@@ -1638,8 +1638,36 @@ case "$cmd" in
     prune_kompast_images "$(env_val GHCR_OWNER)" "$(env_val IMAGE_TAG)" "$prev"
     docker system df
     ;;
+  sso-reset)
+    # Recovery when Microsoft sign-in is broken and nobody can sign in: a one-time code,
+    # stored only as a SHA-256 hash, valid 30 minutes. The current Entra settings stay
+    # live until someone saves new ones on /setup. The hash goes to psql on stdin, never argv.
+    env_val() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+    pg_user="$(env_val POSTGRES_USER)"; pg_user="${pg_user:-kompast_admin}"
+    pg_db="$(env_val POSTGRES_DB)"; pg_db="${pg_db:-kompast}"
+    app_url="$(env_val APP_URL)"; app_url="${app_url%/}"
+    command -v openssl >/dev/null 2>&1 || die "openssl is required"
+    command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
+    code="$(openssl rand -hex 16)"
+    hash="$(printf %s "$code" | sha256sum | cut -d' ' -f1)"
+    updated="$(docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -q -t -A -U "$pg_user" -d "$pg_db" <<SQL
+UPDATE system_settings SET sso_recovery_code_hash = '$hash', sso_recovery_expires_at = now() + interval '30 minutes' WHERE id = 'singleton' RETURNING 1;
+SQL
+)"
+    if [[ "$updated" != "1" ]]; then
+      echo "No sign-in settings are saved yet, so there is nothing to recover. Open ${app_url:-your Kompast URL}/setup to finish setup." >&2
+      exit 0
+    fi
+    echo "Recovery code: $code"
+    if [[ -n "$app_url" ]]; then
+      echo "Open $app_url/setup and enter the code in the Recovery code field."
+    else
+      echo "Open /setup on your Kompast URL and enter the code in the Recovery code field."
+    fi
+    echo "Valid for 30 minutes and works once. The current sign-in settings stay active until you save new ones."
+    ;;
   *)
-    echo "usage: kompast status | logs [svc] | restart [svc] | upgrade | check | reconfigure | backup | backups | restore <file> | version | cleanup [--current-only]" >&2
+    echo "usage: kompast status | logs [svc] | restart [svc] | upgrade | check | reconfigure | backup | backups | restore <file> | version | cleanup [--current-only] | sso-reset" >&2
     exit 1
     ;;
 esac
@@ -1711,6 +1739,7 @@ Commands
   kompast upgrade           re-run the installer      kompast reconfigure
   kompast backup            dump the database now     kompast backups   list local dumps
   kompast restore <file>    restore (destructive)     install log: /var/log/kompast-install.log
+  kompast sso-reset         one-time code to reopen /setup if nobody can sign in
 EOF
 }
 

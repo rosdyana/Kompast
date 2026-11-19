@@ -21,10 +21,12 @@ import {
   enqueueEmail,
   getEmailDelivery,
   withAuthorizedTenant,
+  getMicrosoftAuthConfig,
+  verifyMicrosoftEntraConfig,
   UserFacingError,
 } from "@kompast/core";
 import { requireAuthContext } from "../session";
-import { invalidateAuthCache } from "../auth";
+import { invalidateAuthCache, getMicrosoftSignInStatus } from "../auth";
 
 /**
  * Loaded by /settings for workspace owner/admins (requireSystemAdmin). The
@@ -44,9 +46,13 @@ export const getIntegrationSettingsFn = createServerFn({ method: "GET" }).handle
     isDeploymentAdmin(db, ctx.userId),
   ]);
   const global = canManageIntegrations
-    ? await Promise.all([getAiSettings(db), getMailSettings(db), getMicrosoftAuthSettingsView(db), getEmbeddingSettings(db)]).then(
-        ([ai, mail, entra, embedding]) => ({ ai, mail, entra, embedding }),
-      )
+    ? await Promise.all([
+        getAiSettings(db),
+        getMailSettings(db),
+        getMicrosoftAuthSettingsView(db),
+        getEmbeddingSettings(db),
+        getMicrosoftSignInStatus(),
+      ]).then(([ai, mail, entra, embedding, signInStatus]) => ({ ai, mail, entra: { ...entra, signInStatus }, embedding }))
     : null;
   const [me] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, ctx.userId));
   return { global, isSuperAdmin: member?.isSuperAdmin ?? false, userEmail: me?.email ?? "" };
@@ -60,20 +66,50 @@ const updateMicrosoftAuthSchema = z.object({
 });
 
 /**
+ * The secret to check Entra settings with: the one just typed, or on a re-edit
+ * with a blank field, the one already stored. Null when there is neither.
+ */
+async function entraSecretToCheck(submitted: string | undefined): Promise<string | null> {
+  if (submitted) return submitted;
+  return (await getMicrosoftAuthConfig(db))?.clientSecret ?? null;
+}
+
+/**
  * The admin-gated re-edit path setup.ts's completeSetupFn's own doc
- * comment already pointed to ("see /settings"). Calls the exact same
- * completeSetup() the one-time /setup wizard uses — safe to call again by
- * design — then invalidates the cached Better Auth instance so the very
- * next request rebuilds it with the new credentials, no restart needed.
+ * comment already pointed to ("see /settings"). The submitted settings are
+ * first checked with Microsoft (verifyMicrosoftEntraConfig), and a rejected
+ * value is refused before anything is written. Then it calls the exact same
+ * completeSetup() the one-time /setup wizard uses, which is safe to call again
+ * by design, and invalidates the cached Better Auth instance so the very next
+ * request rebuilds it with the new credentials, no restart needed.
  */
 export const updateMicrosoftAuthFn = createServerFn({ method: "POST" })
   .validator(updateMicrosoftAuthSchema)
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     await requireDeploymentAdmin(db, ctx);
+    const clientSecret = await entraSecretToCheck(data.clientSecret);
+    if (!clientSecret) throw new UserFacingError("Enter the client secret.");
+    const check = await verifyMicrosoftEntraConfig({ tenantId: data.tenantId, clientId: data.clientId, clientSecret });
+    if (!check.ok) throw new UserFacingError(check.message);
     await completeSetup(db, { ...data, updatedBy: ctx.userId });
     invalidateAuthCache();
-    return { ok: true } as const;
+    return { ok: true, warning: check.warning } as const;
+  });
+
+/**
+ * The "Test connection" button on the Entra section. It runs the same check as
+ * updateMicrosoftAuthFn but saves nothing. It returns the result instead of
+ * throwing, so the form can show Microsoft's own message next to the fields.
+ */
+export const testMicrosoftAuthFn = createServerFn({ method: "POST" })
+  .validator(updateMicrosoftAuthSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await requireDeploymentAdmin(db, ctx);
+    const clientSecret = await entraSecretToCheck(data.clientSecret);
+    if (!clientSecret) return { ok: false, field: "clientSecret", message: "Enter the client secret." } as const;
+    return verifyMicrosoftEntraConfig({ tenantId: data.tenantId, clientId: data.clientId, clientSecret });
   });
 
 const updateAiSchema = z.object({

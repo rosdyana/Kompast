@@ -74,9 +74,9 @@
     },
     "entra": {
       "heading": "Microsoft Entra ID",
-      "warningPart1": "⚠️ Sebuah Tenant ID yang salah (bukan salah format, tapi GUID yang valid namun keliru) membuat ",
-      "warningBold": "seluruh aplikasi",
-      "warningPart2": " gagal — bukan hanya login Microsoft — karena setiap permintaan yang memeriksa sesi memicu penemuan OIDC langsung ke tenant tersebut. Periksa kembali sebelum menyimpan.",
+      "warningPart1": "Tenant ID, Client ID, atau secret yang salah membuat ",
+      "warningBold": "semua orang tidak bisa masuk dengan Microsoft",
+      "warningPart2": ". Kompast memeriksanya ke Microsoft sebelum menyimpan. Jika login rusak di kemudian hari, jalankan `kompast sso-reset` di server.",
       "tenantIdLabel": "Tenant ID",
       "clientIdLabel": "Client ID",
       "clientSecretLabel": "Client Secret",
@@ -85,7 +85,9 @@
       "save": "Simpan",
       "saved": "Tersimpan.",
       "saveFailed": "Gagal menyimpan konfigurasi Entra ID",
-      "description": "Single sign-on untuk semua orang di workspace ini."
+      "description": "Single sign-on untuk semua orang di workspace ini.",
+      "testOk": "Microsoft menerima tenant, aplikasi, dan secret ini.",
+      "signInBroken": "Login Microsoft sedang tidak berfungsi: Microsoft tidak menerima tenant ini saat Kompast mencoba memuatnya. Perbaiki pengaturan di bawah, atau jalankan `kompast sso-reset` di server jika tidak ada yang bisa masuk."
     },
     "ai": {
       "heading": "AI",

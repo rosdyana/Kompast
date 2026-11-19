@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -33,8 +34,24 @@ const env = loadEnv();
  * inside Better Auth's own plugin init. Omitting the plugin entirely means
  * "Microsoft sign-in isn't configured yet" fails obviously (no such
  * provider) rather than crashing the whole auth context.
+ *
+ * The cache is keyed on the Entra settings themselves (tenant, client ID and a
+ * hash of the secret), not just on whether they exist. So a change saved by
+ * another process is picked up on the next `getAuth()` without an explicit
+ * invalidation, and `invalidateAuthCache()` is still the fast path in this one.
+ *
+ * A failed OIDC discovery doesn't crash the context either. Better Auth 1.7.x
+ * skips that provider (it lands in `genericOAuthPendingDiscovery`), and it
+ * retries discovery on each sign-in attempt. See getMicrosoftSignInStatus below.
  */
-let cached: { auth: ReturnType<typeof buildAuth>; configured: boolean } | null = null;
+let cached: { auth: ReturnType<typeof buildAuth>; key: string } | null = null;
+
+/** Cache key for the current Entra settings: "none" when Microsoft sign-in isn't configured. */
+function microsoftCacheKey(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthConfig>>): string {
+  if (!microsoft) return "none";
+  const secretHash = createHash("sha256").update(microsoft.clientSecret).digest("hex");
+  return `${microsoft.tenantId}|${microsoft.clientId}|${secretHash}`;
+}
 
 /**
  * Extracted as a standalone, exported function (rather than inline in
@@ -71,17 +88,34 @@ export async function sendInvitationEmail(data: {
 
 export async function getAuth() {
   const microsoft = await getMicrosoftAuthConfig(db);
-  const configured = microsoft !== null;
+  const key = microsoftCacheKey(microsoft);
 
-  if (cached && cached.configured === configured) return cached.auth;
+  if (cached && cached.key === key) return cached.auth;
 
   const devAdmin = getDevAdminConfig(env);
   const auth = buildAuth(microsoft, devAdmin.enabled, getDemoConfig(env).enabled);
-  cached = { auth, configured };
+  cached = { auth, key };
 
   if (devAdmin.enabled) await seedDevAdmin(auth, devAdmin.password!);
 
   return auth;
+}
+
+/**
+ * Whether Microsoft sign-in can actually start. Reads the built context, where
+ * a provider whose discovery failed is missing from `socialProviders`.
+ * "unavailable" means Microsoft didn't accept the configured tenant when
+ * discovery ran. Better Auth retries discovery on each sign-in attempt, and it
+ * moves the provider into `socialProviders` once that succeeds. So this reads
+ * the live state, and no extra retry timer is needed. The banner can stay up
+ * until the next status read after a successful attempt.
+ */
+export async function getMicrosoftSignInStatus(): Promise<"not-configured" | "ok" | "unavailable"> {
+  const microsoft = await getMicrosoftAuthConfig(db);
+  if (!microsoft) return "not-configured";
+  const auth = await getAuth();
+  const ctx = (await auth.$context) as unknown as { socialProviders?: Array<{ id: string }> };
+  return ctx.socialProviders?.some((p) => p.id === "microsoft-entra-id") ? "ok" : "unavailable";
 }
 
 /** Called right after /setup (or the future admin Entra-settings screen) writes new credentials. */

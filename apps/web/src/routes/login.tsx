@@ -18,7 +18,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const { t } = useTranslation("auth");
-  const { enabled: devLoginEnabled, microsoftConfigured, demo } = Route.useLoaderData();
+  const { enabled: devLoginEnabled, microsoftConfigured, microsoftStatus, demo } = Route.useLoaderData();
   const router = useRouter();
   const [devPassword, setDevPassword] = useState("");
   const [devLoginError, setDevLoginError] = useState<string | null>(null);
@@ -45,6 +45,7 @@ function LoginPage() {
       <h2 className="type-title">{t("signInHeading")}</h2>
       <p className="mt-2 type-body text-text-2">{t("signInSubtext")}</p>
       {(microsoftConfigured || !demo.enabled) && <MicrosoftSignInButton className="mt-7" />}
+      {microsoftStatus === "unavailable" && <p className="mt-3 rounded-[8px] border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger">{t("microsoftUnavailable")}</p>}
 
       {demo.enabled && demo.personas.length > 0 && <DemoPersonaPicker personas={demo.personas} />}
 

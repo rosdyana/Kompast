@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { db, inArray, schema } from "@kompast/db";
 import { getSetupStatus } from "@kompast/core";
 import { loadEnv } from "@kompast/env";
-import { getDevAdminConfig } from "../auth";
+import { getDevAdminConfig, getMicrosoftSignInStatus } from "../auth";
 import { DEMO_PERSONAS, getDemoConfig } from "../demo";
 
 /**
@@ -23,6 +23,8 @@ export const getDevLoginStatusFn = createServerFn({ method: "GET" }).handler(asy
   return {
     enabled: getDevAdminConfig(env).enabled,
     microsoftConfigured: (await getSetupStatus(db)).isConfigured,
+    /** "unavailable" when Microsoft didn't accept the configured tenant, so /login can say so instead of showing a button that does nothing. */
+    microsoftStatus: await getMicrosoftSignInStatus(),
     demo: { enabled: demo.enabled, personas: DEMO_PERSONAS.filter((p) => seeded.has(p.email)) },
   };
 });
