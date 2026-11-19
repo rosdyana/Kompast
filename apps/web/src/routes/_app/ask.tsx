@@ -1,13 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, FileText, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, Square, Ticket } from "lucide-react";
+import { ArrowUp, ExternalLink, FileText, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Sparkles, Square, Ticket, Trash2 } from "lucide-react";
 import { Button, IconButton } from "@kompast/ui/Button";
+import { Popover } from "@kompast/ui/Popover";
+import { MenuItem, MenuList } from "@kompast/ui/Menu";
 import { useTranslation } from "@kompast/i18n";
 import type { AskProposal } from "@kompast/core";
-import { listThreadsFn, listMessagesFn, applyAskProposalFn, discardAskProposalFn } from "@/lib/server-fns/ask";
+import { listThreadsFn, listMessagesFn, applyAskProposalFn, discardAskProposalFn, renameThreadFn, deleteThreadFn } from "@/lib/server-fns/ask";
 import { streamAskKompast, type AskCitation } from "@/lib/ask-stream-client";
 import { cn } from "@/lib/cn";
 import { usePageChrome } from "@/components/shell/WorkbenchContext";
+import { Markdown } from "@/components/shared/Markdown";
+import { SourcePanel } from "@/components/ask/SourcePanel";
+import { ConfirmDialog } from "@/components/settings/ConfirmDialog";
 
 export const Route = createFileRoute("/_app/ask")({
   loader: () => listThreadsFn(),
@@ -15,6 +20,7 @@ export const Route = createFileRoute("/_app/ask")({
 });
 
 type Message = Awaited<ReturnType<typeof listMessagesFn>>[number];
+type Thread = Awaited<ReturnType<typeof listThreadsFn>>[number];
 /**
  * Only the streaming-in-progress assistant message is ever client-only (no id yet) — every other message on screen came from listMessagesFn.
  * `messageId` is the saved assistant message that owns `proposals`; Apply/Discard need it, so they stay off until the answer is saved.
@@ -47,8 +53,13 @@ const PROPOSAL_KIND_ICONS = {
 
 const CHIP_CLASS = "inline-flex h-6 max-w-[260px] items-center gap-1.5 rounded-full border border-border bg-surface px-2 text-[12px] text-text-2";
 const CHIP_LINK_CLASS = `${CHIP_CLASS} transition-colors hover:border-border-2 hover:bg-surface-2 hover:text-text`;
+const CHIP_ACTIVE_CLASS = "border-accent bg-accent-soft text-text";
 
-function CitationChip({ c }: { c: AskCitation }) {
+/**
+ * A cited source. With a ref, the chip opens the preview panel in place; a small trailing icon still navigates to the full page.
+ * Legacy citations without a ref stay inert.
+ */
+function CitationChip({ c, active, onOpen }: { c: AskCitation; active: boolean; onOpen: (c: AskCitation) => void }) {
   const { t } = useTranslation("ask");
   const Icon = c.entityType === "page" ? FileText : c.entityType === "comment" ? MessageSquare : Ticket;
   const label = c.entityType === "page" ? t("sourcePage") : c.entityType === "comment" ? t("sourceComment") : t("sourceIssue");
@@ -60,30 +71,170 @@ function CitationChip({ c }: { c: AskCitation }) {
     </>
   );
 
-  // Citations stored before live enrichment carry no ref, so they render as the plain chip they always did.
-  if (c.ref?.kind === "issue") {
+  if (!c.ref) {
     return (
+      <span title={c.excerpt} className={CHIP_CLASS}>
+        {body}
+      </span>
+    );
+  }
+
+  const fullLink =
+    c.ref.kind === "issue" ? (
       <Link
         to="/issues/$teamId/$projectKey/$issueKeySeq"
         params={{ teamId: c.ref.teamId ?? "none", projectKey: c.ref.projectKey, issueKeySeq: String(c.ref.keySeq) }}
+        title={t("openSource")}
+        aria-label={t("openSource")}
+        className="grid h-6 w-6 flex-none place-items-center rounded-full text-text-3 transition-colors hover:bg-surface-3 hover:text-text"
+      >
+        <ExternalLink size={12} />
+      </Link>
+    ) : (
+      <Link
+        to="/docs/$pageId"
+        params={{ pageId: c.ref.pageId }}
+        title={t("openSource")}
+        aria-label={t("openSource")}
+        className="grid h-6 w-6 flex-none place-items-center rounded-full text-text-3 transition-colors hover:bg-surface-3 hover:text-text"
+      >
+        <ExternalLink size={12} />
+      </Link>
+    );
+
+  return (
+    <span className="inline-flex max-w-full items-center gap-0.5">
+      <button
+        type="button"
+        onClick={() => onOpen(c)}
+        aria-pressed={active}
         title={c.excerpt}
-        className={CHIP_LINK_CLASS}
+        className={cn(CHIP_LINK_CLASS, "min-w-0", active && CHIP_ACTIVE_CLASS)}
       >
         {body}
-      </Link>
-    );
-  }
-  if (c.ref?.kind === "page") {
-    return (
-      <Link to="/docs/$pageId" params={{ pageId: c.ref.pageId }} title={c.excerpt} className={CHIP_LINK_CLASS}>
-        {body}
-      </Link>
-    );
-  }
-  return (
-    <span title={c.excerpt} className={CHIP_CLASS}>
-      {body}
+      </button>
+      {fullLink}
     </span>
+  );
+}
+
+/**
+ * One conversation in the left list. The select button and the menu button are siblings (never a button inside a button).
+ * Rename swaps the title for an inline input; the parent performs the server call, so this row only owns its own edit state.
+ */
+function ThreadRow({
+  thread,
+  selected,
+  onSelect,
+  onRename,
+  onRequestDelete,
+}: {
+  thread: Thread;
+  selected: boolean;
+  onSelect: () => void;
+  onRename: (title: string) => void;
+  onRequestDelete: () => void;
+}) {
+  const { t } = useTranslation("ask");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const menuRef = useRef<HTMLButtonElement>(null);
+  /** Enter, Escape and the blur that follows the input unmounting must settle the edit exactly once. */
+  const settledRef = useRef(false);
+  const currentTitle = thread.title ?? "";
+
+  function startRename() {
+    setMenuOpen(false);
+    settledRef.current = false;
+    setDraft(currentTitle);
+    setEditing(true);
+  }
+
+  function settle(save: boolean) {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    setEditing(false);
+    const next = draft.trim();
+    if (save && next && next !== currentTitle) onRename(next);
+  }
+
+  return (
+    <div
+      className={cn(
+        "group flex h-8 items-center rounded-[6px] hover:bg-surface-3 focus-within:bg-surface-3",
+        selected ? "bg-surface-4" : "",
+      )}
+    >
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          aria-label={t("renameChat")}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={() => settle(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              settle(true);
+            } else if (e.key === "Escape") {
+              // Keeps the Ask preview's window-level Escape handler from also firing.
+              e.preventDefault();
+              e.stopPropagation();
+              settle(false);
+            }
+          }}
+          className="mx-1 h-7 min-w-0 flex-1 rounded-[5px] border border-border-2 bg-surface px-2 text-[13.5px] text-text outline-none focus:border-accent"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-current={selected ? "true" : undefined}
+          className={cn(
+            "flex h-8 min-w-0 flex-1 items-center truncate rounded-[6px] px-2 text-left text-[13.5px]",
+            selected ? "font-medium text-text" : "text-text-2",
+          )}
+        >
+          <span className="truncate">{thread.title || t("untitledThread")}</span>
+        </button>
+      )}
+      {!editing && (
+        <IconButton
+          ref={menuRef}
+          size="sm"
+          aria-label={t("chatActions")}
+          title={t("chatActions")}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((v) => !v)}
+          className={cn(
+            "mr-0.5 flex-none opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100",
+            menuOpen && "opacity-100 md:opacity-100",
+          )}
+        >
+          <MoreHorizontal size={14} />
+        </IconButton>
+      )}
+      <Popover open={menuOpen} onClose={() => setMenuOpen(false)} anchorRef={menuRef} placement="bottom-end" role="menu">
+        <MenuList>
+          <MenuItem icon={<Pencil size={14} />} onClick={startRename}>
+            {t("renameChat")}
+          </MenuItem>
+          <MenuItem
+            danger
+            icon={<Trash2 size={14} />}
+            onClick={() => {
+              setMenuOpen(false);
+              onRequestDelete();
+            }}
+          >
+            {t("deleteChat")}
+          </MenuItem>
+        </MenuList>
+      </Popover>
+    </div>
   );
 }
 
@@ -199,6 +350,10 @@ function AskPage() {
   /** The tool the model is running right now, shown as a transient status line. Cleared when text starts arriving or the answer ends. */
   const [toolName, setToolName] = useState<string | null>(null);
   const [threadListOpen, setThreadListOpen] = useState(true);
+  /** The cited source shown in the right-hand panel. Cleared on new chat, on switching thread, and when the open thread is deleted. */
+  const [preview, setPreview] = useState<AskCitation | null>(null);
+  /** The thread id awaiting delete confirmation. */
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -243,6 +398,17 @@ function AskPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
+  useEffect(() => {
+    if (!preview) return;
+    function onKey(e: KeyboardEvent) {
+      // Escape already handled by an open menu (capture phase, stops propagation) or the rename input; the delete dialog
+      // closes on its own Escape without stopping propagation, so skip while it is open.
+      if (e.key === "Escape" && !e.defaultPrevented && deleteTarget === null) setPreview(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [preview, deleteTarget]);
+
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -259,7 +425,27 @@ function AskPage() {
     setSelectedThreadId(null);
     setMessages([]);
     setError(null);
+    setPreview(null);
     inputRef.current?.focus();
+  }
+
+  /** Optimistic: the list shows the new title at once; a failed save puts the previous title back and shows the error. */
+  async function renameChat(threadId: string, title: string) {
+    const previous = threads.find((th) => th.id === threadId)?.title ?? null;
+    setThreads((prev) => prev.map((th) => (th.id === threadId ? { ...th, title } : th)));
+    try {
+      await renameThreadFn({ data: { threadId, title } });
+    } catch (err) {
+      setThreads((prev) => prev.map((th) => (th.id === threadId ? { ...th, title: previous } : th)));
+      setError(err instanceof Error ? err.message : t("renameFailed"));
+    }
+  }
+
+  /** Errors propagate so ConfirmDialog shows them inline and stays open. */
+  async function deleteChat(threadId: string) {
+    await deleteThreadFn({ data: threadId });
+    setThreads((prev) => prev.filter((th) => th.id !== threadId));
+    if (selectedThreadId === threadId) newChat();
   }
 
   async function ask(text?: string) {
@@ -349,19 +535,18 @@ function AskPage() {
           <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
             {threads.length === 0 && <p className="px-2 py-1 text-[13px] text-text-3">{t("noConversationsYet")}</p>}
             {threads.map((th) => (
-              <button
+              <ThreadRow
                 key={th.id}
-                onClick={() => {
+                thread={th}
+                selected={selectedThreadId === th.id}
+                onSelect={() => {
                   setSelectedThreadId(th.id);
+                  setPreview(null);
                   if (window.matchMedia("(max-width: 767px)").matches) setThreadListOpen(false);
                 }}
-                className={cn(
-                  "flex h-8 w-full items-center truncate rounded-[6px] px-2 text-left text-[13.5px] hover:bg-surface-3",
-                  selectedThreadId === th.id ? "bg-surface-4 font-medium text-text" : "text-text-2",
-                )}
-              >
-                <span className="truncate">{th.title || t("untitledThread")}</span>
-              </button>
+                onRename={(title) => renameChat(th.id, title)}
+                onRequestDelete={() => setDeleteTarget(th.id)}
+              />
             ))}
           </div>
         </aside>
@@ -411,7 +596,7 @@ function AskPage() {
                     </span>
                     <div className="min-w-0 flex-1">
                       {m.content ? (
-                        <p className="whitespace-pre-wrap text-[15px] leading-[1.7] text-text">{m.content}</p>
+                        <Markdown content={m.content} className="text-[15px] leading-[1.7] text-text" />
                       ) : (
                         <p className="flex items-center gap-2 text-[14px] text-text-3">
                           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-text-3" />
@@ -423,7 +608,12 @@ function AskPage() {
                           <p className="mb-1.5 text-[12px] font-medium text-text-3">{t("sources")}</p>
                           <div className="flex flex-wrap gap-1.5">
                             {m.citations.map((c, i) => (
-                              <CitationChip key={i} c={c} />
+                              <CitationChip
+                                key={i}
+                                c={c}
+                                active={preview?.entityType === c.entityType && preview?.entityId === c.entityId}
+                                onOpen={(next) => setPreview(next)}
+                              />
                             ))}
                           </div>
                         </div>
@@ -488,6 +678,20 @@ function AskPage() {
           </div>
         </div>
       </div>
+
+      {preview && <SourcePanel key={`${preview.entityType}:${preview.entityId}`} citation={preview} onClose={() => setPreview(null)} />}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title={t("deleteChatTitle")}
+        body={t("deleteChatBody")}
+        confirmLabel={t("deleteChat")}
+        cancelLabel={t("cancel")}
+        onConfirm={async () => {
+          if (deleteTarget) await deleteChat(deleteTarget);
+        }}
+      />
     </div>
   );
 }

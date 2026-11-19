@@ -13,6 +13,7 @@ import {
   type UpdateEmbeddingSettingsInput,
 } from "./settings";
 import { AiNotConfiguredError, recordAiUsage } from "./ai";
+import { NotFoundError, UserFacingError } from "./errors";
 import { enrichCandidates, type EnrichedCandidate, type RagEnrichment } from "./rag-enrich";
 import { askTools, runAskTool, ASK_WRITE_TOOL_NAMES, proposeAskWrite, type AskProposal } from "./ask-tools";
 import { toPlainText } from "./rich-text";
@@ -421,6 +422,32 @@ export async function createThread(tx: Tx, input: { organizationId: string; user
 
 export async function listThreads(tx: Tx, userId: string) {
   return tx.select().from(schema.aiThread).where(eq(schema.aiThread.userId, userId)).orderBy(sql`${schema.aiThread.updatedAt} desc`);
+}
+
+/**
+ * Renames one of the caller's own threads. Does not touch `updatedAt`, so a rename never reorders the list.
+ * RLS already limits `ai_thread` to its owner; the explicit userId filter is belt-and-braces.
+ */
+export async function renameThread(tx: Tx, userId: string, input: { threadId: string; title: string }) {
+  const title = input.title.trim();
+  if (!title) throw new UserFacingError("Conversation title can't be empty");
+  const rows = await tx
+    .update(schema.aiThread)
+    .set({ title: title.slice(0, 200) })
+    .where(and(eq(schema.aiThread.id, input.threadId), eq(schema.aiThread.userId, userId)))
+    .returning({ id: schema.aiThread.id });
+  if (rows.length === 0) throw new NotFoundError("Conversation not found");
+  return { threadId: input.threadId };
+}
+
+/** Deletes one of the caller's own threads. Its ai_message rows cascade. */
+export async function deleteThread(tx: Tx, userId: string, threadId: string) {
+  const rows = await tx
+    .delete(schema.aiThread)
+    .where(and(eq(schema.aiThread.id, threadId), eq(schema.aiThread.userId, userId)))
+    .returning({ id: schema.aiThread.id });
+  if (rows.length === 0) throw new NotFoundError("Conversation not found");
+  return { threadId };
 }
 
 export async function listMessages(tx: Tx, threadId: string) {

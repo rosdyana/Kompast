@@ -23,6 +23,7 @@ import {
   getSprintRetroPage,
   getOrCreateSprintRetroPage,
   reorderSprintIssue,
+  deleteSprint,
 } from "../sprint";
 
 describe("sprint lifecycle", () => {
@@ -395,5 +396,77 @@ describe("sprint lifecycle", () => {
     const originalOrder = [issueA, issueB, issueC];
     const sortedByGlobalRank = [...globalRanks].sort((a, b) => (a.rank < b.rank ? -1 : 1)).map((r) => r.id);
     expect(sortedByGlobalRank).toEqual(originalOrder);
+  });
+
+  describe("deleteSprint", () => {
+    it("deletes an empty future sprint and archives (not hard-deletes) its linked minutes and retro pages", async () => {
+      const { boardId } = await seedProject();
+      const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1", actorUserId: userId }));
+      const minutes = await withAuthorizedTenant(ctx, (tx) => getSprintMinutesPage(tx, sprintId));
+      const sprintBefore = await withAuthorizedTenant(ctx, (tx) => getSprint(tx, sprintId));
+      const retroPageId = sprintBefore!.retroPageId!;
+      expect(minutes).not.toBeNull();
+      expect(retroPageId).toBeTruthy();
+
+      await withAuthorizedTenant(ctx, (tx) => deleteSprint(tx, { sprintId, issues: "backlog", actorId: userId }));
+
+      expect(await withAuthorizedTenant(ctx, (tx) => getSprint(tx, sprintId))).toBeNull();
+      const [minutesRow] = await admin.select().from(schema.page).where(eq(schema.page.id, minutes!.id));
+      expect(minutesRow).toBeDefined();
+      expect(minutesRow!.archivedAt).not.toBeNull();
+      expect(minutesRow!.sprintId).toBeNull();
+      const [retroRow] = await admin.select().from(schema.page).where(eq(schema.page.id, retroPageId));
+      expect(retroRow).toBeDefined();
+      expect(retroRow!.archivedAt).not.toBeNull();
+    });
+
+    it("moves a future sprint's issues back to the backlog (not archived) and writes a 'sprint' history row", async () => {
+      const { projectId, boardId, issueTypes, statuses } = await seedProject();
+      const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));
+      const issueA = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id, 2));
+      const issueB = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id, 3));
+      await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, sprintId, issueA));
+      await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, sprintId, issueB));
+
+      await withAuthorizedTenant(ctx, (tx) => deleteSprint(tx, { sprintId, issues: "backlog", actorId: userId }));
+
+      expect(await withAuthorizedTenant(ctx, (tx) => getSprint(tx, sprintId))).toBeNull();
+      const backlog = await withAuthorizedTenant(ctx, (tx) => listBacklogIssues(tx, projectId));
+      expect(backlog.map((i) => i.id).sort()).toEqual([issueA, issueB].sort());
+
+      for (const issueId of [issueA, issueB]) {
+        const [row] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+        expect(row!.sprintId).toBeNull();
+        expect(row!.archivedAt).toBeNull();
+        const history = await admin.select().from(schema.issueHistory).where(eq(schema.issueHistory.issueId, issueId));
+        expect(history.find((h) => h.field === "sprint" && h.toValue === null)).toMatchObject({ actorId: userId, fromValue: sprintId });
+      }
+    });
+
+    it("archives a future sprint's issues when issues is 'archive', clearing their sprint", async () => {
+      const { projectId, boardId, issueTypes, statuses } = await seedProject();
+      const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));
+      const issueId = await withAuthorizedTenant(ctx, (tx) => seedIssue(tx, projectId, issueTypes[0]!.id, statuses[0]!.id, 2));
+      await withAuthorizedTenant(ctx, (tx) => addIssueToSprint(tx, sprintId, issueId));
+
+      await withAuthorizedTenant(ctx, (tx) => deleteSprint(tx, { sprintId, issues: "archive", actorId: userId }));
+
+      const [row] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+      expect(row!.sprintId).toBeNull();
+      expect(row!.archivedAt).not.toBeNull();
+      const backlog = await withAuthorizedTenant(ctx, (tx) => listBacklogIssues(tx, projectId));
+      expect(backlog.map((i) => i.id)).not.toContain(issueId);
+    });
+
+    it("refuses to delete an active sprint and leaves it in place", async () => {
+      const { boardId } = await seedProject();
+      const { sprintId } = await withAuthorizedTenant(ctx, (tx) => createSprint(tx, { organizationId: orgId, boardId, name: "Sprint 1" }));
+      await withAuthorizedTenant(ctx, (tx) => startSprint(tx, { sprintId, actorId: userId }));
+
+      await expect(withAuthorizedTenant(ctx, (tx) => deleteSprint(tx, { sprintId, issues: "backlog", actorId: userId }))).rejects.toThrow(/haven't started/);
+
+      const sprint = await withAuthorizedTenant(ctx, (tx) => getSprint(tx, sprintId));
+      expect(sprint!.state).toBe("active");
+    });
   });
 });

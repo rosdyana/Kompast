@@ -11,7 +11,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { ChevronRight, Filter, GripVertical, MoreHorizontal, Plus, Sparkles, X } from "lucide-react";
+import { ChevronRight, Filter, GripVertical, MoreHorizontal, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { Button, IconButton } from "@kompast/ui/Button";
 import { Avatar, UnassignedAvatar } from "@kompast/ui/Avatar";
 import { Badge } from "@kompast/ui/Badge";
@@ -34,6 +34,7 @@ import {
   updateSprintFn,
   startSprintFn,
   completeSprintFn,
+  deleteSprintFn,
   addIssueToSprintFn,
   removeIssueFromSprintFn,
 } from "@/lib/server-fns/sprints";
@@ -100,6 +101,7 @@ export function BacklogView({ data, teamId }: { data: BoardData; teamId: string 
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   const typeMenuRef = useRef<HTMLButtonElement>(null);
   const [completing, setCompleting] = useState<Sprint | null>(null);
+  const [deleting, setDeleting] = useState<Sprint | null>(null);
   const [aiFor, setAiFor] = useState<string | null>(null);
   const [aiText, setAiText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
@@ -411,6 +413,7 @@ export function BacklogView({ data, teamId }: { data: BoardData; teamId: string 
                   onRename={(name) => mutate(null, () => updateSprintFn({ data: { sprintId: sprint.id, name } }))}
                   onStart={() => mutate(null, () => startSprintFn({ data: sprint.id }))}
                   onComplete={() => setCompleting(sprint)}
+                  onDelete={() => setDeleting(sprint)}
                   onAiSummary={() => generateSummary(sprint.id)}
                   disabled={pending > 0}
                 />
@@ -497,6 +500,17 @@ export function BacklogView({ data, teamId }: { data: BoardData; teamId: string 
           if (sprint) await mutate(null, () => completeSprintFn({ data: { sprintId: sprint.id, carryToSprintId } }));
         }}
       />
+
+      <DeleteSprintDialog
+        sprint={deleting}
+        issueCount={deleting ? (lists[deleting.id] ?? []).length : 0}
+        onClose={() => setDeleting(null)}
+        onConfirm={async (issues) => {
+          const sprint = deleting;
+          setDeleting(null);
+          if (sprint) await mutate(null, () => deleteSprintFn({ data: { sprintId: sprint.id, issues } }));
+        }}
+      />
     </DndContext>
   );
 }
@@ -580,6 +594,7 @@ function SprintHeader({
   onRename,
   onStart,
   onComplete,
+  onDelete,
   onAiSummary,
   disabled,
 }: {
@@ -591,6 +606,7 @@ function SprintHeader({
   onRename: (name: string) => void;
   onStart: () => void;
   onComplete: () => void;
+  onDelete: () => void;
   onAiSummary: () => void;
   disabled: boolean;
 }) {
@@ -688,6 +704,21 @@ function SprintHeader({
             >
               {t("backlog.aiSummary")}
             </MenuItem>
+            {sprint.state === "future" && (
+              <>
+                <MenuSeparator />
+                <MenuItem
+                  danger
+                  icon={<Trash2 size={15} />}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onDelete();
+                  }}
+                >
+                  {t("backlog.deleteSprint")}
+                </MenuItem>
+              </>
+            )}
           </MenuList>
         </Popover>
       </div>
@@ -859,6 +890,61 @@ function CreateRow({ onCreate, disabled }: { onCreate: (title: string) => Promis
       />
       {busy && <Spinner size={14} />}
     </div>
+  );
+}
+
+export function DeleteSprintDialog({
+  sprint,
+  issueCount,
+  onClose,
+  onConfirm,
+}: {
+  sprint: { id: string; name: string } | null;
+  issueCount: number;
+  onClose: () => void;
+  onConfirm: (issues: "backlog" | "archive") => void;
+}) {
+  const { t } = useTranslation("board");
+  const [issues, setIssues] = useState<"backlog" | "archive">("backlog");
+  useEffect(() => {
+    if (sprint) setIssues("backlog");
+  }, [sprint]);
+
+  return (
+    <Dialog
+      open={!!sprint}
+      onClose={onClose}
+      size="sm"
+      title={sprint ? t("backlog.deleteSprintTitle", { name: sprint.name }) : ""}
+      description={t("backlog.deleteSprintBody")}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            {t("cancel")}
+          </Button>
+          <Button variant="danger" onClick={() => onConfirm(issueCount > 0 ? issues : "backlog")}>
+            {t("backlog.deleteSprintConfirm")}
+          </Button>
+        </>
+      }
+    >
+      {issueCount > 0 && (
+        <fieldset className="flex flex-col gap-3">
+          <legend className="mb-1.5 text-[13px] font-medium text-text-2">{t("backlog.deleteSprintIssuesPrompt", { count: issueCount })}</legend>
+          <label className="flex items-start gap-2.5">
+            <input type="radio" name="delete-sprint-issues" className="mt-1" checked={issues === "backlog"} onChange={() => setIssues("backlog")} />
+            <span className="text-[14px] text-text">{t("backlog.deleteSprintMoveToBacklog")}</span>
+          </label>
+          <label className="flex items-start gap-2.5">
+            <input type="radio" name="delete-sprint-issues" className="mt-1" checked={issues === "archive"} onChange={() => setIssues("archive")} />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-[14px] text-text">{t("backlog.deleteSprintArchiveIssues")}</span>
+              <span className="type-small text-text-3">{t("backlog.deleteSprintArchiveHint")}</span>
+            </span>
+          </label>
+        </fieldset>
+      )}
+    </Dialog>
   );
 }
 

@@ -790,7 +790,16 @@
     "futureBadge": "Planned",
     "summaryEmpty": "Nothing generated yet.",
     "regenerate": "Regenerate",
-    "createdToast": "{{key}} created"
+    "createdToast": "{{key}} created",
+    "deleteSprint": "Delete sprint",
+    "deleteSprintTitle": "Delete {{name}}?",
+    "deleteSprintBody": "Its linked Minutes and Retro docs move to Trash.",
+    "deleteSprintIssuesPrompt_one": "This sprint has {{count}} issue. What should happen to it?",
+    "deleteSprintIssuesPrompt_other": "This sprint has {{count}} issues. What should happen to them?",
+    "deleteSprintMoveToBacklog": "Move to backlog",
+    "deleteSprintArchiveIssues": "Archive issues",
+    "deleteSprintArchiveHint": "Archived issues can be restored from the issue.",
+    "deleteSprintConfirm": "Delete sprint"
   },
   "tableEdit": {
     "saveFailed": "Couldn't update {{key}}",
