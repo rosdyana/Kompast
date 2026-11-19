@@ -1141,6 +1141,41 @@ describe("packages/core/rag", () => {
         expect(JSON.parse(await runAskTool(ctx, { id: "c", name: "list_issues", input: { limit: "ten" } })).error).toMatch(/limit/);
         expect(JSON.parse(await runAskTool(ctx, { id: "d", name: "list_issues", input: { sprint: "Sprint 1" } })).error).toMatch(/projectKey/);
       });
+
+      it("a write tool only drafts: nothing is created, the model is told it is pending, and later turns see the drafted line", async () => {
+        const { projectId } = await seedProject();
+        const fetchMock = stubChatScript((call) =>
+          call === 0
+            ? anthropicToolUseResponse("create_issue", { projectKey: "rag", title: "Scripted proposal" }, { input: 10, output: 3 })
+            : anthropicTextResponse("I drafted it for your approval.", { input: 20, output: 6 }),
+        );
+        const onProposal = vi.fn();
+
+        const result = await askKompast(ctx, { question: "create an issue called Scripted proposal", onProposal });
+
+        expect(result.answer).toBe("I drafted it for your approval.");
+        expect(result.proposals).toHaveLength(1);
+        expect(result.proposals[0]).toMatchObject({ kind: "create_issue", status: "pending", preview: { title: "Scripted proposal" } });
+        expect(onProposal).toHaveBeenCalledWith(expect.objectContaining({ kind: "create_issue" }));
+
+        expect(await adminDb.select().from(schema.issue).where(eq(schema.issue.projectId, projectId))).toHaveLength(0);
+
+        const bodies = chatBodies(fetchMock);
+        expect(bodies[0]!.tools.map((t: { name: string }) => t.name)).toContain("create_issue");
+        const toolResult = bodies[1]!.messages.flatMap((m: { content: unknown }) => (Array.isArray(m.content) ? m.content : [])).find((b: { type: string }) => b.type === "tool_result");
+        expect(toolResult.content).toContain("proposed");
+
+        const [stored] = await adminDb.select().from(schema.aiMessage).where(eq(schema.aiMessage.id, result.messageId));
+        expect(stored).toMatchObject({ role: "assistant", content: "I drafted it for your approval." });
+        expect(stored!.proposals).toEqual(result.proposals);
+
+        // A follow-up on the same thread sees the drafted change in its history, so it can't claim the change was made.
+        const followUpFetch = stubChatScript(() => anthropicTextResponse("Still waiting on you.", { input: 1, output: 1 }));
+        await askKompast(ctx, { threadId: result.threadId, question: "is it done?" });
+        const followUp = JSON.stringify(chatBodies(followUpFetch)[0]);
+        expect(followUp).toContain("[Drafted create_issue");
+        expect(followUp).toContain("pending");
+      });
     });
 
     describe("thread ownership", () => {

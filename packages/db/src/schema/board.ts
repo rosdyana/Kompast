@@ -45,6 +45,8 @@ export const boardColumn = pgTable("board_column", {
   color: text("color").notNull(),
   order: integer("order").notNull().default(0),
   wipLimit: integer("wip_limit"),
+  /** Cards in this column longer than this many days are highlighted as stuck; null = off. */
+  stuckAfterDays: integer("stuck_after_days"),
   /** The one column new issues land in and that isn't user-deletable. */
   isBacklog: boolean("is_backlog").notNull().default(false),
 });

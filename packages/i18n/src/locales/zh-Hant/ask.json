@@ -30,5 +30,21 @@
   "toolGetIssue": "正在讀取議題…",
   "toolGetSprint": "正在查看衝刺…",
   "toolSearchWorkspace": "正在搜尋文件與留言…",
-  "toolGeneric": "正在查詢資料…"
+  "toolGeneric": "正在查詢資料…",
+  "toolCreateIssue": "正在草擬議題…",
+  "toolAddComment": "正在草擬留言…",
+  "toolCreatePage": "正在草擬頁面…",
+  "proposalKindIssue": "新議題",
+  "proposalKindComment": "新留言",
+  "proposalKindPage": "新頁面",
+  "proposalDraftNote": "草稿，套用前不會建立任何內容。",
+  "proposalApply": "套用",
+  "proposalDiscard": "捨棄",
+  "proposalApplied": "已套用",
+  "proposalDiscarded": "已捨棄",
+  "proposalShowFull": "顯示完整內容",
+  "proposalHideFull": "隱藏完整內容",
+  "proposalFailed": "無法套用此變更，請再試一次。",
+  "proposalOpenIssue": "開啟議題",
+  "proposalOpenPage": "開啟頁面"
 }

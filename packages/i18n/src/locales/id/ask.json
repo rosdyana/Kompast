@@ -30,5 +30,21 @@
   "toolGetIssue": "Membaca issue…",
   "toolGetSprint": "Memeriksa sprint…",
   "toolSearchWorkspace": "Mencari dokumen dan komentar…",
-  "toolGeneric": "Mencari informasi…"
+  "toolGeneric": "Mencari informasi…",
+  "toolCreateIssue": "Menyiapkan issue…",
+  "toolAddComment": "Menyiapkan komentar…",
+  "toolCreatePage": "Menyiapkan halaman…",
+  "proposalKindIssue": "Issue baru",
+  "proposalKindComment": "Komentar baru",
+  "proposalKindPage": "Halaman baru",
+  "proposalDraftNote": "Draf. Belum ada yang dibuat sampai Anda menerapkannya.",
+  "proposalApply": "Terapkan",
+  "proposalDiscard": "Buang",
+  "proposalApplied": "Diterapkan",
+  "proposalDiscarded": "Dibuang",
+  "proposalShowFull": "Tampilkan isi lengkap",
+  "proposalHideFull": "Sembunyikan isi lengkap",
+  "proposalFailed": "Perubahan ini tidak dapat diterapkan. Coba lagi.",
+  "proposalOpenIssue": "Buka issue",
+  "proposalOpenPage": "Buka halaman"
 }

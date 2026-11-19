@@ -601,7 +601,12 @@ export function KanbanBoard({ data }: { data: BoardData }) {
       <DragOverlay dropAnimation={null}>
         {activeIssue ? (
           <div className="relative w-[264px] rotate-[1.5deg] cursor-grabbing">
-            <CardBody issue={activeIssue} {...cardCommon} lifted />
+            <CardBody
+              issue={activeIssue}
+              {...cardCommon}
+              lifted
+              stuckAfterDays={cardCommon.columns.find((c) => c.issues.some((i) => i.id === activeIssue.id))?.stuckAfterDays}
+            />
             {selectedIds.has(activeIssue.id) && selectedIds.size > 1 && (
               <span className="absolute -right-2 -top-2 rounded-full bg-accent px-1.5 text-[11px] font-semibold text-white">
                 +{selectedIds.size - 1}
@@ -614,9 +619,19 @@ export function KanbanBoard({ data }: { data: BoardData }) {
   );
 }
 
+const DAY_MS = 86_400_000;
+
+/** Whole days since the card entered its status, when its column has a stuck threshold and the card has reached it; otherwise null. */
+function stuckDaysFor(issue: BoardIssue, stuckAfterDays: number | null | undefined): number | null {
+  if (stuckAfterDays == null) return null;
+  const days = Math.floor((Date.now() - new Date(issue.statusEnteredAt).getTime()) / DAY_MS);
+  return days >= stuckAfterDays ? days : null;
+}
+
 function ColumnHeader({ column, compact }: { column: Column; compact?: boolean }) {
   const { t } = useTranslation("board");
   const over = column.wipLimit != null && column.issues.length > column.wipLimit;
+  const stuckCount = column.stuckAfterDays == null ? 0 : column.issues.filter((i) => stuckDaysFor(i, column.stuckAfterDays) !== null).length;
   return (
     <div
       className={cn(
@@ -632,6 +647,11 @@ function ColumnHeader({ column, compact }: { column: Column; compact?: boolean }
         {column.issues.length}
         {column.wipLimit != null && <span className="font-normal"> / {column.wipLimit}</span>}
       </span>
+      {stuckCount > 0 && (
+        <span className="flex-none whitespace-nowrap rounded-[4px] bg-amber-soft px-1.5 text-[11.5px] font-medium text-amber">
+          {t("boardView.stuckCount", { count: stuckCount })}
+        </span>
+      )}
     </div>
   );
 }
@@ -925,6 +945,7 @@ function CardBody({
   menu,
   checklist,
   selectControl,
+  stuckAfterDays,
 }: Pick<CardCommon, "projectKey" | "issueTypesById" | "usersById" | "priorityLevelsByKey" | "epicsById" | "visibleProperties"> & {
   issue: BoardIssue;
   lifted?: boolean;
@@ -934,7 +955,10 @@ function CardBody({
   checklist?: React.ReactNode;
   /** Selection checkbox (real card only; the drag overlay shows none). */
   selectControl?: React.ReactNode;
+  /** The card's column threshold (board_column.stuck_after_days); null/undefined = no stuck highlighting. */
+  stuckAfterDays?: number | null;
 }) {
+  const { t } = useTranslation("board");
   const locale = useIntlLocale();
   const type = issueTypesById.get(issue.typeId);
   const assignee = issue.assigneeId ? usersById.get(issue.assigneeId) : undefined;
@@ -946,9 +970,16 @@ function CardBody({
     .filter((c): c is { def: (typeof visibleProperties)[number]; text: string } => c.text !== null);
   const due = issue.dueDate ? new Date(issue.dueDate) : null;
   const overdue = due ? due.getTime() < Date.now() : false;
+  const stuckDays = stuckDaysFor(issue, stuckAfterDays);
 
   return (
-    <div className={cn("group/card rounded-[8px] bg-surface p-3 shadow-card transition-shadow", lifted ? "shadow-lift" : "hover:shadow-lift")}>
+    <div
+      className={cn(
+        "group/card rounded-[8px] bg-surface p-3 shadow-card transition-shadow",
+        lifted ? "shadow-lift" : "hover:shadow-lift",
+        stuckDays !== null && "border-l-2 border-l-amber",
+      )}
+    >
       <div className="flex items-start gap-2">
         {selectControl}
         <div className="min-w-0 flex-1">{title ?? <p className="line-clamp-2 text-[14px] leading-snug text-text">{issue.title}</p>}</div>
@@ -978,6 +1009,14 @@ function CardBody({
         {due && (
           <span className={cn("rounded-[4px] px-1 text-[11.5px]", overdue ? "bg-danger-soft text-danger" : "text-text-3")}>
             {due.toLocaleDateString(locale, { day: "numeric", month: "short" })}
+          </span>
+        )}
+        {stuckDays !== null && (
+          <span
+            title={t("boardView.stuckBadgeTitle", { date: formatShortDate(issue.statusEnteredAt, locale) })}
+            className="flex-none whitespace-nowrap rounded-[4px] bg-amber-soft px-1 text-[11.5px] font-medium text-amber"
+          >
+            {t("boardView.stuckBadge", { days: stuckDays })}
           </span>
         )}
         {checklist ?? (issue.checklist && <ChecklistBadge summary={issue.checklist} />)}
@@ -1232,7 +1271,15 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
         selected && "ring-2 ring-accent",
       )}
     >
-      <CardBody issue={issue} {...common} title={title} menu={menu} checklist={checklistBadge} selectControl={selectControl} />
+      <CardBody
+        issue={issue}
+        {...common}
+        title={title}
+        menu={menu}
+        checklist={checklistBadge}
+        selectControl={selectControl}
+        stuckAfterDays={common.columns.find((c) => c.id === columnId)?.stuckAfterDays}
+      />
     </Link>
   );
 }

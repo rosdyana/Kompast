@@ -83,6 +83,11 @@ function blockPlainText(block: unknown): string {
   return [ownText, childText].filter(Boolean).join("\n");
 }
 
+/** Plain text in, a one-paragraph BlockNote document out — the shape issue descriptions and comments are stored in. Moved here from apps/web's mcp-server.ts so Ask Kompast's apply path shares it. */
+export function paragraphDoc(text: string) {
+  return [{ type: "paragraph", content: [{ type: "text", text, styles: {} }] }];
+}
+
 /**
  * Collects every distinct `userMention` inline content node's `userId` out
  * of a Block[] JSON tree (descriptionJson/bodyJson), walking `content` and

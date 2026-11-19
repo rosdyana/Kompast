@@ -3,7 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, FileText, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, Square, Ticket } from "lucide-react";
 import { Button, IconButton } from "@kompast/ui/Button";
 import { useTranslation } from "@kompast/i18n";
-import { listThreadsFn, listMessagesFn } from "@/lib/server-fns/ask";
+import type { AskProposal } from "@kompast/core";
+import { listThreadsFn, listMessagesFn, applyAskProposalFn, discardAskProposalFn } from "@/lib/server-fns/ask";
 import { streamAskKompast, type AskCitation } from "@/lib/ask-stream-client";
 import { cn } from "@/lib/cn";
 import { usePageChrome } from "@/components/shell/WorkbenchContext";
@@ -14,8 +15,11 @@ export const Route = createFileRoute("/_app/ask")({
 });
 
 type Message = Awaited<ReturnType<typeof listMessagesFn>>[number];
-/** Only the streaming-in-progress assistant message is ever client-only (no id yet) — every other message on screen came from listMessagesFn. */
-type DisplayMessage = Pick<Message, "role" | "content"> & { id: string; citations?: AskCitation[] };
+/**
+ * Only the streaming-in-progress assistant message is ever client-only (no id yet) — every other message on screen came from listMessagesFn.
+ * `messageId` is the saved assistant message that owns `proposals`; Apply/Discard need it, so they stay off until the answer is saved.
+ */
+type DisplayMessage = Pick<Message, "role" | "content"> & { id: string; citations?: AskCitation[]; proposals?: AskProposal[]; messageId?: string };
 
 /** Which status line to show for a running lookup. An unrecognized tool name falls back to a generic line rather than rendering nothing. */
 const TOOL_STATUS_KEYS = {
@@ -24,6 +28,21 @@ const TOOL_STATUS_KEYS = {
   get_issue: "toolGetIssue",
   get_sprint: "toolGetSprint",
   search_workspace: "toolSearchWorkspace",
+  create_issue: "toolCreateIssue",
+  add_comment: "toolAddComment",
+  create_page: "toolCreatePage",
+} as const;
+
+const PROPOSAL_KIND_KEYS = {
+  create_issue: "proposalKindIssue",
+  add_comment: "proposalKindComment",
+  create_page: "proposalKindPage",
+} as const;
+
+const PROPOSAL_KIND_ICONS = {
+  create_issue: Ticket,
+  add_comment: MessageSquare,
+  create_page: FileText,
 } as const;
 
 const CHIP_CLASS = "inline-flex h-6 max-w-[260px] items-center gap-1.5 rounded-full border border-border bg-surface px-2 text-[12px] text-text-2";
@@ -68,6 +87,106 @@ function CitationChip({ c }: { c: AskCitation }) {
   );
 }
 
+/**
+ * A drafted change under an assistant answer. Shows the preview as plain text (the full body is revealed on demand, never as HTML).
+ * Apply/Discard appear only when the proposal is pending and the answer is saved; the parent performs the server call and
+ * updates the proposal's status, and a failure is shown inline on the card.
+ */
+function ProposalCard({
+  proposal,
+  canAct,
+  onApply,
+  onDiscard,
+}: {
+  proposal: AskProposal;
+  canAct: boolean;
+  onApply: (proposal: AskProposal) => Promise<void>;
+  onDiscard: (proposal: AskProposal) => Promise<void>;
+}) {
+  const { t } = useTranslation("ask");
+  const [showFull, setShowFull] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const Icon = PROPOSAL_KIND_ICONS[proposal.kind];
+  const pending = proposal.status === "pending";
+
+  async function run(action: (p: AskProposal) => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await action(proposal);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("proposalFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const result = proposal.result;
+  const openLink =
+    proposal.status === "applied" && result ? (
+      result.pageId ? (
+        <Link to="/docs/$pageId" params={{ pageId: result.pageId }} className="text-[13px] text-accent-text hover:underline">
+          {t("proposalOpenPage")}
+        </Link>
+      ) : result.projectKey && result.keySeq !== undefined ? (
+        <Link
+          to="/issues/$teamId/$projectKey/$issueKeySeq"
+          params={{ teamId: result.teamId ?? "none", projectKey: result.projectKey, issueKeySeq: String(result.keySeq) }}
+          className="text-[13px] text-accent-text hover:underline"
+        >
+          {t("proposalOpenIssue")}
+        </Link>
+      ) : null
+    ) : null;
+
+  return (
+    <div className={cn("rounded-[10px] border border-border bg-surface p-3", proposal.status === "discarded" && "opacity-60")}>
+      <p className="flex items-center gap-1.5 text-[12px] font-medium text-text-3">
+        <Icon size={12} className="flex-none" />
+        {t(PROPOSAL_KIND_KEYS[proposal.kind])}
+      </p>
+      <p className="mt-1.5 text-[14.5px] font-medium text-text">{proposal.preview.title}</p>
+      {proposal.preview.lines.length > 0 && (
+        <ul className="mt-1 space-y-0.5 text-[13px] text-text-2">
+          {proposal.preview.lines.map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ul>
+      )}
+      {proposal.preview.body && (
+        <div className="mt-2">
+          <button type="button" onClick={() => setShowFull((v) => !v)} className="text-[12.5px] text-accent-text hover:underline">
+            {showFull ? t("proposalHideFull") : t("proposalShowFull")}
+          </button>
+          {showFull && (
+            <p className="mt-1.5 max-h-[320px] overflow-y-auto whitespace-pre-wrap rounded-[6px] bg-surface-2 p-2.5 text-[13.5px] leading-relaxed text-text-2">
+              {proposal.preview.body}
+            </p>
+          )}
+        </div>
+      )}
+      {error && <p className="mt-2 rounded-[6px] bg-danger-soft px-2.5 py-1.5 text-[12.5px] text-danger">{error}</p>}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {pending && canAct && (
+          <>
+            <Button variant="primary" size="sm" onClick={() => run(onApply)} disabled={busy}>
+              {t("proposalApply")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => run(onDiscard)} disabled={busy}>
+              {t("proposalDiscard")}
+            </Button>
+          </>
+        )}
+        {pending && !canAct && <p className="text-[12.5px] text-text-3">{t("proposalDraftNote")}</p>}
+        {proposal.status === "applied" && <span className="text-[13px] font-medium text-accent-text">{t("proposalApplied")}</span>}
+        {proposal.status === "discarded" && <span className="text-[13px] text-text-3">{t("proposalDiscarded")}</span>}
+        {openLink}
+      </div>
+    </div>
+  );
+}
+
 function AskPage() {
   const { t } = useTranslation("ask");
   const initialThreads = Route.useLoaderData();
@@ -104,7 +223,16 @@ function AskPage() {
     let cancelled = false;
     listMessagesFn({ data: selectedThreadId }).then((rows) => {
       if (!cancelled)
-        setMessages(rows.map((m) => ({ id: m.id, role: m.role, content: m.content, citations: (m.citations as AskCitation[] | null) ?? undefined })));
+        setMessages(
+          rows.map((m) => ({
+            id: m.id,
+            messageId: m.role === "assistant" ? m.id : undefined,
+            role: m.role,
+            content: m.content,
+            citations: (m.citations as AskCitation[] | null) ?? undefined,
+            proposals: (m.proposals as AskProposal[] | null) ?? undefined,
+          })),
+        );
     });
     return () => {
       cancelled = true;
@@ -157,18 +285,23 @@ function AskPage() {
         },
         controller.signal,
         (name) => setToolName(name),
+        (proposal) =>
+          setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, proposals: [...(m.proposals ?? []), proposal] } : m))),
       );
-      setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, citations: result.citations } : m)));
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantMsg.id ? { ...m, citations: result.citations, messageId: result.messageId } : m)),
+      );
       if (!selectedThreadId) {
         skipLoadFor.current = result.threadId;
         setSelectedThreadId(result.threadId);
       }
       await refreshThreads();
     } catch (err) {
+      // A stream that never saved its answer leaves no messageId, so any cards it streamed could never be applied: drop them.
       if (controller.signal.aborted) {
-        setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: m.content || t("stopped") } : m)));
+        setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: m.content || t("stopped"), proposals: undefined } : m)));
       } else {
-        setMessages((prev) => prev.filter((m) => m.id !== assistantMsg.id || m.content));
+        setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, proposals: undefined } : m)).filter((m) => m.id !== assistantMsg.id || m.content));
         setError(err instanceof Error ? err.message : t("askFailed"));
       }
     } finally {
@@ -176,6 +309,25 @@ function AskPage() {
       setToolName(null);
       setBusy(false);
     }
+  }
+
+  /** Swaps one proposal on one message for its server-returned state (applied or discarded). */
+  function replaceProposal(messageKey: string, next: AskProposal) {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageKey ? { ...m, proposals: m.proposals?.map((p) => (p.id === next.id ? next : p)) } : m)),
+    );
+  }
+
+  async function applyProposal(message: DisplayMessage, proposal: AskProposal) {
+    if (!message.messageId) return;
+    const next = await applyAskProposalFn({ data: { messageId: message.messageId, proposalId: proposal.id } });
+    replaceProposal(message.id, next);
+  }
+
+  async function discardProposal(message: DisplayMessage, proposal: AskProposal) {
+    if (!message.messageId) return;
+    const next = await discardAskProposalFn({ data: { messageId: message.messageId, proposalId: proposal.id } });
+    replaceProposal(message.id, next);
   }
 
   const suggestions = [t("suggestion1"), t("suggestion2"), t("suggestion3")];
@@ -274,6 +426,19 @@ function AskPage() {
                               <CitationChip key={i} c={c} />
                             ))}
                           </div>
+                        </div>
+                      )}
+                      {m.proposals && m.proposals.length > 0 && (
+                        <div className="mt-3 flex flex-col gap-2">
+                          {m.proposals.map((p) => (
+                            <ProposalCard
+                              key={p.id}
+                              proposal={p}
+                              canAct={!!m.messageId}
+                              onApply={(proposal) => applyProposal(m, proposal)}
+                              onDiscard={(proposal) => discardProposal(m, proposal)}
+                            />
+                          ))}
                         </div>
                       )}
                     </div>
