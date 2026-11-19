@@ -54,6 +54,7 @@ import { DocEditor, type DocEditorHandle } from "@/components/docs/Editor";
 import { VersionHistoryDialog } from "@/components/docs/VersionHistory";
 import { PageIcon } from "@/components/docs/DocsTree";
 import { relativeTime } from "@/components/docs/relative-time";
+import { fullDateTime } from "@/components/issues/time";
 import { ProjectIcon } from "@/components/shell/ProjectIcon";
 import { usePageChrome, type Crumb } from "@/components/shell/WorkbenchContext";
 import { cn } from "@/lib/cn";
@@ -225,6 +226,9 @@ function DocPageBody({ data }: { data: PageData }) {
   crumbs.push({ label: title || t("untitled"), icon: <PageIcon icon={icon} size={15} /> });
 
   const updatedAt = new Date(data.page.updatedAt);
+  const createdAt = new Date(data.page.createdAt);
+  const usersById = new Map(data.users.map((u) => [u.id, u]));
+  const creator = data.page.createdBy ? usersById.get(data.page.createdBy) : undefined;
 
   usePageChrome(
     {
@@ -279,6 +283,19 @@ function DocPageBody({ data }: { data: PageData }) {
         onIconChange={saveIcon}
         onEnter={() => editor?.focus()}
       />
+
+      <div className="mb-4 flex items-center gap-2 text-[13px] text-text-3" title={fullDateTime(createdAt, intlLocale)}>
+        {creator ? (
+          <>
+            <Avatar name={creator.name} size={18} />
+            <span>
+              {t("pageDetail.createdBy", { name: creator.name })} · {relativeTime(createdAt, intlLocale)}
+            </span>
+          </>
+        ) : (
+          <span>{t("pageDetail.createdAgo", { time: relativeTime(createdAt, intlLocale) })}</span>
+        )}
+      </div>
 
       {!data.canEdit && (
         <p className="mb-4 rounded-[6px] bg-surface-2 px-3 py-2 text-[13px] text-text-2">{t("pageDetail.readOnly")}</p>

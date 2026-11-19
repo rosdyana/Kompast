@@ -72,6 +72,8 @@
     "versionHistory": "Riwayat versi",
     "fullWidth": "Lebar penuh",
     "editedAgo": "Diedit {{time}}",
+    "createdBy": "Dibuat oleh {{name}}",
+    "createdAgo": "Dibuat {{time}}",
     "addIcon": "Tambah ikon",
     "changeIcon": "Ganti ikon",
     "removeIcon": "Hapus",
@@ -125,6 +127,7 @@
     "emptyTitle": "Belum ada halaman",
     "colTitle": "Nama",
     "colLocation": "Lokasi",
+    "colCreatedBy": "Dibuat oleh",
     "colUpdated": "Terakhir diedit",
     "rootLocation": "Tingkat atas"
   },

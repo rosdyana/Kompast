@@ -10,6 +10,7 @@ export * from "./priority";
 export * from "./board";
 export * from "./sprint";
 export * from "./sprint-report";
+export * from "./standup";
 export * from "./roadmap";
 export * from "./email";
 export * from "./notification";

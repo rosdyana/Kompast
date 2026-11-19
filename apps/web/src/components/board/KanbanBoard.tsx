@@ -19,6 +19,7 @@ import { moveIssueFn, moveIssuesFn, createIssueFn } from "@/lib/server-fns/issue
 import { updateIssueTitleFn, archiveIssueFn } from "@/lib/server-fns/issue-detail";
 import { completeSprintFn, listSprintsFn } from "@/lib/server-fns/sprints";
 import { CompleteSprintDialog } from "./BacklogView";
+import { StandupDialog } from "./StandupDialog";
 import { useConfirmArm } from "@/lib/use-confirm-arm";
 import { IssueChecklist, type ChecklistSummary } from "@/components/issues/IssueChecklist";
 import { cn } from "@/lib/cn";
@@ -99,6 +100,8 @@ export function KanbanBoard({ data }: { data: BoardData }) {
   const lookups = useProjectLookups(data.project.id);
   const [futureSprints, setFutureSprints] = useState<Awaited<ReturnType<typeof listSprintsFn>>>([]);
   const [completeOpen, setCompleteOpen] = useState(false);
+  // Declared above the no-active-sprint early return so hook order stays stable.
+  const [standupOpen, setStandupOpen] = useState(false);
 
   async function openComplete() {
     try {
@@ -497,6 +500,9 @@ export function KanbanBoard({ data }: { data: BoardData }) {
               value={tableViewConfig.swimlaneBy}
               onSelect={(v) => updateSwimlaneBy(v as "none" | "assignee")}
             />
+            <Button variant="outline" size="sm" onClick={() => setStandupOpen(true)} disabled={pending}>
+              {t("standup.button")}
+            </Button>
             <Button variant="outline" size="sm" onClick={openComplete} disabled={pending}>
               {t("boardView.completeSprint")}
             </Button>
@@ -575,6 +581,15 @@ export function KanbanBoard({ data }: { data: BoardData }) {
           </div>
         )}
       </div>
+      {standupOpen && (
+        <StandupDialog
+          data={data}
+          sprintId={sprint.id}
+          teamId={teamId}
+          statusesById={lookups.statusesById}
+          onClose={() => setStandupOpen(false)}
+        />
+      )}
       <CompleteSprintDialog
         sprint={completeOpen ? sprint : null}
         rows={allSprintIssues}
