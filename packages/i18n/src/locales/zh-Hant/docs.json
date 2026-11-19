@@ -24,7 +24,8 @@
     "aiExpand": "AI：擴寫",
     "aiSummarize": "AI：摘要",
     "aiTranslateToEnglish": "AI：翻譯成英文",
-    "aiTranslateToIndonesian": "AI：翻譯成印尼文"
+    "aiTranslateToIndonesian": "AI：翻譯成印尼文",
+    "aiTranslateToTraditionalChinese": "AI：翻譯成繁體中文"
   },
   "versionHistory": {
     "historyButton": "歷史記錄",

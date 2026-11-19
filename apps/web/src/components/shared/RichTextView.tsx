@@ -9,7 +9,8 @@ import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineCo
 import { userMentionInlineSpec } from "@/components/shared/UserMentionInlineContent";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see LiteEditor.tsx's identical schema cast.
-const schema = BlockNoteSchema.create({
+/** Exported so the headless translation editor (lib/translate-content.ts) uses the same node types. */
+export const richTextSchema = BlockNoteSchema.create({
   blockSpecs: defaultBlockSpecs,
   inlineContentSpecs: { ...defaultInlineContentSpecs, issueMention: issueMentionInlineSpec as any, userMention: userMentionInlineSpec as any },
 });
@@ -41,7 +42,7 @@ export function normalizeToBlocks(json: unknown): PartialBlock[] | undefined {
 export function RichTextView({ content, className }: { content: unknown; className?: string }) {
   const { theme } = useTheme();
   const blocks = normalizeToBlocks(content);
-  const editor = useCreateBlockNote({ schema, initialContent: blocks }, [JSON.stringify(content)]);
+  const editor = useCreateBlockNote({ schema: richTextSchema, initialContent: blocks }, [JSON.stringify(content)]);
 
   if (!blocks) return null;
   return (

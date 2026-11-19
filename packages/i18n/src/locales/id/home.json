@@ -35,5 +35,8 @@
   "untitled": "Tanpa judul",
   "edited": "Diubah {{time}}",
   "home": "Beranda",
-  "greetingNeutral": "Selamat datang kembali, {{name}}"
+  "greetingNeutral": "Selamat datang kembali, {{name}}",
+  "pageRange": "{{from}}–{{to}} dari {{total}}",
+  "previousPage": "Halaman sebelumnya",
+  "nextPage": "Halaman berikutnya"
 }

@@ -484,6 +484,7 @@ describe("packages/core/ai", () => {
       await withAuthorizedTenant(ctx, (tx) => runDocTextAction(tx, { organizationId: orgId, userId, action: "translate", text: "hi", targetLanguage: "Indonesian" }));
       const sentBody = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(sentBody.system).toContain("Indonesian");
+      expect(sentBody.system).toContain("keep its formatting, @mentions, issue keys");
     });
 
     it("generates an issue description prompt that includes the given title", async () => {
