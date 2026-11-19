@@ -66,6 +66,7 @@ function aiSlashItems(t: TFunction): { title: string; mode: DocAiMode; targetLan
     { title: t("editor.aiSummarize"), mode: "summarize", aliases: ["ai", "summarize", "ringkas"] },
     { title: t("editor.aiTranslateToEnglish"), mode: "translate", targetLanguage: "English", aliases: ["ai", "translate", "terjemah", "inggris"] },
     { title: t("editor.aiTranslateToIndonesian"), mode: "translate", targetLanguage: "Indonesian", aliases: ["ai", "translate", "terjemah", "indonesia"] },
+    { title: t("editor.aiTranslateToTraditionalChinese"), mode: "translate", targetLanguage: "Traditional Chinese (Taiwan)", aliases: ["ai", "translate", "terjemah", "tionghoa", "mandarin", "chinese"] },
   ];
 }
 

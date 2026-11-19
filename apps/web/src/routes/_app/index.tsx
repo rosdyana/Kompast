@@ -1,8 +1,8 @@
 import { useClientNow } from "@/lib/use-client-now";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { createFileRoute, Link, useLoaderData } from "@tanstack/react-router";
-import { FileText, FolderKanban, Home as HomeIcon, Inbox, Plus } from "lucide-react";
-import { Button } from "@kompast/ui/Button";
+import { ChevronLeft, ChevronRight, FileText, FolderKanban, Home as HomeIcon, Inbox, Plus } from "lucide-react";
+import { Button, IconButton } from "@kompast/ui/Button";
 import { EmptyState } from "@kompast/ui/EmptyState";
 import { IssueTypeIcon } from "@kompast/ui/IssueTypeIcon";
 import { Lozenge, type StatusCategory } from "@kompast/ui/Lozenge";
@@ -110,11 +110,7 @@ function HomePage() {
               }
             />
           ) : (
-            <div className="overflow-hidden rounded-[10px] border border-border bg-surface">
-              {data.myIssues.map((issue) => (
-                <AssignedRow key={issue.id} issue={issue} intlLocale={intlLocale} />
-              ))}
-            </div>
+            <AssignedList issues={data.myIssues} intlLocale={intlLocale} />
           )}
         </section>
 
@@ -191,6 +187,44 @@ function HomePage() {
         )}
       </section>
     </PageContainer>
+  );
+}
+
+const ASSIGNED_PAGE_SIZE = 10;
+
+function AssignedList({ issues, intlLocale }: { issues: Summary["myIssues"]; intlLocale: string }) {
+  const { t } = useTranslation("home");
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(issues.length / ASSIGNED_PAGE_SIZE));
+  // Clamp if the list shrank (e.g. after a loader refresh) while on a later page.
+  const current = Math.min(page, pageCount - 1);
+  const start = current * ASSIGNED_PAGE_SIZE;
+  const visible = issues.slice(start, start + ASSIGNED_PAGE_SIZE);
+
+  return (
+    <div className="overflow-hidden rounded-[10px] border border-border bg-surface">
+      {visible.map((issue) => (
+        <AssignedRow key={issue.id} issue={issue} intlLocale={intlLocale} />
+      ))}
+      {pageCount > 1 && (
+        <div className="flex items-center justify-between gap-3 border-t border-border bg-surface-2 px-3 py-1.5">
+          <span className="text-[12.5px] tabular-nums text-text-3">
+            {t("pageRange", { from: start + 1, to: start + visible.length, total: issues.length })}
+          </span>
+          <div className="flex items-center gap-1">
+            <IconButton size="xs" aria-label={t("previousPage")} title={t("previousPage")} disabled={current === 0} onClick={() => setPage(current - 1)}>
+              <ChevronLeft size={14} />
+            </IconButton>
+            <span className="min-w-[44px] text-center text-[12.5px] tabular-nums text-text-2">
+              {current + 1} / {pageCount}
+            </span>
+            <IconButton size="xs" aria-label={t("nextPage")} title={t("nextPage")} disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)}>
+              <ChevronRight size={14} />
+            </IconButton>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

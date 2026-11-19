@@ -131,5 +131,14 @@
   "reactedByCount_one": "{{count}} person reacted",
   "reactedByCount_other": "{{count}} people reacted",
   "reactionFailed": "Couldn't save your reaction",
-  "commentTipHint": "Type : for emoji, @ to mention"
+  "commentTipHint": "Type : for emoji, @ to mention",
+  "translate": "Translate",
+  "translating": "Translating…",
+  "translatedTo": "Translated to {{language}}",
+  "showOriginal": "Show original",
+  "translateDraftTo": "Translate draft to…",
+  "translateFailed": "Translation failed: {{message}}",
+  "languageEnglish": "English",
+  "languageIndonesian": "Indonesian",
+  "languageTraditionalChinese": "Traditional Chinese"
 }

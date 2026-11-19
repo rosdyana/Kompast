@@ -35,5 +35,8 @@
   "untitled": "Untitled",
   "edited": "Edited {{time}}",
   "home": "Home",
-  "greetingNeutral": "Welcome back, {{name}}"
+  "greetingNeutral": "Welcome back, {{name}}",
+  "pageRange": "{{from}}–{{to}} of {{total}}",
+  "previousPage": "Previous page",
+  "nextPage": "Next page"
 }

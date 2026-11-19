@@ -156,7 +156,10 @@ export async function runDocTextAction(tx: Tx, input: DocTextActionInput) {
   if (input.action === "translate" && !input.targetLanguage) {
     throw new Error("targetLanguage is required for the translate action");
   }
-  const instruction = input.action === "translate" ? `Translate the given text into ${input.targetLanguage}. Output only the translation, with no commentary.` : DOC_ACTION_INSTRUCTION[input.action];
+  const instruction =
+    input.action === "translate"
+      ? `Translate the given text into ${input.targetLanguage}. Output only the translation, with no commentary. The text is markdown: keep its formatting, @mentions, issue keys (e.g. ABC-12), code, and URLs unchanged.`
+      : DOC_ACTION_INSTRUCTION[input.action];
 
   const messages: AiMessage[] = [
     { role: "system", content: `You are a writing assistant embedded in a document editor. ${instruction}` },

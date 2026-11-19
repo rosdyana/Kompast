@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { ClientOnly } from "@tanstack/react-router";
-import type { Block } from "@blocknote/core";
-import { SmilePlus } from "lucide-react";
+import type { Block, PartialBlock } from "@blocknote/core";
+import { Languages, SmilePlus } from "lucide-react";
 import { Avatar } from "@kompast/ui/Avatar";
 import { Button } from "@kompast/ui/Button";
 import { Popover } from "@kompast/ui/Popover";
 import { useToast } from "@kompast/ui/Toast";
-import { useTranslation } from "@kompast/i18n";
+import { SUPPORTED_LOCALES, useTranslation, type SupportedLocale } from "@kompast/i18n";
 import { EmojiPicker } from "@/components/shared/EmojiPicker";
 import { LiteEditor } from "@/components/shared/LiteEditor";
-import { RichTextView } from "@/components/shared/RichTextView";
+import { LanguageMenu, TranslatableContent } from "@/components/shared/TranslatableContent";
+import { LOCALE_LANGUAGE, translateContent } from "@/lib/translate-content";
 import { fullDateTime, relativeTime } from "./time";
 
 export interface ThreadReaction {
@@ -117,15 +118,24 @@ export function CommentComposer({
   // Remounts the uncontrolled editor (clearing it) only after a successful
   // submit — a failed submit keeps the draft.
   const [submitCount, setSubmitCount] = useState(0);
+  // Separate remount for a translated draft, which replaces the editor's content.
+  const [translateCount, setTranslateCount] = useState(0);
+  const [initialContent, setInitialContent] = useState<PartialBlock[] | undefined>(undefined);
+  const [translating, setTranslating] = useState(false);
+  const toast = useToast();
+  // Bumped on submit/cancel so a translation that lands after them is discarded.
+  const epochRef = useRef(0);
   const hasContent = blocksToPlainText(draft).length > 0 || draft.some((b) => b.type !== "paragraph");
 
   async function submit() {
-    if (!hasContent || submitting) return;
+    if (!hasContent || submitting || translating) return;
     setSubmitting(true);
     setError(null);
     try {
       await onSubmit(draft);
+      epochRef.current += 1;
       setDraft([]);
+      setInitialContent(undefined);
       setSubmitCount((c) => c + 1);
       if (!startExpanded) setExpanded(false);
     } catch (err) {
@@ -135,8 +145,30 @@ export function CommentComposer({
     }
   }
 
+  /** Replaces the draft with its translation. The author still reviews it and posts it themselves. */
+  async function translateDraft(target: SupportedLocale) {
+    if (!hasContent || submitting || translating) return;
+    const epoch = epochRef.current;
+    setTranslating(true);
+    try {
+      const blocks = await translateContent(draft, LOCALE_LANGUAGE[target]);
+      if (epoch !== epochRef.current) return;
+      setDraft(blocks as Block[]);
+      setInitialContent(blocks);
+      setTranslateCount((c) => c + 1);
+    } catch (err) {
+      if (epoch === epochRef.current) {
+        toast.show({ title: t("translateFailed", { message: err instanceof Error ? err.message : String(err) }), tone: "error" });
+      }
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   function cancel() {
+    epochRef.current += 1;
     setDraft([]);
+    setInitialContent(undefined);
     setSubmitCount((c) => c + 1);
     setExpanded(false);
     onCancel?.();
@@ -169,7 +201,8 @@ export function CommentComposer({
           >
             <ClientOnly fallback={<div className="min-h-[96px] rounded-[6px] border border-border-2 bg-surface" />}>
               <LiteEditor
-                key={submitCount}
+                key={`${submitCount}:${translateCount}`}
+                initialContent={initialContent}
                 onChange={setDraft}
                 autoFocus={autoFocus ?? true}
                 placeholder={t("commentPlaceholder")}
@@ -178,12 +211,21 @@ export function CommentComposer({
             </ClientOnly>
             {error && <p className="text-[13px] text-danger">{error}</p>}
             <div className="flex items-center gap-2">
-              <Button variant="primary" size="sm" onClick={submit} disabled={submitting || !hasContent}>
+              <Button variant="primary" size="sm" onClick={submit} disabled={submitting || translating || !hasContent}>
                 {submitting ? t("savingEllipsis") : t("save")}
               </Button>
               <Button variant="ghost" size="sm" onClick={cancel} disabled={submitting}>
                 {t("cancel")}
               </Button>
+              <LanguageMenu
+                languages={SUPPORTED_LOCALES}
+                onPick={translateDraft}
+                disabled={!hasContent || submitting || translating}
+                className="inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12.5px] font-medium text-text-2 hover:bg-surface-3 hover:text-text disabled:opacity-60"
+              >
+                <Languages size={13} />
+                {translating ? t("translating") : t("translateDraftTo")}
+              </LanguageMenu>
               <span className="ml-auto hidden text-[12px] text-text-3 sm:inline">
                 {t("commentTip")} · {t("commentTipHint")}
               </span>
@@ -324,7 +366,7 @@ function CommentNode({
           </span>
         </p>
         <ClientOnly fallback={<p className="mt-1 text-[14px] text-text-2">{blocksToPlainText(comment.bodyJson)}</p>}>
-          <RichTextView content={comment.bodyJson} className="mt-0.5" />
+          <TranslatableContent content={comment.bodyJson} className="mt-0.5" />
         </ClientOnly>
         <ReactionBar
           commentId={comment.id}
