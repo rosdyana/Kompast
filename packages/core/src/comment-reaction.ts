@@ -46,7 +46,7 @@ export interface AddCommentReactionInput {
   commentId: string;
   userId: string;
   emoji: string;
-  origin: "user" | "automation" | "mcp" | "api" | "import";
+  origin: "user" | "automation" | "mcp" | "api" | "import" | "ai";
   originClient?: string;
 }
 

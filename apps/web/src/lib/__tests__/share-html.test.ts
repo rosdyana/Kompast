@@ -109,6 +109,23 @@ describe("sanitizeShareHtml — normal BlockNote markup survives", () => {
     expect(out).not.toMatch(/<script|<iframe|<object|<embed|on[a-z]+=/i);
   });
 
+  it("keeps the language-mermaid class on a code block (guest page diagram hook)", () => {
+    const out = sanitizeShareHtml('<pre><code class="language-mermaid" data-language="mermaid">flowchart TD\n A--&gt;B</code></pre>');
+    const root = parse(out);
+    expect(root.querySelector("pre > code.language-mermaid")?.textContent).toContain("A-->B");
+  });
+
+  it("keeps the data-language wrapper that BlockNote's real export produces for a mermaid block", async () => {
+    const editor = createServerEditor();
+    const blocks = [{ type: "codeBlock", props: { language: "mermaid" }, content: "flowchart TD\n  A-->B" }];
+    const ydoc = editor.blocksToYDoc(blocks as any, "document-store");
+    const raw = await editor.blocksToFullHTML(editor.yDocToBlocks(ydoc, "document-store"));
+
+    const root = parse(sanitizeShareHtml(raw));
+    const block = root.querySelector('[data-content-type="codeBlock"][data-language="mermaid"]');
+    expect(block?.querySelector("pre")?.textContent).toContain("A-->B");
+  });
+
   it("keeps tables and images with their attributes", () => {
     const html =
       '<table class="bn-table"><tbody><tr><th data-colspan="1">Name</th></tr>' +

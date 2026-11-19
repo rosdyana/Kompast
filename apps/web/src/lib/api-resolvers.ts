@@ -12,19 +12,7 @@ import { ApiError } from "./api-auth";
  * ConflictError / InvalidInputError, which handleApiRoute and the MCP tool
  * wrapper map to the same 404 / 409 / 400 responses these used to produce.
  */
-export { resolveProject, resolveIssue, resolveStatus, resolveUserByEmail, parseIssueKey } from "@kompast/core";
-
-export async function resolveIssueType(tx: Tx, projectId: string, name?: string) {
-  const types = await tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, projectId));
-  if (name) {
-    const match = types.find((t) => t.name.toLowerCase() === name.toLowerCase());
-    if (!match) throw new ApiError(400, "Bad Request", `Issue type "${name}" not found in this project`);
-    return match;
-  }
-  const fallback = types.find((t) => !t.isSubtask) ?? types[0];
-  if (!fallback) throw new ApiError(500, "Internal Server Error", "Project has no issue types");
-  return fallback;
-}
+export { resolveProject, resolveIssue, resolveIssueType, resolveStatus, resolveUserByEmail, parseIssueKey } from "@kompast/core";
 
 /** REST/MCP respects page_permission the same as the UI — a caller's own membership isn't enough if the page is restricted. */
 export async function resolvePage(

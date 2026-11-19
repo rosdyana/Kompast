@@ -271,7 +271,7 @@ export async function reorderSprintIssue(tx: Tx, input: ReorderSprintIssueInput)
  */
 export interface SprintMembershipActor {
   actorId: string;
-  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  origin?: "user" | "automation" | "mcp" | "api" | "import" | "ai";
   originClient?: string;
 }
 

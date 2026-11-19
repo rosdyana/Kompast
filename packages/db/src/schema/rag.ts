@@ -104,6 +104,8 @@ export const aiMessage = pgTable(
     content: text("content").notNull(),
     /** Which retrieved chunks (entityType/entityId/content excerpt) actually fed this answer — null for a "user" role message. */
     citations: jsonb("citations").$type<Json>(),
+    /** Write-action proposals (Ask Kompast confirm cards) attached to an assistant message; null when none. */
+    proposals: jsonb("proposals").$type<Json>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("ai_message_thread_idx").on(t.threadId)],

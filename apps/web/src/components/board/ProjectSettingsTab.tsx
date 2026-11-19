@@ -196,6 +196,17 @@ function ColumnsSettings({ data }: { data: BoardData }) {
     }
   }
 
+  async function setStuck(columnId: string, raw: string) {
+    const stuckAfterDays = raw.trim() === "" ? null : Number(raw);
+    setError(null);
+    try {
+      await updateBoardColumnFn({ data: { projectId: data.project.id, columnId, stuckAfterDays } });
+      await router.invalidate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("genericError"));
+    }
+  }
+
   async function setNewIssuePosition(position: "top" | "bottom") {
     setError(null);
     try {
@@ -328,6 +339,18 @@ function ColumnsSettings({ data }: { data: BoardData }) {
                   inputMode="numeric"
                   placeholder="∞"
                   onBlur={(e) => e.target.value !== String(col.wipLimit ?? "") && setWip(col.id, e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                  className="kp-field h-7 w-[56px] text-center tabular-nums"
+                />
+              </label>
+              <label className="flex flex-none items-center gap-1.5 text-[12.5px] text-text-3" title={t("settingsTab.stuckHint")}>
+                {t("settingsTab.stuckLabel")}
+                <input
+                  key={`${col.id}-stuck-${col.stuckAfterDays ?? ""}`}
+                  defaultValue={col.stuckAfterDays ?? ""}
+                  inputMode="numeric"
+                  placeholder="∞"
+                  onBlur={(e) => e.target.value !== String(col.stuckAfterDays ?? "") && setStuck(col.id, e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                   className="kp-field h-7 w-[56px] text-center tabular-nums"
                 />

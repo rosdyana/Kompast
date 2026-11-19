@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject, createWorkflowStatus, createIssueType, setSprintMinutesTemplate, resolveDefaultCreationTarget } from "../project";
-import { createIssue, moveIssue, moveIssues, archiveIssue } from "../issue";
+import { createIssue, moveIssue, moveIssues, archiveIssue, recordHistoricalStatusChange } from "../issue";
 import { getBoard } from "../board";
 import { requireMembership, requireProjectAccess, withAuthorizedTenant, ForbiddenError } from "../permissions";
 import { id } from "../ids";
@@ -547,6 +547,118 @@ describe("project + board service layer", () => {
           .then((rows) => rows.filter((h) => h.field === "status")),
       );
       expect(statusHistory).toHaveLength(2);
+    });
+  });
+
+  describe("statusEnteredAt on board cards", () => {
+    const ctx = { userId, organizationId: orgId };
+
+    async function setupBoard(key: string) {
+      const project = await withAuthorizedTenant(ctx, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId, key, name: key, actorUserId: userId }),
+      );
+      const taskType = project.issueTypes.find((t) => t.name === "Task")!;
+      const todoStatus = project.statuses.find((s) => s.name === "To Do")!;
+      const inProgressStatus = project.statuses.find((s) => s.name === "In Progress")!;
+      return { projectId: project.projectId, boardId: project.boardId, taskType, todoStatus, inProgressStatus };
+    }
+
+    async function createInTodo(s: Awaited<ReturnType<typeof setupBoard>>, title: string) {
+      return withAuthorizedTenant(ctx, (tx) =>
+        createIssue(tx, {
+          organizationId: orgId,
+          projectId: s.projectId,
+          typeId: s.taskType.id,
+          statusId: s.todoStatus.id,
+          title,
+          reporterId: userId,
+        }),
+      );
+    }
+
+    async function cardFor(boardId: string, issueId: string) {
+      const board = await withAuthorizedTenant(ctx, (tx) => getBoard(tx, boardId));
+      return board.columns.flatMap((c) => c.issues).find((i) => i.id === issueId);
+    }
+
+    it("a never-moved issue reports its createdAt as statusEnteredAt", async () => {
+      const s = await setupBoard("STA");
+      const { issueId } = await createInTodo(s, "Never moved");
+      const [row] = await admin.select().from(schema.issue).where(eq(schema.issue.id, issueId));
+
+      const card = await cardFor(s.boardId, issueId);
+      expect(card?.statusEnteredAt).toEqual(row!.createdAt);
+    });
+
+    it("after a status move, statusEnteredAt equals that status history row's createdAt", async () => {
+      const s = await setupBoard("STB");
+      const { issueId } = await createInTodo(s, "Move me");
+      const beforeMove = Date.now();
+
+      await withAuthorizedTenant(ctx, (tx) => moveIssue(tx, { issueId, toStatusId: s.inProgressStatus.id, actorId: userId }));
+
+      const statusRows = await admin
+        .select()
+        .from(schema.issueHistory)
+        .where(and(eq(schema.issueHistory.issueId, issueId), eq(schema.issueHistory.field, "status")));
+      expect(statusRows).toHaveLength(1);
+
+      const card = await cardFor(s.boardId, issueId);
+      expect(card?.statusId).toBe(s.inProgressStatus.id);
+      expect(card?.statusEnteredAt).toEqual(statusRows[0]!.createdAt);
+      // Five-minute slack: the history timestamp comes from the database clock, not this process's.
+      expect(card!.statusEnteredAt.getTime()).toBeGreaterThanOrEqual(beforeMove - 5 * 60_000);
+
+      // A second move: the newest status row must win, not the first one.
+      await withAuthorizedTenant(ctx, (tx) => moveIssue(tx, { issueId, toStatusId: s.todoStatus.id, actorId: userId }));
+      const allStatusRows = await admin
+        .select()
+        .from(schema.issueHistory)
+        .where(and(eq(schema.issueHistory.issueId, issueId), eq(schema.issueHistory.field, "status")));
+      expect(allStatusRows).toHaveLength(2);
+      const newest = allStatusRows.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+      const afterSecondMove = await cardFor(s.boardId, issueId);
+      expect(afterSecondMove?.statusId).toBe(s.todoStatus.id);
+      expect(afterSecondMove?.statusEnteredAt).toEqual(newest.createdAt);
+    });
+
+    it("a reorder within the same column does not change statusEnteredAt", async () => {
+      const s = await setupBoard("STC");
+      const first = await createInTodo(s, "First");
+      const second = await createInTodo(s, "Second");
+
+      const before = await cardFor(s.boardId, first.issueId);
+      await withAuthorizedTenant(ctx, (tx) =>
+        moveIssue(tx, { issueId: first.issueId, toStatusId: s.todoStatus.id, afterIssueId: second.issueId, actorId: userId }),
+      );
+
+      const statusRows = await admin
+        .select()
+        .from(schema.issueHistory)
+        .where(and(eq(schema.issueHistory.issueId, first.issueId), eq(schema.issueHistory.field, "status")));
+      expect(statusRows).toHaveLength(0);
+
+      const after = await cardFor(s.boardId, first.issueId);
+      expect(after?.statusEnteredAt).toEqual(before?.statusEnteredAt);
+    });
+
+    it("a backdated status row from recordHistoricalStatusChange is honoured when it is the latest", async () => {
+      const s = await setupBoard("STD");
+      const { issueId } = await createInTodo(s, "Imported");
+      const backdated = new Date("2017-11-20T00:00:00.000Z");
+
+      await withAuthorizedTenant(ctx, (tx) =>
+        recordHistoricalStatusChange(tx, {
+          issueId,
+          actorId: userId,
+          fromStatusId: s.inProgressStatus.id,
+          toStatusId: s.todoStatus.id,
+          createdAt: backdated,
+        }),
+      );
+
+      const card = await cardFor(s.boardId, issueId);
+      expect(card?.statusEnteredAt).toEqual(backdated);
     });
   });
 });

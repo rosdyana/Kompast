@@ -50,6 +50,8 @@ const updateBoardColumnSchema = z.object({
   name: z.string().min(1).optional(),
   color: z.string().optional(),
   wipLimit: z.number().int().positive().nullable().optional(),
+  // Same 1–365 range core's updateBoardColumn enforces (STUCK_AFTER_DAYS_RANGE); literals keep core out of the client bundle.
+  stuckAfterDays: z.number().int().min(1).max(365).nullable().optional(),
 });
 
 export const updateBoardColumnFn = createServerFn({ method: "POST" })

@@ -14,7 +14,7 @@ import {
 } from "./settings";
 import { AiNotConfiguredError, recordAiUsage } from "./ai";
 import { enrichCandidates, type EnrichedCandidate, type RagEnrichment } from "./rag-enrich";
-import { askTools, runAskTool } from "./ask-tools";
+import { askTools, runAskTool, ASK_WRITE_TOOL_NAMES, proposeAskWrite, type AskProposal } from "./ask-tools";
 import { toPlainText } from "./rich-text";
 import { pageStateToPlainText } from "./ydoc-text";
 
@@ -448,6 +448,8 @@ export interface AskKompastInput {
   onDelta?: (delta: string) => void;
   /** Called with the tool name just before each lookup runs, so the UI can show what the model is checking. */
   onTool?: (name: string) => void;
+  /** Called with each change the model drafted (a proposal awaiting the user's Apply). Persisted only if the answer completes. */
+  onProposal?: (proposal: AskProposal) => void;
 }
 
 export interface Citation {
@@ -467,7 +469,18 @@ const SYSTEM_PROMPT =
   "Be concise. When you reference a specific issue, cite it by its key (for example KMP-42) so the user can find it. " +
   "You also have tools that read the live tracker: list_projects, list_issues, get_issue, get_sprint and search_workspace. " +
   "Prefer them for questions about status, assignee, sprint, 'list all' or counts, because the excerpts above are only a sample. " +
-  "Only state facts that a tool or the excerpts actually returned, never claim to see data you did not get back, and if a tool returns an error say what could not be checked.";
+  "Only state facts that a tool or the excerpts actually returned, never claim to see data you did not get back, and if a tool returns an error say what could not be checked. " +
+  "You can also draft changes with create_issue, add_comment and create_page. These only create a proposal card the user must approve; nothing changes until they click Apply. " +
+  "Never say something was created, commented or saved — say you drafted it for their approval. If a required detail like the project is unclear, ask instead of guessing. Only draft a change when the user asks for one.";
+
+/** Prior assistant text, plus one line per drafted change so a follow-up knows what was proposed and whether it was applied. */
+function historyContent(m: { role: "user" | "assistant"; content: string; proposals?: unknown }): string {
+  if (m.role !== "assistant" || !Array.isArray(m.proposals) || m.proposals.length === 0) return m.content;
+  const lines = (m.proposals as AskProposal[]).map(
+    (p) => `[Drafted ${p.kind} "${p.preview.title}" — ${p.status}${p.result?.issueKey ? ` as ${p.result.issueKey}` : ""}]`,
+  );
+  return [m.content, ...lines].filter(Boolean).join("\n");
+}
 
 function issueFactsLine(f: { statusName: string | null; typeName: string | null; priorityName: string | null; assigneeName: string | null; sprint: { name: string; state: string } | null; labels: string[] }): string {
   return [
@@ -504,7 +517,7 @@ function citationRef(e: RagEnrichment, candidateId: string): NonNullable<Citatio
  * candidates. Citation i and context entry [i+1] are the same item, so the
  * model's numbering maps straight onto the citations the UI shows.
  */
-function buildAskMessages(input: { history: { role: "user" | "assistant"; content: string }[]; enriched: EnrichedCandidate[]; question: string }) {
+function buildAskMessages(input: { history: { role: "user" | "assistant"; content: string; proposals?: unknown }[]; enriched: EnrichedCandidate[]; question: string }) {
   const citations: Citation[] = input.enriched.map(({ candidate, enrichment }) => ({
     entityType: candidate.entityType,
     entityId: candidate.entityId,
@@ -519,7 +532,7 @@ function buildAskMessages(input: { history: { role: "user" | "assistant"; conten
 
   const messages: AiMessage[] = [
     { role: "system", content: `${SYSTEM_PROMPT}\n\nContext:\n${contextBlock}` },
-    ...input.history.map((m) => ({ role: m.role, content: m.content }) as AiMessage),
+    ...input.history.map((m) => ({ role: m.role, content: historyContent(m) }) as AiMessage),
     { role: "user", content: input.question },
   ];
   return { messages, citations };
@@ -547,9 +560,10 @@ async function runAskTurns(
   ctx: AuthContext,
   creds: AiCredentials,
   messages: AiMessage[],
-  opts: { onDelta?: (delta: string) => void; onTool?: (name: string) => void },
-): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+  opts: { onDelta?: (delta: string) => void; onTool?: (name: string) => void; onProposal?: (proposal: AskProposal) => void },
+): Promise<{ text: string; inputTokens: number; outputTokens: number; proposals: AskProposal[] }> {
   const transcript: AiMessage[] = [...messages];
+  const proposals: AskProposal[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
 
@@ -560,13 +574,23 @@ async function runAskTurns(
     outputTokens += result.outputTokens;
 
     if (isLastTurn || result.stopReason !== "tool_use" || result.toolCalls.length === 0) {
-      return { text: result.text, inputTokens, outputTokens };
+      return { text: result.text, inputTokens, outputTokens, proposals };
     }
 
     transcript.push({ role: "assistant", content: result.text, toolCalls: result.toolCalls });
     for (const call of result.toolCalls) {
       opts.onTool?.(call.name);
-      transcript.push({ role: "tool", toolCallId: call.id, content: await runAskTool(ctx, call) });
+      if (ASK_WRITE_TOOL_NAMES.has(call.name)) {
+        // A write tool only drafts; the change runs when the user clicks Apply (applyAskProposal).
+        const { output, proposal } = await proposeAskWrite(ctx, call);
+        if (proposal) {
+          proposals.push(proposal);
+          opts.onProposal?.(proposal);
+        }
+        transcript.push({ role: "tool", toolCallId: call.id, content: output });
+      } else {
+        transcript.push({ role: "tool", toolCallId: call.id, content: await runAskTool(ctx, call) });
+      }
     }
   }
 }
@@ -604,7 +628,10 @@ export async function retrieveContext(
  *
  * A brand new thread's title is derived from the first question, not asked upfront.
  */
-export async function askKompast(ctx: AuthContext, input: AskKompastInput): Promise<{ threadId: string; answer: string; citations: Citation[] }> {
+export async function askKompast(
+  ctx: AuthContext,
+  input: AskKompastInput,
+): Promise<{ threadId: string; messageId: string; answer: string; citations: Citation[]; proposals: AskProposal[] }> {
   const isNewThread = !input.threadId;
   const threadId = input.threadId ?? id("thread");
 
@@ -626,7 +653,8 @@ export async function askKompast(ctx: AuthContext, input: AskKompastInput): Prom
     return { aiCreds, ...buildAskMessages({ history, enriched, question: input.question }) };
   });
 
-  const answer = await runAskTurns(ctx, turn.aiCreds, turn.messages, { onDelta: input.onDelta, onTool: input.onTool });
+  const answer = await runAskTurns(ctx, turn.aiCreds, turn.messages, { onDelta: input.onDelta, onTool: input.onTool, onProposal: input.onProposal });
+  const assistantMessageId = id("msg");
 
   await withAuthorizedTenant(ctx, async (tx) => {
     if (isNewThread) {
@@ -638,7 +666,15 @@ export async function askKompast(ctx: AuthContext, input: AskKompastInput): Prom
     const askedAt = new Date();
     const answeredAt = new Date(askedAt.getTime() + 1);
     await tx.insert(schema.aiMessage).values({ id: id("msg"), threadId, role: "user", content: input.question, createdAt: askedAt });
-    await tx.insert(schema.aiMessage).values({ id: id("msg"), threadId, role: "assistant", content: answer.text, citations: turn.citations as unknown as Json, createdAt: answeredAt });
+    await tx.insert(schema.aiMessage).values({
+      id: assistantMessageId,
+      threadId,
+      role: "assistant",
+      content: answer.text,
+      citations: turn.citations as unknown as Json,
+      proposals: answer.proposals.length ? (answer.proposals as unknown as Json) : null,
+      createdAt: answeredAt,
+    });
     await recordAiUsage(tx, {
       organizationId: ctx.organizationId,
       userId: ctx.userId,
@@ -651,5 +687,5 @@ export async function askKompast(ctx: AuthContext, input: AskKompastInput): Prom
     await tx.update(schema.aiThread).set({ updatedAt: new Date() }).where(eq(schema.aiThread.id, threadId));
   });
 
-  return { threadId, answer: answer.text, citations: turn.citations };
+  return { threadId, messageId: assistantMessageId, answer: answer.text, citations: turn.citations, proposals: answer.proposals };
 }

@@ -28,6 +28,7 @@ Most teams split their work across a docs tool and an issue tracker, then spend 
 - Spaces: shared **Workspace** docs, team and project docs, and a **Private** space visible only to you.
 - Share a private page with specific people and it moves to **Shared**, sub-pages included.
 - Per-page access lists, version history, templates, trash and restore, guest share links, `@mention` backlinks and live board embeds.
+- Mermaid diagrams: a code block in the `mermaid` language (or `/diagram`) renders as a live diagram under its source, in the editor and on guest share links.
 - `@mention` people in a doc body or a doc comment: they get a notification if they can see the page. Comments render the same rich text as issue comments.
 - Team docs: any team member can write one; members can trash or delete only their own, team admins any.
 - The sidebar updates live: pages, projects and teams others create, rename, move or trash show up without a refresh.
@@ -35,6 +36,7 @@ Most teams split their work across a docs tool and an issue tracker, then spend 
 ### Boards & sprints
 - Backlog with sprint containers, drag-and-drop planning, inline quick-create and start/complete with carry-over.
 - Kanban boards with configurable sprint cycles and assignee swimlanes.
+- Stuck-card highlighting: set "stuck after N days" on a column and cards that have sat in that status longer get an amber badge.
 - Sprint table with inline editing and multi-column sort.
 - Per-issue checklists, worklogs, issue links and watchers.
 - Burndown and cumulative-flow reports, velocity history and an epic roadmap.
@@ -49,7 +51,7 @@ Most teams split their work across a docs tool and an issue tracker, then spend 
 ### AI
 - **Writing assist** in the editor: continue, improve, shorten, expand, summarize, translate.
 - AI-drafted issue descriptions and sprint summaries.
-- **Ask Kompast**: a chat that answers questions from your issues, comments and docs. It uses pgvector semantic search plus read-only lookups (issues by status, assignee or sprint; issue details; sprint reports), and only ever sees what the person asking can see.
+- **Ask Kompast**: a chat that answers questions from your issues, comments and docs. It uses pgvector semantic search plus read-only lookups (issues by status, assignee or sprint; issue details; sprint reports), and only ever sees what the person asking can see. It can also draft a new issue, a comment or a doc page for you to review: nothing is created until you click Apply on the card.
 - Works with Anthropic, Claude on Azure AI Foundry, Azure OpenAI, or any OpenAI-compatible endpoint.
 
 ### Teams & access control

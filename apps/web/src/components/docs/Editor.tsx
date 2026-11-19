@@ -14,6 +14,7 @@ import { useTheme } from "@kompast/ui/theme";
 import { VersionHistory } from "./VersionHistory";
 import { PageIcon } from "./DocsTree";
 import { kompastViewBlockSpec } from "./KompastViewBlock";
+import { mermaidCodeBlockSpec } from "./mermaid-code-block";
 import { mentionInlineSpec } from "./MentionInlineContent";
 import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
 import { userMentionInlineSpec } from "@/components/shared/UserMentionInlineContent";
@@ -82,7 +83,7 @@ function colorForUser(userId: string) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see KompastViewBlock.tsx: TS's structural check on
 // mixed-shape BlockSpecs records rejects this merge even though it's exactly BlockNote's own documented pattern.
 const schema = BlockNoteSchema.create({
-  blockSpecs: { ...defaultBlockSpecs, kompastView: kompastViewBlockSpec() as any },
+  blockSpecs: { ...defaultBlockSpecs, codeBlock: mermaidCodeBlockSpec as any, kompastView: kompastViewBlockSpec() as any },
   inlineContentSpecs: {
     ...defaultInlineContentSpecs,
     mention: mentionInlineSpec as any,
@@ -213,6 +214,19 @@ function CollabEditor({
                     editor.insertBlocks([{ type: "kompastView" }], currentBlock, "after");
                   },
                   aliases: ["kanban", "board", "tabel", "table", "view"],
+                  group: "Kompast",
+                },
+                {
+                  title: t("editor.diagramSlashItem"),
+                  onItemClick: () => {
+                    const currentBlock = editor.getTextCursorPosition().block;
+                    editor.insertBlocks(
+                      [{ type: "codeBlock", props: { language: "mermaid" }, content: "flowchart TD\n  A[Start] --> B[Done]" }] as any,
+                      currentBlock,
+                      "after",
+                    );
+                  },
+                  aliases: ["diagram", "mermaid", "flowchart", "chart", "sequence", "bagan"],
                   group: "Kompast",
                 },
                 {

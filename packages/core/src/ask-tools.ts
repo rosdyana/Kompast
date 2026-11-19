@@ -1,8 +1,9 @@
-import { and, asc, eq, inArray, schema, sql } from "@kompast/db";
+import { and, asc, eq, inArray, schema, sql, type Json } from "@kompast/db";
 import type { AiToolCall, AiToolDefinition } from "@kompast/ai";
 import { withAuthorizedTenant, ForbiddenError, type AuthContext } from "./permissions";
-import { resolveIssue, resolveProject, resolveUserByEmail, queryIssues } from "./issue-query";
+import { resolveIssue, resolveIssueType, resolveProject, resolveStatus, resolveUserByEmail, queryIssues } from "./issue-query";
 import { ConflictError, InvalidInputError, NotFoundError } from "./errors";
+import { id } from "./ids";
 import { getActiveSprint, getSprintReport, listSprints } from "./sprint";
 import { listComments } from "./comment";
 import { toPlainText } from "./rich-text";
@@ -21,9 +22,10 @@ const DEFAULT_ISSUE_LIMIT = 15;
 const MAX_ISSUE_LIMIT = 25;
 
 /**
- * The read-only tools the model may call during Ask Kompast. Every handler
- * runs on its own withAuthorizedTenant transaction, so results are limited to
- * what the asking user can see — the tools add no visibility of their own.
+ * The tools the model may call during Ask Kompast. The read tools run directly; the write tools
+ * (create_issue, add_comment, create_page) only draft a proposal — see proposeAskWrite. Every handler
+ * runs on its own withAuthorizedTenant transaction, so results are limited to what the asking user
+ * can see — the tools add no visibility of their own.
  */
 export const askTools: AiToolDefinition[] = [
   {
@@ -79,6 +81,57 @@ export const askTools: AiToolDefinition[] = [
       type: "object",
       properties: { query: { type: "string" } },
       required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "create_issue",
+    description:
+      "Drafts a new issue for the user to approve; nothing changes until they click Apply. Use only when the user asks for an issue to be created.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectKey: { type: "string", description: "Project key, e.g. KMP." },
+        title: { type: "string" },
+        description: { type: "string", description: "Plain-text description." },
+        type: { type: "string", description: "Issue type name, e.g. Bug or Task. Defaults to the project's default type." },
+        priority: { type: "string", description: "Priority name, as used in the project." },
+        assignee: { type: "string", description: 'Use "me", a workspace member\'s email, or their exact name.' },
+      },
+      required: ["projectKey", "title"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "add_comment",
+    description:
+      "Drafts a comment on an issue for the user to approve; nothing changes until they click Apply. Use only when the user asks for a comment to be added.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issueKey: { type: "string", description: "Issue key, e.g. KMP-42." },
+        body: { type: "string", description: "Plain-text comment." },
+      },
+      required: ["issueKey", "body"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "create_page",
+    description:
+      "Drafts a new doc page for the user to approve; nothing changes until they click Apply. Use only when the user asks for a page to be created.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        content: { type: "string", description: "Markdown body of the page." },
+        projectKey: { type: "string", description: "Put the page in this project's space." },
+        private: {
+          type: "boolean",
+          description: "Put the page in the user's own Private space instead of the shared Workspace space. Cannot be combined with projectKey.",
+        },
+      },
+      required: ["title", "content"],
       additionalProperties: false,
     },
   },
@@ -328,5 +381,131 @@ export async function runAskTool(ctx: AuthContext, call: AiToolCall): Promise<st
     if (isCallerError(err)) return JSON.stringify({ error: err.message });
     console.error(`[ask-tools] ${call.name} failed:`, err);
     return JSON.stringify({ error: "That lookup failed. Answer from what you already have, and say what you could not check." });
+  }
+}
+
+/** Tools that change data. They never run directly: each one only drafts a proposal, which the user approves (applyAskProposal). */
+export const ASK_WRITE_TOOL_NAMES = new Set(["create_issue", "add_comment", "create_page"]);
+
+export type AskProposalKind = "create_issue" | "add_comment" | "create_page";
+
+/**
+ * A drafted change, stored on its assistant message (ai_message.proposals). `input` holds the already-resolved
+ * ids needed to run the mutation on Apply; `preview` is what the user reads before approving.
+ */
+export interface AskProposal {
+  id: string;
+  kind: AskProposalKind;
+  status: "pending" | "applied" | "discarded";
+  /** JSON-serializable (Json, not unknown) so TanStack server fns can return a proposal to the client. */
+  input: Record<string, Json>;
+  preview: { title: string; lines: string[]; body?: string };
+  result?: { issueKey?: string; issueId?: string; teamId?: string | null; projectKey?: string; keySeq?: number; pageId?: string; commentId?: string };
+  error?: string;
+}
+
+async function draftIssue(tx: Tx, ctx: AuthContext, input: Record<string, unknown>): Promise<AskProposal> {
+  const projectKey = requireString(input, "projectKey");
+  const title = requireString(input, "title");
+  const description = readString(input, "description");
+  const priority = readString(input, "priority");
+  const assignee = readString(input, "assignee");
+
+  const project = await resolveProject(tx, ctx.organizationId, projectKey);
+  const type = await resolveIssueType(tx, project.id, readString(input, "type"));
+  const status = await resolveStatus(tx, project.id, undefined);
+  const assigneeId = assignee ? await resolveAssignee(tx, ctx, assignee) : undefined;
+
+  const lines = [`Project: ${project.key}`, `Type: ${type.name}`];
+  if (assigneeId) lines.push(`Assignee: ${(await userNames(tx, [assigneeId])).get(assigneeId) ?? "a workspace member"}`);
+  if (priority) lines.push(`Priority: ${priority}`);
+
+  return {
+    id: id("prop"),
+    kind: "create_issue",
+    status: "pending",
+    input: {
+      projectId: project.id,
+      projectKey: project.key,
+      typeId: type.id,
+      statusId: status.id,
+      title,
+      description: description ?? null,
+      priority: priority ?? null,
+      assigneeId: assigneeId ?? null,
+    },
+    preview: { title, lines, ...(description ? { body: description } : {}) },
+  };
+}
+
+async function draftComment(tx: Tx, ctx: AuthContext, input: Record<string, unknown>): Promise<AskProposal> {
+  const issueKey = requireString(input, "issueKey");
+  const body = requireString(input, "body");
+  const { project, issue } = await resolveIssue(tx, ctx.organizationId, issueKey);
+  const key = `${project.key}-${issue.keySeq}`;
+
+  return {
+    id: id("prop"),
+    kind: "add_comment",
+    status: "pending",
+    input: { issueId: issue.id, issueKey: key, body },
+    preview: { title: `${key} · ${issue.title}`, lines: [], body },
+  };
+}
+
+async function draftPage(tx: Tx, ctx: AuthContext, input: Record<string, unknown>): Promise<AskProposal> {
+  const title = requireString(input, "title");
+  const content = readString(input, "content");
+  const projectKey = readString(input, "projectKey");
+  const isPrivate = readBoolean(input, "private") ?? false;
+  if (projectKey && isPrivate) throw new InvalidInputError("A page goes in a project's space or in your Private space, not both");
+
+  let projectId: string | null = null;
+  let spaceName = isPrivate ? "Private" : "Workspace";
+  if (projectKey) {
+    const project = await resolveProject(tx, ctx.organizationId, projectKey);
+    projectId = project.id;
+    spaceName = project.name;
+  }
+
+  return {
+    id: id("prop"),
+    kind: "create_page",
+    status: "pending",
+    input: { title, content: content ?? null, projectId, private: isPrivate },
+    preview: { title, lines: [`Space: ${spaceName}`], ...(content ? { body: content } : {}) },
+  };
+}
+
+/**
+ * Drafts one model-requested write. Never throws, like runAskTool: a bad argument or an invisible project/issue
+ * comes back as `{"error": "..."}` with no proposal. The lookups run in one read transaction; nothing is written.
+ */
+export async function proposeAskWrite(ctx: AuthContext, call: AiToolCall): Promise<{ output: string; proposal?: AskProposal }> {
+  try {
+    const proposal = await withAuthorizedTenant(ctx, async (tx) => {
+      switch (call.name) {
+        case "create_issue":
+          return draftIssue(tx, ctx, call.input);
+        case "add_comment":
+          return draftComment(tx, ctx, call.input);
+        case "create_page":
+          return draftPage(tx, ctx, call.input);
+        default:
+          throw new InvalidInputError(`Unknown tool "${call.name}"`);
+      }
+    });
+    return {
+      output: JSON.stringify({
+        status: "proposed",
+        proposalId: proposal.id,
+        note: "Shown to the user as a card to approve. Nothing has been created yet — do not say it was created.",
+      }),
+      proposal,
+    };
+  } catch (err) {
+    if (isCallerError(err)) return { output: JSON.stringify({ error: err.message }) };
+    console.error(`[ask-tools] ${call.name} failed to draft:`, err);
+    return { output: JSON.stringify({ error: "That change could not be drafted. Tell the user it was not created." }) };
   }
 }

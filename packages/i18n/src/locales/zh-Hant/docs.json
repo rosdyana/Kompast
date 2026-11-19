@@ -14,6 +14,7 @@
     "aiFailedPrefix": "AI 失敗：{{message}}",
     "unknownError": "未知錯誤",
     "kanbanTableSlashItem": "看板表格",
+    "diagramSlashItem": "圖表（Mermaid）",
     "createIssueSlashItem": "從此行建立 issue",
     "creatingIssueEllipsis": "建立 issue 中…",
     "createIssueFailedPrefix": "建立 issue 失敗：{{message}}",

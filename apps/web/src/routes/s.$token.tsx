@@ -1,12 +1,25 @@
 import "@blocknote/core/style.css";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Eye, Lock } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { Spinner } from "@kompast/ui/EmptyState";
 import { useTranslation } from "@kompast/i18n";
 import { getSharedPageMetaFn, getSharedPageContentFn } from "@/lib/server-fns/share";
 import { CompassMark } from "@/components/shell/ProjectIcon";
+import { isMermaidLanguage, renderMermaidSvg } from "@/lib/mermaid-render";
+
+/**
+ * A pre that holds a Mermaid source. The exporter puts the language on the
+ * block wrapper (`data-content-type="codeBlock" data-language="mermaid"`, the
+ * shape sanitizeShareHtml keeps); the `code.language-mermaid` form is also
+ * accepted so either export path works.
+ */
+function isMermaidPre(pre: HTMLElement): boolean {
+  if (pre.querySelector("code")?.classList.contains("language-mermaid")) return true;
+  const block = pre.closest<HTMLElement>('[data-content-type="codeBlock"]');
+  return isMermaidLanguage(block?.dataset.language);
+}
 
 export const Route = createFileRoute("/s/$token")({
   loader: ({ params }) => getSharedPageMetaFn({ data: params.token }),
@@ -47,6 +60,7 @@ function SharedPage() {
   const [content, setContent] = useState<{ title: string; icon: string | null; html: string } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const docRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (meta && !meta.requiresPassword) {
@@ -56,6 +70,37 @@ function SharedPage() {
       });
     }
   }, [meta, token, t]);
+
+  // Mermaid diagrams are drawn client-side after the sanitized HTML is in the DOM.
+  // The source <pre> stays in place as the fallback: it is hidden only once a
+  // diagram renders, so a syntax error leaves the code visible.
+  const contentHtml = content?.html;
+  useEffect(() => {
+    const root = docRef.current;
+    if (!root || !contentHtml) return;
+    let cancelled = false;
+    const applied: { pre: HTMLElement; preview: HTMLElement }[] = [];
+    const pres = Array.from(root.querySelectorAll("pre")).filter(isMermaidPre);
+    for (const pre of pres) {
+      const source = pre.querySelector("code")?.textContent ?? pre.textContent ?? "";
+      renderMermaidSvg(source).then((res) => {
+        if (cancelled || !("svg" in res) || !res.svg) return;
+        const preview = document.createElement("div");
+        preview.className = "kp-mermaid-preview";
+        preview.innerHTML = res.svg;
+        pre.after(preview);
+        pre.style.display = "none";
+        applied.push({ pre, preview });
+      });
+    }
+    return () => {
+      cancelled = true;
+      for (const { pre, preview } of applied) {
+        preview.remove();
+        pre.style.display = "";
+      }
+    };
+  }, [contentHtml]);
 
   async function submitPassword() {
     setLoading(true);
@@ -136,7 +181,7 @@ function SharedPage() {
         )}
         <h1 className="mb-6 text-[40px] font-bold leading-[1.2] tracking-[-0.02em] text-text">{content.title || t("untitled")}</h1>
         {content.html ? (
-          <div className="kp-doc kp-doc-static bn-default-styles" dangerouslySetInnerHTML={{ __html: content.html }} />
+          <div ref={docRef} className="kp-doc kp-doc-static bn-default-styles" dangerouslySetInnerHTML={{ __html: content.html }} />
         ) : (
           <p className="text-[15px] text-text-3">{t("emptyPage")}</p>
         )}

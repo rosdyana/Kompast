@@ -58,6 +58,23 @@ export async function resolveStatus(tx: Tx, projectId: string, name?: string) {
   return fallback;
 }
 
+/**
+ * Issue type by name, or the project's first non-subtask type when no name is given. Moved from
+ * apps/web's api-resolvers.ts. Unknown names are InvalidInputError (400 via public-error); a project
+ * with no types at all is a plain Error (500), as it was when this threw ApiError.
+ */
+export async function resolveIssueType(tx: Tx, projectId: string, name?: string) {
+  const types = await tx.select().from(schema.issueType).where(eq(schema.issueType.projectId, projectId));
+  if (name) {
+    const match = types.find((t) => t.name.toLowerCase() === name.toLowerCase());
+    if (!match) throw new InvalidInputError(`Issue type "${name}" not found in this project`);
+    return match;
+  }
+  const fallback = types.find((t) => !t.isSubtask) ?? types[0];
+  if (!fallback) throw new InvalidInputError("Project has no issue types");
+  return fallback;
+}
+
 export async function resolveUserByEmail(tx: Tx, organizationId: string, email: string) {
   const [row] = await tx
     .select({ id: schema.user.id })

@@ -50,7 +50,7 @@ export const issue = pgTable(
     sprintId: text("sprint_id"),
     labels: text("labels").array().notNull().default([]),
     customFields: jsonb("custom_fields").$type<Json>().notNull().default({}),
-    /** 'user' | 'automation' | 'mcp' | 'api' | 'import' — see plan §"REST API + MCP" attribution. */
+    /** 'user' | 'automation' | 'mcp' | 'api' | 'import' | 'ai' — see plan §"REST API + MCP" attribution. */
     origin: text("origin").notNull().default("user"),
     originClient: text("origin_client"),
     archivedAt: timestamp("archived_at"),
@@ -129,7 +129,7 @@ export const issueCommentReaction = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     emoji: text("emoji").notNull(),
-    /** 'user' | 'automation' | 'mcp' | 'api' | 'import' — same attribution as issue_comment. */
+    /** 'user' | 'automation' | 'mcp' | 'api' | 'import' | 'ai' — same attribution as issue_comment. */
     origin: text("origin").notNull().default("user"),
     originClient: text("origin_client"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
