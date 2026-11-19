@@ -12,6 +12,7 @@ import { useClientNow } from "@/lib/use-client-now";
 import { finishStandupFn, getStandupDigestFn } from "@/lib/server-fns/standup";
 import { useIntlLocale, type BoardData, type BoardIssue } from "./project-shared";
 import { formatClock, localDateKey, previousWorkingDayStart } from "./standup-time";
+import { parseStandupSettings } from "./standup-settings";
 
 type DigestByUser = Awaited<ReturnType<typeof getStandupDigestFn>>["byUser"];
 type DigestItem = DigestByUser[string][number];
@@ -149,6 +150,21 @@ export function StandupDialog({
     return allBoardIssues.filter((i) => activeIds.has(i.id));
   }, [allBoardIssues, data.activeSprintIssueIds]);
 
+  const standupSettings = useMemo(() => parseStandupSettings(data.board.standupSettings), [data.board.standupSettings]);
+  /** Each issue's own column, for the Today column filter. */
+  const columnOfIssue = useMemo(() => {
+    const map = new Map<string, { id: string; order: number; name: string }>();
+    for (const col of data.columns) {
+      for (const issue of col.issues) map.set(issue.id, { id: col.id, order: col.order, name: col.name });
+    }
+    return map;
+  }, [data.columns]);
+  /** Configured Today columns that still exist, in board order. Empty = default rule. */
+  const todayColumns = useMemo(() => {
+    const wanted = new Set(standupSettings.todayColumnIds);
+    return data.columns.filter((c) => wanted.has(c.id)).sort((a, b) => a.order - b.order);
+  }, [data.columns, standupSettings]);
+
   const namesById = useMemo(() => {
     const names = new Map<string, string>();
     for (const m of data.projectMembers) names.set(m.id, m.name);
@@ -164,13 +180,17 @@ export function StandupDialog({
   const sinceWhen = since ? since.toLocaleDateString(locale, { weekday: "long" }) : "";
 
   const [digest, setDigest] = useState<DigestByUser | null>(null);
+  const [didColumnNames, setDidColumnNames] = useState<string[]>([]);
   const [digestFailed, setDigestFailed] = useState(false);
   useEffect(() => {
     if (!sinceIso) return;
     let cancelled = false;
     getStandupDigestFn({ data: { sprintId, since: sinceIso } })
       .then((res) => {
-        if (!cancelled) setDigest(res.byUser);
+        if (!cancelled) {
+          setDigest(res.byUser);
+          setDidColumnNames(res.didColumnNames);
+        }
       })
       .catch(() => {
         if (!cancelled) setDigestFailed(true);
@@ -314,6 +334,12 @@ export function StandupDialog({
   }
 
   function todayIssues(userId: string): BoardIssue[] {
+    if (todayColumns.length > 0) {
+      const todayColumnIds = new Set(todayColumns.map((c) => c.id));
+      return sprintIssues
+        .filter((i) => i.assigneeId === userId && todayColumnIds.has(columnOfIssue.get(i.id)?.id ?? ""))
+        .sort((a, b) => columnOfIssue.get(a.id)!.order - columnOfIssue.get(b.id)!.order);
+    }
     return sprintIssues
       .filter((i) => i.assigneeId === userId && (statusesById.get(i.statusId)?.category ?? "todo") !== "done")
       .sort((a, b) => categoryRank(statusesById.get(a.statusId)?.category) - categoryRank(statusesById.get(b.statusId)?.category));
@@ -518,6 +544,9 @@ export function StandupDialog({
 
               <div className="flex flex-col gap-1.5">
                 <h3 className="type-small font-semibold text-text-2">{t("standup.since", { when: sinceWhen })}</h3>
+                {didColumnNames.length > 0 && (
+                  <p className="type-small text-text-3">{t("standup.fromColumns", { columns: didColumnNames.join(", ") })}</p>
+                )}
                 {digestFailed ? (
                   <p className="type-small text-text-3">{t("standup.digestFailed")}</p>
                 ) : !digest ? (
@@ -562,6 +591,9 @@ export function StandupDialog({
 
               <div className="flex flex-col gap-1.5">
                 <h3 className="type-small font-semibold text-text-2">{t("standup.today")}</h3>
+                {todayColumns.length > 0 && (
+                  <p className="type-small text-text-3">{t("standup.fromColumns", { columns: todayColumns.map((c) => c.name).join(", ") })}</p>
+                )}
                 {todayIssues(currentId).length === 0 ? (
                   <p className="type-small text-text-3">{t("standup.noToday")}</p>
                 ) : (

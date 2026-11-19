@@ -1,0 +1,1 @@
+ALTER TABLE "board" ADD COLUMN "standup_settings" jsonb;

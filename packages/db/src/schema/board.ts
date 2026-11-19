@@ -23,6 +23,12 @@ export const board = pgTable("board", {
     .default("top"),
   /** Grouped (swimlane) board: a lane whose fullest cell has more cards than this scrolls on its own, showing this many. */
   swimlaneMaxCards: integer("swimlane_max_cards").notNull().default(5),
+  /**
+   * { didColumnIds?: string[]; todayColumnIds?: string[] } — standup column filters.
+   * Ids aren't FK-enforced (jsonb can't reference boardColumn), so a deleted column's
+   * id simply lingers here; readers ignore ids that no longer exist on the board.
+   */
+  standupSettings: jsonb("standup_settings").$type<Json>(),
 });
 
 /**
