@@ -6,16 +6,17 @@ import { PageContainer } from "@kompast/ui/PageContainer";
 import { PageHeader } from "@kompast/ui/PageHeader";
 import { EmptyState } from "@kompast/ui/EmptyState";
 import { useTranslation, type SupportedLocale } from "@kompast/i18n";
-import { listPageTreeFn, listTemplatePagesFn, createPageFromTemplateFn } from "@/lib/server-fns/pages";
+import { listPageTreeFn, listPageCreatorsFn, listTemplatePagesFn, createPageFromTemplateFn } from "@/lib/server-fns/pages";
 import { PageIcon } from "@/components/docs/DocsTree";
 import { relativeTime } from "@/components/docs/relative-time";
 import { ProjectIcon } from "@/components/shell/ProjectIcon";
 import { usePageChrome, useWorkbench } from "@/components/shell/WorkbenchContext";
+import { Avatar } from "@kompast/ui/Avatar";
 
 export const Route = createFileRoute("/_app/docs/")({
   loader: async () => {
-    const [pageTree, templates] = await Promise.all([listPageTreeFn(), listTemplatePagesFn()]);
-    return { ...pageTree, templates };
+    const [pageTree, templates, creators] = await Promise.all([listPageTreeFn(), listTemplatePagesFn(), listPageCreatorsFn()]);
+    return { ...pageTree, templates, creators: creators.creators };
   },
   component: DocsIndexPage,
 });
@@ -56,6 +57,7 @@ function DocsIndexPage() {
     }
     return parts.length ? parts.join(" / ") : t("index.rootLocation");
   };
+  const creatorsById = new Map(data.creators.map((u) => [u.id, u]));
   const pages = [...data.pages].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   return (
@@ -126,25 +128,37 @@ function DocsIndexPage() {
           />
         ) : (
           <div className="overflow-hidden rounded-[8px] border border-border">
-            <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,220px)_140px] gap-4 border-b border-border bg-surface-2 px-4 py-2 text-[12.5px] font-medium text-text-3 sm:grid">
+            <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,220px)_minmax(0,160px)_140px] gap-4 border-b border-border bg-surface-2 px-4 py-2 text-[12.5px] font-medium text-text-3 sm:grid">
               <span>{t("index.colTitle")}</span>
               <span>{t("index.colLocation")}</span>
+              <span>{t("index.colCreatedBy")}</span>
               <span className="text-right">{t("index.colUpdated")}</span>
             </div>
             {pages.map((page) => {
               const updated = new Date(page.updatedAt);
+              const creator = page.createdBy ? creatorsById.get(page.createdBy) : undefined;
               return (
                 <Link
                   key={page.id}
                   to="/docs/$pageId"
                   params={{ pageId: page.id }}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-border bg-surface px-4 py-2.5 last:border-b-0 hover:bg-surface-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,220px)_140px]"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-border bg-surface px-4 py-2.5 last:border-b-0 hover:bg-surface-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,220px)_minmax(0,160px)_140px]"
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
                     <PageIcon icon={page.icon} size={17} />
                     <span className="truncate text-[14.5px] text-text">{page.title || <span className="text-text-3">{t("untitled")}</span>}</span>
                   </span>
                   <span className="hidden truncate text-[13px] text-text-3 sm:block">{locationOf(page.parentPageId)}</span>
+                  <span className="hidden min-w-0 items-center gap-1.5 text-[13px] text-text-3 sm:flex">
+                    {creator ? (
+                      <>
+                        <Avatar name={creator.name} size={18} />
+                        <span className="truncate">{creator.name}</span>
+                      </>
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </span>
                   <span className="text-right text-[13px] tabular-nums text-text-3" title={updated.toLocaleString(intlLocale)}>
                     {relativeTime(updated, intlLocale)}
                   </span>

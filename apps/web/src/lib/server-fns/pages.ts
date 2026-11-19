@@ -67,6 +67,24 @@ export const listPageTreeFn = createServerFn({ method: "GET" }).handler(async ()
   });
 });
 
+/**
+ * Creator names for the docs list page ("Created by" column). Kept separate from
+ * listPageTreeFn, which the sidebar and editor also consume. Returns only id+name for
+ * the distinct createdBy ids of the pages the caller can see in the workspace tree.
+ */
+export const listPageCreatorsFn = createServerFn({ method: "GET" }).handler(async () => {
+  const ctx = await requireAuthContext();
+  return withAuthorizedTenant(ctx, async (tx) => {
+    const visible = await filterAccessiblePages(tx, await listPageTree(tx, ctx.organizationId, null), ctx);
+    const creatorIds = [...new Set(visible.map((p) => p.createdBy).filter((id): id is string => !!id))];
+    const creators =
+      creatorIds.length > 0
+        ? await tx.select({ id: schema.user.id, name: schema.user.name }).from(schema.user).where(inArray(schema.user.id, creatorIds))
+        : [];
+    return { creators };
+  });
+});
+
 /** The project's own "Docs" tab — same tree, scoped to pages filed under this project instead of workspace-level ones. */
 export const listProjectPagesFn = createServerFn({ method: "GET" })
   .validator((projectId: string) => projectId)
@@ -155,7 +173,8 @@ export const getPageDetailFn = createServerFn({ method: "GET" })
         : [];
 
       const commentAuthorIds = [...new Set(comments.map((c) => c.authorId))];
-      const users = commentAuthorIds.length > 0 ? await tx.select().from(schema.user).where(inArray(schema.user.id, commentAuthorIds)) : [];
+      const userIds = [...new Set([...commentAuthorIds, page.createdBy].filter((id): id is string => !!id))];
+      const users = userIds.length > 0 ? await tx.select().from(schema.user).where(inArray(schema.user.id, userIds)) : [];
 
       const linkedIssueIds = outgoingLinks.filter((l) => l.toType === "issue").map((l) => l.toId);
       const linkedIssues =

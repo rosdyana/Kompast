@@ -72,6 +72,8 @@
     "versionHistory": "版本記錄",
     "fullWidth": "全寬",
     "editedAgo": "{{time}}編輯",
+    "createdBy": "由 {{name}} 建立",
+    "createdAgo": "建立於 {{time}}",
     "addIcon": "新增圖示",
     "changeIcon": "更換圖示",
     "removeIcon": "移除",
@@ -125,6 +127,7 @@
     "emptyTitle": "尚無頁面",
     "colTitle": "名稱",
     "colLocation": "位置",
+    "colCreatedBy": "建立者",
     "colUpdated": "最後編輯",
     "rootLocation": "最上層"
   },

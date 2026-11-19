@@ -72,6 +72,8 @@
     "versionHistory": "Version history",
     "fullWidth": "Full width",
     "editedAgo": "Edited {{time}}",
+    "createdBy": "Created by {{name}}",
+    "createdAgo": "Created {{time}}",
     "addIcon": "Add icon",
     "changeIcon": "Change icon",
     "removeIcon": "Remove",
@@ -125,6 +127,7 @@
     "emptyTitle": "No pages yet",
     "colTitle": "Name",
     "colLocation": "Location",
+    "colCreatedBy": "Created by",
     "colUpdated": "Last edited",
     "rootLocation": "Top level"
   },
