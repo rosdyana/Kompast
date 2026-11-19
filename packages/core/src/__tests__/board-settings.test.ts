@@ -262,4 +262,68 @@ describe("board column settings", () => {
     const [row] = await admin.select().from(schema.board).where(eq(schema.board.id, boardId));
     expect(parseStandupSettings(row?.standupSettings)).toEqual({ didColumnIds: [], todayColumnIds: [] });
   });
+
+  it("stuckAfterDays sets, leaves other fields alone when omitted, and clears on null", async () => {
+    const { boardId } = await seedProject("BSM");
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSM"));
+    const [col] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.boardId, boardId)).limit(1);
+    const ctx = { userId, organizationId: orgId };
+    expect(col?.stuckAfterDays).toBeNull();
+
+    await withAuthorizedTenant(ctx, (tx) => updateBoardColumn(tx, { projectId: project!.id, columnId: col!.id, stuckAfterDays: 7, wipLimit: 4 }));
+    const [set] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.id, col!.id));
+    expect(set?.stuckAfterDays).toBe(7);
+    expect(set?.wipLimit).toBe(4);
+
+    await withAuthorizedTenant(ctx, (tx) => updateBoardColumn(tx, { projectId: project!.id, columnId: col!.id, name: "Renamed again" }));
+    const [kept] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.id, col!.id));
+    expect(kept?.stuckAfterDays).toBe(7);
+
+    await withAuthorizedTenant(ctx, (tx) => updateBoardColumn(tx, { projectId: project!.id, columnId: col!.id, stuckAfterDays: null }));
+    const [cleared] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.id, col!.id));
+    expect(cleared?.stuckAfterDays).toBeNull();
+  });
+
+  it("stuckAfterDays accepts the range bounds 1 and 365", async () => {
+    const { boardId } = await seedProject("BSN");
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSN"));
+    const [col] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.boardId, boardId)).limit(1);
+    const ctx = { userId, organizationId: orgId };
+
+    for (const days of [1, 365]) {
+      await withAuthorizedTenant(ctx, (tx) => updateBoardColumn(tx, { projectId: project!.id, columnId: col!.id, stuckAfterDays: days }));
+      const [row] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.id, col!.id));
+      expect(row?.stuckAfterDays).toBe(days);
+    }
+  });
+
+  it("stuckAfterDays rejects 0, 366, negatives and non-integers", async () => {
+    const { boardId } = await seedProject("BSO");
+    const [project] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSO"));
+    const [col] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.boardId, boardId)).limit(1);
+    for (const bad of [0, 366, -1, 2.5]) {
+      await expect(
+        withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+          updateBoardColumn(tx, { projectId: project!.id, columnId: col!.id, stuckAfterDays: bad }),
+        ),
+      ).rejects.toThrow(/stuckAfterDays/);
+    }
+    const [row] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.id, col!.id));
+    expect(row?.stuckAfterDays).toBeNull();
+  });
+
+  it("stuckAfterDays rejects a column that belongs to a DIFFERENT project", async () => {
+    const { boardId: boardQ } = await seedProject("BSQ");
+    await seedProject("BSR");
+    const [projectR] = await admin.select().from(schema.project).where(eq(schema.project.key, "BSR"));
+    const [colQ] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.boardId, boardQ)).limit(1);
+
+    await expect(
+      withAuthorizedTenant({ userId, organizationId: orgId }, (tx) =>
+        updateBoardColumn(tx, { projectId: projectR!.id, columnId: colQ!.id, stuckAfterDays: 3 }),
+      ),
+    ).rejects.toThrow();
+    const [row] = await admin.select().from(schema.boardColumn).where(eq(schema.boardColumn.id, colQ!.id));
+    expect(row?.stuckAfterDays).toBeNull();
+  });
 });

@@ -30,5 +30,21 @@
   "toolGetIssue": "Reading issue…",
   "toolGetSprint": "Checking sprint…",
   "toolSearchWorkspace": "Searching docs and comments…",
-  "toolGeneric": "Looking things up…"
+  "toolGeneric": "Looking things up…",
+  "toolCreateIssue": "Drafting an issue…",
+  "toolAddComment": "Drafting a comment…",
+  "toolCreatePage": "Drafting a page…",
+  "proposalKindIssue": "New issue",
+  "proposalKindComment": "New comment",
+  "proposalKindPage": "New page",
+  "proposalDraftNote": "Draft. Nothing is created until you apply it.",
+  "proposalApply": "Apply",
+  "proposalDiscard": "Discard",
+  "proposalApplied": "Applied",
+  "proposalDiscarded": "Discarded",
+  "proposalShowFull": "Show full content",
+  "proposalHideFull": "Hide full content",
+  "proposalFailed": "This change couldn't be applied. Try again.",
+  "proposalOpenIssue": "Open issue",
+  "proposalOpenPage": "Open page"
 }

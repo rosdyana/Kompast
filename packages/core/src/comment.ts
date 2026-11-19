@@ -11,7 +11,7 @@ export interface AddCommentInput {
   issueId: string;
   authorId: string;
   bodyJson: Json;
-  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  origin?: "user" | "automation" | "mcp" | "api" | "import" | "ai";
   originClient?: string;
   automationContext?: AutomationContext;
   /** Backdates the comment — for the importer, preserving a JIRA/Notion comment's real timestamp. Omit for a real-time comment (defaults to now). */

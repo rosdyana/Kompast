@@ -52,5 +52,6 @@ export * from "./rag";
 export * from "./errors";
 export * from "./issue-query";
 export * from "./ask-tools";
+export * from "./ask-proposals";
 export * from "./net-guard";
 export type { Tx, AnyDb } from "./types";

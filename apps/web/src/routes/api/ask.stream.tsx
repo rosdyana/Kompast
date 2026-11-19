@@ -53,8 +53,10 @@ export const Route = createFileRoute("/api/ask/stream")({
                 onDelta: (delta) => send({ delta }),
                 // A tool frame tells the UI which lookup is running; the client shows it as a transient status.
                 onTool: (tool) => send({ tool }),
+                // A proposal frame carries a drafted change the user can Apply or Discard once the answer is saved (the done frame's messageId).
+                onProposal: (proposal) => send({ proposal }),
               });
-              send({ done: true, threadId: result.threadId, citations: result.citations });
+              send({ done: true, threadId: result.threadId, messageId: result.messageId, citations: result.citations });
             } catch (err) {
               send({ error: aiStreamErrorMessage(err, "The AI provider request failed", { isDeploymentAdmin: isAdmin }) });
             } finally {

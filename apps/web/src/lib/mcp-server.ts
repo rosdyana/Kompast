@@ -15,6 +15,7 @@ import {
   addCommentReaction,
   removeCommentReaction,
   toPlainText,
+  paragraphDoc,
   linkIssues,
   listIssueLinks,
   logWork,
@@ -203,11 +204,6 @@ async function renderPageMarkdown(tx: Tx, pageId: string): Promise<string> {
   const [state] = await tx.select().from(schema.ydocState).where(eq(schema.ydocState.pageId, pageId));
   if (!state) return "";
   return yjsStateToMarkdown(state.state);
-}
-
-/** Plain text in, a one-paragraph BlockNote document out — the shape issue descriptions and comments are stored in. */
-function paragraphDoc(text: string) {
-  return [{ type: "paragraph", content: [{ type: "text", text, styles: {} }] }];
 }
 
 function toDate(value: string | null | undefined): Date | null | undefined {

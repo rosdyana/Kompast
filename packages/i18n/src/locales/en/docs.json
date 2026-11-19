@@ -14,6 +14,7 @@
     "aiFailedPrefix": "AI failed: {{message}}",
     "unknownError": "unknown error",
     "kanbanTableSlashItem": "Kanban board",
+    "diagramSlashItem": "Diagram (Mermaid)",
     "createIssueSlashItem": "Create issue from this line",
     "creatingIssueEllipsis": "Creating issue…",
     "createIssueFailedPrefix": "Create issue failed: {{message}}",

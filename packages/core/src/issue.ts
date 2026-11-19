@@ -36,7 +36,7 @@ export interface CreateIssueInput {
    * keySeq is the one actually written.
    */
   keySeq?: number;
-  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  origin?: "user" | "automation" | "mcp" | "api" | "import" | "ai";
   originClient?: string;
   automationContext?: AutomationContext;
 }
@@ -171,7 +171,7 @@ export interface UpdateIssueInput {
   descriptionJson?: Json;
   customFields?: Json;
   actorId: string;
-  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  origin?: "user" | "automation" | "mcp" | "api" | "import" | "ai";
   originClient?: string;
   automationContext?: AutomationContext;
   /**
@@ -276,7 +276,7 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
     id: string;
     issueId: string;
     actorId: string;
-    origin: "user" | "automation" | "mcp" | "api" | "import";
+    origin: "user" | "automation" | "mcp" | "api" | "import" | "ai";
     originClient: string | undefined;
     field: string;
     fromValue: string | null;
@@ -386,7 +386,7 @@ export async function updateIssue(tx: Tx, issueId: string, patch: UpdateIssueInp
 
 export interface UpdateIssueCustomFieldMeta {
   actorId: string;
-  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  origin?: "user" | "automation" | "mcp" | "api" | "import" | "ai";
   originClient?: string;
   automationContext?: AutomationContext;
 }
@@ -463,7 +463,7 @@ export interface MoveIssueInput {
    * every other caller); null = dropped into the Unassigned lane. */
   assigneeId?: string | null;
   actorId: string;
-  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  origin?: "user" | "automation" | "mcp" | "api" | "import" | "ai";
   originClient?: string;
   automationContext?: AutomationContext;
 }
@@ -630,7 +630,7 @@ export async function moveIssues(tx: Tx, input: MoveIssuesInput): Promise<{ move
 
 export interface ArchiveIssueMeta {
   actorId: string;
-  origin?: "user" | "automation" | "mcp" | "api" | "import";
+  origin?: "user" | "automation" | "mcp" | "api" | "import" | "ai";
   originClient?: string;
 }
 

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, ne, schema } from "@kompast/db";
+import { and, asc, desc, eq, inArray, isNull, ne, schema } from "@kompast/db";
 import type { Tx } from "./types";
 import { getChecklistSummaries } from "./checklist";
 import { InvalidInputError } from "./errors";
@@ -49,6 +49,7 @@ export async function getBoard(tx: Tx, boardId: string) {
             rank: schema.issue.rank,
             labels: schema.issue.labels,
             customFields: schema.issue.customFields,
+            createdAt: schema.issue.createdAt,
           })
           .from(schema.issue)
           .where(and(inArray(schema.issue.statusId, statusIds), isNull(schema.issue.archivedAt)))
@@ -59,7 +60,16 @@ export async function getBoard(tx: Tx, boardId: string) {
     tx,
     issues.map((i) => i.id),
   );
-  const withChecklist = issues.map((i) => ({ ...i, checklist: checklists.get(i.id) ?? null }));
+  const statusEntered = await getStatusEnteredAt(
+    tx,
+    issues.map((i) => i.id),
+  );
+  const withChecklist = issues.map((i) => ({
+    ...i,
+    checklist: checklists.get(i.id) ?? null,
+    // Latest status-history row, else the issue's creation time (a never-moved issue has no status row).
+    statusEnteredAt: statusEntered.get(i.id) ?? i.createdAt,
+  }));
 
   const issuesByColumn = new Map<string, typeof withChecklist>();
   for (const issue of withChecklist) {
@@ -78,6 +88,30 @@ export async function getBoard(tx: Tx, boardId: string) {
     })),
   };
 }
+
+/**
+ * When each issue last entered its current status: the newest `status`
+ * history row per issue. Issues with no status row (never moved) are absent
+ * from the map — the caller falls back to createdAt. Backdated rows from
+ * recordHistoricalStatusChange count, since they are real history.
+ */
+async function getStatusEnteredAt(tx: Tx, issueIds: string[]): Promise<Map<string, Date>> {
+  const map = new Map<string, Date>();
+  if (issueIds.length === 0) return map;
+  const rows = await tx
+    .selectDistinctOn([schema.issueHistory.issueId], {
+      issueId: schema.issueHistory.issueId,
+      createdAt: schema.issueHistory.createdAt,
+    })
+    .from(schema.issueHistory)
+    .where(and(inArray(schema.issueHistory.issueId, issueIds), eq(schema.issueHistory.field, "status")))
+    .orderBy(schema.issueHistory.issueId, desc(schema.issueHistory.createdAt));
+  for (const row of rows) map.set(row.issueId, row.createdAt);
+  return map;
+}
+
+/** Stuck-card threshold for a board column (days in the same status); mirrored as literals in apps/web's board-columns server fn. */
+export const STUCK_AFTER_DAYS_RANGE = { min: 1, max: 365 } as const;
 
 /**
  * The status a backlog issue moves into when pulled into a sprint: the
@@ -128,14 +162,23 @@ export interface UpdateBoardColumnInput {
   color?: string;
   /** undefined = leave unchanged; null = clear to unlimited ("∞" in the UI) */
   wipLimit?: number | null;
+  /** undefined = leave unchanged; null = off (no stuck highlighting); 1–365 days otherwise. */
+  stuckAfterDays?: number | null;
 }
 
 export async function updateBoardColumn(tx: Tx, input: UpdateBoardColumnInput): Promise<void> {
   await requireColumnInProject(tx, input.columnId, input.projectId);
-  const set: Partial<{ name: string; color: string; wipLimit: number | null }> = {};
+  const set: Partial<{ name: string; color: string; wipLimit: number | null; stuckAfterDays: number | null }> = {};
   if (input.name !== undefined) set.name = input.name;
   if (input.color !== undefined) set.color = input.color;
   if (input.wipLimit !== undefined) set.wipLimit = input.wipLimit;
+  if (input.stuckAfterDays !== undefined) {
+    const n = input.stuckAfterDays;
+    if (n !== null && (!Number.isInteger(n) || n < STUCK_AFTER_DAYS_RANGE.min || n > STUCK_AFTER_DAYS_RANGE.max)) {
+      throw new InvalidInputError(`stuckAfterDays must be a whole number from ${STUCK_AFTER_DAYS_RANGE.min} to ${STUCK_AFTER_DAYS_RANGE.max}`);
+    }
+    set.stuckAfterDays = n;
+  }
   if (Object.keys(set).length === 0) return;
   await tx.update(schema.boardColumn).set(set).where(eq(schema.boardColumn.id, input.columnId));
 }
