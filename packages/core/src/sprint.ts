@@ -2,8 +2,10 @@ import { and, asc, desc, eq, inArray, isNull, schema, sql } from "@kompast/db";
 import type { Tx } from "./types";
 import { id } from "./ids";
 import { getDefaultActiveStatusId } from "./board";
-import { createPage, duplicatePage, updatePageMeta } from "./page";
+import { createPage, duplicatePage, updatePageMeta, archivePage } from "./page";
 import { rankBetween } from "./rank";
+import { archiveIssue } from "./issue";
+import { NotFoundError, UserFacingError } from "./errors";
 
 const CYCLE_DAYS: Record<string, number> = { "1w": 7, "2w": 14, "3w": 21, "4w": 28 };
 
@@ -678,6 +680,56 @@ export async function updateSprint(tx: Tx, input: UpdateSprintInput): Promise<vo
   const trimmed = input.name.trim();
   if (!trimmed) throw new Error("Sprint name cannot be empty");
   await tx.update(schema.sprint).set({ name: trimmed }).where(eq(schema.sprint.id, input.sprintId));
+}
+
+export interface DeleteSprintInput extends SprintMembershipActor {
+  sprintId: string;
+  /** Where the sprint's issues go: back to the board's backlog, or archived (restorable from the issue). */
+  issues: "backlog" | "archive";
+}
+
+/**
+ * Deletes a sprint that hasn't started yet (active and closed sprints hold
+ * history and are not deletable). Every issue on it — archived ones too — is
+ * taken off the sprint, and archived as well when `issues` is "archive".
+ * The linked Sprint Action (minutes) and Retro docs go to Trash, not hard
+ * delete: the minutes page is detached first because page.sprintId cascades.
+ */
+export async function deleteSprint(tx: Tx, input: DeleteSprintInput): Promise<void> {
+  const sprint = await getSprint(tx, input.sprintId);
+  if (!sprint) throw new NotFoundError(`Sprint ${input.sprintId} not found`);
+  if (sprint.state !== "future") throw new UserFacingError("Only sprints that haven't started can be deleted");
+
+  const actor: SprintMembershipActor = { actorId: input.actorId, origin: input.origin, originClient: input.originClient };
+  const issueRows = await tx.select({ id: schema.issue.id }).from(schema.issue).where(eq(schema.issue.sprintId, input.sprintId));
+  for (const row of issueRows) {
+    await removeIssueFromSprint(tx, row.id, actor);
+    if (input.issues === "archive") {
+      await archiveIssue(tx, row.id, { actorId: input.actorId, origin: input.origin, originClient: input.originClient });
+    }
+  }
+
+  const minutesPages = await tx
+    .select({ id: schema.page.id, archivedAt: schema.page.archivedAt })
+    .from(schema.page)
+    .where(eq(schema.page.sprintId, input.sprintId));
+  if (minutesPages.length > 0) {
+    await tx.update(schema.page).set({ sprintId: null }).where(inArray(schema.page.id, minutesPages.map((p) => p.id)));
+  }
+
+  const pageIdsToArchive = minutesPages.filter((p) => !p.archivedAt).map((p) => p.id);
+  if (sprint.retroPageId) {
+    const [retro] = await tx
+      .select({ id: schema.page.id, archivedAt: schema.page.archivedAt })
+      .from(schema.page)
+      .where(eq(schema.page.id, sprint.retroPageId));
+    if (retro && !retro.archivedAt) pageIdsToArchive.push(retro.id);
+  }
+  for (const pageId of pageIdsToArchive) {
+    await archivePage(tx, pageId);
+  }
+
+  await tx.delete(schema.sprint).where(eq(schema.sprint.id, input.sprintId));
 }
 
 // ---------------------------------------------------------------------------

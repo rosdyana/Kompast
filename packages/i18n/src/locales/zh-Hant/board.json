@@ -781,7 +781,16 @@
     "futureBadge": "已規劃",
     "summaryEmpty": "尚未產生。",
     "regenerate": "重新產生",
-    "createdToast": "已建立 {{key}}"
+    "createdToast": "已建立 {{key}}",
+    "deleteSprint": "刪除衝刺",
+    "deleteSprintTitle": "要刪除 {{name}} 嗎？",
+    "deleteSprintBody": "其連結的會議記錄與回顧文件將移至垃圾桶。",
+    "deleteSprintIssuesPrompt_one": "此衝刺有 {{count}} 個議題，要如何處理？",
+    "deleteSprintIssuesPrompt_other": "此衝刺有 {{count}} 個議題，要如何處理？",
+    "deleteSprintMoveToBacklog": "移至待辦清單",
+    "deleteSprintArchiveIssues": "封存議題",
+    "deleteSprintArchiveHint": "已封存的議題可從該議題頁面還原。",
+    "deleteSprintConfirm": "刪除衝刺"
   },
   "tableEdit": {
     "saveFailed": "無法更新 {{key}}",

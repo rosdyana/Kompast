@@ -782,7 +782,16 @@
     "futureBadge": "Direncanakan",
     "summaryEmpty": "Belum ada ringkasan.",
     "regenerate": "Buat ulang",
-    "createdToast": "{{key}} dibuat"
+    "createdToast": "{{key}} dibuat",
+    "deleteSprint": "Hapus sprint",
+    "deleteSprintTitle": "Hapus {{name}}?",
+    "deleteSprintBody": "Dokumen Minutes dan Retro yang tertaut akan dipindahkan ke Sampah.",
+    "deleteSprintIssuesPrompt_one": "Sprint ini memiliki {{count}} issue. Apa yang harus dilakukan terhadapnya?",
+    "deleteSprintIssuesPrompt_other": "Sprint ini memiliki {{count}} issue. Apa yang harus dilakukan terhadapnya?",
+    "deleteSprintMoveToBacklog": "Pindahkan ke backlog",
+    "deleteSprintArchiveIssues": "Arsipkan issue",
+    "deleteSprintArchiveHint": "Issue yang diarsipkan dapat dipulihkan dari issue tersebut.",
+    "deleteSprintConfirm": "Hapus sprint"
   },
   "tableEdit": {
     "saveFailed": "Gagal memperbarui {{key}}",

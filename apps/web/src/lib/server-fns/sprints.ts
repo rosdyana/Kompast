@@ -15,6 +15,7 @@ import {
   startSprint,
   completeSprint,
   updateSprint,
+  deleteSprint,
   sendSprintSummaryEmail,
   withAuthorizedTenant,
 } from "@kompast/core";
@@ -134,6 +135,16 @@ export const updateSprintFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, (tx) => updateSprint(tx, { sprintId: data.sprintId, name: data.name }));
+    return { ok: true } as const;
+  });
+
+const deleteSprintSchema = z.object({ sprintId: z.string(), issues: z.enum(["backlog", "archive"]) });
+
+export const deleteSprintFn = createServerFn({ method: "POST" })
+  .validator(deleteSprintSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthContext();
+    await withAuthorizedTenant(ctx, (tx) => deleteSprint(tx, { ...data, actorId: ctx.userId }));
     return { ok: true } as const;
   });
 
