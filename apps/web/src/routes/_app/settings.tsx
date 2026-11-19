@@ -21,6 +21,7 @@ import {
   testEmbeddingProviderFn,
   getEmbeddingStatusFn,
   retryFailedReindexFn,
+  retryWaitingReindexNowFn,
 } from "@/lib/server-fns/settings";
 import { listMembersFn } from "@/lib/server-fns/members";
 import { listTeamsFn } from "@/lib/server-fns/teams";
@@ -568,6 +569,8 @@ function EmbeddingStatusCard({ refreshKey }: { refreshKey: number }) {
   const [loading, setLoading] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  const [retryingNow, setRetryingNow] = useState(false);
+  const [retryNowMessage, setRetryNowMessage] = useState<string | null>(null);
   // One fetch at a time: an interval tick that lands during a slow fetch is
   // folded into a single follow-up fetch, not stacked — and not dropped, so a
   // refresh asked for after "Retry failed" always shows post-retry numbers.
@@ -632,6 +635,20 @@ function EmbeddingStatusCard({ refreshKey }: { refreshKey: number }) {
     }
   };
 
+  const retryWaitingNow = async () => {
+    setRetryingNow(true);
+    setRetryNowMessage(null);
+    try {
+      const { moved } = await retryWaitingReindexNowFn();
+      setRetryNowMessage(t("integrations.embedding.status.retryNowDone", { count: moved }));
+      await refresh();
+    } catch (err) {
+      if (aliveRef.current) setRetryNowMessage(t("integrations.embedding.status.retryNowError", { message: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      if (aliveRef.current) setRetryingNow(false);
+    }
+  };
+
   const ageLabel = (seconds: number) =>
     seconds < 60
       ? t("integrations.embedding.status.age.seconds", { count: seconds })
@@ -670,6 +687,11 @@ function EmbeddingStatusCard({ refreshKey }: { refreshKey: number }) {
 
         {status?.configured && (
           <>
+            {status.queue.workerStalled && status.queue.oldestReadyAgeSeconds !== null && (
+              <p className="rounded-[8px] border border-amber/30 bg-amber-soft px-4 py-3 text-[13.5px] leading-relaxed text-text">
+                {t("integrations.embedding.status.stalled", { age: ageLabel(status.queue.oldestReadyAgeSeconds) })}
+              </p>
+            )}
             <div className="flex flex-col gap-3">
               <p className="type-small font-medium text-text-2">{t("integrations.embedding.status.indexed")}</p>
               {indexedRows.map(({ key, label }) => {
@@ -700,6 +722,9 @@ function EmbeddingStatusCard({ refreshKey }: { refreshKey: number }) {
                   {status.queue.oldestPendingAgeSeconds !== null && (
                     <span className="text-[12px] text-text-3">{t("integrations.embedding.status.oldestPending", { age: ageLabel(status.queue.oldestPendingAgeSeconds) })}</span>
                   )}
+                  {status.queue.waitingRetry > 0 && (
+                    <span className="text-[12px] text-amber">{t("integrations.embedding.status.waitingRetry", { count: status.queue.waitingRetry })}</span>
+                  )}
                 </div>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-text-3">{t("integrations.embedding.status.processing")}</span>
@@ -711,6 +736,51 @@ function EmbeddingStatusCard({ refreshKey }: { refreshKey: number }) {
                 </div>
               </div>
             </div>
+
+            {status.recentRetries.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="type-small font-medium text-text-2">{t("integrations.embedding.status.retries")}</p>
+                  <Button variant="secondary" size="sm" onClick={retryWaitingNow} disabled={retryingNow}>
+                    {t("integrations.embedding.status.retryNow")}
+                  </Button>
+                </div>
+                <p className="text-[12px] text-text-3">{t("integrations.embedding.status.retriesHint", { max: status.queue.maxAttempts })}</p>
+                {retryNowMessage && <p className="text-[13px] text-text-2">{retryNowMessage}</p>}
+                <div className="overflow-x-auto rounded-[8px] border border-border">
+                  <table className="w-full text-left text-[13px]">
+                    <thead className="bg-surface-2 text-[12px] text-text-3">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">{t("integrations.embedding.status.colType")}</th>
+                        <th className="px-3 py-2 font-medium">{t("integrations.embedding.status.colItem")}</th>
+                        <th className="px-3 py-2 font-medium">{t("integrations.embedding.status.colAttempts")}</th>
+                        <th className="px-3 py-2 font-medium">{t("integrations.embedding.status.colNextTry")}</th>
+                        <th className="px-3 py-2 font-medium">{t("integrations.embedding.status.colError")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {status.recentRetries.map((r) => (
+                        <tr key={r.id}>
+                          <td className="px-3 py-2 align-top text-text-2">{typeLabel(r.entityType)}</td>
+                          <td className="px-3 py-2 align-top font-mono text-[12px] text-text-3" title={r.entityId}>
+                            {shortId(r.entityId)}
+                          </td>
+                          <td className="px-3 py-2 align-top tabular-nums text-text-2">{r.attempts}</td>
+                          <td className="px-3 py-2 align-top whitespace-nowrap text-text-2">
+                            {r.nextAttemptInSeconds === 0
+                              ? t("integrations.embedding.status.nextTryNow")
+                              : t("integrations.embedding.status.nextTryIn", { age: ageLabel(r.nextAttemptInSeconds) })}
+                          </td>
+                          <td className="px-3 py-2 align-top font-mono text-[12px] text-amber" title={r.error ?? undefined}>
+                            {r.error ? previewText(r.error, FAILURE_PREVIEW_CHARS) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center justify-between gap-2">

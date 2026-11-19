@@ -8,6 +8,7 @@ import {
   testEmbeddingProvider,
   getEmbeddingStatus,
   retryFailedReindexTasks,
+  retryWaitingReindexTasksNow,
   getMailSettings,
   updateMailSettings,
   getMicrosoftAuthSettingsView,
@@ -229,6 +230,14 @@ export const retryFailedReindexFn = createServerFn({ method: "POST" }).handler(a
   await requireSystemAdmin(db, ctx);
   const reset = await retryFailedReindexTasks(adminDb, ctx.organizationId);
   return { ok: true, reset } as const;
+});
+
+/** Ends the retry backoff of this workspace's pending tasks that failed an attempt (see retryWaitingReindexTasksNow). */
+export const retryWaitingReindexNowFn = createServerFn({ method: "POST" }).handler(async () => {
+  const ctx = await requireAuthContext();
+  await requireSystemAdmin(db, ctx);
+  const moved = await retryWaitingReindexTasksNow(adminDb, ctx.organizationId);
+  return { ok: true, moved } as const;
 });
 
 const updateMailSchema = z.object({
