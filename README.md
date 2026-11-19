@@ -174,6 +174,7 @@ kompast reconfigure      # change domain, storage, proxy or backups
 kompast version          # IMAGE_TAG and running image digests
 kompast backup | backups | restore <file>
 kompast cleanup          # remove old release images (keeps current + previous), show disk use
+kompast sso-reset        # if nobody can sign in: a one-time code to reopen /setup (valid 30 minutes)
 ```
 
 ### Manual install
@@ -226,6 +227,7 @@ kompast reconfigure      # change domain, storage, proxy or backups
 kompast version          # IMAGE_TAG and running image digests
 kompast backup | backups | restore <file>
 kompast cleanup          # remove old release images (keeps current + previous), show disk use
+kompast sso-reset        # if nobody can sign in: a one-time code to reopen /setup (valid 30 minutes)
 ```
 
 ### Manual install
@@ -256,7 +258,7 @@ Until single sign-on is configured, every route redirects to `/setup`.
 3. **The first person to sign in becomes the workspace owner and super admin.** Everyone else joins by invitation from a workspace or team admin.
 
 > [!IMPORTANT]
-> Kompast loads Entra ID configuration at startup. An incorrect Tenant ID can stop the app from booting, so double-check it before you save.
+> Kompast checks the Tenant ID, Client ID and secret with Microsoft before it saves them, so a typo is refused on the form. If sign-in still breaks later (for example, an expired secret), run `kompast sso-reset` on the server and follow the printed link to `/setup`. The current settings stay in place until you save new ones.
 
 ### Admin settings
 

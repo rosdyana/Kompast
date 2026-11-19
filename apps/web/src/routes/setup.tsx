@@ -11,7 +11,8 @@ import { AuthLayout } from "@/components/auth/AuthLayout";
 export const Route = createFileRoute("/setup")({
   loader: async () => {
     const status = await getSetupStatusFn();
-    if (status.isConfigured) throw redirect({ to: "/login" });
+    // A `kompast sso-reset` code reopens this page even though Microsoft sign-in is already configured.
+    if (status.isConfigured && !status.recoveryPending) throw redirect({ to: "/login" });
     return status;
   },
   component: SetupPage,
@@ -24,7 +25,10 @@ function SetupPage() {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [setupToken, setSetupToken] = useState("");
-  const { requiresSetupToken } = Route.useLoaderData();
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const { requiresSetupToken, recoveryPending, hasUsers } = Route.useLoaderData();
+  // Shown during recovery (a code is pending) and once users exist, when a dev or recovery path may apply. Only a pending code is required.
+  const showRecoveryCode = recoveryPending || hasUsers;
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [redirectUri, setRedirectUri] = useState("<APP_URL>/api/auth/callback/microsoft-entra-id");
@@ -36,7 +40,15 @@ function SetupPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await completeSetupFn({ data: { tenantId: tenantId.trim(), clientId: clientId.trim(), clientSecret, setupToken: requiresSetupToken ? setupToken.trim() : undefined } });
+      await completeSetupFn({
+        data: {
+          tenantId: tenantId.trim(),
+          clientId: clientId.trim(),
+          clientSecret,
+          setupToken: requiresSetupToken ? setupToken.trim() : undefined,
+          recoveryCode: showRecoveryCode ? recoveryCode.trim() || undefined : undefined,
+        },
+      });
       await router.navigate({ to: "/login" });
     } catch (err) {
       setError(err instanceof Error ? err.message : t("saveFailed"));
@@ -95,6 +107,11 @@ function SetupPage() {
               <TextField id="setup-token" type="password" autoComplete="off" value={setupToken} onChange={(e) => setSetupToken(e.target.value)} className="font-mono text-[13px]" />
             </FormField>
           )}
+          {showRecoveryCode && (
+            <FormField label={t("recoveryCodeLabel")} htmlFor="setup-recovery" required={recoveryPending} hint={t("recoveryCodeHint")}>
+              <TextField id="setup-recovery" autoComplete="off" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} className="font-mono text-[13px]" />
+            </FormField>
+          )}
           <FormField label={t("tenantIdLabel")} htmlFor="setup-tenant" required>
             <TextField id="setup-tenant" value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" className="font-mono text-[13px]" />
           </FormField>
@@ -104,7 +121,7 @@ function SetupPage() {
           <FormField label={t("clientSecretLabel")} htmlFor="setup-secret" required error={error ?? undefined}>
             <TextField id="setup-secret" type="password" autoComplete="off" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder={t("clientSecretPlaceholder")} />
           </FormField>
-          <Button type="submit" variant="primary" size="lg" disabled={submitting || !tenantId.trim() || !clientId.trim() || !clientSecret || (requiresSetupToken && !setupToken.trim())} className="w-full">
+          <Button type="submit" variant="primary" size="lg" disabled={submitting || !tenantId.trim() || !clientId.trim() || !clientSecret || (requiresSetupToken && !setupToken.trim()) || (recoveryPending && !recoveryCode.trim())} className="w-full">
             {submitting ? t("savingEllipsis") : t("saveAndContinue")}
           </Button>
         </form>

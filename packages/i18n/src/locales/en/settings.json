@@ -74,9 +74,9 @@
     },
     "entra": {
       "heading": "Microsoft Entra ID",
-      "warningPart1": "⚠️ An incorrect Tenant ID (not malformed — a valid but wrong GUID) breaks ",
-      "warningBold": "the entire application",
-      "warningPart2": ", not just Microsoft login — because every request that checks a session triggers OIDC discovery straight against that tenant. Double-check before saving.",
+      "warningPart1": "A wrong Tenant ID, Client ID or secret stops ",
+      "warningBold": "everyone from signing in with Microsoft",
+      "warningPart2": ". Kompast checks them with Microsoft before saving. If sign-in breaks later, run `kompast sso-reset` on the server.",
       "tenantIdLabel": "Tenant ID",
       "clientIdLabel": "Client ID",
       "clientSecretLabel": "Client Secret",
@@ -85,7 +85,9 @@
       "save": "Save",
       "saved": "Saved.",
       "saveFailed": "Failed to save Entra ID configuration",
-      "description": "Single sign-on for everyone in this workspace."
+      "description": "Single sign-on for everyone in this workspace.",
+      "testOk": "Microsoft accepted this tenant, app and secret.",
+      "signInBroken": "Microsoft sign-in isn't working right now: Microsoft didn't accept this tenant when Kompast tried to load it. Fix the settings below, or run `kompast sso-reset` on the server if nobody can sign in."
     },
     "ai": {
       "heading": "AI",

@@ -74,9 +74,9 @@
     },
     "entra": {
       "heading": "Microsoft Entra ID",
-      "warningPart1": "⚠️ 錯誤的 Tenant ID（並非格式錯誤，而是格式正確但錯誤的 GUID）會導致",
-      "warningBold": "整個應用程式",
-      "warningPart2": "故障 —— 不只是 Microsoft 登入 —— 因為每個檢查工作階段的請求都會直接對該租戶觸發 OIDC 探索。儲存前請再次確認。",
+      "warningPart1": "錯誤的 Tenant ID、Client ID 或密鑰會讓",
+      "warningBold": "所有人都無法使用 Microsoft 登入",
+      "warningPart2": "。Kompast 會在儲存前向 Microsoft 驗證。若之後登入失效，請在伺服器上執行 `kompast sso-reset`。",
       "tenantIdLabel": "租用戶 ID",
       "clientIdLabel": "用戶端 ID",
       "clientSecretLabel": "用戶端密碼",
@@ -85,7 +85,9 @@
       "save": "儲存",
       "saved": "已儲存。",
       "saveFailed": "儲存 Entra ID 設定失敗",
-      "description": "為此工作區所有成員提供單一登入。"
+      "description": "為此工作區所有成員提供單一登入。",
+      "testOk": "Microsoft 已接受此租用戶、應用程式與密鑰。",
+      "signInBroken": "Microsoft 登入目前無法使用：Kompast 載入時，Microsoft 不接受此租用戶。請修正下方的設定；若無人能登入，請在伺服器上執行 `kompast sso-reset`。"
     },
     "ai": {
       "heading": "AI",

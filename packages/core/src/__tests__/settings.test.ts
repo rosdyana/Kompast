@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
-import { db, schema, eq, asc, sql, adminDb, withTenant } from "@kompast/db";
+import { db, schema, eq, and, asc, sql, adminDb, withTenant, SYSTEM_SETTINGS_ID } from "@kompast/db";
 import { encryptSecret, decryptSecret } from "../crypto";
 import {
   getSetupStatus,
@@ -16,6 +16,9 @@ import {
   requireDeploymentAdmin,
   isDeploymentAdmin,
   getEmbeddingSettings,
+  verifyMicrosoftEntraConfig,
+  completeSsoRecovery,
+  hashRecoveryCode,
 } from "../settings";
 import { InvalidInputError } from "../errors";
 import { isOnlyUser } from "../bootstrap";
@@ -1186,5 +1189,225 @@ describe("packages/core/rag", () => {
 
   it("askKompast throws EmbeddingNotConfiguredError when embeddings aren't set up", async () => {
     await expect(askKompast(ctx, { question: "anything" })).rejects.toThrow(EmbeddingNotConfiguredError);
+  });
+});
+
+describe("verifyMicrosoftEntraConfig", () => {
+  const tenantId = "11111111-1111-1111-1111-111111111111";
+  const input = { tenantId, clientId: "client-abc", clientSecret: "shh-its-a-secret" };
+  const discoveryUrl = `https://login.microsoftonline.com/${tenantId}/v2.0/.well-known/openid-configuration`;
+  const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+
+  /** A fake fetch that answers the two Microsoft calls and records every request it saw. */
+  function entraFetch(discovery: Response | Error, token: Response | Error = new Response("{}", { status: 200 })) {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      calls.push({ url: url.toString(), init });
+      const reply = url.toString().endsWith("/v2.0/.well-known/openid-configuration") ? discovery : token;
+      if (reply instanceof Error) throw reply;
+      return reply;
+    }) as typeof fetch;
+    return { fetchImpl, calls };
+  }
+
+  function tokenError(description: string, status = 401) {
+    return new Response(JSON.stringify({ error: "invalid_client", error_description: description }), { status });
+  }
+
+  it("accepts a tenant, app and secret that Microsoft accepts, sending client credentials to the tenant's token endpoint", async () => {
+    const { fetchImpl, calls } = entraFetch(new Response("{}", { status: 200 }));
+    expect(await verifyMicrosoftEntraConfig(input, fetchImpl)).toEqual({ ok: true });
+    expect(calls.map((c) => c.url)).toEqual([discoveryUrl, tokenUrl]);
+    const body = new URLSearchParams(calls[1]!.init!.body as string);
+    expect(body.get("grant_type")).toBe("client_credentials");
+    expect(body.get("client_id")).toBe("client-abc");
+    expect(body.get("client_secret")).toBe("shh-its-a-secret");
+    expect(body.get("scope")).toBe("https://graph.microsoft.com/.default");
+  });
+
+  it("blocks an unknown tenant at the discovery step, before any token request", async () => {
+    const { fetchImpl, calls } = entraFetch(new Response("AADSTS90002: Tenant not found", { status: 400 }));
+    expect(await verifyMicrosoftEntraConfig(input, fetchImpl)).toEqual({
+      ok: false,
+      field: "tenantId",
+      message: "Microsoft doesn't recognize this tenant ID.",
+    });
+    expect(calls.map((c) => c.url)).toEqual([discoveryUrl]);
+  });
+
+  it("rejects a non-GUID tenant without calling Microsoft at all", async () => {
+    const { fetchImpl, calls } = entraFetch(new Response("{}", { status: 200 }));
+    const result = await verifyMicrosoftEntraConfig({ ...input, tenantId: "common" }, fetchImpl);
+    expect(result).toMatchObject({ ok: false, field: "tenantId" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("reports an unreachable Microsoft during discovery as a non-field error", async () => {
+    const { fetchImpl } = entraFetch(new TypeError("fetch failed"));
+    const result = await verifyMicrosoftEntraConfig(input, fetchImpl);
+    expect(result).toEqual({ ok: false, field: null, message: "Couldn't reach Microsoft to check the tenant: fetch failed" });
+  });
+
+  it("reports an unreachable Microsoft during the token request as a non-field error", async () => {
+    const { fetchImpl } = entraFetch(new Response("{}", { status: 200 }), new Error("socket hang up"));
+    const result = await verifyMicrosoftEntraConfig(input, fetchImpl);
+    expect(result).toEqual({ ok: false, field: null, message: "Couldn't reach Microsoft to check the tenant: socket hang up" });
+  });
+
+  it("blocks an app that isn't registered in the tenant (AADSTS700016) on the client ID", async () => {
+    const { fetchImpl } = entraFetch(new Response("{}", { status: 200 }), tokenError("AADSTS700016: Application with identifier 'client-abc' was not found in the directory."));
+    expect(await verifyMicrosoftEntraConfig(input, fetchImpl)).toEqual({
+      ok: false,
+      field: "clientId",
+      message: "This application (client) ID isn't registered in that tenant.",
+    });
+  });
+
+  it("blocks a wrong client secret (AADSTS7000215) on the secret", async () => {
+    const { fetchImpl } = entraFetch(new Response("{}", { status: 200 }), tokenError("AADSTS7000215: Invalid client secret is provided."));
+    expect(await verifyMicrosoftEntraConfig(input, fetchImpl)).toEqual({ ok: false, field: "clientSecret", message: "The client secret is wrong." });
+  });
+
+  it("blocks an expired client secret (AADSTS7000222) on the secret", async () => {
+    const { fetchImpl } = entraFetch(new Response("{}", { status: 200 }), tokenError("AADSTS7000222: The provided client secret keys are expired."));
+    expect(await verifyMicrosoftEntraConfig(input, fetchImpl)).toEqual({ ok: false, field: "clientSecret", message: "The client secret has expired." });
+  });
+
+  it("lets any other token error through as a warning, with the secret masked and only the first line shown", async () => {
+    const description = "AADSTS70011: Something about scopes, not the secret shh-its-a-secret\r\nTrace ID: abc\r\nCorrelation ID: def";
+    const { fetchImpl } = entraFetch(new Response("{}", { status: 200 }), tokenError(description, 400));
+    const result = await verifyMicrosoftEntraConfig(input, fetchImpl);
+    expect(result.ok).toBe(true);
+    const warning = (result as { warning?: string }).warning ?? "";
+    expect(warning).toBe("Tenant found, but Microsoft refused a test token: AADSTS70011: Something about scopes, not the secret ••••");
+    expect(warning).not.toContain("shh-its-a-secret");
+    expect(warning).not.toContain("Trace ID");
+  });
+
+  it("still warns when the token error body isn't JSON, falling back to the HTTP status", async () => {
+    const { fetchImpl } = entraFetch(new Response("{}", { status: 200 }), new Response("<html>gateway</html>", { status: 502 }));
+    expect(await verifyMicrosoftEntraConfig(input, fetchImpl)).toEqual({
+      ok: true,
+      warning: "Tenant found, but Microsoft refused a test token: HTTP 502",
+    });
+  });
+});
+
+describe("getSetupStatus recoveryPending", () => {
+  beforeEach(async () => {
+    await db.delete(schema.systemSettings);
+  });
+  afterEach(async () => {
+    await db.delete(schema.systemSettings);
+  });
+
+  it("is false when no recovery code was issued, true while one is unexpired, false once it has expired", async () => {
+    await completeSetup(db, { tenantId: "11111111-1111-1111-1111-111111111111", clientId: "c", clientSecret: "s" });
+    expect((await getSetupStatus(db)).recoveryPending).toBe(false);
+
+    await db
+      .update(schema.systemSettings)
+      .set({ ssoRecoveryCodeHash: hashRecoveryCode("code"), ssoRecoveryExpiresAt: new Date(Date.now() + 60_000) })
+      .where(eq(schema.systemSettings.id, SYSTEM_SETTINGS_ID));
+    expect(await getSetupStatus(db)).toMatchObject({ isConfigured: true, recoveryPending: true });
+
+    await db
+      .update(schema.systemSettings)
+      .set({ ssoRecoveryExpiresAt: new Date(Date.now() - 1000) })
+      .where(eq(schema.systemSettings.id, SYSTEM_SETTINGS_ID));
+    expect((await getSetupStatus(db)).recoveryPending).toBe(false);
+  });
+});
+
+describe("completeSsoRecovery", () => {
+  // audit_log.organization_id is NOT NULL, so a recovery is audited against the founding workspace (the oldest org).
+  // Backdated to 1970 so it is the oldest row regardless of what other test files create.
+  const foundingOrgId = "test-sso-recovery-founding-org";
+  const code = "0123456789abcdef0123456789abcdef";
+  const before = { tenantId: "22222222-2222-2222-2222-222222222222", clientId: "old-client", clientSecret: "old-secret" };
+  const next = { tenantId: "33333333-3333-3333-3333-333333333333", clientId: "new-client", clientSecret: "new-secret" };
+
+  async function cleanup() {
+    await db.delete(schema.systemSettings);
+    // audit_log is under FORCE RLS, so a plain db delete would see zero rows. adminDb is the service role.
+    await adminDb.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, foundingOrgId));
+    await db.delete(schema.organization).where(eq(schema.organization.id, foundingOrgId));
+  }
+
+  /** Stores the hash the way `kompast sso-reset` does (or leaves it empty when hashCode is null). */
+  async function armRecovery(hashCode: string | null, expiresAt: Date | null) {
+    await db
+      .update(schema.systemSettings)
+      .set({ ssoRecoveryCodeHash: hashCode === null ? null : hashRecoveryCode(hashCode), ssoRecoveryExpiresAt: expiresAt })
+      .where(eq(schema.systemSettings.id, SYSTEM_SETTINGS_ID));
+  }
+  const inHalfAnHour = () => new Date(Date.now() + 30 * 60_000);
+
+  beforeEach(async () => {
+    await cleanup();
+    await db.insert(schema.organization).values({ id: foundingOrgId, name: "Founding", slug: foundingOrgId, createdAt: new Date(0) });
+    await completeSetup(db, before);
+  });
+  afterEach(cleanup);
+
+  it("accepts the current code: saves the Entra settings, clears the code, and audits the recovery in the founding workspace", async () => {
+    await armRecovery(code, inHalfAnHour());
+
+    expect(await completeSsoRecovery(db, { code, ...next })).toBe(true);
+
+    expect(await getMicrosoftAuthConfig(db)).toEqual(next);
+    const [row] = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.id, SYSTEM_SETTINGS_ID));
+    expect(row!.ssoRecoveryCodeHash).toBeNull();
+    expect(row!.ssoRecoveryExpiresAt).toBeNull();
+
+    const audit = await adminDb
+      .select()
+      .from(schema.auditLog)
+      .where(and(eq(schema.auditLog.organizationId, foundingOrgId), eq(schema.auditLog.action, "sso.recovered")));
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.actorId).toBeNull();
+    expect(audit[0]!.entityId).toBe(SYSTEM_SETTINGS_ID);
+    expect(audit[0]!.metadata).not.toContain("new-secret");
+  });
+
+  it("accepts a code with surrounding whitespace, the same way the shell and the form trim it", async () => {
+    await armRecovery(code, inHalfAnHour());
+    expect(await completeSsoRecovery(db, { code: `  ${code}\n`, ...next })).toBe(true);
+  });
+
+  it("refuses a wrong code and leaves the current settings and the pending code untouched", async () => {
+    await armRecovery(code, inHalfAnHour());
+
+    expect(await completeSsoRecovery(db, { code: "ffffffffffffffffffffffffffffffff", ...next })).toBe(false);
+
+    expect(await getMicrosoftAuthConfig(db)).toEqual(before);
+    const [row] = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.id, SYSTEM_SETTINGS_ID));
+    expect(row!.ssoRecoveryCodeHash).toBe(hashRecoveryCode(code));
+  });
+
+  it("refuses an expired code even when it is the right one", async () => {
+    await armRecovery(code, new Date(Date.now() - 1000));
+    expect(await completeSsoRecovery(db, { code, ...next })).toBe(false);
+    expect(await getMicrosoftAuthConfig(db)).toEqual(before);
+  });
+
+  it("refuses when no code was ever issued (null hash)", async () => {
+    await armRecovery(null, null);
+    expect(await completeSsoRecovery(db, { code, ...next })).toBe(false);
+    expect(await getMicrosoftAuthConfig(db)).toEqual(before);
+  });
+
+  it("refuses a hash with no expiry, so a half-written row can't be used", async () => {
+    await armRecovery(code, null);
+    expect(await completeSsoRecovery(db, { code, ...next })).toBe(false);
+  });
+
+  it("refuses a code that was already used", async () => {
+    await armRecovery(code, inHalfAnHour());
+    expect(await completeSsoRecovery(db, { code, ...next })).toBe(true);
+
+    const replay = { tenantId: "44444444-4444-4444-4444-444444444444", clientId: "attacker-client", clientSecret: "attacker-secret" };
+    expect(await completeSsoRecovery(db, { code, ...replay })).toBe(false);
+    expect(await getMicrosoftAuthConfig(db)).toEqual(next);
   });
 });
