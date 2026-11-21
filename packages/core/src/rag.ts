@@ -102,6 +102,19 @@ export { enqueueReindex, type EnqueueReindexInput } from "./rag-queue";
 export const REINDEX_CLAIM_STALE_MINUTES = 10;
 /** Indexing attempts before a reindex task fails for good. Backoff doubles from 2 minutes. */
 export const MAX_REINDEX_ATTEMPTS = 5;
+/**
+ * When a task that failed an attempt may be claimed again: its last attempt plus a backoff
+ * that doubles from 2 minutes (capped at 64). Unqualified column names — only for queries
+ * over embedding_index_queue alone.
+ */
+const REINDEX_RETRY_AT = sql`(claimed_at + make_interval(mins => (2 ^ least(attempts, 6))::int))`;
+/** A pending task counts as ready (claimable now) when it never failed, or its retry backoff has passed. */
+const REINDEX_READY = sql`(attempts = 0 or claimed_at is null or ${REINDEX_RETRY_AT} <= now())`;
+/**
+ * The worker polls every 10 s, so a task that has been ready this long with no claim in this
+ * workspace for as long means the worker is down (or busy with another workspace's backlog).
+ */
+export const REINDEX_STALL_SECONDS = 120;
 
 /**
  * System-wide scan across every workspace's queue — same admin-connection exception as claimPendingEmails/claimPendingAutomationEvents (see rls.sql).
@@ -112,9 +125,7 @@ export async function claimPendingReindexTasks(db: AnyDb, limit = 10) {
     sql`update embedding_index_queue set status = 'processing', claimed_at = now()
         where id in (
           select id from embedding_index_queue
-          where (status = 'pending'
-                 and (attempts = 0 or claimed_at is null
-                      or claimed_at <= now() - make_interval(mins => (2 ^ least(attempts, 6))::int)))
+          where (status = 'pending' and ${REINDEX_READY})
              or (status = 'processing' and claimed_at < now() - make_interval(mins => ${REINDEX_CLAIM_STALE_MINUTES}))
           order by created_at limit ${limit} for update skip locked
         )
@@ -277,7 +288,19 @@ export interface EmbeddingStatus {
     failed: number;
     /** Age of the oldest pending task in seconds (null when nothing is pending). */
     oldestPendingAgeSeconds: number | null;
+    /** Pending tasks that failed at least one attempt and are waiting out their retry backoff (or are about to be retried). */
+    waitingRetry: number;
+    /** How long the oldest claimable pending task has been claimable, in seconds (null when none is). */
+    oldestReadyAgeSeconds: number | null;
+    /** Seconds since a worker last claimed any of this workspace's tasks (null when none ever was). */
+    lastClaimAgeSeconds: number | null;
+    /** Ready tasks have waited longer than REINDEX_STALL_SECONDS and nothing was claimed in that time — the worker is likely not running. */
+    workerStalled: boolean;
+    /** MAX_REINDEX_ATTEMPTS, for the panel's explanation of when a retrying task gives up. */
+    maxAttempts: number;
   };
+  /** The 10 pending tasks with a failed attempt, soonest retry first, with their last error. */
+  recentRetries: { id: string; entityType: RagEntityType; entityId: string; attempts: number; error: string | null; nextAttemptInSeconds: number }[];
   /** The 10 most recent failed tasks, newest first. */
   recentFailures: { id: string; entityType: RagEntityType; entityId: string; attempts: number; error: string | null; claimedAt: Date | null }[];
 }
@@ -293,7 +316,7 @@ export async function getEmbeddingStatus(db: AnyDb, organizationId: string): Pro
   const settings = await getSystemSettingsRow(db);
   const configured = Boolean(settings?.embeddingProvider && settings.embeddingApiKeyEncrypted && settings.embeddingFeaturesEnabled);
 
-  const [indexedRows, issueTotal, commentTotal, pageTotal, statusRows, oldestRows, failureRows] = await Promise.all([
+  const [indexedRows, issueTotal, commentTotal, pageTotal, statusRows, oldestRows, failureRows, workerRows, retryRows] = await Promise.all([
     db
       .select({ entityType: schema.embedding.entityType, n: countDistinct(schema.embedding.entityId) })
       .from(schema.embedding)
@@ -329,7 +352,33 @@ export async function getEmbeddingStatus(db: AnyDb, organizationId: string): Pro
       .where(and(eq(schema.embeddingIndexQueue.organizationId, organizationId), eq(schema.embeddingIndexQueue.status, "failed")))
       .orderBy(desc(sql`coalesce(${schema.embeddingIndexQueue.claimedAt}, ${schema.embeddingIndexQueue.createdAt})`), desc(schema.embeddingIndexQueue.id))
       .limit(10),
+    // Ready-since is created_at for a task that never failed, else the end of its backoff. Ages are computed in SQL (no JS timestamp parsing).
+    db.execute<{ waiting_retry: string; oldest_ready_age: string | null; last_claim_age: string | null }>(
+      sql`select
+            (select count(*) from embedding_index_queue
+              where organization_id = ${organizationId} and status = 'pending' and attempts > 0) as waiting_retry,
+            (select extract(epoch from (now() - min(case when attempts = 0 or claimed_at is null then created_at else ${REINDEX_RETRY_AT} end)))
+              from embedding_index_queue
+              where organization_id = ${organizationId} and status = 'pending' and ${REINDEX_READY}) as oldest_ready_age,
+            (select extract(epoch from (now() - max(claimed_at)))
+              from embedding_index_queue where organization_id = ${organizationId}) as last_claim_age`,
+    ),
+    db.execute<{ id: string; entity_type: RagEntityType; entity_id: string; attempts: number; error: string | null; next_in: string | null }>(
+      sql`select id, entity_type, entity_id, attempts, error,
+                 extract(epoch from (${REINDEX_RETRY_AT} - now())) as next_in
+          from embedding_index_queue
+          where organization_id = ${organizationId} and status = 'pending' and attempts > 0
+          order by ${REINDEX_RETRY_AT} asc nulls first, id
+          limit 10`,
+    ),
   ]);
+
+  const seconds = (v: string | null | undefined) => (v == null ? null : Math.max(0, Math.round(Number(v))));
+  const worker = workerRows[0];
+  const oldestReadyAgeSeconds = seconds(worker?.oldest_ready_age);
+  const lastClaimAgeSeconds = seconds(worker?.last_claim_age);
+  const workerStalled =
+    oldestReadyAgeSeconds !== null && oldestReadyAgeSeconds > REINDEX_STALL_SECONDS && (lastClaimAgeSeconds === null || lastClaimAgeSeconds > REINDEX_STALL_SECONDS);
 
   const indexedCount = (entityType: RagEntityType) => indexedRows.find((r) => r.entityType === entityType)?.n ?? 0;
   const statusCount = (status: string) => statusRows.find((r) => r.status === status)?.n ?? 0;
@@ -347,7 +396,20 @@ export async function getEmbeddingStatus(db: AnyDb, organizationId: string): Pro
       processing: statusCount("processing"),
       failed: statusCount("failed"),
       oldestPendingAgeSeconds: oldest == null ? null : Math.max(0, Math.round(Number(oldest))),
+      waitingRetry: Number(worker?.waiting_retry ?? 0),
+      oldestReadyAgeSeconds,
+      lastClaimAgeSeconds,
+      workerStalled,
+      maxAttempts: MAX_REINDEX_ATTEMPTS,
     },
+    recentRetries: retryRows.map((r) => ({
+      id: r.id,
+      entityType: r.entity_type,
+      entityId: r.entity_id,
+      attempts: Number(r.attempts),
+      error: r.error == null ? null : r.error.slice(0, STATUS_ERROR_MAX_CHARS),
+      nextAttemptInSeconds: seconds(r.next_in) ?? 0,
+    })),
     recentFailures: failureRows.map((r) => ({
       ...r,
       entityType: r.entityType as RagEntityType,
@@ -368,6 +430,23 @@ export async function retryFailedReindexTasks(db: AnyDb, organizationId: string)
     .set({ status: "pending", attempts: 0, error: null })
     .where(and(eq(schema.embeddingIndexQueue.organizationId, organizationId), eq(schema.embeddingIndexQueue.status, "failed")))
     .returning({ id: schema.embeddingIndexQueue.id });
+  return rows.length;
+}
+
+/**
+ * Ends the retry backoff of this workspace's pending tasks that failed an attempt, so the
+ * worker picks them up on its next poll. claimed_at is moved back by exactly the backoff
+ * rather than cleared, so the task becomes ready "now" (not at its created_at, which would
+ * read as a stalled worker) and keeps its attempt count — a task that keeps failing still
+ * ends up "failed" after MAX_REINDEX_ATTEMPTS. Returns how many tasks were moved up.
+ */
+export async function retryWaitingReindexTasksNow(db: AnyDb, organizationId: string): Promise<number> {
+  const rows = await db.execute<{ id: string }>(
+    sql`update embedding_index_queue
+        set claimed_at = now() - make_interval(mins => (2 ^ least(attempts, 6))::int)
+        where organization_id = ${organizationId} and status = 'pending' and attempts > 0
+        returning id`,
+  );
   return rows.length;
 }
 

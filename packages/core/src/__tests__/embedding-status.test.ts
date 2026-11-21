@@ -5,7 +5,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
 import { createIssue } from "../issue";
-import { getEmbeddingStatus, retryFailedReindexTasks } from "../rag";
+import { getEmbeddingStatus, retryFailedReindexTasks, retryWaitingReindexTasksNow } from "../rag";
 import { redactSecret } from "../settings";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
@@ -184,6 +184,91 @@ describe("getEmbeddingStatus / retryFailedReindexTasks", () => {
 
     // Nothing left to reset: the second call is a no-op.
     expect(await retryFailedReindexTasks(admin as never, orgId)).toBe(0);
+  });
+
+  const queued = (over: Record<string, unknown>) => ({ id: id("ridx"), organizationId: orgId, entityType: "issue" as const, entityId: `embstat-${id("x")}`, action: "index" as const, status: "pending" as const, ...over });
+
+  it("lists pending tasks in retry backoff, soonest first, with their last error", async () => {
+    await seedContent();
+    await admin.insert(schema.embeddingIndexQueue).values([
+      // attempts 1 → 2 min backoff, last failed 1 min ago → next try in ~1 min.
+      queued({ entityId: "embstat-r1", attempts: 1, error: "rate limited", claimedAt: sql`now() - interval '1 minute'` }),
+      // attempts 3 → 8 min backoff, last failed 1 min ago → next try in ~7 min.
+      queued({ entityId: "embstat-r3", attempts: 3, error: "bad dims", claimedAt: sql`now() - interval '1 minute'` }),
+      // Never failed: pending, but not a retry.
+      queued({ entityId: "embstat-fresh" }),
+      queued({ organizationId: otherOrgId, entityId: "embstat-foreign-r", attempts: 2, error: "foreign", claimedAt: sql`now()` }),
+    ]);
+
+    const { queue, recentRetries } = await getEmbeddingStatus(admin as never, orgId);
+
+    expect(queue.pending).toBe(3);
+    expect(queue.waitingRetry).toBe(2);
+    expect(queue.maxAttempts).toBe(5);
+    expect(recentRetries.map((r) => r.entityId)).toEqual(["embstat-r1", "embstat-r3"]);
+    expect(recentRetries[0]).toMatchObject({ attempts: 1, error: "rate limited", entityType: "issue" });
+    expect(recentRetries[0]!.nextAttemptInSeconds).toBeGreaterThan(30);
+    expect(recentRetries[0]!.nextAttemptInSeconds).toBeLessThanOrEqual(60);
+    expect(recentRetries[1]!.nextAttemptInSeconds).toBeGreaterThan(360);
+    expect(recentRetries[1]!.nextAttemptInSeconds).toBeLessThanOrEqual(420);
+  });
+
+  it("flags a stalled worker only when ready tasks wait and nothing was claimed in this workspace", async () => {
+    await seedContent();
+    // Fresh task, last claim long ago: ready for only seconds, so not stalled yet.
+    await admin.insert(schema.embeddingIndexQueue).values([
+      queued({ entityId: "embstat-new" }),
+      queued({ entityId: "embstat-done", status: "processed", claimedAt: sql`now() - interval '1 hour'` }),
+    ]);
+    let { queue } = await getEmbeddingStatus(admin as never, orgId);
+    expect(queue.workerStalled).toBe(false);
+
+    // A task ready for 5 minutes with no claim in an hour: stalled.
+    await admin.insert(schema.embeddingIndexQueue).values(queued({ entityId: "embstat-old", createdAt: sql`now() - interval '5 minutes'` }));
+    ({ queue } = await getEmbeddingStatus(admin as never, orgId));
+    expect(queue.workerStalled).toBe(true);
+    expect(queue.oldestReadyAgeSeconds).toBeGreaterThanOrEqual(290);
+    expect(queue.lastClaimAgeSeconds).toBeGreaterThanOrEqual(3590);
+
+    // A recent claim in this workspace means the worker is alive (just busy).
+    await admin.insert(schema.embeddingIndexQueue).values(queued({ entityId: "embstat-busy", status: "processing", claimedAt: sql`now() - interval '5 seconds'` }));
+    ({ queue } = await getEmbeddingStatus(admin as never, orgId));
+    expect(queue.workerStalled).toBe(false);
+  });
+
+  it("does not count a task still in backoff as stalled work", async () => {
+    await seedContent();
+    // Created long ago, but failed 1 min ago with a 16 min backoff: not ready, so not stalled.
+    await admin.insert(schema.embeddingIndexQueue).values(
+      queued({ entityId: "embstat-backoff", attempts: 4, error: "x", createdAt: sql`now() - interval '1 hour'`, claimedAt: sql`now() - interval '1 minute'` }),
+    );
+    const { queue } = await getEmbeddingStatus(admin as never, orgId);
+    expect(queue.oldestReadyAgeSeconds).toBeNull();
+    expect(queue.workerStalled).toBe(false);
+  });
+
+  it("retry-now makes this workspace's backoff tasks claimable immediately, keeping their attempts", async () => {
+    await seedContent();
+    await admin.insert(schema.embeddingIndexQueue).values([
+      queued({ id: "ridx_embstat_w1", entityId: "embstat-w1", attempts: 4, error: "boom", claimedAt: sql`now() - interval '1 minute'` }),
+      queued({ id: "ridx_embstat_w2", entityId: "embstat-w2", attempts: 1, error: "bang", claimedAt: sql`now()` }),
+      queued({ id: "ridx_embstat_wf", organizationId: otherOrgId, entityId: "embstat-foreign-w", attempts: 2, error: "other org", claimedAt: sql`now()` }),
+    ]);
+
+    expect(await retryWaitingReindexTasksNow(admin as never, orgId)).toBe(2);
+
+    const { queue, recentRetries } = await getEmbeddingStatus(admin as never, orgId);
+    expect(recentRetries.every((r) => r.nextAttemptInSeconds === 0)).toBe(true);
+    expect(recentRetries.find((r) => r.entityId === "embstat-w1")).toMatchObject({ attempts: 4, error: "boom" });
+    // Ready "now", so the panel must not read this as a stalled worker.
+    expect(queue.oldestReadyAgeSeconds).toBeLessThan(30);
+    expect(queue.workerStalled).toBe(false);
+
+    const [foreign] = await admin.select().from(schema.embeddingIndexQueue).where(eq(schema.embeddingIndexQueue.id, "ridx_embstat_wf"));
+    const [stillWaiting] = await admin.execute<{ waiting: boolean }>(
+      sql`select claimed_at + make_interval(mins => (2 ^ least(attempts, 6))::int) > now() as waiting from embedding_index_queue where id = ${foreign!.id}`,
+    );
+    expect(stillWaiting!.waiting).toBe(true);
   });
 });
 
