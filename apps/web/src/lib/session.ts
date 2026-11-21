@@ -1,5 +1,6 @@
 import { getRequest } from "@tanstack/react-start/server";
 import { getAuth } from "./auth";
+import { touchLastSeen } from "./last-seen";
 
 /**
  * Resolves the authenticated user + their active workspace for the current
@@ -15,6 +16,7 @@ export async function getCurrentSession() {
   const auth = await getAuth();
   const result = await auth.api.getSession({ headers: request.headers });
   if (!result) return null;
+  void touchLastSeen(result.user.id);
 
   const organizationId = result.session.activeOrganizationId;
   if (!organizationId) return { ...result, organizationId: null as string | null };

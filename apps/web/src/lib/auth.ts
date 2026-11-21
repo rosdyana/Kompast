@@ -261,6 +261,13 @@ export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthC
     // Exposing the port directly would only let a client spoof its way
     // around rate limits, not past auth.
     advanced: { ipAddress: { ipAddressHeaders: ["x-forwarded-for"] } },
+    // Session lifetime, spelled out (these equal Better Auth's defaults): a
+    // 7-day sliding window. Any request on a session older than updateAge
+    // pushes expiresAt another 7 days out, so an active user stays signed in
+    // and an idle one is signed out after 7 days without use. That's why a
+    // sign-in from yesterday is still valid today — and why user.lastLoginAt
+    // doesn't move; "Last active" (user.lastSeenAt, lib/last-seen.ts) does.
+    session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
     hooks: { before: blockPluginRestSurface },
     databaseHooks: {
       user: {
@@ -330,7 +337,7 @@ export function buildAuth(microsoft: Awaited<ReturnType<typeof getMicrosoftAuthC
             try {
               await db
                 .update(schema.user)
-                .set({ lastLoginAt: newSession.createdAt ?? new Date() })
+                .set({ lastLoginAt: newSession.createdAt ?? new Date(), lastSeenAt: newSession.createdAt ?? new Date() })
                 .where(eq(schema.user.id, newSession.userId));
             } catch (err) {
               console.error("[auth] failed to record last login:", err);

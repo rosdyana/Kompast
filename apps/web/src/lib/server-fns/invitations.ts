@@ -4,6 +4,7 @@ import { applyAcceptedTeamInvitation } from "@kompast/core";
 import { withTenant, adminDb } from "@kompast/db";
 import { getAuth } from "../auth";
 import { listPendingInvitationsForEmail } from "../invitation-delivery";
+import { touchLastSeen } from "../last-seen";
 
 // Server-fn files must export only server functions. A plain exported helper
 // that touches `db` keeps @kompast/db (postgres.js) in the *browser* bundle,
@@ -25,6 +26,7 @@ export const getInvitationStatusFn = createServerFn({ method: "GET" })
     const request = getRequest();
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session) return { requiresLogin: true as const };
+    void touchLastSeen(session.user.id);
 
     const invitation = await auth.api.getInvitation({ query: { id: invitationId }, headers: request.headers });
     return {
@@ -71,6 +73,7 @@ export const listMyPendingInvitationsFn = createServerFn({ method: "GET" }).hand
   const request = getRequest();
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) return null;
+  void touchLastSeen(session.user.id);
 
   const invitations = await listPendingInvitationsForEmail(session.user.email);
   return { email: session.user.email, invitations };

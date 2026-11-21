@@ -144,6 +144,8 @@ describe("Better Auth plugin REST surface is closed over HTTP", () => {
     expect(user?.lastLoginAt).toBeInstanceOf(Date);
     // Small slack: Postgres and Node clocks round differently.
     expect(user!.lastLoginAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    const [seen] = await admin.select({ lastSeenAt: schema.user.lastSeenAt }).from(schema.user).where(eq(schema.user.id, userId));
+    expect(seen!.lastSeenAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
   });
 
   it("isHttpBlockedAuthPath covers the organization and api-key plugins only", () => {
