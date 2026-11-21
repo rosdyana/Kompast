@@ -32,6 +32,14 @@ export const user = pgTable("user", {
    * was added (the migration backfills from whatever sessions still exist).
    */
   lastLoginAt: timestamp("last_login_at"),
+  /**
+   * Kompast-only: when the user last made an authenticated request (session
+   * cookie or PAT), written by apps/web/src/lib/last-seen.ts's touchLastSeen,
+   * throttled to at most once per 5 minutes per user. Unlike lastLoginAt this
+   * advances while a long-lived session stays valid — it's the "Last active"
+   * shown on /settings → Members. Null = no activity recorded yet.
+   */
+  lastSeenAt: timestamp("last_seen_at"),
 });
 
 export const session = pgTable("session", {

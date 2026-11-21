@@ -5,6 +5,7 @@ import { db, schema, eq, and, gt } from "@kompast/db";
 import { requireSystemAdmin, withAuthorizedTenant, UserFacingError } from "@kompast/core";
 import { getAuth } from "../auth";
 import { requireAuthContext } from "../session";
+import { touchLastSeen } from "../last-seen";
 import { attachInvitationDelivery, resendInvitationEmail } from "../invitation-delivery";
 
 /**
@@ -18,12 +19,16 @@ export const listMembersFn = createServerFn({ method: "GET" }).handler(async () 
   const ctx = await requireAuthContext();
   await requireSystemAdmin(db, ctx);
 
+  // The caller's own row: getCurrentSession started a last-seen write without
+  // waiting; finish it so the viewer sees themselves as active right now.
+  await touchLastSeen(ctx.userId);
+
   const auth = await getAuth();
   const request = getRequest();
 
   const [members, invitations] = await Promise.all([
     db
-      .select({ id: schema.member.id, userId: schema.member.userId, role: schema.member.role, name: schema.user.name, email: schema.user.email, lastLoginAt: schema.user.lastLoginAt })
+      .select({ id: schema.member.id, userId: schema.member.userId, role: schema.member.role, name: schema.user.name, email: schema.user.email, lastLoginAt: schema.user.lastLoginAt, lastSeenAt: schema.user.lastSeenAt })
       .from(schema.member)
       .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
       .where(eq(schema.member.organizationId, ctx.organizationId)),

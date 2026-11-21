@@ -128,7 +128,7 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
             <tr className="border-b border-border text-[12.5px] text-text-3">
               <th className="px-4 py-2 font-medium">{t("members.tableName")}</th>
               <th className="px-4 py-2 font-medium">{t("members.tableRole")}</th>
-              <th className="px-4 py-2 font-medium">{t("members.tableLastLogin")}</th>
+              <th className="px-4 py-2 font-medium">{t("members.tableLastActive")}</th>
             </tr>
           </thead>
           <tbody>
@@ -147,9 +147,12 @@ export function MembersTab({ data }: { data: Awaited<ReturnType<typeof listMembe
                   <Badge tone={m.role === "owner" ? "indigo" : m.role === "admin" ? "accent" : "neutral"}>{roleLabel(m.role)}</Badge>
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-[13px] text-text-2">
-                  {m.lastLoginAt ? (
-                    <time dateTime={new Date(m.lastLoginAt).toISOString()} title={new Date(m.lastLoginAt).toLocaleString(intlLocale)}>
-                      {relativeTime(new Date(m.lastLoginAt), intlLocale)}
+                  {m.lastSeenAt || m.lastLoginAt ? (
+                    <time
+                      dateTime={new Date((m.lastSeenAt ?? m.lastLoginAt)!).toISOString()}
+                      title={m.lastLoginAt ? t("members.lastLoginTooltip", { time: new Date(m.lastLoginAt).toLocaleString(intlLocale) }) : undefined}
+                    >
+                      {relativeTime(new Date((m.lastSeenAt ?? m.lastLoginAt)!), intlLocale)}
                     </time>
                   ) : (
                     <span className="text-text-3">{t("members.neverLoggedIn")}</span>

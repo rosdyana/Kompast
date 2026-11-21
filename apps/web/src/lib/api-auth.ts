@@ -2,6 +2,7 @@ import { getAuth } from "./auth";
 import { requireMembership, ForbiddenError } from "@kompast/core";
 import { db } from "@kompast/db";
 import { clientIp, isRateLimited, rateLimit } from "./rate-limit";
+import { touchLastSeen } from "./last-seen";
 
 /** Bad-token attempts allowed per client IP per minute before further requests are refused unverified. */
 const AUTH_FAILURES_PER_IP = 30;
@@ -34,6 +35,7 @@ export async function requireSessionAuth(request: Request): Promise<{ userId: st
   const auth = await getAuth();
   const result = await auth.api.getSession({ headers: request.headers });
   if (!result) throw new ApiError(401, "Unauthorized", "No active session");
+  void touchLastSeen(result.user.id);
   const organizationId = result.session.activeOrganizationId;
   if (!organizationId) throw new ApiError(400, "Bad Request", "Session has no active workspace");
   return { userId: result.user.id, organizationId };
@@ -177,6 +179,7 @@ async function verifyBearerToken(
     throw err;
   }
 
+  void touchLastSeen(result.key.referenceId);
   return {
     userId: result.key.referenceId,
     organizationId,
