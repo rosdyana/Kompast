@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@kompast/ui/Button";
 import { Dialog } from "@kompast/ui/Dialog";
 import { useTranslation } from "@kompast/i18n";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { CredentialsForm, type JiraMigrationRow } from "./ConnectStep";
 import { CompletedView, FinishPanel, LeftInJiraButton, runModeOf, type ProjectRef } from "./FinishPanel";
 import { StatCard, StepHeading } from "./shared";
+import { Pager } from "../Pager";
 
 export type LatestRun = Awaited<ReturnType<typeof getJiraMigrationFn>>["latestRun"];
 export type RunHistory = Awaited<ReturnType<typeof getJiraMigrationFn>>["runs"];
@@ -27,6 +28,12 @@ function attachmentProgressOf(migration: JiraMigrationRow): { done: number; tota
 }
 
 const GIGABYTE = 1024 ** 3;
+
+const RUNS_PAGE_SIZE = 10;
+/** The auto-sync presets the select offers, in minutes; anything else is a custom whole-hour interval. */
+const AUTO_SYNC_PRESETS = [15, 60, 240] as const;
+/** Matches JIRA_AUTO_SYNC_MAX_HOURS in packages/core/src/jira-migration.ts. */
+const AUTO_SYNC_MAX_HOURS = 168;
 
 /** Whether the run left files behind in JIRA: not copied, or failed for good. */
 function filesLeftIn(run: { counts: unknown } | null | undefined): boolean {
@@ -239,7 +246,7 @@ export function RunPanel({
   busy: boolean;
   onSync: () => void;
   onReimport: () => void;
-  onAutoSync: (minutes: 15 | 60 | 240 | null) => void;
+  onAutoSync: (minutes: number | null) => void;
   onRescan: () => void;
   /** A completeness check: reads both sides, changes nothing. */
   onCheck: () => void;
@@ -254,6 +261,7 @@ export function RunPanel({
   const locale = useIntlLocale();
   const [confirm, setConfirm] = useState<"startOver" | "reimport" | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
+  const [runsPage, setRunsPage] = useState(0);
   const { done, total } = progressOf(migration);
   const percent = total ? Math.min(100, Math.round((done / total) * 100)) : null;
   const date = (value: Date | string | null | undefined) => (value ? new Date(value).toLocaleDateString(locale, { dateStyle: "medium" }) : "");
@@ -391,6 +399,8 @@ export function RunPanel({
   const lastSyncChanges = latestSync ? changesOf(latestSync.counts) : 0;
   const filesLeft = filesLeftIn(dataRun);
   const syncNotes = (latestSync?.notes && !Array.isArray(latestSync.notes) ? latestSync.notes : null) as SyncNotesShape | null;
+  // Clamped so a shrinking list (start over) never leaves the pager past its last page.
+  const shownRunsPage = Math.min(runsPage, Math.max(0, Math.ceil(runs.length / RUNS_PAGE_SIZE) - 1));
   const runCountOf = (run: (typeof runs)[number]) => ({ issues: countOf(run.counts, "issuesCreated") + countOf(run.counts, "issuesUpdated"), changes: changesOf(run.counts) });
 
   return (
@@ -445,20 +455,7 @@ export function RunPanel({
           <button type="button" onClick={() => setConfirm("reimport")} disabled={busy} className="type-small text-text-2 hover:underline disabled:opacity-60">
             {t("jiraMigration.run.reimportAll")}
           </button>
-          <label className="ml-auto flex items-center gap-2 type-small text-text-2">
-            {t("jiraMigration.run.autoSyncLabel")}
-            <select
-              className="rounded-[6px] border border-border bg-surface px-2 py-1 type-small text-text"
-              value={migration.autoSyncMinutes === null || migration.autoSyncMinutes === undefined ? "off" : String(migration.autoSyncMinutes)}
-              disabled={busy}
-              onChange={(e) => onAutoSync(e.target.value === "off" ? null : (Number(e.target.value) as 15 | 60 | 240))}
-            >
-              <option value="off">{t("jiraMigration.run.autoSyncOff")}</option>
-              <option value="15">{t("jiraMigration.run.autoSyncEvery15")}</option>
-              <option value="60">{t("jiraMigration.run.autoSyncHourly")}</option>
-              <option value="240">{t("jiraMigration.run.autoSyncEvery4h")}</option>
-            </select>
-          </label>
+          <AutoSyncControl minutes={migration.autoSyncMinutes ?? null} busy={busy} onAutoSync={onAutoSync} />
         </div>
       )}
 
@@ -466,7 +463,7 @@ export function RunPanel({
         <section className="mt-6 max-w-[760px]">
           <h3 className="type-small font-medium text-text">{t("jiraMigration.run.historyHeading")}</h3>
           <ul className="mt-2 flex flex-col gap-1 type-small text-text-2">
-            {runs.map((run) => {
+            {runs.slice(shownRunsPage * RUNS_PAGE_SIZE, (shownRunsPage + 1) * RUNS_PAGE_SIZE).map((run) => {
               const c = runCountOf(run);
               return (
                 <li key={run.id} className="tabular-nums">
@@ -481,6 +478,7 @@ export function RunPanel({
               );
             })}
           </ul>
+          <Pager className="mt-2" page={shownRunsPage} pageSize={RUNS_PAGE_SIZE} total={runs.length} onPage={setRunsPage} />
         </section>
       )}
 
@@ -548,5 +546,97 @@ function StartOverDialog({ open, onClose, onConfirm, busy }: { open: boolean; on
     >
       <p className="type-small text-text-2">{t("jiraMigration.run.startOverConfirmBody")}</p>
     </Dialog>
+  );
+}
+
+/**
+ * The auto-sync select: off, the presets, or a custom whole number of hours (1 to a week). Picking "Custom" opens an
+ * hours field; the interval is only saved from that field's Save button, so typing never fires a request per keystroke.
+ */
+function AutoSyncControl({ minutes, busy, onAutoSync }: { minutes: number | null; busy: boolean; onAutoSync: (minutes: number | null) => void }) {
+  const { t } = useTranslation("board");
+  const isPreset = minutes === null || (AUTO_SYNC_PRESETS as readonly number[]).includes(minutes);
+  const [editingCustom, setEditingCustom] = useState(false);
+  const [hoursDraft, setHoursDraft] = useState(() => (!isPreset && minutes !== null ? String(minutes / 60) : ""));
+  const showCustom = editingCustom || !isPreset;
+  const hours = Number(hoursDraft);
+  const hoursValid = hoursDraft.trim() !== "" && Number.isInteger(hours) && hours >= 1 && hours <= AUTO_SYNC_MAX_HOURS;
+  const savedHours = !isPreset && minutes !== null ? minutes / 60 : null;
+
+  // Follow the saved interval (after a save, or a change made elsewhere) unless the user is mid-edit.
+  useEffect(() => {
+    if (!editingCustom) setHoursDraft(savedHours !== null ? String(savedHours) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minutes]);
+
+  return (
+    <div className="ml-auto flex flex-wrap items-center gap-2 type-small text-text-2">
+      <label className="flex items-center gap-2">
+        {t("jiraMigration.run.autoSyncLabel")}
+        <select
+          className="rounded-[6px] border border-border bg-surface px-2 py-1 type-small text-text"
+          value={showCustom ? "custom" : minutes === null ? "off" : String(minutes)}
+          disabled={busy}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === "custom") {
+              setEditingCustom(true);
+              setHoursDraft(savedHours !== null ? String(savedHours) : "");
+              return;
+            }
+            setEditingCustom(false);
+            onAutoSync(value === "off" ? null : Number(value));
+          }}
+        >
+          <option value="off">{t("jiraMigration.run.autoSyncOff")}</option>
+          <option value="15">{t("jiraMigration.run.autoSyncEvery15")}</option>
+          <option value="60">{t("jiraMigration.run.autoSyncHourly")}</option>
+          <option value="240">{t("jiraMigration.run.autoSyncEvery4h")}</option>
+          <option value="custom">{savedHours !== null && !editingCustom ? t("jiraMigration.run.autoSyncEveryNHours", { count: savedHours }) : t("jiraMigration.run.autoSyncCustom")}</option>
+        </select>
+      </label>
+      {showCustom && (
+        <form
+          className="flex items-center gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!hoursValid) return;
+            setEditingCustom(false);
+            onAutoSync(hours * 60);
+          }}
+        >
+          <input
+            type="number"
+            min={1}
+            max={AUTO_SYNC_MAX_HOURS}
+            step={1}
+            inputMode="numeric"
+            aria-label={t("jiraMigration.run.autoSyncHoursLabel")}
+            aria-invalid={hoursDraft.trim() !== "" && !hoursValid}
+            className="w-16 rounded-[6px] border border-border bg-surface px-2 py-1 type-small tabular-nums text-text aria-[invalid=true]:border-danger"
+            value={hoursDraft}
+            disabled={busy}
+            onChange={(e) => {
+              setEditingCustom(true);
+              setHoursDraft(e.target.value);
+            }}
+          />
+          <span>{t("jiraMigration.run.autoSyncHoursUnit")}</span>
+          {(editingCustom || hours !== savedHours) && (
+            <>
+              <Button type="submit" size="sm" variant="outline" disabled={busy || !hoursValid || hours === savedHours}>
+                {t("jiraMigration.run.autoSyncSave")}
+              </Button>
+              {isPreset && (
+                <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setEditingCustom(false)}>
+                  {t("cancel")}
+                </Button>
+              )}
+            </>
+          )}
+          {hoursDraft.trim() !== "" && !hoursValid && <span className="text-danger">{t("jiraMigration.run.autoSyncHoursInvalid", { max: AUTO_SYNC_MAX_HOURS })}</span>}
+        </form>
+      )}
+    </div>
   );
 }

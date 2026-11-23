@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
-import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, getImportRun, listImportRuns, pageImportTargetKey, requirePageImportTarget, resolveExternalRef, upsertExternalRef } from "../import";
+import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, getImportRun, listImportRuns, listImportRunsPage, pageImportTargetKey, requirePageImportTarget, resolveExternalRef, upsertExternalRef } from "../import";
 import { ForbiddenError, withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -93,6 +93,25 @@ describe("packages/core/import", () => {
 
     const runs = await withAuthorizedTenant(ctx, (tx) => listImportRuns(tx, projectId));
     expect(runs.map((r) => r.id)).toContain(importRunId);
+  });
+
+  it("listImportRunsPage pages the project's runs newest first and reports the total", async () => {
+    const { projectId } = await seedProject();
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const { importRunId } = await withAuthorizedTenant(ctx, (tx) =>
+        createImportRun(tx, { organizationId: orgId, projectId, source: "jira", dryRun: true, config: {}, createdBy: userId }),
+      );
+      await admin.update(schema.importRun).set({ createdAt: new Date(Date.UTC(2026, 0, 1 + i)) }).where(eq(schema.importRun.id, importRunId));
+      ids.push(importRunId);
+    }
+    const newestFirst = [...ids].reverse();
+    const first = await withAuthorizedTenant(ctx, (tx) => listImportRunsPage(tx, projectId, { limit: 2, offset: 0 }));
+    expect(first.total).toBe(5);
+    expect(first.runs.map((r) => r.id)).toEqual(newestFirst.slice(0, 2));
+    const last = await withAuthorizedTenant(ctx, (tx) => listImportRunsPage(tx, projectId, { limit: 2, offset: 4 }));
+    expect(last.runs.map((r) => r.id)).toEqual(newestFirst.slice(4));
+    expect(last.total).toBe(5);
   });
 
   it("failImportRun records the error and marks the run failed", async () => {

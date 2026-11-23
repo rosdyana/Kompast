@@ -200,9 +200,9 @@ export const startJiraMigrationRunFn = createServerFn({ method: "POST" })
     return withAuthorizedTenant(ctx, (tx) => startJiraMigrationRun(tx, ctx, data.migrationId, { mode: data.mode, then: data.then }));
   });
 
-/** The auto-sync interval in minutes (15, 60 or 240), or null to turn it off. */
+/** The auto-sync interval in minutes (15, or whole hours up to a week), or null to turn it off. Core validates the value. */
 export const setJiraMigrationAutoSyncFn = createServerFn({ method: "POST" })
-  .validator(z.object({ migrationId: z.string(), minutes: z.union([z.literal(15), z.literal(60), z.literal(240), z.null()]) }))
+  .validator(z.object({ migrationId: z.string(), minutes: z.number().int().nullable() }))
   .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
     await withAuthorizedTenant(ctx, (tx) => setJiraMigrationAutoSync(tx, ctx, data.migrationId, data.minutes));
