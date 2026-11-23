@@ -27,9 +27,12 @@ import {
 import { PickStep } from "./PickStep";
 import { ReviewStep } from "./ReviewStep";
 import { RunStep } from "./RunStep";
+import { Pager } from "@/components/board/Pager";
 import { errorText, NOTION_INTEGRATIONS_URL, StateBadge, TokenField, type DiscoveryView, type MigrationView, type SavedSelection, type TeamOption } from "./shared";
 
 type ListRow = Awaited<ReturnType<typeof listNotionMigrationsFn>>[number];
+
+const PREVIOUS_PAGE_SIZE = 10;
 
 export interface NotionMigrationWizardProps {
   open: boolean;
@@ -268,6 +271,9 @@ function ConnectView({ onCreated, onOpen }: { onCreated: (migrationId: string) =
   const [error, setError] = useState<string | null>(null);
   const [previous, setPrevious] = useState<ListRow[] | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [previousPage, setPreviousPage] = useState(0);
+  // Clamped so deleting the last row of the last page never leaves the pager past the end.
+  const shownPreviousPage = Math.min(previousPage, Math.max(0, Math.ceil((previous?.length ?? 0) / PREVIOUS_PAGE_SIZE) - 1));
 
   const loadPrevious = useCallback(() => listNotionMigrationsFn().then(setPrevious, () => setPrevious([])), []);
   useEffect(() => {
@@ -377,7 +383,7 @@ function ConnectView({ onCreated, onOpen }: { onCreated: (migrationId: string) =
         <section>
           <h4 className="mb-2 text-[13px] font-medium text-text-2">{t("notionMigration.previous.heading")}</h4>
           <ul className="flex flex-col rounded-[8px] border border-border bg-surface">
-            {previous.map((row) => (
+            {previous.slice(shownPreviousPage * PREVIOUS_PAGE_SIZE, (shownPreviousPage + 1) * PREVIOUS_PAGE_SIZE).map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] text-text">{row.workspaceName || t("notionMigration.previous.noName")}</p>
@@ -404,6 +410,7 @@ function ConnectView({ onCreated, onOpen }: { onCreated: (migrationId: string) =
               </li>
             ))}
           </ul>
+          <Pager className="mt-1.5 justify-end" page={shownPreviousPage} pageSize={PREVIOUS_PAGE_SIZE} total={previous.length} onPage={setPreviousPage} disabled={busy} />
           <p className="mt-1.5 text-[12.5px] text-text-3">{t("notionMigration.previous.deleteHint")}</p>
         </section>
       )}

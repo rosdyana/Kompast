@@ -8,8 +8,11 @@ import { useTranslation } from "@kompast/i18n";
 import { listImportRunsFn, startJiraImportFn } from "@/lib/server-fns/imports";
 import { useIntlLocale } from "./project-shared";
 import { JiraMigrationWizard } from "./jira-migration/JiraMigrationWizard";
+import { Pager } from "./Pager";
 
-type ImportRun = Awaited<ReturnType<typeof listImportRunsFn>>[number];
+type ImportRun = Awaited<ReturnType<typeof listImportRunsFn>>["runs"][number];
+
+const HISTORY_PAGE_SIZE = 20;
 
 const STATUS_TONE: Record<string, BadgeTone> = { pending: "neutral", running: "accent", completed: "green", failed: "danger" };
 
@@ -35,6 +38,9 @@ export function ImportView({ projectId, boardId, canManage }: { projectId: strin
     failed: t("importTab.statusFailed"),
   };
   const [runs, setRuns] = useState<ImportRun[] | null>(null);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [jiraBaseUrl, setJiraBaseUrl] = useState("");
   const [jiraEmail, setJiraEmail] = useState("");
   const [jiraApiToken, setJiraApiToken] = useState("");
@@ -46,12 +52,24 @@ export function ImportView({ projectId, boardId, canManage }: { projectId: strin
   const [touched, setTouched] = useState(false);
   const [lastResult, setLastResult] = useState<Awaited<ReturnType<typeof startJiraImportFn>> | null>(null);
 
-  async function refresh() {
-    setRuns(await listImportRunsFn({ data: projectId }));
+  async function refresh(page = historyPage): Promise<void> {
+    setHistoryLoading(true);
+    try {
+      const result = await listImportRunsFn({ data: { projectId, limit: HISTORY_PAGE_SIZE, offset: page * HISTORY_PAGE_SIZE } });
+      // A page past the end (the runs shrank): fall back to the last page that has rows.
+      if (result.runs.length === 0 && result.total > 0 && page > 0) {
+        return refresh(Math.max(0, Math.ceil(result.total / HISTORY_PAGE_SIZE) - 1));
+      }
+      setRuns(result.runs);
+      setHistoryTotal(result.total);
+      setHistoryPage(page);
+    } finally {
+      setHistoryLoading(false);
+    }
   }
 
   useEffect(() => {
-    refresh().catch(() => setRuns([]));
+    refresh(0).catch(() => setRuns([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -69,7 +87,7 @@ export function ImportView({ projectId, boardId, canManage }: { projectId: strin
       });
       setLastResult(result);
       setJiraApiToken("");
-      await refresh();
+      await refresh(0);
     } catch (err) {
       setRunError(err instanceof Error ? err.message : t("genericError"));
     } finally {
@@ -152,7 +170,7 @@ export function ImportView({ projectId, boardId, canManage }: { projectId: strin
         <h2 className="mb-3 type-headline">{t("importTab.historyHeading")}</h2>
         {runs === null ? (
           <SkeletonRows rows={3} />
-        ) : runs.length === 0 ? (
+        ) : historyTotal === 0 ? (
           <EmptyState icon={<Download size={18} />} title={t("importTab.noImportsYet")} description={t("importTab.subtitle")} />
         ) : (
           <div className="overflow-x-auto rounded-[10px] border border-border bg-surface">
@@ -191,6 +209,18 @@ export function ImportView({ projectId, boardId, canManage }: { projectId: strin
               </tbody>
             </table>
           </div>
+        )}
+        {runs !== null && (
+          <Pager
+            className="mt-2 justify-end"
+            page={historyPage}
+            pageSize={HISTORY_PAGE_SIZE}
+            total={historyTotal}
+            disabled={historyLoading}
+            onPage={(page) => {
+              refresh(page).catch(() => undefined);
+            }}
+          />
         )}
       </section>
     </div>
