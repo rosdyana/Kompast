@@ -265,7 +265,7 @@ export function JiraMigrationWizard({ projectId, boardId, canManage }: { project
     });
   }
 
-  function setAutoSync(minutes: 15 | 60 | 240 | null) {
+  function setAutoSync(minutes: number | null) {
     if (!migration) return;
     act(() => setJiraMigrationAutoSyncFn({ data: { migrationId: migration.id, minutes } }));
   }

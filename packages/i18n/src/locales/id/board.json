@@ -413,6 +413,13 @@
       "autoSyncEvery15": "Setiap 15 menit",
       "autoSyncHourly": "Setiap jam",
       "autoSyncEvery4h": "Setiap 4 jam",
+      "autoSyncCustom": "Kustom…",
+      "autoSyncEveryNHours_one": "Setiap {{count}} jam",
+      "autoSyncEveryNHours_other": "Setiap {{count}} jam",
+      "autoSyncHoursLabel": "Interval sinkron otomatis dalam jam",
+      "autoSyncHoursUnit": "jam",
+      "autoSyncSave": "Simpan",
+      "autoSyncHoursInvalid": "Masukkan jam bulat dari 1 sampai {{max}}.",
       "readOnlyNote": "Sampai peralihan, perlakukan Kompast sebagai hanya-baca. Sinkronisasi menulis ulang nilai JIRA di atas perubahan apa pun yang dibuat di sini.",
       "latestSyncHeading": "Sinkronisasi terakhir",
       "notesToggle": "Catatan dari sinkronisasi terakhir",
@@ -861,7 +868,28 @@
       "created": "dibuat",
       "commented_one": "{{count}} komentar",
       "commented_other": "{{count}} komentar",
-      "edited": "diubah: {{fields}}"
+      "edited": "diubah: {{fields}}",
+      "logged": "mencatat {{time}}"
+    },
+    "field": {
+      "title": "judul",
+      "description": "deskripsi",
+      "typeId": "tipe",
+      "priority": "prioritas",
+      "storyPoints": "story point",
+      "dueDate": "tenggat",
+      "startDate": "tanggal mulai",
+      "epicId": "epic",
+      "parentId": "induk",
+      "labels": "label",
+      "estimateSeconds": "estimasi",
+      "spentSeconds": "waktu terpakai"
     }
+  },
+  "pager": {
+    "label": "Halaman",
+    "range": "{{from}}–{{to}} dari {{total}}",
+    "previous": "Halaman sebelumnya",
+    "next": "Halaman berikutnya"
   }
 }

@@ -10,12 +10,15 @@ import { useTranslation } from "@kompast/i18n";
 import { cn } from "@/lib/cn";
 import { useClientNow } from "@/lib/use-client-now";
 import { finishStandupFn, getStandupDigestFn } from "@/lib/server-fns/standup";
-import { useIntlLocale, type BoardData, type BoardIssue } from "./project-shared";
-import { formatClock, localDateKey, previousWorkingDayStart } from "./standup-time";
+import { useIntlLocale, type BoardData } from "./project-shared";
+import { formatClock, formatWorkTime, localDateKey, previousWorkingDayStart } from "./standup-time";
 import { parseStandupSettings } from "./standup-settings";
 
 type DigestByUser = Awaited<ReturnType<typeof getStandupDigestFn>>["byUser"];
 type DigestItem = DigestByUser[string][number];
+type DigestIssue = Awaited<ReturnType<typeof getStandupDigestFn>>["issues"][string];
+/** One sprint issue as the dialog uses it: the server's label data, or the board's as a fallback while the digest loads or if it fails. */
+type SprintRow = DigestIssue & { id: string };
 type MemberStatus = "pending" | "done" | "skipped";
 
 interface MemberDraft {
@@ -180,6 +183,7 @@ export function StandupDialog({
   const sinceWhen = since ? since.toLocaleDateString(locale, { weekday: "long" }) : "";
 
   const [digest, setDigest] = useState<DigestByUser | null>(null);
+  const [digestIssues, setDigestIssues] = useState<Record<string, DigestIssue> | null>(null);
   const [didColumnNames, setDidColumnNames] = useState<string[]>([]);
   const [digestFailed, setDigestFailed] = useState(false);
   useEffect(() => {
@@ -189,6 +193,7 @@ export function StandupDialog({
       .then((res) => {
         if (!cancelled) {
           setDigest(res.byUser);
+          setDigestIssues(res.issues);
           setDidColumnNames(res.didColumnNames);
         }
       })
@@ -200,11 +205,31 @@ export function StandupDialog({
     };
   }, [sprintId, sinceIso]);
 
+  // The server's list covers every sprint issue, including ones whose status maps to no board column (the board omits those).
+  const sprintRows = useMemo<SprintRow[]>(() => {
+    if (digestIssues) return Object.entries(digestIssues).map(([id, issue]) => ({ id, ...issue }));
+    return sprintIssues.map((i) => {
+      const status = statusesById.get(i.statusId);
+      return {
+        id: i.id,
+        keySeq: i.keySeq,
+        projectKey,
+        teamId: teamId === "none" ? null : teamId,
+        title: i.title,
+        assigneeId: i.assigneeId,
+        statusId: i.statusId,
+        statusName: status?.name ?? "?",
+        statusCategory: (status?.category ?? "todo") as DigestIssue["statusCategory"],
+      };
+    });
+  }, [digestIssues, sprintIssues, statusesById, projectKey, teamId]);
+  const rowsById = useMemo(() => new Map(sprintRows.map((r) => [r.id, r])), [sprintRows]);
+
   const rosterIds = useMemo(() => {
-    const ids = new Set(sprintIssues.map((i) => i.assigneeId).filter((x): x is string => !!x));
+    const ids = new Set(sprintRows.map((i) => i.assigneeId).filter((x): x is string => !!x));
     for (const uid of Object.keys(digest ?? {})) ids.add(uid);
     return [...ids].sort((a, b) => (namesById.get(a) ?? a).localeCompare(namesById.get(b) ?? b));
-  }, [sprintIssues, digest, namesById]);
+  }, [sprintRows, digest, namesById]);
 
   const draftKey = now ? draftKeyFor(sprintId, localDateKey(now)) : null;
   const [draftReady, setDraftReady] = useState(false);
@@ -322,27 +347,38 @@ export function StandupDialog({
 
   // Derived lists for the current person. The "since" list comes from the digest; "today" from the board data already on the client.
   function issueLabel(issueId: string) {
-    const issue = issuesById.get(issueId);
-    return { key: issue ? `${projectKey}-${issue.keySeq}` : issueId, title: issue?.title ?? "", issue };
+    const row = rowsById.get(issueId);
+    if (row) return { key: `${row.projectKey}-${row.keySeq}`, title: row.title, issue: row };
+    // Not on the sprint any more (digest issues cover the whole sprint): fall back to the board, then the bare id.
+    const boardIssue = issuesById.get(issueId);
+    return {
+      key: boardIssue ? `${projectKey}-${boardIssue.keySeq}` : issueId,
+      title: boardIssue?.title ?? "",
+      issue: boardIssue ? { keySeq: boardIssue.keySeq, projectKey, teamId: teamId === "none" ? null : teamId } : undefined,
+    };
   }
 
   function describeItem(item: DigestItem): string {
     if (item.kind === "status") return `${item.fromStatus?.name ?? "?"} → ${item.toStatus?.name ?? "?"}`;
     if (item.kind === "commented") return t("standup.line.commented", { count: item.commentCount ?? 0 });
-    if (item.kind === "edited") return t("standup.line.edited", { fields: (item.fields ?? []).join(", ") });
+    if (item.kind === "logged") return t("standup.line.logged", { time: formatWorkTime(item.loggedSeconds ?? 0) });
+    if (item.kind === "edited") {
+      const fields = (item.fields ?? []).map((f) => t(`standup.field.${f}`, { defaultValue: f }));
+      return t("standup.line.edited", { fields: fields.join(", ") });
+    }
     return t("standup.line.created");
   }
 
-  function todayIssues(userId: string): BoardIssue[] {
+  function todayIssues(userId: string): SprintRow[] {
     if (todayColumns.length > 0) {
       const todayColumnIds = new Set(todayColumns.map((c) => c.id));
-      return sprintIssues
+      return sprintRows
         .filter((i) => i.assigneeId === userId && todayColumnIds.has(columnOfIssue.get(i.id)?.id ?? ""))
         .sort((a, b) => columnOfIssue.get(a.id)!.order - columnOfIssue.get(b.id)!.order);
     }
-    return sprintIssues
-      .filter((i) => i.assigneeId === userId && (statusesById.get(i.statusId)?.category ?? "todo") !== "done")
-      .sort((a, b) => categoryRank(statusesById.get(a.statusId)?.category) - categoryRank(statusesById.get(b.statusId)?.category));
+    return sprintRows
+      .filter((i) => i.assigneeId === userId && i.statusCategory !== "done")
+      .sort((a, b) => categoryRank(a.statusCategory) - categoryRank(b.statusCategory));
   }
 
   function didLines(userId: string): string[] {
@@ -353,10 +389,7 @@ export function StandupDialog({
   }
 
   function todayLines(userId: string): string[] {
-    return todayIssues(userId).map((i) => {
-      const key = `${projectKey}-${i.keySeq}`;
-      return `${key} ${i.title} — ${statusesById.get(i.statusId)?.name ?? "?"}`;
-    });
+    return todayIssues(userId).map((i) => `${i.projectKey}-${i.keySeq} ${i.title} — ${i.statusName}`);
   }
 
   async function finish() {
@@ -562,7 +595,7 @@ export function StandupDialog({
                           {issue ? (
                             <Link
                               to="/issues/$teamId/$projectKey/$issueKeySeq"
-                              params={{ teamId, projectKey, issueKeySeq: String(issue.keySeq) }}
+                              params={{ teamId: issue.teamId ?? "none", projectKey: issue.projectKey, issueKeySeq: String(issue.keySeq) }}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="min-w-0 truncate hover:underline"
@@ -602,16 +635,16 @@ export function StandupDialog({
                       <li key={i.id} className="flex flex-wrap items-center gap-2 text-[13.5px]">
                         <Link
                           to="/issues/$teamId/$projectKey/$issueKeySeq"
-                          params={{ teamId, projectKey, issueKeySeq: String(i.keySeq) }}
+                          params={{ teamId: i.teamId ?? "none", projectKey: i.projectKey, issueKeySeq: String(i.keySeq) }}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="min-w-0 truncate hover:underline"
                         >
-                          <span className="type-key mr-1.5 text-text-3">{`${projectKey}-${i.keySeq}`}</span>
+                          <span className="type-key mr-1.5 text-text-3">{`${i.projectKey}-${i.keySeq}`}</span>
                           {i.title}
                         </Link>
                         <span className="rounded-[4px] bg-surface-3 px-1.5 py-0.5 text-[11.5px] font-medium text-text-2">
-                          {statusesById.get(i.statusId)?.name ?? "?"}
+                          {i.statusName}
                         </span>
                       </li>
                     ))}

@@ -25,3 +25,12 @@ export function formatClock(ms: number): string {
   const s = totalSec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+/** Logged work as "1h 30m" / "45m" / "2h" (rounded to whole minutes, at least 1m). */
+export function formatWorkTime(seconds: number): string {
+  const totalMin = Math.max(1, Math.round(seconds / 60));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}

@@ -5,7 +5,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createProject } from "../project";
 import { createIssue } from "../issue";
-import { searchWorkspace } from "../search";
+import { resolveIssueRef, searchWorkspace } from "../search";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -143,5 +143,43 @@ describe("search", () => {
     const result = await withAuthorizedTenant({ userId, organizationId: orgId }, (tx) => searchWorkspace(tx, orgId, "a"));
     expect(result.issues).toHaveLength(0);
     expect(result.people).toHaveLength(0);
+  });
+  describe("resolveIssueRef", () => {
+    const ctx = { userId, organizationId: orgId };
+
+    async function projectWithIssue() {
+      const { projectId, issueTypes, statuses } = await withAuthorizedTenant(ctx, (tx) =>
+        createProject(tx, { organizationId: orgId, teamId, key: "rslv", name: "Resolve Test", actorUserId: userId }),
+      );
+      const { issueId } = await withAuthorizedTenant(ctx, (tx) =>
+        createIssue(tx, { organizationId: orgId, projectId, typeId: issueTypes[0]!.id, statusId: statuses[0]!.id, title: "Paste me", reporterId: userId }),
+      );
+      return { projectId, issueId };
+    }
+
+    it("resolves team + key + sequence to the issue, case-insensitively on the key", async () => {
+      const { issueId } = await projectWithIssue();
+      const ref = await withAuthorizedTenant(ctx, (tx) => resolveIssueRef(tx, { organizationId: orgId, teamId, projectKey: "rslv", keySeq: 1 }));
+      expect(ref).toEqual({ issueId, projectKey: "RSLV", keySeq: 1, teamId, title: "Paste me" });
+    });
+
+    it("returns null for a missing sequence, the wrong team, or an archived issue", async () => {
+      const { issueId } = await projectWithIssue();
+      const resolve = (input: { teamId: string | null; keySeq: number }) =>
+        withAuthorizedTenant(ctx, (tx) => resolveIssueRef(tx, { organizationId: orgId, projectKey: "RSLV", ...input }));
+      expect(await resolve({ teamId, keySeq: 99 })).toBeNull();
+      expect(await resolve({ teamId: null, keySeq: 1 })).toBeNull();
+      await admin.update(schema.issue).set({ archivedAt: new Date() }).where(eq(schema.issue.id, issueId));
+      expect(await resolve({ teamId, keySeq: 1 })).toBeNull();
+    });
+
+    it("returns null when the issue's project belongs to a team the caller isn't in", async () => {
+      const { projectId } = await projectWithIssue();
+      const hiddenTeamId = "test-search-hidden-team";
+      await admin.insert(schema.team).values({ id: hiddenTeamId, organizationId: orgId, name: "Hidden Team" });
+      await admin.update(schema.project).set({ teamId: hiddenTeamId }).where(eq(schema.project.id, projectId));
+      const ref = await withAuthorizedTenant(ctx, (tx) => resolveIssueRef(tx, { organizationId: orgId, teamId: hiddenTeamId, projectKey: "RSLV", keySeq: 1 }));
+      expect(ref).toBeNull();
+    });
   });
 });

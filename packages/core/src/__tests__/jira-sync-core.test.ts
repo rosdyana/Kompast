@@ -100,8 +100,13 @@ describe("JIRA catch-up sync (core)", () => {
     expect(runs.map((r) => r.id)).toEqual([second.importRunId, first.importRunId]);
   });
 
-  it("auto-sync accepts off, 15, 60 and 240 minutes only, and a due migration needs a token and a passed interval", async () => {
-    await expect(withAuthorizedTenant(ctx, (tx) => setJiraMigrationAutoSync(tx, ctx, migrationId, 30 as never))).rejects.toThrow(/every 15 minutes/);
+  it("auto-sync accepts off, 15 minutes or whole hours up to a week, and a due migration needs a token and a passed interval", async () => {
+    for (const bad of [30, 90, 0, -60, 61.5, 169 * 60]) {
+      await expect(withAuthorizedTenant(ctx, (tx) => setJiraMigrationAutoSync(tx, ctx, migrationId, bad))).rejects.toThrow(/every 15 minutes/);
+    }
+    await withAuthorizedTenant(ctx, (tx) => setJiraMigrationAutoSync(tx, ctx, migrationId, 12 * 60));
+    expect((await withAuthorizedTenant(ctx, (tx) => getJiraMigration(tx, migrationId)))?.autoSyncMinutes).toBe(720);
+    await withAuthorizedTenant(ctx, (tx) => setJiraMigrationAutoSync(tx, ctx, migrationId, 168 * 60));
     await withAuthorizedTenant(ctx, (tx) => setJiraMigrationAutoSync(tx, ctx, migrationId, 15));
     const m = await withAuthorizedTenant(ctx, (tx) => getJiraMigration(tx, migrationId));
     expect(m?.autoSyncMinutes).toBe(15);

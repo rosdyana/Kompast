@@ -4,6 +4,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { and, arrayContains, asc, eq, gt, ilike, inArray, isNull, schema, type Json } from "@kompast/db";
 import {
   createIssue,
+  getMyStandupActivity,
   updateIssue,
   updateIssueCustomField,
   moveIssue,
@@ -1690,25 +1691,33 @@ export function buildMcpServer(ctx: ApiAuthContext) {
 
   server.registerPrompt(
     "standup-digest",
-    { description: "Summarize what I've moved in the last 2 days for a standup update." },
+    { description: "Summarize what I've worked on in the last 2 days, and what I have in progress, for a standup update." },
     async () => {
-      const rows = await withAuthorizedTenant(ctx, (tx) =>
-        tx
-          .select({ title: schema.issue.title, keySeq: schema.issue.keySeq, projectKey: schema.project.key, statusName: schema.workflowStatus.name, updatedAt: schema.issue.updatedAt })
-          .from(schema.issue)
-          .innerJoin(schema.project, eq(schema.project.id, schema.issue.projectId))
-          .innerJoin(schema.workflowStatus, eq(schema.workflowStatus.id, schema.issue.statusId))
-          .where(and(eq(schema.issue.organizationId, ctx.organizationId), eq(schema.issue.assigneeId, ctx.userId)))
-          .orderBy(schema.issue.updatedAt),
-      );
-      const cutoff = Date.now() - 2 * 24 * 60 * 60 * 1000;
-      const recent = rows.filter((r) => r.updatedAt.getTime() >= cutoff);
-      const lines = recent.map((r) => `- ${r.projectKey}-${r.keySeq} ${r.title} → ${r.statusName}`).join("\n") || "(nothing moved in the last 2 days)";
+      // Same activity rules as the board's standup dialog (packages/core/src/standup.ts): status moves, edits to work fields,
+      // comments and logged time by me; imports and automation excluded.
+      const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+      const { did, inProgress, issues } = await withAuthorizedTenant(ctx, (tx) => getMyStandupActivity(tx, { userId: ctx.userId, since }));
+      const label = (issueId: string) => {
+        const issue = issues[issueId];
+        return issue ? `${issue.projectKey}-${issue.keySeq} ${issue.title}` : issueId;
+      };
+      const describe = (item: (typeof did)[number]) => {
+        if (item.kind === "status") return `moved ${item.fromStatus?.name ?? "?"} → ${item.toStatus?.name ?? "?"}`;
+        if (item.kind === "commented") return `${item.commentCount} comment(s)`;
+        if (item.kind === "logged") return `logged ${Math.round(((item.loggedSeconds ?? 0) / 3600) * 10) / 10}h`;
+        if (item.kind === "edited") return `edited ${(item.fields ?? []).join(", ")}`;
+        return "created";
+      };
+      const didLines = did.map((item) => `- ${label(item.issueId)} — ${describe(item)}`).join("\n") || "(no activity in the last 2 days)";
+      const inProgressLines = inProgress.map((issueId) => `- ${label(issueId)} — ${issues[issueId]?.statusName ?? "?"}`).join("\n") || "(nothing in progress)";
       return {
         messages: [
           {
             role: "user",
-            content: { type: "text", text: `Write a short standup update from this activity:\n\n${lines}\n\nGroup into Yesterday / Today / Blockers.` },
+            content: {
+              type: "text",
+              text: `Write a short standup update.\n\nMy activity in the last 2 days:\n${didLines}\n\nAssigned to me and in progress:\n${inProgressLines}\n\nGroup into Yesterday / Today / Blockers.`,
+            },
           },
         ],
       };

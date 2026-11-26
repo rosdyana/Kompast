@@ -21,6 +21,7 @@ import { completeSprintFn, listSprintsFn } from "@/lib/server-fns/sprints";
 import { CompleteSprintDialog } from "./BacklogView";
 import { StandupDialog } from "./StandupDialog";
 import { useConfirmArm } from "@/lib/use-confirm-arm";
+import { useCopyIssueLink } from "@/components/shared/use-copy-issue-link";
 import { IssueChecklist, type ChecklistSummary } from "@/components/issues/IssueChecklist";
 import { cn } from "@/lib/cn";
 import { FadeScroller } from "./FadeScroller";
@@ -1037,6 +1038,8 @@ function CardBody({
 function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue: BoardIssue; columnId: string; swimlaneKey?: string }) {
   const { t } = useTranslation("board");
   const router = useRouter();
+  const { t: tCommon } = useTranslation("common");
+  const copyIssueLink = useCopyIssueLink();
   const { listeners, attributes, setNodeRef, isDragging } = useDraggable({ id: issue.id });
   const selected = common.selectedIds.has(issue.id);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -1112,6 +1115,14 @@ function Card({ issue, columnId, swimlaneKey, ...common }: CardCommon & { issue:
             }}
           >
             {t("card.openIssue")}
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setMenuOpen(false);
+              void copyIssueLink({ teamId: common.teamId, projectKey: common.projectKey, keySeq: issue.keySeq });
+            }}
+          >
+            {tCommon("copyLink")}
           </MenuItem>
           <MenuItem
             onClick={() => {

@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useRouter, Link, useLoaderData } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, ChevronRight, GripVertical, Layers, Pencil, Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, GripVertical, Layers, Link2, Pencil, Plus, X } from "lucide-react";
+import { useCopyIssueLink } from "@/components/shared/use-copy-issue-link";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { Avatar, UnassignedAvatar } from "@kompast/ui/Avatar";
 import { CountPill } from "@kompast/ui/Badge";
@@ -182,6 +183,8 @@ function TableRow({
   const { t } = useTranslation("board");
   const router = useRouter();
   const toast = useToast();
+  const { t: tCommon } = useTranslation("common");
+  const copyIssueLink = useCopyIssueLink();
   const [pending, setPending] = useState<Patch>({});
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState(issue.title);
@@ -317,6 +320,15 @@ function TableRow({
                 className="grid h-7 w-7 flex-none place-items-center rounded-[5px] text-text-3 opacity-0 hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover/row:opacity-100"
               >
                 <Pencil size={13} strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                aria-label={tCommon("copyLink")}
+                title={tCommon("copyLink")}
+                onClick={() => void copyIssueLink({ teamId, projectKey: data.project.key, keySeq: issue.keySeq })}
+                className="grid h-7 w-7 flex-none place-items-center rounded-[5px] text-text-3 opacity-0 hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover/row:opacity-100"
+              >
+                <Link2 size={13} strokeWidth={1.75} />
               </button>
             </>
           )}

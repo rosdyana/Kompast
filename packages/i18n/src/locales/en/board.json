@@ -421,6 +421,13 @@
       "autoSyncEvery15": "Every 15 minutes",
       "autoSyncHourly": "Every hour",
       "autoSyncEvery4h": "Every 4 hours",
+      "autoSyncCustom": "Custom…",
+      "autoSyncEveryNHours_one": "Every {{count}} hour",
+      "autoSyncEveryNHours_other": "Every {{count}} hours",
+      "autoSyncHoursLabel": "Auto-sync interval in hours",
+      "autoSyncHoursUnit": "hours",
+      "autoSyncSave": "Save",
+      "autoSyncHoursInvalid": "Enter whole hours from 1 to {{max}}.",
       "readOnlyNote": "Until switch-over, treat Kompast as read-only. A sync writes JIRA's values back over any change made here.",
       "latestSyncHeading": "Latest sync",
       "notesToggle": "Notes from the latest sync",
@@ -869,7 +876,28 @@
       "created": "created",
       "commented_one": "{{count}} comment",
       "commented_other": "{{count}} comments",
-      "edited": "edited: {{fields}}"
+      "edited": "edited: {{fields}}",
+      "logged": "logged {{time}}"
+    },
+    "field": {
+      "title": "title",
+      "description": "description",
+      "typeId": "type",
+      "priority": "priority",
+      "storyPoints": "story points",
+      "dueDate": "due date",
+      "startDate": "start date",
+      "epicId": "epic",
+      "parentId": "parent",
+      "labels": "labels",
+      "estimateSeconds": "estimate",
+      "spentSeconds": "time spent"
     }
+  },
+  "pager": {
+    "label": "Pages",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "previous": "Previous page",
+    "next": "Next page"
   }
 }

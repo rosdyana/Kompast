@@ -8,5 +8,8 @@
   "loadingEllipsis": "Loading…",
   "sharedFooter": "Shared from Kompast · view only",
   "emptyPage": "This page is empty.",
-  "poweredBy": "Made with Kompast"
+  "poweredBy": "Made with Kompast",
+  "signInRequiredTitle": "Sign in to view this page",
+  "signInRequiredBody": "This link opens only for people signed in to Kompast.",
+  "signInToView": "Sign in"
 }

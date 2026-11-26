@@ -1,5 +1,6 @@
 import { and, desc, eq, ilike, isNull, or, schema } from "@kompast/db";
 import type { Tx } from "./types";
+import { getProjectByTeamAndKey } from "./project";
 
 export interface WorkspaceSearchResult {
   issues: Array<{
@@ -69,4 +70,34 @@ export async function searchWorkspace(
   ]);
 
   return { issues, people };
+}
+
+export interface ResolvedIssueRef {
+  issueId: string;
+  projectKey: string;
+  keySeq: number;
+  teamId: string | null;
+  title: string;
+}
+
+/**
+ * Looks up the issue an issue URL points at (/issues/:teamId/:projectKey/:keySeq),
+ * through the caller's tx so RLS decides visibility. Returns null when the
+ * project or issue doesn't exist, is archived, or isn't visible to the caller,
+ * so a pasted link to something the reader can't see never leaks its title.
+ */
+export async function resolveIssueRef(
+  tx: Tx,
+  input: { organizationId: string; teamId: string | null; projectKey: string; keySeq: number },
+): Promise<ResolvedIssueRef | null> {
+  // An ambiguous key (two projects on one team) throws in getProjectByTeamAndKey; for a paste that just means "can't resolve".
+  const project = await getProjectByTeamAndKey(tx, { organizationId: input.organizationId, teamId: input.teamId, key: input.projectKey }).catch(() => null);
+  if (!project) return null;
+  const [issue] = await tx
+    .select({ id: schema.issue.id, title: schema.issue.title })
+    .from(schema.issue)
+    .where(and(eq(schema.issue.projectId, project.id), eq(schema.issue.keySeq, input.keySeq), isNull(schema.issue.archivedAt)))
+    .limit(1);
+  if (!issue) return null;
+  return { issueId: issue.id, projectKey: project.key, keySeq: input.keySeq, teamId: project.teamId, title: issue.title };
 }
