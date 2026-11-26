@@ -253,11 +253,11 @@ function WorkflowCanvasInner({
             edges={edges}
             onNodesChange={(changes) => {
               onNodesChange(changes);
-              if (changes.some((c) => c.type !== "select" && c.type !== "dimensions")) markDirty();
+              if (changes.toArray().some((c) => c.type !== "select" && c.type !== "dimensions")) markDirty();
             }}
             onEdgesChange={(changes) => {
               onEdgesChange(changes);
-              if (changes.some((c) => c.type !== "select")) markDirty();
+              if (changes.toArray().some((c) => c.type !== "select")) markDirty();
             }}
             onConnect={onConnect}
             nodeTypes={NODE_TYPES}
