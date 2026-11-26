@@ -3,28 +3,37 @@ import { getRequest } from "@tanstack/react-start/server";
 import { createHash } from "node:crypto";
 import * as z from "zod";
 import * as Y from "yjs";
-import { resolveShareLink, getSharedPageContent, shareLinkRequiresPassword, UserFacingError } from "@kompast/core";
+import { getSharedPageMeta, getSharedPageContent, UserFacingError } from "@kompast/core";
 import { redactEmbedsForGuests } from "../blocknote-schema";
 import { createServerEditor } from "../server-editor";
 import { clientIp, rateLimit } from "../rate-limit";
 import { sanitizeShareHtml } from "../share-html";
+import { getCurrentSession } from "../session";
 
 /**
- * Public, unauthenticated surface — no requireAuthContext, no
- * withAuthorizedTenant. Deliberately split from getSharedPageContentFn so
+ * Any valid Kompast session counts as signed in for a "signed_in" link — the
+ * viewer needn't be in this page's workspace, team or access list, nor even
+ * have an active workspace. Read on every call; never trust the meta call's answer.
+ */
+async function viewerUserId(): Promise<string | null> {
+  const session = await getCurrentSession();
+  return session?.user.id ?? null;
+}
+
+/**
+ * Reachable without a session — no requireAuthContext, no
+ * withAuthorizedTenant. Whether a link needs sign-in is the link's own
+ * `access`, enforced in core (getSharedPageMeta / getSharedPageContent). Deliberately split from getSharedPageContentFn so
  * the browser can check "does this link exist / need a password" without
  * ever sending a password over a GET request.
  */
 export const getSharedPageMetaFn = createServerFn({ method: "GET" })
   .validator((token: string) => token)
   .handler(async ({ data: token }) => {
-    const resolved = await resolveShareLink(token);
-    if (!resolved) return null;
-    return {
-      title: resolved.page.title,
-      icon: resolved.page.icon,
-      requiresPassword: shareLinkRequiresPassword(resolved.shareLink),
-    };
+    const meta = await getSharedPageMeta(token, await viewerUserId());
+    if (meta.status === "not_found") return null;
+    if (meta.status === "login_required") return { loginRequired: true as const };
+    return { loginRequired: false as const, title: meta.title, icon: meta.icon, requiresPassword: meta.requiresPassword };
   });
 
 const unlockSchema = z.object({ token: z.string(), password: z.string().optional() });
@@ -39,8 +48,9 @@ export const getSharedPageContentFn = createServerFn({ method: "POST" })
       const gate = await rateLimit(`sharepw:${linkKey}:${clientIp(getRequest())}`, 10, 900);
       if (!gate.ok) throw new UserFacingError(`Too many password attempts. Try again in ${Math.ceil(gate.retryAfter / 60)} minutes.`);
     }
-    const content = await getSharedPageContent(data.token, data.password);
-    if (!content) return { ok: false as const };
+    const content = await getSharedPageContent(data.token, { password: data.password, viewerUserId: await viewerUserId() });
+    if (content.status === "login_required") return { ok: false as const, loginRequired: true as const };
+    if (content.status !== "ok") return { ok: false as const, loginRequired: false as const };
 
     // Empty string = empty page; the client renders its own localized empty state.
     let html = "";

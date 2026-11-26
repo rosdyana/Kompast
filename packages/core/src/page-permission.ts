@@ -333,6 +333,12 @@ export interface PageAccessView {
    * (the tree root's, see personalPageRole); teams can't be invited.
    */
   owner: { id: string; name: string } | null;
+  /**
+   * Set when the page lives in a team's space (a team doc or a project doc).
+   * Only that team can see it, so only its members are candidates and no
+   * team can be added; the UI says so instead of offering "person or team".
+   */
+  spaceTeam: { id: string; name: string } | null;
 }
 
 async function getPersonalPageAccess(tx: Tx, ownerId: string, rootId: string, ctx: { organizationId: string }): Promise<PageAccessView> {
@@ -354,6 +360,7 @@ async function getPersonalPageAccess(tx: Tx, ownerId: string, rootId: string, ct
     })),
     candidates: { users: people.filter((u) => u.id !== ownerId), teams: [] },
     owner: owner ?? { id: ownerId, name: ownerId },
+    spaceTeam: null,
   };
 }
 
@@ -388,6 +395,9 @@ export async function getPageAccess(tx: Tx, pageId: string, ctx: { organizationI
   const candidateTeams = spaceTeamId
     ? []
     : await tx.select({ id: schema.team.id, name: schema.team.name }).from(schema.team).where(eq(schema.team.organizationId, ctx.organizationId));
+  const [spaceTeam] = spaceTeamId
+    ? await tx.select({ id: schema.team.id, name: schema.team.name }).from(schema.team).where(eq(schema.team.id, spaceTeamId))
+    : [];
 
   return {
     grants: grants.map((g) => {
@@ -403,6 +413,7 @@ export async function getPageAccess(tx: Tx, pageId: string, ctx: { organizationI
     }),
     candidates: { users: candidateUsers, teams: candidateTeams },
     owner: null,
+    spaceTeam: spaceTeam ?? null,
   };
 }
 

@@ -436,6 +436,8 @@ export const linkPageMentionFn = createServerFn({ method: "POST" })
 const createShareLinkSchema = z.object({
   pageId: z.string(),
   scope: z.enum(["view", "comment"]).optional(),
+  // Omitted = signed_in. "public" is an explicit, UI-confirmed opt-in.
+  access: z.enum(["signed_in", "public"]).optional(),
   includeEmbeds: z.boolean().optional(),
   password: z.string().min(1).optional(),
 });
@@ -447,7 +449,7 @@ export const createShareLinkFn = createServerFn({ method: "POST" })
     return withAuthorizedTenant(ctx, async (tx) => {
       // A guest link publishes the page outside the workspace — an access-list decision, not a viewer's.
       await requireCanManagePageAccess(tx, data.pageId, ctx);
-      return createShareLink(tx, { pageId: data.pageId, scope: data.scope, includeEmbeds: data.includeEmbeds, password: data.password, createdBy: ctx.userId });
+      return createShareLink(tx, { pageId: data.pageId, scope: data.scope, access: data.access, includeEmbeds: data.includeEmbeds, password: data.password, createdBy: ctx.userId });
     });
   });
 
