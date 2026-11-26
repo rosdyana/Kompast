@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@kompast/env": "workspace:*",
-    "@google-cloud/storage": "^8.4.0"
+    "@google-cloud/storage": "^9.0.0"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
