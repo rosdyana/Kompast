@@ -18,7 +18,8 @@ import { mermaidCodeBlockSpec } from "./mermaid-code-block";
 import { mentionInlineSpec } from "./MentionInlineContent";
 import { issueMentionInlineSpec } from "@/components/shared/IssueMentionInlineContent";
 import { userMentionInlineSpec } from "@/components/shared/UserMentionInlineContent";
-import { searchWorkspaceFn } from "@/lib/server-fns/search";
+import { resolveIssueRefFn, searchWorkspaceFn } from "@/lib/server-fns/search";
+import { parseIssueUrl } from "@/lib/issue-link";
 import { listPageTreeFn, linkPageMentionFn, notifyPageMentionFn, createIssueFromDocLineFn } from "@/lib/server-fns/pages";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 
@@ -176,6 +177,24 @@ function CollabEditor({
   const editor = useCreateBlockNote(
     withCollaboration({
       dictionary,
+      pasteHandler: ({ event, editor: ed, defaultPasteHandler }) => {
+        // A pasted link to one of this instance's issues becomes an issue chip. Anything else pastes normally.
+        const text = event.clipboardData?.getData("text/plain") ?? "";
+        const ref = parseIssueUrl(text, window.location.origin);
+        if (!ref) return defaultPasteHandler();
+        const href = text.trim();
+        // Resolved on the server under the reader's own visibility: an issue they can't see stays a plain link.
+        resolveIssueRefFn({ data: ref })
+          .then((issue) => {
+            ed.insertInlineContent(
+              (issue
+                ? [{ type: "issueMention", props: { issueId: issue.issueId, projectKey: issue.projectKey, keySeq: String(issue.keySeq), teamId: issue.teamId ?? "", title: issue.title } }, " "]
+                : [{ type: "link", href, content: href }]) as any,
+            );
+          })
+          .catch(() => ed.insertInlineContent([{ type: "link", href, content: href }] as any));
+        return true;
+      },
       // Cast: see the note above `schema` — same dual-instance friction, this
       // time between BlockNoteSchema and the CustomBlockNoteSchema type
       // withCollaboration's own resolved @blocknote/core copy expects.
@@ -269,10 +288,9 @@ function CollabEditor({
         <SuggestionMenuController
           triggerCharacter="@"
           getItems={async (query) => {
-            // People first (once the query is 2+ characters, like LiteEditor), then pages.
-            const people =
-              query.trim().length >= 2
-                ? (await searchWorkspaceFn({ data: query })).people.map((p) => ({
+            // People and issues first (once the query is 2+ characters, like LiteEditor), then pages.
+            const found = query.trim().length >= 2 ? await searchWorkspaceFn({ data: query }) : { people: [], issues: [] };
+            const people = found.people.map((p) => ({
                     title: p.name,
                     subtext: p.email,
                     group: tCommon("mentionGroupPeople"),
@@ -281,8 +299,17 @@ function CollabEditor({
                       // Fire-and-forget: a failed notification must not block typing. Core re-checks visibility.
                       notifyPageMentionFn({ data: { pageId, userId: p.id } }).catch(() => {});
                     },
-                  }))
-                : [];
+                  }));
+            const issues = found.issues.map((i) => ({
+              title: `${i.projectKey}-${i.keySeq}`,
+              subtext: i.title,
+              group: tCommon("mentionGroupIssues"),
+              onItemClick: () => {
+                editor.insertInlineContent(
+                  [{ type: "issueMention", props: { issueId: i.id, projectKey: i.projectKey, keySeq: String(i.keySeq), teamId: i.teamId ?? "", title: i.title } }, " "] as any,
+                );
+              },
+            }));
 
             const { pages } = await listPageTreeFn();
             const lower = query.toLowerCase();
@@ -302,7 +329,7 @@ function CollabEditor({
                   linkPageMentionFn({ data: { fromPageId: pageId, toPageId: p.id } });
                 },
               }));
-            return [...people, ...pageItems];
+            return [...people, ...issues, ...pageItems];
           }}
         />
       </BlockNoteView>

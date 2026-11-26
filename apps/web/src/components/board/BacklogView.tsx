@@ -40,6 +40,7 @@ import {
 } from "@/lib/server-fns/sprints";
 import { streamAiCompletion } from "@/lib/ai-stream-client";
 import { cn } from "@/lib/cn";
+import { useCopyIssueLink } from "@/components/shared/use-copy-issue-link";
 import { AssigneePicker, PointsPill, PriorityPicker, StatusPicker } from "./IssuePickers";
 import {
   daysUntil,
@@ -759,6 +760,8 @@ function RowList({ rows, empty, ...common }: RowCommon & { rows: Row[]; empty: s
 function IssueRow({ row, projectKey, teamId, typesById, epicsById, priorityLevels, lookups, containers, onStatus, onAssignee, onPriority, onPoints, onMove }: RowCommon & { row: Row }) {
   const { t } = useTranslation("board");
   const router = useRouter();
+  const { t: tCommon } = useTranslation("common");
+  const copyIssueLink = useCopyIssueLink();
   const drag = useDraggable({ id: row.id });
   const drop = useDroppable({ id: `row:${row.id}` });
   const [menuOpen, setMenuOpen] = useState(false);
@@ -826,6 +829,7 @@ function IssueRow({ row, projectKey, teamId, typesById, epicsById, priorityLevel
       <Popover open={menuOpen} onClose={() => setMenuOpen(false)} anchorRef={menuRef} placement="bottom-end" role="menu">
         <MenuList>
           <MenuItem onClick={() => { setMenuOpen(false); openIssue(); }}>{t("backlog.openIssue")}</MenuItem>
+          <MenuItem onClick={() => { setMenuOpen(false); void copyIssueLink({ teamId, projectKey, keySeq: row.keySeq }); }}>{tCommon("copyLink")}</MenuItem>
           <MenuSeparator />
           <MenuLabel>{t("backlog.moveTo")}</MenuLabel>
           {containers.map((s) => (

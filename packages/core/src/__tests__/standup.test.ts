@@ -7,7 +7,8 @@ import { createProject } from "../project";
 import { createIssue, moveIssue, updateIssue, recordHistoricalFieldChange } from "../issue";
 import { addComment } from "../comment";
 import { createSprint, addIssueToSprint, startSprint } from "../sprint";
-import { getStandupDigest, type StandupActivityItem } from "../standup";
+import { logWork } from "../worklog";
+import { getMyStandupActivity, getStandupDigest, type StandupActivityItem } from "../standup";
 import { updateBoardSettings } from "../board";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
@@ -194,7 +195,7 @@ describe("standup digest", () => {
   it("returns an empty digest for a sprint with no issues", async () => {
     const fx = await setupProject();
     const result = await digest(fx.sprintId, new Date(Date.now() - DAY_MS));
-    expect(result).toEqual({ byUser: {}, didColumnNames: [] });
+    expect(result).toEqual({ byUser: {}, didColumnNames: [], issues: {} });
   });
 
   async function columnNamed(boardId: string, name: string) {
@@ -246,5 +247,72 @@ describe("standup digest", () => {
     expect(after.byUser).toEqual(before.byUser);
     expect(after.didColumnNames).toEqual([]);
     expect(after.byUser[userA]!.map((i) => i.kind).sort()).toEqual(["commented", "created", "created", "status", "status"]);
+  });
+  it("leaves sprint planning and reassignment out of edits, and labels the remaining fields by key", async () => {
+    const fx = await setupProject();
+    const issueId = await makeIssue(fx, { title: "Plan me", inSprint: false });
+    await withAuthorizedTenant(ctxA, (tx) => addIssueToSprint(tx, fx.sprintId, issueId, { actorId: userA }));
+    await withAuthorizedTenant(ctxA, (tx) => updateIssue(tx, issueId, { assigneeId: userB, actorId: userA }));
+
+    const before = await digest(fx.sprintId, new Date(Date.now() - DAY_MS));
+    expect(itemsFor(before.byUser, userA, issueId).filter((i) => i.kind === "edited")).toHaveLength(0);
+
+    await withAuthorizedTenant(ctxA, (tx) => updateIssue(tx, issueId, { storyPoints: 3, actorId: userA }));
+    const after = await digest(fx.sprintId, new Date(Date.now() - DAY_MS));
+    const edited = itemsFor(after.byUser, userA, issueId).filter((i) => i.kind === "edited");
+    expect(edited).toHaveLength(1);
+    expect(edited[0]!.fields).toEqual(["storyPoints"]);
+  });
+
+  it("sums logged work per person and issue", async () => {
+    const fx = await setupProject();
+    const issueId = await makeIssue(fx, { title: "Grind" });
+    await withAuthorizedTenant(ctxA, (tx) => logWork(tx, { issueId, userId: userB, seconds: 1800 }));
+    await withAuthorizedTenant(ctxA, (tx) => logWork(tx, { issueId, userId: userB, seconds: 3600 }));
+
+    const { byUser } = await digest(fx.sprintId, new Date(Date.now() - DAY_MS));
+    const logged = itemsFor(byUser, userB, issueId).filter((i) => i.kind === "logged");
+    expect(logged).toHaveLength(1);
+    expect(logged[0]!.loggedSeconds).toBe(5400);
+  });
+
+  it("drops a status round trip that ends where it started", async () => {
+    const fx = await setupProject();
+    const issueId = await makeIssue(fx, { title: "Back and forth" });
+    await withAuthorizedTenant(ctxA, (tx) => moveIssue(tx, { issueId, toStatusId: fx.statusId("In Progress"), actorId: userA }));
+    await withAuthorizedTenant(ctxA, (tx) => moveIssue(tx, { issueId, toStatusId: fx.statusId("To Do"), actorId: userA }));
+
+    const { byUser } = await digest(fx.sprintId, new Date(Date.now() - DAY_MS));
+    expect(itemsFor(byUser, userA, issueId).filter((i) => i.kind === "status")).toHaveLength(0);
+  });
+
+  it("labels every sprint issue, including one whose status maps to no board column", async () => {
+    const fx = await setupProject();
+    const mapped = await makeIssue(fx, { title: "On a column" });
+    const unmapped = await makeIssue(fx, { title: "Off the board" });
+    const orphanStatusId = `test-standup-orphan-${Date.now()}`;
+    await admin.insert(schema.workflowStatus).values({ id: orphanStatusId, projectId: fx.projectId, name: "Parked", category: "in_progress", color: "#888888", order: 99 });
+    await admin.update(schema.issue).set({ statusId: orphanStatusId, assigneeId: userB }).where(eq(schema.issue.id, unmapped));
+
+    const { issues } = await digest(fx.sprintId, new Date(Date.now() - DAY_MS));
+    expect(issues[mapped]).toMatchObject({ projectKey: "STD", keySeq: 1, title: "On a column", statusName: "To Do", statusCategory: "todo", teamId });
+    expect(issues[unmapped]).toMatchObject({ projectKey: "STD", keySeq: 2, title: "Off the board", statusName: "Parked", statusCategory: "in_progress", assigneeId: userB });
+  });
+
+  it("getMyStandupActivity returns only the caller's own work across issues, plus what they have in progress", async () => {
+    const fx = await setupProject();
+    const moved = await makeIssue(fx, { title: "Moved by Bob", inSprint: false });
+    const othersWork = await makeIssue(fx, { title: "Alice's comment only", inSprint: false });
+    const wip = await makeIssue(fx, { title: "Bob in progress", inSprint: false });
+    await withAuthorizedTenant(ctxA, (tx) => moveIssue(tx, { issueId: moved, toStatusId: fx.statusId("Done"), actorId: userB }));
+    await withAuthorizedTenant(ctxA, (tx) => addComment(tx, { issueId: othersWork, authorId: userA, bodyJson: { text: "mine" } }));
+    await admin.update(schema.issue).set({ statusId: fx.statusId("In Progress"), assigneeId: userB }).where(eq(schema.issue.id, wip));
+
+    const ctxB = { userId: userB, organizationId: orgId };
+    const result = await withAuthorizedTenant(ctxB, (tx) => getMyStandupActivity(tx, { userId: userB, since: new Date(Date.now() - DAY_MS) }));
+    expect(result.did.map((i) => [i.issueId, i.kind])).toEqual([[moved, "status"]]);
+    expect(result.inProgress).toEqual([wip]);
+    expect(result.issues[moved]).toMatchObject({ projectKey: "STD", title: "Moved by Bob", statusName: "Done" });
+    expect(result.issues[othersWork]).toBeUndefined();
   });
 });
