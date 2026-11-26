@@ -866,7 +866,22 @@
     "line": {
       "created": "已建立",
       "commented_other": "{{count}} 則留言",
-      "edited": "已修改：{{fields}}"
+      "edited": "已修改：{{fields}}",
+      "logged": "記錄 {{time}}"
+    },
+    "field": {
+      "title": "標題",
+      "description": "描述",
+      "typeId": "類型",
+      "priority": "優先順序",
+      "storyPoints": "故事點數",
+      "dueDate": "到期日",
+      "startDate": "開始日期",
+      "epicId": "史詩",
+      "parentId": "父議題",
+      "labels": "標籤",
+      "estimateSeconds": "預估",
+      "spentSeconds": "已用時間"
     }
   },
   "pager": {

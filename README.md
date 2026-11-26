@@ -30,6 +30,7 @@ Most teams split their work across a docs tool and an issue tracker, then spend 
 - Per-page access lists, version history, templates, trash and restore, guest share links, `@mention` backlinks and live board embeds.
 - Mermaid diagrams: a code block in the `mermaid` language (or `/diagram`) renders as a live diagram under its source, in the editor and on guest share links.
 - `@mention` people in a doc body or a doc comment: they get a notification if they can see the page. Comments render the same rich text as issue comments.
+- `@`-mention an issue in a doc body (by key or title), or paste an issue link from this instance, and it becomes an issue chip. The paste is resolved with the reader's own visibility, so an issue they can't see stays a plain link. Board cards, table and backlog rows, and embedded board views have a Copy link action.
 - Team docs: any team member can write one; members can trash or delete only their own, team admins any.
 - The sidebar updates live: pages, projects and teams others create, rename, move or trash show up without a refresh.
 

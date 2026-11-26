@@ -876,7 +876,22 @@
       "created": "created",
       "commented_one": "{{count}} comment",
       "commented_other": "{{count}} comments",
-      "edited": "edited: {{fields}}"
+      "edited": "edited: {{fields}}",
+      "logged": "logged {{time}}"
+    },
+    "field": {
+      "title": "title",
+      "description": "description",
+      "typeId": "type",
+      "priority": "priority",
+      "storyPoints": "story points",
+      "dueDate": "due date",
+      "startDate": "start date",
+      "epicId": "epic",
+      "parentId": "parent",
+      "labels": "labels",
+      "estimateSeconds": "estimate",
+      "spentSeconds": "time spent"
     }
   },
   "pager": {
