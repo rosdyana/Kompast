@@ -1,7 +1,7 @@
 import "@blocknote/core/style.css";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Eye, Lock } from "lucide-react";
+import { Eye, Lock, LogIn } from "lucide-react";
 import { Button } from "@kompast/ui/Button";
 import { Spinner } from "@kompast/ui/EmptyState";
 import { useTranslation } from "@kompast/i18n";
@@ -60,12 +60,15 @@ function SharedPage() {
   const [content, setContent] = useState<{ title: string; icon: string | null; html: string } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // A session that ended between the meta load and the content fetch.
+  const [needsSignIn, setNeedsSignIn] = useState(false);
   const docRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (meta && !meta.requiresPassword) {
+    if (meta && !meta.loginRequired && !meta.requiresPassword) {
       getSharedPageContentFn({ data: { token } }).then((res) => {
         if (res.ok) setContent(res);
+        else if (res.loginRequired) setNeedsSignIn(true);
         else setError(t("invalidLink"));
       });
     }
@@ -108,6 +111,7 @@ function SharedPage() {
     try {
       const res = await getSharedPageContentFn({ data: { token, password } });
       if (res.ok) setContent(res);
+      else if (res.loginRequired) setNeedsSignIn(true);
       else setError(t("wrongPassword"));
     } catch (err) {
       // The server throws (rather than returning ok:false) when password attempts are rate-limited; its message says how long to wait.
@@ -122,6 +126,25 @@ function SharedPage() {
       <Shell>
         <Centered>
           <p className="text-[15px] text-text-2">{t("invalidLink")}</p>
+        </Centered>
+      </Shell>
+    );
+  }
+
+  // Signed-in-only link, no session: say nothing about the page itself, just offer sign-in and come back here.
+  if (meta.loginRequired || needsSignIn) {
+    return (
+      <Shell>
+        <Centered>
+          <span className="mb-4 grid h-11 w-11 place-items-center rounded-full bg-surface-3 text-text-2">
+            <Lock size={18} />
+          </span>
+          <h1 className="mb-1 text-[18px] font-semibold">{t("signInRequiredTitle")}</h1>
+          <p className="mb-5 text-[14px] text-text-2">{t("signInRequiredBody")}</p>
+          <Button variant="primary" className="w-full" onClick={() => window.location.assign(`/login?redirect=${encodeURIComponent(`/s/${token}`)}`)}>
+            <LogIn size={15} />
+            {t("signInToView")}
+          </Button>
         </Centered>
       </Shell>
     );

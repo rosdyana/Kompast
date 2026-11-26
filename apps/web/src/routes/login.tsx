@@ -10,8 +10,13 @@ import { setLocaleFn } from "@/lib/server-fns/locale";
 import type { DemoPersona } from "@/lib/demo";
 import { getDevLoginStatusFn } from "@/lib/server-fns/dev-login";
 import { AuthLayout, MicrosoftSignInButton } from "@/components/auth/AuthLayout";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 
 export const Route = createFileRoute("/login")({
+  // Where to go after sign-in, e.g. back to a sign-in-only share link. Same-origin paths only.
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
+    redirect: safeRedirectPath(search.redirect),
+  }),
   loader: () => getDevLoginStatusFn(),
   component: LoginPage,
 });
@@ -19,6 +24,7 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const { t } = useTranslation("auth");
   const { enabled: devLoginEnabled, microsoftConfigured, microsoftStatus, demo } = Route.useLoaderData();
+  const { redirect: redirectTo } = Route.useSearch();
   const router = useRouter();
   const [devPassword, setDevPassword] = useState("");
   const [devLoginError, setDevLoginError] = useState<string | null>(null);
@@ -34,7 +40,9 @@ function LoginPage() {
         setDevLoginError(t("devLoginError"));
         return;
       }
-      await router.navigate({ to: "/" });
+      // A full load for the return path (e.g. a sign-in-only share link), so it renders with the new session.
+      if (redirectTo) window.location.assign(redirectTo);
+      else await router.navigate({ to: "/" });
     } finally {
       setDevLoginBusy(false);
     }
@@ -44,10 +52,10 @@ function LoginPage() {
     <AuthLayout>
       <h2 className="type-title">{t("signInHeading")}</h2>
       <p className="mt-2 type-body text-text-2">{t("signInSubtext")}</p>
-      {(microsoftConfigured || !demo.enabled) && <MicrosoftSignInButton className="mt-7" />}
+      {(microsoftConfigured || !demo.enabled) && <MicrosoftSignInButton className="mt-7" callbackURL={redirectTo} />}
       {microsoftStatus === "unavailable" && <p className="mt-3 rounded-[8px] border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger">{t("microsoftUnavailable")}</p>}
 
-      {demo.enabled && demo.personas.length > 0 && <DemoPersonaPicker personas={demo.personas} />}
+      {demo.enabled && demo.personas.length > 0 && <DemoPersonaPicker personas={demo.personas} redirectTo={redirectTo} />}
 
       {devLoginEnabled && (
         <div className="mt-6 rounded-[10px] border border-dashed border-amber/40 bg-amber-soft/50 p-4">
@@ -88,7 +96,7 @@ const ACCESS_CODE_KEY = "kompast-demo-access-code";
  * from the server. Kept in sessionStorage so a presenter switching personas
  * mid-demo (log out → pick another) doesn't retype it.
  */
-function DemoPersonaPicker({ personas }: { personas: DemoPersona[] }) {
+function DemoPersonaPicker({ personas, redirectTo }: { personas: DemoPersona[]; redirectTo?: string }) {
   const { t } = useTranslation("auth");
   const router = useRouter();
   const [code, setCode] = useState("");
@@ -129,6 +137,10 @@ function DemoPersonaPicker({ personas }: { personas: DemoPersona[] }) {
       }
       // Each persona demos in their team's working language.
       await setLocaleFn({ data: { locale: persona.locale } });
+      if (redirectTo) {
+        window.location.assign(redirectTo);
+        return;
+      }
       await router.navigate({ to: "/" });
       await router.invalidate();
     } finally {

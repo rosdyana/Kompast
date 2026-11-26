@@ -61,6 +61,7 @@ import { cn } from "@/lib/cn";
 import { NoAccessState } from "@/components/shared/NoAccessState";
 import { LiteEditor } from "@/components/shared/LiteEditor";
 import { RichTextView } from "@/components/shared/RichTextView";
+import { ConfirmDialog } from "@/components/settings/ConfirmDialog";
 import type { Block } from "@blocknote/core";
 
 export const Route = createFileRoute("/_app/docs/$pageId")({
@@ -463,13 +464,22 @@ function SharePopover({ data }: { data: PageData }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
+  // Who new links open for. Signed-in is the default; public needs a confirmation at create time.
+  const [access, setAccess] = useState<"signed_in" | "public">("signed_in");
+  const [confirmPublic, setConfirmPublic] = useState<"view" | "comment" | null>(null);
   const ref = useRef<HTMLButtonElement>(null);
   const active = data.shareLinks.filter((l) => !l.revokedAt);
+  const anyPublic = active.some((l) => l.access === "public");
 
-  async function create(scope: "view" | "comment") {
+  function requestCreate(scope: "view" | "comment") {
+    if (access === "public") setConfirmPublic(scope);
+    else void create(scope, "signed_in");
+  }
+
+  async function create(scope: "view" | "comment", linkAccess: "signed_in" | "public") {
     setBusy(true);
     try {
-      const { token } = await createShareLinkFn({ data: { pageId: data.page.id, scope } });
+      const { token } = await createShareLinkFn({ data: { pageId: data.page.id, scope, access: linkAccess } });
       const url = `${window.location.origin}/s/${token}`;
       try {
         await navigator.clipboard.writeText(url);
@@ -492,14 +502,18 @@ function SharePopover({ data }: { data: PageData }) {
   return (
     <>
       <Button ref={ref} variant="ghost" size="sm" onClick={() => setOpen(!open)} aria-expanded={open}>
-        {active.length > 0 && <Globe size={14} strokeWidth={1.75} className="text-accent" />}
+        {anyPublic ? (
+          <Globe size={14} strokeWidth={1.75} className="text-accent" />
+        ) : (
+          active.length > 0 && <Link2 size={14} strokeWidth={1.75} className="text-text-2" />
+        )}
         {t("pageDetail.share")}
       </Button>
       <Popover open={open} onClose={() => setOpen(false)} anchorRef={ref} placement="bottom-end" width={360} ariaLabel={t("pageDetail.shareLinkHeading")}>
         {open && <PageAccessSection pageId={data.page.id} />}
         <div className="border-b border-border px-4 py-3">
           <p className="flex items-center gap-2 text-[14px] font-semibold">
-            <Globe size={15} strokeWidth={1.75} className="text-text-2" />
+            <Link2 size={15} strokeWidth={1.75} className="text-text-2" />
             {t("pageDetail.shareLinkHeading")}
           </p>
           <p className="mt-0.5 text-[12.5px] leading-snug text-text-2">{t("pageDetail.shareDescription")}</p>
@@ -515,6 +529,13 @@ function SharePopover({ data }: { data: PageData }) {
                 {link.scope === "view" ? t("pageDetail.viewOnly") : t("pageDetail.canComment")}
                 <span className="ml-1.5 text-[12px] text-text-3">{new Date(link.createdAt).toLocaleDateString(intlLocale, { day: "numeric", month: "short" })}</span>
               </span>
+              {link.access === "public" ? (
+                <Badge tone="amber" title={t("pageDetail.linkPublicHint")}>
+                  {t("pageDetail.linkPublic")}
+                </Badge>
+              ) : (
+                <Badge title={t("pageDetail.linkSignedInHint")}>{t("pageDetail.linkSignedIn")}</Badge>
+              )}
               {link.hasPassword && <Badge>{t("pageDetail.withPassword")}</Badge>}
               {link.revokedAt ? (
                 <span className="text-[12px] text-text-3">{t("pageDetail.revoked")}</span>
@@ -532,16 +553,43 @@ function SharePopover({ data }: { data: PageData }) {
             <input readOnly value={freshUrl} onFocus={(e) => e.currentTarget.select()} className="kp-input text-[12.5px]" />
           </div>
         )}
-        <div className="flex gap-2 border-t border-border bg-surface-2 px-4 py-3">
-          <Button variant="primary" size="sm" onClick={() => create("view")} disabled={busy}>
-            <Copy size={14} />
-            {t("pageDetail.newLink")}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => create("comment")} disabled={busy}>
-            {t("pageDetail.newCommentLink")}
-          </Button>
+        <div className="border-t border-border bg-surface-2 px-4 py-3">
+          <label className="mb-2.5 flex items-center gap-2 text-[12.5px] text-text-2">
+            <span className="flex-none">{t("pageDetail.linkAccessLabel")}</span>
+            <NativeSelect
+              value={access}
+              onChange={(e) => setAccess(e.target.value as "signed_in" | "public")}
+              className="h-8 min-w-0 flex-1 text-[13px]"
+            >
+              <option value="signed_in">{t("pageDetail.linkAccessSignedIn")}</option>
+              <option value="public">{t("pageDetail.linkAccessPublic")}</option>
+            </NativeSelect>
+          </label>
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" onClick={() => requestCreate("view")} disabled={busy}>
+              <Copy size={14} />
+              {t("pageDetail.newLink")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => requestCreate("comment")} disabled={busy}>
+              {t("pageDetail.newCommentLink")}
+            </Button>
+          </div>
         </div>
       </Popover>
+      {/* Outside the Popover: clicking the dialog closes the popover, and this component (and its state) stays mounted. */}
+      <ConfirmDialog
+        open={confirmPublic !== null}
+        onClose={() => setConfirmPublic(null)}
+        title={t("pageDetail.confirmPublicTitle")}
+        body={t("pageDetail.confirmPublicBody")}
+        confirmLabel={t("pageDetail.confirmPublicConfirm")}
+        cancelLabel={t("common:cancel")}
+        onConfirm={async () => {
+          if (!confirmPublic) return;
+          await create(confirmPublic, "public");
+          setOpen(true);
+        }}
+      />
     </>
   );
 }
@@ -599,15 +647,17 @@ function PageAccessSection({ pageId }: { pageId: string }) {
   if (!access) return <div className="border-b border-border px-4 py-3 text-[13px] text-text-3">{t("common:loading")}</div>;
 
   const granted = new Set(access.grants.map((g) => `${g.subjectType}:${g.subjectId}`));
-  // Personal pages are shared with people only (core refuses teams).
-  const addLabel = access.owner ? t("pageDetail.accessAddPersonPlaceholder") : t("pageDetail.accessAddPlaceholder");
+  // Teams can only be added to Workspace-space pages: personal pages are shared with people
+  // only (core refuses teams), and a team/project page is already limited to its own team.
+  const teamsAllowed = !access.owner && !access.spaceTeam;
+  const addLabel = teamsAllowed ? t("pageDetail.accessAddPlaceholder") : t("pageDetail.accessAddPersonPlaceholder");
   const restricted = access.grants.length > 0;
 
   return (
     <div className="border-b border-border px-4 py-3">
       <p className="flex items-center gap-2 text-[14px] font-semibold">
         <Lock size={15} strokeWidth={1.75} className="text-text-2" />
-        {t("pageDetail.accessHeading")}
+        {teamsAllowed ? t("pageDetail.accessHeading") : t("pageDetail.accessHeadingPeople")}
       </p>
       <p className="mt-0.5 text-[12.5px] leading-snug text-text-2">
         {access.owner
@@ -615,7 +665,9 @@ function PageAccessSection({ pageId }: { pageId: string }) {
             ? t("pageDetail.accessShared", { owner: access.owner.id === me ? t("pageDetail.you") : access.owner.name })
             : t("pageDetail.accessPrivate")
           : restricted
-            ? t("pageDetail.accessRestricted")
+            ? teamsAllowed
+              ? t("pageDetail.accessRestricted")
+              : t("pageDetail.accessRestrictedPeople")
             : t("pageDetail.accessOpen")}
       </p>
 
@@ -715,6 +767,9 @@ function PageAccessSection({ pageId }: { pageId: string }) {
             {t("pageDetail.accessAdd")}
           </Button>
         </div>
+      )}
+      {access.canManage && access.spaceTeam && (
+        <p className="mt-1.5 text-[12px] leading-snug text-text-3">{t("pageDetail.accessTeamSpaceHint", { team: access.spaceTeam.name })}</p>
       )}
     </div>
   );

@@ -7,7 +7,7 @@ import { createPage, archivePage, restorePage } from "../page";
 import { requirePageAccess, requireCanCopyPage, requireCanManagePageAccess } from "../page-permission";
 import { ForbiddenError } from "../permissions";
 import { NotFoundError } from "../errors";
-import { createShareLink, listShareLinks, revokeShareLink, resolveShareLink, checkSharePassword, getSharedPageContent } from "../share-link";
+import { createShareLink, listShareLinks, revokeShareLink, resolveShareLink, checkSharePassword, getSharedPageContent, getSharedPageMeta } from "../share-link";
 import { withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 import { hashPassword, hashPasswordAsync, verifyPassword, verifyPasswordAsync } from "../crypto";
@@ -98,19 +98,80 @@ describe("share links", () => {
     await admin.insert(schema.ydocState).values({ pageId: page.id, state: Buffer.from("fake-yjs-bytes") });
     const { token } = await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId }));
 
-    const content = await getSharedPageContent(token);
-    expect(content?.page.id).toBe(page.id);
-    expect(content?.ydocState?.toString()).toBe("fake-yjs-bytes");
+    const content = await getSharedPageContent(token, { viewerUserId: otherId });
+    expect(content.status).toBe("ok");
+    if (content.status !== "ok") return;
+    expect(content.page.id).toBe(page.id);
+    expect(content.ydocState?.toString()).toBe("fake-yjs-bytes");
   });
 
-  it("getSharedPageContent returns null for an invalid token or wrong password", async () => {
+  it("getSharedPageContent refuses an invalid token or wrong password", async () => {
     const ctx = { userId, organizationId: orgId };
     const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Shared", actorUserId: userId }));
     const { token } = await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId, password: "right" }));
 
-    expect(await getSharedPageContent("not-a-real-token")).toBeNull();
-    expect(await getSharedPageContent(token, "wrong")).toBeNull();
-    expect(await getSharedPageContent(token, "right")).not.toBeNull();
+    expect((await getSharedPageContent("not-a-real-token", { viewerUserId: otherId })).status).toBe("not_found");
+    expect((await getSharedPageContent(token, { password: "wrong", viewerUserId: otherId })).status).toBe("not_found");
+    expect((await getSharedPageContent(token, { password: "right", viewerUserId: otherId })).status).toBe("ok");
+  });
+
+  describe("who can open a link", () => {
+    it("defaults to signed-in only", async () => {
+      const ctx = { userId, organizationId: orgId };
+      const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Secret plan", actorUserId: userId }));
+      await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId }));
+      await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId, scope: "comment" }));
+
+      const links = await withAuthorizedTenant(ctx, (tx) => listShareLinks(tx, page.id));
+      expect(links.map((l) => l.access)).toEqual(["signed_in", "signed_in"]);
+    });
+
+    it("a signed-in link reveals nothing to an anonymous visitor, not even the title", async () => {
+      const ctx = { userId, organizationId: orgId };
+      const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Secret plan", actorUserId: userId }));
+      await admin.insert(schema.ydocState).values({ pageId: page.id, state: Buffer.from("fake-yjs-bytes") });
+      const { token } = await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId }));
+
+      const meta = await getSharedPageMeta(token, null);
+      expect(meta).toEqual({ status: "login_required" });
+      const content = await getSharedPageContent(token, { viewerUserId: null });
+      expect(content).toEqual({ status: "login_required" });
+    });
+
+    it("a signed-in link opens for any user with a session", async () => {
+      const ctx = { userId, organizationId: orgId };
+      const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Secret plan", actorUserId: userId }));
+      const { token } = await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId }));
+
+      expect(await getSharedPageMeta(token, otherId)).toEqual({ status: "ok", title: "Secret plan", icon: null, requiresPassword: false });
+      expect((await getSharedPageContent(token, { viewerUserId: otherId })).status).toBe("ok");
+    });
+
+    it("checks sign-in before the password, and still checks the password after", async () => {
+      const ctx = { userId, organizationId: orgId };
+      const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Secret plan", actorUserId: userId }));
+      const { token } = await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId, password: "right" }));
+
+      expect((await getSharedPageContent(token, { password: "right", viewerUserId: null })).status).toBe("login_required");
+      expect((await getSharedPageContent(token, { password: "wrong", viewerUserId: otherId })).status).toBe("not_found");
+      expect((await getSharedPageContent(token, { password: "right", viewerUserId: otherId })).status).toBe("ok");
+    });
+
+    it("a public link opens with no session", async () => {
+      const ctx = { userId, organizationId: orgId };
+      const page = await withAuthorizedTenant(ctx, (tx) => createPage(tx, { organizationId: orgId, title: "Release notes", actorUserId: userId }));
+      const { token } = await withAuthorizedTenant(ctx, (tx) => createShareLink(tx, { pageId: page.id, createdBy: userId, access: "public" }));
+
+      expect(await getSharedPageMeta(token, null)).toEqual({ status: "ok", title: "Release notes", icon: null, requiresPassword: false });
+      expect((await getSharedPageContent(token, { viewerUserId: null })).status).toBe("ok");
+      const links = await withAuthorizedTenant(ctx, (tx) => listShareLinks(tx, page.id));
+      expect(links[0]?.access).toBe("public");
+    });
+
+    it("an unknown token is not_found whether or not the visitor is signed in", async () => {
+      expect(await getSharedPageMeta("share_nope", null)).toEqual({ status: "not_found" });
+      expect(await getSharedPageMeta("share_nope", otherId)).toEqual({ status: "not_found" });
+    });
   });
 
   it("listShareLinks never exposes tokenHash or passwordHash", async () => {

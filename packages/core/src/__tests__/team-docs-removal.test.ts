@@ -4,7 +4,7 @@ import { loadEnv } from "@kompast/env";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createPage } from "../page";
-import { canRemovePage, requireCanRemovePage } from "../page-permission";
+import { canRemovePage, getPageAccess, requireCanRemovePage } from "../page-permission";
 import { ForbiddenError, withAuthorizedTenant } from "../permissions";
 import { id } from "../ids";
 
@@ -59,6 +59,19 @@ describe("team doc removal (canRemovePage)", () => {
     withAuthorizedTenant(ctxOf(userId), (tx) => createPage(tx, { organizationId: orgId, teamId, parentPageId, title: `by ${userId}`, actorUserId: userId }));
   const can = (userId: string, pageId: string, removal: "trash" | "delete") =>
     withAuthorizedTenant(ctxOf(userId), (tx) => canRemovePage(tx, pageId, ctxOf(userId), removal));
+
+  it("a team doc's access list offers only that team's members, never teams; a Workspace doc offers teams", async () => {
+    const doc = await newTeamDoc(authorId);
+    const access = await withAuthorizedTenant(ctxOf(leadId), (tx) => getPageAccess(tx, doc.id, ctxOf(leadId)));
+    expect(access.spaceTeam).toEqual({ id: teamId, name: "Docs Team" });
+    expect(access.candidates.teams).toEqual([]);
+    expect(access.candidates.users.map((u) => u.id).sort()).toEqual([authorId, leadId, mateId].sort());
+
+    const wsDoc = await withAuthorizedTenant(ctxOf(authorId), (tx) => createPage(tx, { organizationId: orgId, title: "ws", actorUserId: authorId }));
+    const wsAccess = await withAuthorizedTenant(ctxOf(authorId), (tx) => getPageAccess(tx, wsDoc.id, ctxOf(authorId)));
+    expect(wsAccess.spaceTeam).toBeNull();
+    expect(wsAccess.candidates.teams.map((t) => t.id)).toEqual([teamId]);
+  });
 
   it("a plain member removes only their own team docs; team admin and super admin remove any", async () => {
     const doc = await newTeamDoc(authorId);

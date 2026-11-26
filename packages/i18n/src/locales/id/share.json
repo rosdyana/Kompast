@@ -8,5 +8,8 @@
   "loadingEllipsis": "Memuat…",
   "sharedFooter": "Dibagikan dari Kompast · hanya lihat",
   "emptyPage": "Halaman ini masih kosong.",
-  "poweredBy": "Dibuat dengan Kompast"
+  "poweredBy": "Dibuat dengan Kompast",
+  "signInRequiredTitle": "Masuk untuk melihat halaman ini",
+  "signInRequiredBody": "Tautan ini hanya terbuka bagi orang yang sudah masuk ke Kompast.",
+  "signInToView": "Masuk"
 }
