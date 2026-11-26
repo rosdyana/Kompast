@@ -1,4 +1,4 @@
-import { and, eq, schema, type Json } from "@kompast/db";
+import { and, count, desc, eq, schema, type Json } from "@kompast/db";
 import type { AnyDb, Tx } from "./types";
 import { id } from "./ids";
 import { ForbiddenError, type AuthContext } from "./permissions";
@@ -58,8 +58,19 @@ export async function getImportRun(tx: Tx, importRunId: string) {
   return row ?? null;
 }
 
+/** Every import run of the project, newest first. */
 export async function listImportRuns(tx: Tx, projectId: string) {
-  return tx.select().from(schema.importRun).where(eq(schema.importRun.projectId, projectId));
+  return tx.select().from(schema.importRun).where(eq(schema.importRun.projectId, projectId)).orderBy(desc(schema.importRun.createdAt), desc(schema.importRun.id));
+}
+
+/** One page of the project's import runs, newest first, with the total for the pager. */
+export async function listImportRunsPage(tx: Tx, projectId: string, opts: { limit: number; offset: number }) {
+  const limit = Math.min(Math.max(Math.trunc(opts.limit), 1), 100);
+  const offset = Math.max(Math.trunc(opts.offset), 0);
+  const where = eq(schema.importRun.projectId, projectId);
+  const runs = await tx.select().from(schema.importRun).where(where).orderBy(desc(schema.importRun.createdAt), desc(schema.importRun.id)).limit(limit).offset(offset);
+  const [totalRow] = await tx.select({ total: count() }).from(schema.importRun).where(where);
+  return { runs, total: totalRow?.total ?? 0 };
 }
 
 /** Looks up the Kompast row a given external id already became, if this exact (source, sourceId) was seen before — the idempotency check every loader must make before creating anything. */

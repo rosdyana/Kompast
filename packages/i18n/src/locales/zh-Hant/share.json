@@ -8,5 +8,8 @@
   "loadingEllipsis": "載入中…",
   "sharedFooter": "由 Kompast 分享 · 僅供檢視",
   "emptyPage": "此頁面是空白的。",
-  "poweredBy": "以 Kompast 製作"
+  "poweredBy": "以 Kompast 製作",
+  "signInRequiredTitle": "請登入以檢視此頁面",
+  "signInRequiredBody": "此連結只對已登入 Kompast 的人開放。",
+  "signInToView": "登入"
 }

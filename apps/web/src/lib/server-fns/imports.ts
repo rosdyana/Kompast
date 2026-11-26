@@ -1,15 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import * as z from "zod";
-import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, listImportRuns, withAuthorizedTenant, requireProjectAdmin } from "@kompast/core";
+import { createImportRun, markImportRunRunning, completeImportRun, failImportRun, listImportRunsPage, withAuthorizedTenant, requireProjectAdmin } from "@kompast/core";
 import { fetchJiraIssues, runJiraImport, collectJiraEmails, type JiraIssue } from "@kompast/import";
 import { requireAuthContext } from "../session";
 import { resolveEmailsToUserIds, buildJiraAttachmentDownloader, jiraBaseUrlSchema } from "../jira-import-helpers";
 
+/** One page of the project's import history, newest first, with the total for the pager. */
 export const listImportRunsFn = createServerFn({ method: "GET" })
-  .validator((projectId: string) => projectId)
-  .handler(async ({ data: projectId }) => {
+  .validator(z.object({ projectId: z.string(), limit: z.number().int().min(1).max(100), offset: z.number().int().min(0) }))
+  .handler(async ({ data }) => {
     const ctx = await requireAuthContext();
-    return withAuthorizedTenant(ctx, (tx) => listImportRuns(tx, projectId));
+    return withAuthorizedTenant(ctx, (tx) => listImportRunsPage(tx, data.projectId, { limit: data.limit, offset: data.offset }));
   });
 
 const startJiraImportSchema = z.object({

@@ -564,9 +564,17 @@ export async function openJiraReconcileRun(
   return { importRunId, cursor: reconcileCursorOf(importRunId, startedAt) };
 }
 
-/** The auto-sync intervals the wizard offers, in minutes. null turns auto-sync off. */
+/** The auto-sync presets the wizard offers, in minutes. null turns auto-sync off. */
 export const JIRA_AUTO_SYNC_MINUTES = [15, 60, 240] as const;
-export type JiraAutoSyncMinutes = (typeof JIRA_AUTO_SYNC_MINUTES)[number];
+/** The longest custom auto-sync interval, in hours (one week). */
+export const JIRA_AUTO_SYNC_MAX_HOURS = 168;
+
+/** Whether `minutes` is an allowed auto-sync interval: 15 minutes, or a whole number of hours from 1 to a week. */
+export function isValidJiraAutoSyncMinutes(minutes: number): boolean {
+  if (!Number.isInteger(minutes)) return false;
+  if (minutes === 15) return true;
+  return minutes % 60 === 0 && minutes >= 60 && minutes <= JIRA_AUTO_SYNC_MAX_HOURS * 60;
+}
 
 /**
  * Starts a (re-)run of the migration: creates the import_run, resets the
@@ -714,9 +722,9 @@ export async function getLatestJiraReconcile(tx: Tx, migrationId: string) {
  * Sets the auto-sync interval (null = off). Allowed in any state: it only decides when a worker starts a sync, and
  * the worker only starts one from "synced" with a token.
  */
-export async function setJiraMigrationAutoSync(tx: Tx, ctx: AuthContext, migrationId: string, minutes: JiraAutoSyncMinutes | null): Promise<void> {
-  if (minutes !== null && !(JIRA_AUTO_SYNC_MINUTES as readonly number[]).includes(minutes)) {
-    throw new Error("Auto-sync can be off, every 15 minutes, hourly or every 4 hours");
+export async function setJiraMigrationAutoSync(tx: Tx, ctx: AuthContext, migrationId: string, minutes: number | null): Promise<void> {
+  if (minutes !== null && !isValidJiraAutoSyncMinutes(minutes)) {
+    throw new Error(`Auto-sync can be off, every 15 minutes, or every 1 to ${JIRA_AUTO_SYNC_MAX_HOURS} whole hours`);
   }
   await loadManagedRow(tx, ctx, migrationId);
   await tx.update(schema.jiraMigration).set({ autoSyncMinutes: minutes, updatedAt: new Date() }).where(eq(schema.jiraMigration.id, migrationId));

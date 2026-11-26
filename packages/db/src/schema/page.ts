@@ -152,6 +152,13 @@ export const shareLink = pgTable("share_link", {
     .references(() => page.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull().unique(),
   scope: text("scope", { enum: ["view", "comment"] }).notNull().default("view"),
+  /**
+   * Who may open the link. "signed_in" (the default) = any user with a valid
+   * Kompast session, even one outside this workspace or team; "public" = anyone
+   * with the URL, no sign-in. Migration 0053 backfilled links made before this
+   * column to "public", since they were created under "no sign-in needed" copy.
+   */
+  access: text("access", { enum: ["signed_in", "public"] }).notNull().default("signed_in"),
   passwordHash: text("password_hash"),
   /** Whether a kompastView embed inside this page renders for guests (see plan: frozen snapshot only). */
   includeEmbeds: boolean("include_embeds").notNull().default(false),

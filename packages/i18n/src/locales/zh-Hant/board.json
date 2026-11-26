@@ -413,6 +413,13 @@
       "autoSyncEvery15": "每 15 分鐘",
       "autoSyncHourly": "每小時",
       "autoSyncEvery4h": "每 4 小時",
+      "autoSyncCustom": "自訂…",
+      "autoSyncEveryNHours_one": "每 {{count}} 小時",
+      "autoSyncEveryNHours_other": "每 {{count}} 小時",
+      "autoSyncHoursLabel": "自動同步間隔（小時）",
+      "autoSyncHoursUnit": "小時",
+      "autoSyncSave": "儲存",
+      "autoSyncHoursInvalid": "請輸入 1 到 {{max}} 的整數小時。",
       "readOnlyNote": "在切換之前，請把 Kompast 當成唯讀。同步會把 JIRA 的值寫回，覆蓋這裡所做的任何變更。",
       "latestSyncHeading": "最近一次同步",
       "notesToggle": "最近一次同步的備註",
@@ -859,7 +866,28 @@
     "line": {
       "created": "已建立",
       "commented_other": "{{count}} 則留言",
-      "edited": "已修改：{{fields}}"
+      "edited": "已修改：{{fields}}",
+      "logged": "記錄 {{time}}"
+    },
+    "field": {
+      "title": "標題",
+      "description": "描述",
+      "typeId": "類型",
+      "priority": "優先順序",
+      "storyPoints": "故事點數",
+      "dueDate": "到期日",
+      "startDate": "開始日期",
+      "epicId": "史詩",
+      "parentId": "父議題",
+      "labels": "標籤",
+      "estimateSeconds": "預估",
+      "spentSeconds": "已用時間"
     }
+  },
+  "pager": {
+    "label": "分頁",
+    "range": "第 {{from}}–{{to}} 筆，共 {{total}} 筆",
+    "previous": "上一頁",
+    "next": "下一頁"
   }
 }

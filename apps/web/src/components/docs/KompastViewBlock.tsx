@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { createReactBlockSpec } from "@blocknote/react";
-import { ArrowUpRight, KanbanSquare, Table2 } from "lucide-react";
+import { ArrowUpRight, KanbanSquare, Link2, Table2 } from "lucide-react";
 import { Avatar } from "@kompast/ui/Avatar";
 import { CountPill } from "@kompast/ui/Badge";
 import { Lozenge, StatusDot } from "@kompast/ui/Lozenge";
@@ -16,6 +16,7 @@ import { kompastViewBlockConfig } from "@/lib/blocknote-schema";
 import { priorityOrderByKey, sortIssues, applyFilters } from "@/lib/table-view-utils";
 import { ProjectIcon } from "@/components/shell/ProjectIcon";
 import { cn } from "@/lib/cn";
+import { useCopyIssueLink } from "@/components/shared/use-copy-issue-link";
 
 type BoardData = Awaited<ReturnType<typeof getBoardEmbedDataFn>>;
 type FlatIssue = BoardData["columns"][number]["issues"][number] & { columnId: string; columnName: string; columnColor: string };
@@ -29,6 +30,8 @@ type FlatIssue = BoardData["columns"][number]["issues"][number] & { columnId: st
  */
 function EmbedView({ data }: { data: BoardData }) {
   const { t } = useTranslation("board");
+  const { t: tCommon } = useTranslation("common");
+  const copyIssueLink = useCopyIssueLink();
   const [mode, setMode] = useState<"table" | "board">("table");
   const config = normalizeTableViewConfig(data.tableView.config);
   const usersById = new Map(data.users.map((u) => [u.id, u]));
@@ -98,15 +101,26 @@ function EmbedView({ data }: { data: BoardData }) {
                 const assignee = issue.assigneeId ? usersById.get(issue.assigneeId) : undefined;
                 const priority = prioritiesByKey.get(issue.priority);
                 return (
-                  <tr key={issue.id} className="hover:bg-surface-2">
+                  <tr key={issue.id} className="group/row hover:bg-surface-2">
                     <td className="h-9 border-b border-border px-3">
-                      <Link {...issueLink(issue)} className="flex min-w-0 items-center gap-2 hover:text-accent-text">
-                        <IssueTypeIcon type={typesById.get(issue.typeId)} size={16} />
-                        <span className="type-key flex-none text-text-3">
-                          {data.project.key}-{issue.keySeq}
-                        </span>
-                        <span className="truncate">{issue.title}</span>
-                      </Link>
+                      <div className="flex min-w-0 items-center gap-1">
+                        <Link {...issueLink(issue)} className="flex min-w-0 flex-1 items-center gap-2 hover:text-accent-text">
+                          <IssueTypeIcon type={typesById.get(issue.typeId)} size={16} />
+                          <span className="type-key flex-none text-text-3">
+                            {data.project.key}-{issue.keySeq}
+                          </span>
+                          <span className="truncate">{issue.title}</span>
+                        </Link>
+                        <button
+                          type="button"
+                          aria-label={tCommon("copyLink")}
+                          title={tCommon("copyLink")}
+                          onClick={() => void copyIssueLink({ teamId, projectKey: data.project.key, keySeq: issue.keySeq })}
+                          className="grid h-6 w-6 flex-none place-items-center rounded-[5px] text-text-3 opacity-0 hover:bg-surface-3 hover:text-text focus-visible:opacity-100 group-hover/row:opacity-100"
+                        >
+                          <Link2 size={13} strokeWidth={1.75} />
+                        </button>
+                      </div>
                     </td>
                     <td className="h-9 border-b border-border px-2">
                       <Lozenge color={issue.columnColor}>{issue.columnName}</Lozenge>

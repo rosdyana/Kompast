@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClock, localDateKey, previousWorkingDayStart } from "../standup-time";
+import { formatClock, formatWorkTime, localDateKey, previousWorkingDayStart } from "../standup-time";
 
 // Local-time constructors so these hold in any TZ the test runs in.
 const localMidnight = (y: number, mo: number, d: number) => new Date(y, mo, d, 0, 0, 0, 0).getTime();
@@ -48,5 +48,19 @@ describe("formatClock", () => {
 
   it("never goes negative", () => {
     expect(formatClock(-5_000)).toBe("0:00");
+  });
+});
+
+describe("formatWorkTime", () => {
+  it("shows hours and minutes, dropping a zero part", () => {
+    expect(formatWorkTime(5400)).toBe("1h 30m");
+    expect(formatWorkTime(7200)).toBe("2h");
+    expect(formatWorkTime(45 * 60)).toBe("45m");
+  });
+
+  it("rounds to whole minutes and never shows less than 1m", () => {
+    expect(formatWorkTime(10)).toBe("1m");
+    expect(formatWorkTime(89)).toBe("1m");
+    expect(formatWorkTime(91)).toBe("2m");
   });
 });
